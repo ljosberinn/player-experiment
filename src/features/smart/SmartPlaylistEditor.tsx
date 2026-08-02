@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useDialogKeys } from "../../components/ui/useDialogKeys";
 import type { FilterField, FilterGroup, FilterOp, FilterRule, FilterValue } from "../../ipc";
 import {
   addNode,
@@ -39,13 +40,28 @@ export function SmartPlaylistEditor({
   const [draftName, setDraftName] = useState(name);
   const headingId = useId();
   const nameId = useId();
+  const canSave = draftName.trim() !== "";
+  const onKeyDown = useDialogKeys({
+    onAccept: () => onSave(draftName.trim(), draft),
+    onCancel,
+    canAccept: canSave,
+  });
 
   return (
     <div className="modal-backdrop">
       {/* A div with role="dialog" rather than <dialog>: the native element only
           gets its backdrop and focus trap from showModal(), which means an
           effect, and jsdom does not implement it at all. */}
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={headingId}>
+      {/* The key handler is a dialog-level shortcut, not a control:
+          everything focusable inside stays reachable and operable on
+          its own, and Enter/Escape are what a dialog owes the user. */}
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        onKeyDown={onKeyDown}
+      >
         <h2 id={headingId}>{title}</h2>
 
         <label className="modal-field" htmlFor={nameId}>
@@ -72,7 +88,7 @@ export function SmartPlaylistEditor({
           <button
             type="button"
             className="primary"
-            disabled={draftName.trim() === ""}
+            disabled={!canSave}
             onClick={() => onSave(draftName.trim(), draft)}
           >
             Save

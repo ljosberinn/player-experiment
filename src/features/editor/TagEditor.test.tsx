@@ -167,6 +167,51 @@ describe("TagEditor", () => {
     expect(screen.getByText(/Artwork differs/)).toBeInTheDocument();
   });
 
+  it("saves on Enter from a field", async () => {
+    const { onSave, user } = open([track()]);
+
+    await user.type(screen.getByRole("textbox", { name: "Genre" }), "Dream Pop{Enter}");
+
+    expect(onSave).toHaveBeenCalledOnce();
+  });
+
+  it("does not save on Enter when there is nothing to save", async () => {
+    const { onSave, user } = open([track()]);
+
+    await user.type(screen.getByRole("textbox", { name: "Genre" }), "{Enter}");
+
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("does not save on Enter when a field is invalid", async () => {
+    const { onSave, user } = open([track()]);
+
+    await user.clear(screen.getByRole("textbox", { name: "Year" }));
+    await user.type(screen.getByRole("textbox", { name: "Year" }), "twenty{Enter}");
+
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("closes on Escape", async () => {
+    const { onSave, onCancel, user } = open([track()]);
+
+    await user.type(screen.getByRole("textbox", { name: "Genre" }), "x{Escape}");
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter on a button to that button", async () => {
+    const { onSave, onPickCover, user } = open([track()], "C:/art/cover.png");
+
+    screen.getByRole("button", { name: "Choose Artwork…" }).focus();
+    await user.keyboard("{Enter}");
+
+    // Hijacking Enter here would break the control the user is operating.
+    expect(onPickCover).toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("discards everything on cancel", async () => {
     const { onSave, onCancel, user } = open([track()]);
 

@@ -12,6 +12,7 @@ import { columnsFor, DEFAULT_COLUMN_IDS } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
 import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore } from "./features/library/store";
+import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { usePlayerStore } from "./features/player/store";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
@@ -95,6 +96,7 @@ export function App() {
   }, [connect]);
 
   usePlayerShortcuts();
+  useSelectionShortcuts();
 
   useEffect(() => {
     if (notice === null) {

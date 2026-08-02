@@ -94,6 +94,7 @@ beforeEach(async () => {
     notice: null,
     error: null,
     editing: null,
+    renaming: null,
   });
   useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
@@ -430,7 +431,7 @@ describe("App playback", () => {
     );
   });
 
-  it("creates a playlist and opens it", async () => {
+  it("creates a playlist and offers to name it, without leaving the library", async () => {
     vi.mocked(createPlaylist).mockResolvedValue(playlist(7, "New Playlist"));
     vi.mocked(listPlaylists)
       .mockResolvedValueOnce([])
@@ -441,9 +442,12 @@ describe("App playback", () => {
     await user.click(await screen.findByRole("button", { name: "New playlist" }));
 
     expect(createPlaylist).toHaveBeenCalledWith("New Playlist");
-    await waitFor(() =>
-      expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 7 })),
-    );
+    // Switching to it would hide the songs you were about to drag into it,
+    // and an empty view is nothing to look at.
+    expect(
+      await screen.findByRole("textbox", { name: "Rename playlist New Playlist" }),
+    ).toBeInTheDocument();
+    expect(useLibraryStore.getState().playlistId).toBeNull();
   });
 
   it("builds a smart playlist through the editor and opens it", async () => {
