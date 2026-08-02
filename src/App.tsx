@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import "./App.css";
 import { Sidebar } from "./components/ui/Sidebar";
@@ -8,6 +8,7 @@ import { TitleBar } from "./components/ui/TitleBar";
 import { Transport } from "./components/ui/Transport";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
+import { exportChoice } from "./features/export/scope";
 import { columnsFor, DEFAULT_COLUMN_IDS } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
 import { SongTable } from "./features/library/SongTable";
@@ -17,7 +18,9 @@ import { usePlayerStore } from "./features/player/store";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
+import { exportLibrary } from "./ipc";
 import { formatLibrarySummary } from "./lib/format";
 
 const SIDEBAR_SECTIONS = [
@@ -26,6 +29,7 @@ const SIDEBAR_SECTIONS = [
 
 export function App() {
   const [tab, setTab] = useState<ViewTab>("songs");
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   const total = useLibraryStore((s) => s.total);
   const playlistId = useLibraryStore((s) => s.playlistId);
@@ -97,6 +101,15 @@ export function App() {
 
   usePlayerShortcuts();
   useSelectionShortcuts();
+  useWindowGeometry();
+
+  useEffect(() => {
+    if (exportNotice === null) {
+      return;
+    }
+    const timer = setTimeout(() => setExportNotice(null), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [exportNotice]);
 
   useEffect(() => {
     if (notice === null) {
@@ -110,6 +123,23 @@ export function App() {
     void refreshUndo();
   }, [refreshUndo]);
 
+  /** Writes the current view to a JSON file the user names. */
+  const runExport = async () => {
+    try {
+      const path = await save({
+        defaultPath: exportTarget.fileName,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (path === null) {
+        return;
+      }
+      const count = await exportLibrary(path, exportTarget.scope);
+      setExportNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
+    } catch (cause) {
+      setExportNotice(`Export failed: ${String(cause)}`);
+    }
+  };
+
   /** Double-click or Enter on a row: queue the whole view, start at that row. */
   const activateRow = async (rowIndex: number) => {
     const ids = await queueIds();
@@ -120,6 +150,7 @@ export function App() {
 
   const columns = columnsFor(DEFAULT_COLUMN_IDS);
   const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
+  const exportTarget = exportChoice([...selection.ids], currentPlaylist);
   const currentPlaylistName = currentPlaylist?.name ?? "This playlist";
   // A smart playlist's membership is its filter, so it has neither an order to
   // rearrange nor rows to take out - editing it means editing the filter.
@@ -206,6 +237,9 @@ export function App() {
               <button type="button" disabled={!canUndoTags} onClick={() => void undoTags()}>
                 Undo Tag Edit
               </button>
+              <button type="button" onClick={() => void runExport()}>
+                {exportTarget.label}
+              </button>
             </div>
             <ScanBar />
           </div>
@@ -216,9 +250,9 @@ export function App() {
             </p>
           ) : null}
 
-          {notice || tagNotice ? (
+          {notice || tagNotice || exportNotice ? (
             <p className="content-notice" role="status">
-              {notice ?? tagNotice}
+              {notice ?? tagNotice ?? exportNotice}
             </p>
           ) : null}
 

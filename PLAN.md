@@ -169,8 +169,9 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–7 are merged to `main`; phase 8 is in review. Next up is **phase 9
-(export & polish)**.
+Phases 1–8 are merged to `main`; phase 9 is in review. That completes the
+originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
+of the later-added phases 13–18, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -181,8 +182,9 @@ Phases 1–7 are merged to `main`; phase 8 is in review. Next up is **phase 9
 | 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
 | 6 | Playlists: CRUD, drag-and-drop, reorder | ✅ merged (`8f10a3d`) |
 | 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
-| 8 | Tag editing: atomic writer + undo journal | 🔄 in review |
-| 9+ | Export & polish onwards | not started |
+| 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
+| 9 | Export & polish: JSON export, window geometry | 🔄 in review |
+| 10+ | last.fm, Sentry, tag sources, 13–18 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -197,9 +199,12 @@ take rows back out. Phase 7 adds smart playlists: a nested and/or filter built
 in a dialog, compiled to parameterized SQL and re-evaluated live. Phase 8 adds
 tag editing: one dialog for one track or five hundred, writing through a
 temp-and-rename so a crash cannot corrupt an mp3, with one undo step per edit.
+Phase 9 adds JSON export of the library, a selection or a playlist against a
+[documented schema](docs/export-schema.md), and a window that reopens where it
+was left.
 
-**Test counts.** 200 Rust (156 unit, 38 integration against generated mp3s,
-6 perf guards) and 325 frontend at 98.0% lines. CI runs
+**Test counts.** 212 Rust (168 unit, 38 integration against generated mp3s,
+6 perf guards) and 359 frontend at 97.9% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -335,6 +340,18 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   to render.
 - **The undo journal references cover art by hash**, and nothing prunes the
   `covers` table. That is what lets undo put removed artwork back.
+- **Exported settings go through an allowlist, not a denylist.** See phase 9.
+  Fail closed: an unknown key is not exported.
+- **A smart playlist exports its filter, not its members.** A membership list
+  would be a lie the moment the library changed. Exactly one of `trackIds` and
+  `filter` is present, which tells a reader which kind it holds without having
+  to trust `kind`.
+- **The export scope is derived from the view, not asked in a dialog.** A
+  selection beats an open playlist beats the library, and the button says
+  which — so it is never a guess to be verified afterwards.
+- **A maximized window stores the flag, not the bounds.** Storing the
+  maximized rectangle would restore a manually-sized window that happens to
+  fill the screen, which un-maximizing then cannot undo.
 
 ### Defects found on the first real build (2026-08-02)
 
@@ -388,11 +405,44 @@ and one was a phase that had not merged yet.
   only thing there is to do with it yet.
 - **"Export doesn't work"** — phase 9 had not merged. It offers a save dialog
   with a location; nothing to fix.
-- **"Export should not include artwork"** — it never did. Only `coverHash`
-  travels, and there is a test asserting the bytes do not. If the hash itself
-  is unwanted, that is a small change and worth asking about.
+- **"Export should not include artwork"** — the bytes never travelled, but
+  `coverHash` did, and I read the instruction as narrower than it was. It is
+  gone: no artwork field of any kind, and the test now asserts the *absence*
+  of the hash and of the string "cover" anywhere in the document. The schema
+  doc is updated to match. No version bump — schema 1 has not shipped.
 - **Context menus and drag-to-empty-space-to-create** were never built. See
   phase 17.
+
+### Defects found on the third real build (2026-08-02)
+
+- **`dialog.save` was not in the capability file.** Tauri v2 gates every
+  built-in API behind `src-tauri/capabilities/default.json`, and export called
+  `save()` without `dialog:allow-save` — so it typechecked, passed its tests,
+  and failed in the packaged app with *"command plugin:dialog|save not allowed
+  by ACL"*. `dialog:allow-open` had been added back in phase 2 for the watch
+  folder; nothing made the omission of its sibling visible.
+- **Window geometry restore had the same hole**, found while fixing the first
+  one and not yet reported by anyone: `core:default` grants the *reads*
+  (`outerPosition`, `outerSize`, `availableMonitors`) but not `setPosition` or
+  `setSize`. Phase 9's restore would have failed on every launch. Both added.
+- **A guard now exists for the whole class**: `src/ipc/capabilities.test.ts`
+  maps each Tauri API the source calls to the permission it needs and asserts
+  the capability file lists it. It is a lookup table rather than an analysis —
+  a call it does not know about still slips through — but it turns the failure
+  from a runtime surprise into a red CI job, and it fails on `main` as it
+  stood before this fix. The mocked suite cannot catch these on its own,
+  because the mocks answer regardless of whether the permission exists.
+- **Delete removed songs from a playlist only while a row had focus.** The
+  handler was on the row, so it worked after clicking one and did nothing
+  after Ctrl+A or after clicking the sidebar — the same "reachable in theory"
+  shape as `selectAll`. A window-level fallback now handles it when focus is
+  elsewhere, deferring to the row when the row already acted, and refusing on
+  smart playlists, where there is no membership row to remove and Delete must
+  never be read as "delete the file".
+- **Tag autocompletion** was never built — new phase 18.
+- **Actions in the wrong place** (right-click a playlist to edit or delete,
+  right-click songs to locate on disk or edit) — already phase 17, which now
+  also spells out that the stopgap buttons get removed there.
 
 ### Known gaps carried forward
 
@@ -461,7 +511,14 @@ and one was a phase that had not merged yet.
 - **Tag edits are single-threaded.** 500 files are written one after another on
   the IPC thread; the dialog has no progress and the window will sit still for
   a large batch. Worth moving to `spawn_blocking` with a progress event, the
-  way scanning already is.
+  way scanning already is. **Export has the same shape** — it builds the whole
+  document in memory on the IPC thread — and would want the same treatment at
+  a large enough library.
+- **There is no import.** Export is a one-way door: the schema is documented
+  well enough to read, but nothing reads it back. Restoring play counts onto a
+  rebuilt library is the obvious use and is not built.
+- **`sort_json` and `columns_json` are both still unused.** Per-playlist sort
+  and column configuration wait on a UI for columns at all.
 
 ---
 
@@ -568,9 +625,32 @@ are written first — they are what survives the app — and the rows follow in 
 transaction afterwards, re-read from the files rather than assumed from the
 edit.
 
-**9 — Export & polish** `feat/09-export`
+**9 — Export & polish** `feat/09-export` — 🔄 **in review**
 JSON export (full library / selection / playlist, documented stable schema),
 settings persistence, window geometry, dark mode pass, empty and error states.
+
+*As built.* `src-tauri/src/export/` assembles the document through the same
+query layer the UI uses, so an export of a playlist contains exactly what the
+playlist showed — including a smart playlist's live evaluation. It pages, so a
+library over the 1000-row query cap exports completely; there is a test for
+that, because forgetting would truncate silently. The schema is published in
+[docs/export-schema.md](docs/export-schema.md).
+
+Window geometry persists through `settings`, with the parsing and the
+on-screen check in a pure module: a remembered position on an unplugged
+monitor is the ordinary way a window becomes unreachable.
+
+*Deviation: an allowlist, not a denylist.* The plan specified a denylist so
+last.fm and Discogs credentials could never reach an export. An allowlist gets
+the same result and fails the safe way round — forgetting to deny a new
+credential leaks it, while forgetting to allow a new preference merely omits
+it. Every future secret is excluded by default rather than by memory.
+
+*Not built: the dark mode pass and the "empty and error states" sweep.* Both
+have been happening continuously — every phase added its own empty state, and
+`prefers-color-scheme` has been in place since phase 3. What is left of that
+item is a deliberate visual review, which is what phase 13 is for; doing it
+twice would be doing it badly once.
 
 **10 — last.fm scrobbling** `feat/10-lastfm`
 Depends on phase 4 (playback), since both triggers are positions in a track.
@@ -818,10 +898,26 @@ is NULL in SQLite, not 0, which is the classic bug here), a filtered view, and
 a library whose durations exceed `i32`. A perf guard, since this now runs on
 every query change.
 
-**15 — Drag and drop ingest** `feat/15-drop`
-Dropping files and folders onto the window should add them, which is how every
-music player has worked for twenty years and is currently impossible — the
-folder picker is the only route in.
+**15 — Ingest ergonomics** `feat/15-ingest` — ~~drag and drop~~ **cut, by decision**
+
+> **Settled (2026-08-02, the user's call):** *"while I explicitly asked for
+> folder drag/drop ingest, I later also said that it has to go if that's what
+> prevents us from having playlist drag and drop."*
+>
+> So **`dragDropEnabled` stays `false`** and the OS-file drop route is
+> abandoned — option 3 below. Playlist drag and drop is a daily gesture;
+> dropping a folder in is something you do when the library changes. The
+> daily one wins. This also removes the ordering constraint between this
+> phase and 17; neither now depends on the other.
+
+What remains of this phase is making the picker route good enough that the
+loss does not hurt: multi-select in the folder picker, an "Add Files…"
+companion to "Add Folder…", and the loose-file rule below. Sized in hours,
+not days.
+
+*Everything below this line is retained as the record of what was designed
+and why it was dropped, in case Tauri ever gains a runtime toggle for the
+flag — at which point option 1 becomes available and this comes back.*
 
 - **Onto the library**: accept a mixed drop of files and directories, add each
   directory as a watch folder, scan. Loose files that sit outside every watch
@@ -854,8 +950,10 @@ two cannot both be on. Options, none free:
   5. **Turn it on and replace in-app dragging** with the context-menu "Add to
      Playlist ▸" from phase 17, plus a keyboard route for reordering.
 
-Option 5 is the only one that keeps both capabilities, and it means phase 17
-lands *before* this. Worth settling before any of phase 15 is written.
+Option 5 was my recommendation and was **not** taken: it keeps both
+capabilities only by replacing a direct gesture with a menu, and the user
+chose to keep the gesture and lose the ingest route instead. **Option 3 is
+what ships.**
 - Visual affordance: the drop target highlights, and an invalid target (a
   drop of zero audio files) says so instead of silently swallowing it.
 
@@ -965,6 +1063,74 @@ target, so it needs one store test and one component test.
 actually gets solved. The Rename/Delete buttons added as a fix are a stopgap —
 they are only on the open playlist, and a row of glyphs in a sidebar is not
 where those actions belong long-term.
+
+*Confirmed by the third build (2026-08-02):* the user asked for exactly this —
+"move actions to where they are commonly found… then the buttons to do so
+currently can get removed". So the removals are part of the phase, not a
+follow-up, and the phase is not done until they happen:
+
+- `.sidebar-action` Rename / Delete / ⚙ Edit Filter buttons in
+  `PlaylistSidebar.tsx` — deleted, their tests moved onto the menu.
+- The Get Info toolbar button — the menu becomes the primary route. Keep the
+  Ctrl+I-style keyboard path; a menu is not a substitute for a shortcut.
+- Double-click-to-rename stays. It is invisible, but it is also the gesture
+  every file manager has, and it costs nothing to keep.
+
+The Export button is the one that stays put: it acts on the current view,
+which is a toolbar's job, not a specific row's.
+
+**18 — Tag autocompletion** `feat/18-tag-complete`
+Typing "Godspeed You! Black Emperor" correctly, by hand, for the fourth time
+is how libraries acquire three spellings of one band. The tag editor should
+suggest values already present elsewhere in the library.
+
+*Which fields.* Only the ones with a shared vocabulary — where two songs
+genuinely ought to agree:
+
+| Suggested | Not suggested |
+|---|---|
+| Artist, Album Artist, Album, Genre, Composer, Year | Title, Track Number, Disc Number, Comment |
+
+The right-hand column is per-song by nature; a dropdown of other songs'
+comments is noise at best and a way to paste the wrong data at worst. This
+was called out explicitly in the request.
+
+*Where the values come from.* `SELECT DISTINCT` over 50k rows on every
+keystroke is not viable, so the distinct values get their own table,
+maintained as part of the same writes that already touch `tracks`:
+
+```sql
+CREATE TABLE tag_values (
+    field TEXT NOT NULL,        -- 'artist' | 'album' | …, a whitelist, never user text
+    value TEXT NOT NULL,
+    uses  INTEGER NOT NULL,     -- how many tracks carry it
+    PRIMARY KEY (field, value)) WITHOUT ROWID;
+CREATE INDEX idx_tag_values_lookup ON tag_values(field, value COLLATE NOCASE);
+```
+
+Rebuilt at the end of a scan (one pass, already paying for the walk) and
+adjusted incrementally by the phase 8 tag writer, so an edit's new value is
+suggestable immediately. `uses` orders the suggestions, so the spelling you
+use 400 times outranks the typo you made once — and a value that drops to
+zero uses is deleted, so a corrected typo stops being offered.
+
+Lookup is `WHERE field = ? AND value LIKE ? ESCAPE '\' COLLATE NOCASE
+ORDER BY uses DESC LIMIT 8`, reusing phase 7's `like_escape`. Prefix matches
+rank above interior ones. Query on the Rust side, debounced on the JS side —
+the same debounce phase 5 already has.
+
+*Interaction.* A combobox, not a hijack: the field stays free text, because
+a new artist has to be typeable. Suggestions appear below, Down/Up move
+through them, Enter or Tab accepts, Escape dismisses the list without
+dismissing the dialog — which needs care, since `useDialogKeys` currently
+takes Escape as "cancel the edit". Ties into the bulk editor's mixed-value
+"—" state: picking a suggestion is a touch, and so it writes.
+
+*Testing:* Rust — the incremental `uses` bookkeeping through an edit and an
+undo (this is where it will break), `LIKE` escaping, the field whitelist,
+and a perf-lite assertion that a lookup against a 50k-row fixture stays
+under budget. Frontend — keyboard navigation, that Escape closes the list
+before the dialog, and that the non-suggested fields have no combobox at all.
 
 ---
 

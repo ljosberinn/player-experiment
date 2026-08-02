@@ -14,7 +14,9 @@ import {
   countTracks,
   createPlaylist,
   createSmartPlaylist,
+  exportLibrary,
   listPlaylists,
+  loadWindowGeometry,
   moveInPlaylist,
   type Playlist,
   playerPlay,
@@ -47,6 +49,9 @@ vi.mock("./ipc", () => ({
   playerPrevious: vi.fn(),
   playerSeek: vi.fn(),
   playerSetVolume: vi.fn(),
+  exportLibrary: vi.fn(),
+  saveWindowGeometry: vi.fn(),
+  loadWindowGeometry: vi.fn(),
   tracksByIds: vi.fn(),
   writeTags: vi.fn(),
   undoTagEdit: vi.fn(),
@@ -68,9 +73,18 @@ vi.mock("@tauri-apps/api/window", () => ({
     toggleMaximize: vi.fn(),
     close: vi.fn(),
     startDragging: vi.fn(),
+    isMaximized: vi.fn(async () => false),
+    outerPosition: vi.fn(async () => ({ x: 0, y: 0 })),
+    outerSize: vi.fn(async () => ({ width: 1200, height: 800 })),
+    setPosition: vi.fn(),
+    setSize: vi.fn(),
+    maximize: vi.fn(),
+    onMoved: vi.fn(async () => () => {}),
+    onResized: vi.fn(async () => () => {}),
   }),
+  availableMonitors: vi.fn(async () => []),
 }));
-vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 
 const countTracksMock = vi.mocked(countTracks);
 const queryTracksMock = vi.mocked(queryTracks);
@@ -113,8 +127,10 @@ beforeEach(async () => {
   });
   vi.mocked(playerPlay).mockResolvedValue(undefined);
   vi.mocked(playerToggle).mockResolvedValue(undefined);
-  const { open } = await import("@tauri-apps/plugin-dialog");
+  vi.mocked(loadWindowGeometry).mockResolvedValue(null);
+  const { open, save } = await import("@tauri-apps/plugin-dialog");
   vi.mocked(open).mockResolvedValue(null);
+  vi.mocked(save).mockResolvedValue(null);
 });
 
 describe("App", () => {
@@ -539,6 +555,63 @@ describe("App playback", () => {
 
     expect(undoTagEdit).toHaveBeenCalled();
     expect(await screen.findByRole("status")).toHaveTextContent("Reverted 2 songs.");
+  });
+
+  it("exports the library, the open playlist, or the selection", async () => {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    vi.mocked(save).mockResolvedValue("D:/out.json");
+    vi.mocked(exportLibrary).mockResolvedValue(3);
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(4, "Evening", 3)]);
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    // Nothing narrowing it: the whole library.
+    await user.click(await screen.findByRole("button", { name: "Export Library…" }));
+    await waitFor(() =>
+      expect(exportLibrary).toHaveBeenCalledWith("D:/out.json", { kind: "library" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Exported 3 songs.");
+
+    // Open a playlist and it becomes the target.
+    await user.click(screen.getByRole("button", { name: "Evening" }));
+    await user.click(await screen.findByRole("button", { name: "Export Evening…" }));
+    await waitFor(() =>
+      expect(exportLibrary).toHaveBeenLastCalledWith("D:/out.json", {
+        kind: "playlist",
+        playlistId: 4,
+      }),
+    );
+
+    // A selection is narrower still, so it wins.
+    await user.click(await screen.findByText("Track 1"));
+    await user.click(await screen.findByRole("button", { name: "Export 1 Song…" }));
+    await waitFor(() =>
+      expect(exportLibrary).toHaveBeenLastCalledWith("D:/out.json", {
+        kind: "selection",
+        trackIds: [11],
+      }),
+    );
+  });
+
+  it("writes nothing when the save dialog is dismissed", async () => {
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Export Library…" }));
+
+    expect(exportLibrary).not.toHaveBeenCalled();
+  });
+
+  it("reports an export that failed rather than claiming success", async () => {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    vi.mocked(save).mockResolvedValue("D:/out.json");
+    vi.mocked(exportLibrary).mockRejectedValue("access denied");
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Export Library…" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Export failed: access denied");
   });
 
   it("shows the current track in the status display once the backend reports one", async () => {

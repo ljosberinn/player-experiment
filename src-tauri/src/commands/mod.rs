@@ -10,6 +10,7 @@ use tauri::{Emitter, Manager, State};
 use crate::audio::{Command, Player};
 use crate::db::{playback, playlists, query, settings, Db};
 use crate::error::AppResult;
+use crate::export::{self, ExportScope};
 use crate::model::{
     AppInfo, FilterGroup, PlayerSnapshot, Playlist, ScanSummary, TagEdit, TagWriteSummary, Track,
     TrackQuery,
@@ -197,6 +198,34 @@ pub fn undo_tag_edit(db: State<'_, Db>) -> AppResult<TagWriteSummary> {
 pub fn can_undo_tag_edit(db: State<'_, Db>) -> AppResult<bool> {
     let conn = db.conn()?;
     tags::write::can_undo(&conn)
+}
+
+/// Writes an export to `path`, returning how many tracks it holds.
+///
+/// The file is written whole rather than streamed: an export is megabytes at
+/// most, and a partial file left behind by a failure would look like a
+/// complete one.
+#[tauri::command]
+pub fn export_library(db: State<'_, Db>, path: String, scope: ExportScope) -> AppResult<u32> {
+    let conn = db.conn()?;
+    let document = export::build(&conn, &scope, crate::now_seconds())?;
+    let count = document.tracks.len() as u32;
+    std::fs::write(&path, export::to_json(&document)?)
+        .map_err(|e| crate::error::AppError::io(&path, e))?;
+    Ok(count)
+}
+
+/// Remembers where the window is, so the next launch opens there.
+#[tauri::command]
+pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::WINDOW_GEOMETRY, &geometry)
+}
+
+#[tauri::command]
+pub fn load_window_geometry(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::WINDOW_GEOMETRY)
 }
 
 /// Replaces the play queue and starts at `index`.

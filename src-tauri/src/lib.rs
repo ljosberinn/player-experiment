@@ -2,6 +2,7 @@ pub mod audio;
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod export;
 pub mod model;
 pub mod scan;
 pub mod smart;
@@ -78,6 +79,9 @@ pub fn run() {
             commands::add_to_playlist,
             commands::remove_from_playlist,
             commands::move_in_playlist,
+            commands::export_library,
+            commands::save_window_geometry,
+            commands::load_window_geometry,
             commands::tracks_by_ids,
             commands::write_tags,
             commands::undo_tag_edit,

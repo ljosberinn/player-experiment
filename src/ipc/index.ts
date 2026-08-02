@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { Combinator } from "./bindings/Combinator";
 import type { CoverEdit } from "./bindings/CoverEdit";
+import type { ExportScope } from "./bindings/ExportScope";
 import type { FilterField } from "./bindings/FilterField";
 import type { FilterGroup } from "./bindings/FilterGroup";
 import type { FilterNode } from "./bindings/FilterNode";
@@ -27,6 +28,7 @@ export type {
   AppInfo,
   Combinator,
   CoverEdit,
+  ExportScope,
   FilterField,
   FilterGroup,
   FilterNode,
@@ -85,6 +87,19 @@ export function countTracks(query: TrackQuery): Promise<number> {
  */
 export function allTrackIds(query: TrackQuery): Promise<number[]> {
   return invoke<number[]>("all_track_ids", { query });
+}
+
+/** Writes an export to `path`, resolving to how many tracks it holds. */
+export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
+  return invoke<number>("export_library", { path, scope });
+}
+
+export function saveWindowGeometry(geometry: string): Promise<void> {
+  return invoke<void>("save_window_geometry", { geometry });
+}
+
+export function loadWindowGeometry(): Promise<string | null> {
+  return invoke<string | null>("load_window_geometry");
 }
 
 /**

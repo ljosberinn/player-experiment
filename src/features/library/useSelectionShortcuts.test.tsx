@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { allTrackIds } from "../../ipc";
+import { allTrackIds, type Playlist, removeFromPlaylist } from "../../ipc";
+import { usePlaylistsStore } from "../playlists/store";
 import { useLibraryStore } from "./store";
 import { useSelectionShortcuts } from "./useSelectionShortcuts";
 
@@ -9,7 +10,13 @@ vi.mock("../../ipc", () => ({
   allTrackIds: vi.fn(),
   countTracks: vi.fn(async () => 0),
   queryTracks: vi.fn(async () => []),
+  listPlaylists: vi.fn(async () => []),
+  removeFromPlaylist: vi.fn(async () => 2),
 }));
+
+function playlist(id: number, kind: Playlist["kind"]): Playlist {
+  return { id, name: `List ${id}`, kind, trackCount: 3, createdAt: 0 };
+}
 
 function Harness() {
   useSelectionShortcuts();
@@ -17,9 +24,11 @@ function Harness() {
 }
 
 const initial = useLibraryStore.getState();
+const initialPlaylists = usePlaylistsStore.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  usePlaylistsStore.setState({ ...initialPlaylists, playlists: [], notice: null, error: null });
   useLibraryStore.setState({
     ...initial,
     selection: { ids: new Set(), anchorIndex: null },
@@ -99,5 +108,62 @@ describe("useSelectionShortcuts", () => {
     window.removeEventListener("keydown", onWindowKeyDown);
 
     expect(onWindowKeyDown).toHaveBeenCalled();
+  });
+
+  describe("Delete", () => {
+    beforeEach(() => {
+      usePlaylistsStore.setState({ playlists: [playlist(4, "static")] });
+      useLibraryStore.setState({
+        playlistId: 4,
+        selection: { ids: new Set([1, 2]), anchorIndex: 0 },
+      });
+    });
+
+    it("removes the selection from the open playlist", async () => {
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      // A focused row handles Delete itself; this is the path for when focus
+      // is anywhere else, which is where Ctrl+A leaves it.
+      await user.keyboard("{Delete}");
+
+      expect(removeFromPlaylist).toHaveBeenCalledWith(4, [1, 2]);
+    });
+
+    it("leaves a smart playlist alone", async () => {
+      usePlaylistsStore.setState({ playlists: [playlist(4, "smart")] });
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      await user.keyboard("{Delete}");
+
+      // A smart playlist is a query - there is no membership row to remove,
+      // and Delete must never be read as "delete the file".
+      expect(removeFromPlaylist).not.toHaveBeenCalled();
+    });
+
+    it("does nothing in the library view", async () => {
+      useLibraryStore.setState({ playlistId: null });
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      await user.keyboard("{Delete}");
+
+      expect(removeFromPlaylist).not.toHaveBeenCalled();
+    });
+
+    it("does not act twice when a row already handled it", async () => {
+      render(<Harness />);
+
+      const event = new KeyboardEvent("keydown", {
+        key: "Delete",
+        cancelable: true,
+        bubbles: true,
+      });
+      event.preventDefault();
+      window.dispatchEvent(event);
+
+      expect(removeFromPlaylist).not.toHaveBeenCalled();
+    });
   });
 });
