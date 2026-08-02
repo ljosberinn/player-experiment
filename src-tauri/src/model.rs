@@ -139,6 +139,53 @@ impl Default for TrackQuery {
     }
 }
 
+/// What the player is doing right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PlaybackStatus {
+    Stopped,
+    Playing,
+    Paused,
+}
+
+/// Everything the UI needs to render the transport, emitted on
+/// `player://state` whenever any of it changes.
+///
+/// Carries the whole current [`Track`] rather than an id: the track being
+/// played is frequently not in the frontend's page cache (it may have been
+/// evicted, or the user may have scrolled elsewhere), and one row is small.
+/// Position is deliberately *not* the reason this is emitted - that would mean
+/// a track payload four times a second - see [`PlayerPosition`].
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PlayerSnapshot {
+    pub status: PlaybackStatus,
+    pub track: Option<Track>,
+    #[ts(type = "number | null")]
+    pub queue_index: Option<u32>,
+    pub queue_len: u32,
+    #[ts(type = "number")]
+    pub position_ms: i64,
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    pub volume: f32,
+}
+
+/// Playhead ticks, emitted on `player://position` a few times a second.
+///
+/// Split out from [`PlayerSnapshot`] so the frequent event stays tiny.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PlayerPosition {
+    #[ts(type = "number")]
+    pub position_ms: i64,
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+}
+
 /// Progress of a library scan, emitted on `scan://progress`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

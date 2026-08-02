@@ -46,6 +46,23 @@ attempts left `tauri-driver` hung and needing a manual kill.
 | `npm run e2e` | WebDriver smoke suite (needs the instrumented build — see above) |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit + integration tests |
 
+## Keyboard
+
+| Key | Action |
+| --- | --- |
+| Space | Play / pause |
+| ← / → | Seek 5 s |
+| ↑ / ↓ | Volume ±5% |
+| Enter (on a row) | Play the view from that row |
+| Double-click (a row) | Play the view from that row |
+
+Media keys (play/pause, next, previous) work while the window has focus.
+Shortcuts stand down whenever focus is in a text field.
+
+Playback needs an output device. Without one the app still starts — it falls
+back to a silent sink and reports why on the first play, rather than refusing
+to open.
+
 ## Layout
 
 ```

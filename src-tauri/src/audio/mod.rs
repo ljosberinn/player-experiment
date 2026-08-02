@@ -1,0 +1,173 @@
+//! Playback.
+//!
+//! [`engine`] holds the behaviour, [`sink`] holds the hardware, and this
+//! module is the thread that joins them: it owns the engine, drains a command
+//! channel, ticks on a timer, and hands every resulting event to a callback
+//! the caller supplies. Nothing here knows about Tauri or SQLite - the wiring
+//! to both lives in `lib.rs`.
+
+pub mod engine;
+pub mod sink;
+
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use crate::error::{AppError, AppResult};
+
+pub use engine::{Command, EngineState, Event, QueueEntry};
+pub use sink::{AudioSink, RodioSink};
+
+/// How often the engine is ticked.
+///
+/// Doubles as the position event rate (4/s, enough for a smooth scrubber) and
+/// as the worst-case delay before a finished track advances the queue.
+const TICK: Duration = Duration::from_millis(250);
+
+/// Handle to the player thread.
+///
+/// Commands are fire-and-forget: the UI never waits on audio, it reacts to the
+/// events that follow. The last state is mirrored here so a newly opened
+/// window can ask what is playing without waiting for the next change.
+pub struct Player {
+    commands: Sender<Command>,
+    state: Arc<Mutex<EngineState>>,
+}
+
+impl Player {
+    /// Starts the player thread.
+    ///
+    /// `on_event` runs on that thread, so it must not block for long: it is
+    /// the same thread that advances the queue.
+    pub fn spawn<S, F>(sink: S, volume: f32, mut on_event: F) -> Self
+    where
+        S: AudioSink + 'static,
+        F: FnMut(&Event, &EngineState) + Send + 'static,
+    {
+        let (commands, rx) = mpsc::channel::<Command>();
+        let mut engine = engine::Engine::new(sink, volume);
+        let state = Arc::new(Mutex::new(engine.state()));
+        let shared = Arc::clone(&state);
+
+        std::thread::Builder::new()
+            .name("player".to_owned())
+            .spawn(move || loop {
+                let events = match rx.recv_timeout(TICK) {
+                    Ok(command) => engine.handle(command),
+                    Err(RecvTimeoutError::Timeout) => engine.tick(),
+                    // Every sender is gone, so the app is shutting down.
+                    Err(RecvTimeoutError::Disconnected) => return,
+                };
+
+                if events.is_empty() {
+                    continue;
+                }
+                let current = engine.state();
+                if let Ok(mut guard) = shared.lock() {
+                    guard.clone_from(&current);
+                }
+                for event in &events {
+                    on_event(event, &current);
+                }
+            })
+            .expect("spawning the player thread");
+
+        Self { commands, state }
+    }
+
+    /// Queues a command for the player thread.
+    ///
+    /// Fails only if that thread has gone away, which the UI reports rather
+    /// than treating as fatal.
+    pub fn send(&self, command: Command) -> AppResult<()> {
+        self.commands
+            .send(command)
+            .map_err(|_| AppError::Internal("the player thread is not running".to_owned()))
+    }
+
+    /// The last state the engine reported.
+    pub fn state(&self) -> EngineState {
+        match self.state.lock() {
+            Ok(guard) => guard.clone(),
+            // A poisoned lock means the player thread panicked mid-update.
+            // Reporting a stopped player is better than propagating a panic
+            // into every command.
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::PlaybackStatus;
+    use std::sync::mpsc::channel;
+
+    /// A silent sink that reports itself as loaded, so the thread can be
+    /// driven without an audio device.
+    #[derive(Default)]
+    struct SilentSink {
+        loaded: bool,
+    }
+
+    impl AudioSink for SilentSink {
+        fn load(&mut self, _path: &std::path::Path) -> Result<(), String> {
+            self.loaded = true;
+            Ok(())
+        }
+        fn play(&mut self) {}
+        fn pause(&mut self) {}
+        fn stop(&mut self) {
+            self.loaded = false;
+        }
+        fn set_volume(&mut self, _volume: f32) {}
+        fn seek(&mut self, _position: Duration) -> Result<(), String> {
+            Ok(())
+        }
+        fn position(&self) -> Duration {
+            Duration::ZERO
+        }
+        fn finished(&self) -> bool {
+            !self.loaded
+        }
+    }
+
+    #[test]
+    fn commands_reach_the_engine_and_events_come_back() {
+        let (tx, rx) = channel();
+        let player = Player::spawn(SilentSink::default(), 1.0, move |event, state| {
+            let _ = tx.send((event.clone(), state.clone()));
+        });
+
+        player
+            .send(Command::SetQueue {
+                entries: vec![QueueEntry {
+                    track_id: 1,
+                    path: "C:\\music\\1.mp3".to_owned(),
+                    duration_ms: 1000,
+                }],
+                index: 0,
+            })
+            .unwrap();
+
+        let (event, state) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(event, Event::StateChanged);
+        assert_eq!(state.status, PlaybackStatus::Playing);
+        assert_eq!(state.track_id, Some(1));
+    }
+
+    #[test]
+    fn the_mirrored_state_tracks_the_engine() {
+        let (tx, rx) = channel();
+        let player = Player::spawn(SilentSink::default(), 0.3, move |_, _| {
+            let _ = tx.send(());
+        });
+
+        assert_eq!(player.state().status, PlaybackStatus::Stopped);
+        assert_eq!(player.state().volume, 0.3);
+
+        player.send(Command::SetVolume(0.9)).unwrap();
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(player.state().volume, 0.9);
+    }
+}

@@ -5,17 +5,19 @@ import { formatDuration } from "../../lib/format";
 /**
  * The centred display from iTunes' toolbar.
  *
- * Shows the current track, or a library summary when nothing is playing -
- * playback itself arrives in phase 4, so the scrubber is presentational here.
+ * Shows the current track and a seekable scrubber, or a library summary when
+ * nothing is playing.
  */
 export function StatusDisplay({
   track,
-  positionMs,
+  positionMs = 0,
   summary,
+  onSeek,
 }: {
   track: Track | null;
   positionMs?: number;
   summary: string;
+  onSeek?: (positionMs: number) => void;
 }) {
   if (!track) {
     return (
@@ -25,9 +27,9 @@ export function StatusDisplay({
     );
   }
 
-  const elapsed = positionMs ?? 0;
-  const remaining = Math.max(0, track.duration_ms - elapsed);
-  const progress = track.duration_ms > 0 ? (elapsed / track.duration_ms) * 100 : 0;
+  const duration = track.duration_ms;
+  const elapsed = Math.max(0, Math.min(positionMs, duration));
+  const remaining = Math.max(0, duration - elapsed);
 
   return (
     <div className="status-display" data-testid="status-display">
@@ -44,9 +46,20 @@ export function StatusDisplay({
         </div>
         <div className="status-scrubber">
           <span className="status-time">{formatDuration(elapsed)}</span>
-          <div className="status-track">
-            <div className="status-progress" style={{ width: `${progress}%` }} />
-          </div>
+          {/* A range input rather than a styled div: it is draggable, keyboard
+              operable and announced as a slider without any extra work. */}
+          <input
+            className="status-track"
+            type="range"
+            min={0}
+            max={Math.max(duration, 1)}
+            step={1000}
+            value={elapsed}
+            aria-label="Seek"
+            aria-valuetext={formatDuration(elapsed)}
+            disabled={!onSeek || duration <= 0}
+            onChange={(event) => onSeek?.(Number(event.currentTarget.value))}
+          />
           <span className="status-time">-{formatDuration(remaining)}</span>
         </div>
       </div>

@@ -3,7 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useLibraryStore } from "./features/library/store";
-import { addWatchFolder, countTracks, queryTracks, scanLibrary } from "./ipc";
+import {
+  addWatchFolder,
+  allTrackIds,
+  countTracks,
+  playerPlay,
+  playerSnapshot,
+  playerToggle,
+  queryTracks,
+  scanLibrary,
+} from "./ipc";
 
 vi.mock("./ipc", () => ({
   countTracks: vi.fn(),
@@ -13,6 +22,17 @@ vi.mock("./ipc", () => ({
   scanLibrary: vi.fn(),
   onScanProgress: vi.fn(async () => () => {}),
   coverUrl: vi.fn((hash: string) => `cover-url:${hash}`),
+  onPlayerState: vi.fn(async () => () => {}),
+  onPlayerPosition: vi.fn(async () => () => {}),
+  onPlayerError: vi.fn(async () => () => {}),
+  playerSnapshot: vi.fn(),
+  playerPlay: vi.fn(),
+  playerToggle: vi.fn(),
+  playerStop: vi.fn(),
+  playerNext: vi.fn(),
+  playerPrevious: vi.fn(),
+  playerSeek: vi.fn(),
+  playerSetVolume: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
@@ -37,6 +57,17 @@ beforeEach(async () => {
   countTracksMock.mockResolvedValue(0);
   queryTracksMock.mockResolvedValue([]);
   scanLibraryMock.mockResolvedValue({ added: 0, updated: 0, removed: 0, unchanged: 0 });
+  vi.mocked(playerSnapshot).mockResolvedValue({
+    status: "stopped",
+    track: null,
+    queueIndex: null,
+    queueLen: 0,
+    positionMs: 0,
+    durationMs: 0,
+    volume: 0.8,
+  });
+  vi.mocked(playerPlay).mockResolvedValue(undefined);
+  vi.mocked(playerToggle).mockResolvedValue(undefined);
   const { open } = await import("@tauri-apps/plugin-dialog");
   vi.mocked(open).mockResolvedValue(null);
 });
@@ -119,5 +150,111 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("database is locked");
+  });
+});
+
+describe("App playback", () => {
+  // jsdom gives every element zero height, so the virtualizer would render no
+  // rows. Pin a real viewport size for the scroll container.
+  function stubLayout(height = 400) {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      height,
+      width: 800,
+      top: 0,
+      left: 0,
+      bottom: height,
+      right: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      value: height,
+    });
+  }
+
+  /** A library of three tracks the table can render and play. */
+  async function renderWithLibrary({ waitForRows = true } = {}) {
+    stubLayout();
+    countTracksMock.mockResolvedValue(3);
+    queryTracksMock.mockResolvedValue([0, 1, 2].map(track));
+    vi.mocked(allTrackIds).mockResolvedValue([10, 11, 12]);
+
+    render(<App />);
+    if (waitForRows) {
+      await screen.findByText("Track 1");
+    }
+  }
+
+  function track(index: number) {
+    return {
+      id: 10 + index,
+      path: `/m/${index}.mp3`,
+      duration_ms: 200_000,
+      title: `Track ${index}`,
+      artist: "Artist",
+      album: null,
+      album_artist: null,
+      genre: null,
+      year: null,
+      track_no: null,
+      disc_no: null,
+      comment: null,
+      bitrate: null,
+      sample_rate: null,
+      cover_hash: null,
+      added_at: 0,
+      play_count: 0,
+      last_played_at: null,
+    };
+  }
+
+  it("plays the whole view from the row that was activated", async () => {
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    await user.dblClick(screen.getByText("Track 1").closest(".song-row") as HTMLElement);
+
+    // The queue is the view's full id list, not just the loaded page, and the
+    // index is the row's position in it.
+    await waitFor(() => expect(playerPlay).toHaveBeenCalledWith([10, 11, 12], 1));
+  });
+
+  it("does not start playback when the view is empty", async () => {
+    countTracksMock.mockResolvedValue(0);
+    vi.mocked(allTrackIds).mockResolvedValue([]);
+    render(<App />);
+    await screen.findByText(/No songs yet/);
+
+    expect(playerPlay).not.toHaveBeenCalled();
+  });
+
+  it("drives the transport from the toolbar", async () => {
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+
+    expect(playerToggle).toHaveBeenCalledOnce();
+  });
+
+  it("shows the current track in the status display once the backend reports one", async () => {
+    vi.mocked(playerSnapshot).mockResolvedValue({
+      status: "playing",
+      track: track(1),
+      queueIndex: 1,
+      queueLen: 3,
+      positionMs: 30_000,
+      durationMs: 200_000,
+      volume: 0.8,
+    });
+    // The table renders the same title, so wait on the status display itself.
+    await renderWithLibrary({ waitForRows: false });
+
+    const display = await screen.findByTestId("status-display");
+    await waitFor(() => expect(display).toHaveTextContent("Track 1"));
+    expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("30000");
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
   });
 });

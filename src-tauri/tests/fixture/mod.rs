@@ -3,6 +3,10 @@
 //! Generated rather than committed: no encoder dependency, no binary blobs in
 //! git, and no question about the licensing of the audio.
 
+// Compiled separately into each integration test that includes it, and no one
+// test uses all of it.
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 
 use lofty::config::WriteOptions;

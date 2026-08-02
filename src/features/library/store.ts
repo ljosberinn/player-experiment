@@ -40,6 +40,8 @@ interface LibraryState {
   clickRow: (rowIndex: number, id: number, modifiers: ClickModifiers) => void;
   selectAll: () => Promise<void>;
   clearSelection: () => void;
+  /** Every id matching the current query, in view order - the play queue. */
+  queueIds: () => Promise<number[]>;
 }
 
 function queryFor(state: Pick<LibraryState, "search" | "sortBy" | "direction">): TrackQuery {
@@ -159,6 +161,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   clearSelection: () => set({ selection: emptySelection }),
+
+  queueIds: async () => {
+    // Fetched fresh on each activation rather than cached: the ids have to
+    // match the view's current sort and filter exactly, and a stale queue
+    // would play the wrong track for the row that was clicked.
+    try {
+      return await allTrackIds(queryFor(get()));
+    } catch (cause) {
+      set({ error: String(cause) });
+      return [];
+    }
+  },
 }));
 
 export { PAGE_SIZE, pageIndexOf };

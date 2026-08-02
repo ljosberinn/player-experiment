@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod commands;
 pub mod db;
 pub mod error;
@@ -5,9 +6,10 @@ pub mod model;
 pub mod scan;
 pub mod tags;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
-use crate::db::Db;
+use crate::audio::{Event, Player, RodioSink};
+use crate::db::{playback, settings, Db};
 
 /// Where the library lives on disk, under the OS app-data directory.
 fn database_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, tauri::Error> {
@@ -29,6 +31,8 @@ pub fn run() {
         .setup(|app| {
             let path = database_path(app.handle())?;
             let db = Db::open(&path)?;
+            let volume = db.conn().and_then(|conn| settings::volume(&conn))?;
+            app.manage(start_player(app.handle().clone(), db.clone(), volume));
             app.manage(db);
             Ok(())
         })
@@ -63,9 +67,71 @@ pub fn run() {
             commands::query_tracks,
             commands::count_tracks,
             commands::all_track_ids,
+            commands::player_play,
+            commands::player_toggle,
+            commands::player_pause,
+            commands::player_resume,
+            commands::player_stop,
+            commands::player_next,
+            commands::player_previous,
+            commands::player_seek,
+            commands::player_set_volume,
+            commands::player_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Starts the player thread and forwards its events to the webview.
+///
+/// The sink is opened here so a machine with no audio device still gets a
+/// running app: playback commands then fail loudly instead of the window
+/// refusing to open. CI runners are exactly that machine.
+fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
+    let sink = match RodioSink::open() {
+        Ok(sink) => sink,
+        Err(message) => {
+            let _ = app.emit("player://error", &message);
+            return Player::spawn(audio::sink::NullSink::new(message), volume, |_, _| {});
+        }
+    };
+
+    Player::spawn(sink, volume, move |event, state| match event {
+        Event::StateChanged => {
+            if let Ok(conn) = db.conn() {
+                if let Ok(snapshot) = playback::snapshot(&conn, state) {
+                    let _ = app.emit("player://state", &snapshot);
+                }
+            }
+        }
+        Event::Position {
+            position_ms,
+            duration_ms,
+        } => {
+            let _ = app.emit(
+                "player://position",
+                &crate::model::PlayerPosition {
+                    position_ms: *position_ms,
+                    duration_ms: *duration_ms,
+                },
+            );
+        }
+        Event::Played(track_id) => {
+            // A lost play count is not worth interrupting playback for.
+            if let Ok(conn) = db.conn() {
+                let _ = playback::mark_played(&conn, *track_id, now_seconds());
+            }
+        }
+        Event::Error(message) => {
+            let _ = app.emit("player://error", message);
+        }
+    })
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
 }
 
 fn query_cover(conn: &rusqlite::Connection, hash: &str) -> Option<(String, Vec<u8>)> {

@@ -140,6 +140,29 @@ describe("StatusDisplay", () => {
     expect(screen.getByText("-2:28")).toBeInTheDocument();
   });
 
+  it("exposes a seekable scrubber that reports milliseconds", async () => {
+    const onSeek = vi.fn();
+    render(<StatusDisplay track={track()} positionMs={60_000} summary="" onSeek={onSeek} />);
+
+    const scrubber = screen.getByRole("slider", { name: "Seek" });
+    expect(scrubber).toHaveValue("60000");
+
+    fireEvent.change(scrubber, { target: { value: "90000" } });
+    expect(onSeek).toHaveBeenCalledWith(90_000);
+  });
+
+  it("disables the scrubber when there is nothing to seek through", () => {
+    render(<StatusDisplay track={track({ duration_ms: 0 })} summary="" onSeek={() => {}} />);
+
+    expect(screen.getByRole("slider", { name: "Seek" })).toBeDisabled();
+  });
+
+  it("never shows a position past the end of the track", () => {
+    render(<StatusDisplay track={track()} positionMs={999_000} summary="" onSeek={() => {}} />);
+
+    expect(screen.getByText("-0:00")).toBeInTheDocument();
+  });
+
   it("requests cover art through the protocol helper", () => {
     render(<StatusDisplay track={track({ cover_hash: "abc" })} summary="" />);
 
