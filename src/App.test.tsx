@@ -1,16 +1,24 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useLibraryStore } from "./features/library/store";
+import { TRACK_IDS_MIME } from "./features/playlists/drag";
+import { usePlaylistsStore } from "./features/playlists/store";
 import {
+  addToPlaylist,
   addWatchFolder,
   allTrackIds,
   countTracks,
+  createPlaylist,
+  listPlaylists,
+  moveInPlaylist,
+  type Playlist,
   playerPlay,
   playerSnapshot,
   playerToggle,
   queryTracks,
+  removeFromPlaylist,
   scanLibrary,
 } from "./ipc";
 
@@ -33,6 +41,13 @@ vi.mock("./ipc", () => ({
   playerPrevious: vi.fn(),
   playerSeek: vi.fn(),
   playerSetVolume: vi.fn(),
+  listPlaylists: vi.fn(),
+  createPlaylist: vi.fn(),
+  renamePlaylist: vi.fn(),
+  deletePlaylist: vi.fn(),
+  addToPlaylist: vi.fn(),
+  removeFromPlaylist: vi.fn(),
+  moveInPlaylist: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
@@ -50,10 +65,17 @@ const addWatchFolderMock = vi.mocked(addWatchFolder);
 const scanLibraryMock = vi.mocked(scanLibrary);
 
 const initial = useLibraryStore.getState();
+const initialPlaylists = usePlaylistsStore.getState();
+
+function playlist(id: number, name: string, trackCount = 0): Playlist {
+  return { id, name, kind: "static", trackCount, createdAt: 0 };
+}
 
 beforeEach(async () => {
   vi.clearAllMocks();
   useLibraryStore.setState({ ...initial, total: 0, pages: new Map(), error: null });
+  usePlaylistsStore.setState({ ...initialPlaylists, playlists: [], notice: null, error: null });
+  vi.mocked(listPlaylists).mockResolvedValue([]);
   countTracksMock.mockResolvedValue(0);
   queryTracksMock.mockResolvedValue([]);
   scanLibraryMock.mockResolvedValue({ added: 0, updated: 0, removed: 0, unchanged: 0 });
@@ -293,6 +315,113 @@ describe("App playback", () => {
     await user.click(screen.getByRole("button", { name: "Play" }));
 
     expect(playerToggle).toHaveBeenCalledOnce();
+  });
+
+  it("scopes the search box to the playlist being shown", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 2)]);
+    await renderWithLibrary({ waitForRows: false });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Evening" }));
+
+    expect(await screen.findByRole("searchbox", { name: "Search Evening" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(countTracksMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ playlistId: 1, sortBy: "position" }),
+      ),
+    );
+  });
+
+  it("says an open playlist is empty rather than blaming the library", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening")]);
+    countTracksMock.mockResolvedValue(0);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Evening" }));
+
+    expect(await screen.findByText(/is empty/)).toBeInTheDocument();
+    expect(screen.queryByText(/No songs yet/)).not.toBeInTheDocument();
+  });
+
+  it("removes the selected rows from the open playlist on Delete", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 3)]);
+    vi.mocked(removeFromPlaylist).mockResolvedValue(1);
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Evening" }));
+    const row = (await screen.findByText("Track 1")).closest(".song-row") as HTMLElement;
+    await user.click(row);
+    await user.type(row, "{Delete}");
+
+    await waitFor(() => expect(removeFromPlaylist).toHaveBeenCalledWith(1, [11]));
+  });
+
+  it("leaves the library alone when Delete is pressed outside a playlist", async () => {
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    const row = screen.getByText("Track 1").closest(".song-row") as HTMLElement;
+    await user.click(row);
+    await user.type(row, "{Delete}");
+
+    expect(removeFromPlaylist).not.toHaveBeenCalled();
+  });
+
+  it("only accepts a reorder drop while the playlist is in its own order", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 3)]);
+    vi.mocked(moveInPlaylist).mockResolvedValue(undefined);
+    await renderWithLibrary();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Evening" }));
+    await screen.findByText("Track 1");
+
+    const drop = () =>
+      fireEvent.drop(screen.getByText("Track 2").closest(".song-row") as HTMLElement, {
+        dataTransfer: {
+          types: [TRACK_IDS_MIME],
+          getData: () => JSON.stringify([10]),
+        },
+      });
+
+    drop();
+    await waitFor(() => expect(moveInPlaylist).toHaveBeenCalledWith(1, [10], 2));
+
+    // Sorting by a column makes the order derived, so a drop has nowhere to go.
+    vi.mocked(moveInPlaylist).mockClear();
+    await user.click(screen.getByRole("button", { name: /Name/ }));
+    await screen.findByText("Track 1");
+    drop();
+    expect(moveInPlaylist).not.toHaveBeenCalled();
+  });
+
+  it("reports how much of a drop landed when a playlist already had some of it", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 1)]);
+    vi.mocked(addToPlaylist).mockResolvedValue(2);
+    await renderWithLibrary();
+
+    await usePlaylistsStore.getState().addTracks(1, [10, 11, 12]);
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Added 2 songs to Evening; 1 already there.",
+    );
+  });
+
+  it("creates a playlist and opens it", async () => {
+    vi.mocked(createPlaylist).mockResolvedValue(playlist(7, "New Playlist"));
+    vi.mocked(listPlaylists)
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([playlist(7, "New Playlist")]);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "New playlist" }));
+
+    expect(createPlaylist).toHaveBeenCalledWith("New Playlist");
+    await waitFor(() =>
+      expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 7 })),
+    );
   });
 
   it("shows the current track in the status display once the backend reports one", async () => {

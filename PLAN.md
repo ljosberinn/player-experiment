@@ -169,7 +169,8 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–5 are merged to `main`. Next up is **phase 6 (playlists)**.
+Phases 1–5 are merged to `main`; phase 6 is in review. Next up is **phase 7
+(smart playlists)**.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -178,7 +179,8 @@ Phases 1–5 are merged to `main`. Next up is **phase 6 (playlists)**.
 | 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
 | 4 | Playback: engine, transport, play counts | ✅ merged (`eb24e87`) |
 | 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
-| 6+ | Playlists onwards | not started |
+| 6 | Playlists: CRUD, drag-and-drop, reorder | 🔄 in review |
+| 7+ | Smart playlists onwards | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -186,10 +188,13 @@ multi-select, cover art over the `cover://` protocol, live scan progress. With
 phase 4, double-clicking a row plays the whole view from that point: transport
 buttons, a draggable scrubber, volume that survives a restart, automatic queue
 advance, and play counts written back to the library. Search debounces, ranks
-by relevance, and puts the previous sort back when cleared.
+by relevance, and puts the previous sort back when cleared. With phase 6 the
+sidebar grows a Playlists section: create, rename in place, delete, drag a
+multi-selection onto one, reorder inside it by dragging rows, and Delete to
+take rows back out.
 
-**Test counts.** 101 Rust (79 unit, 16 integration against generated mp3s,
-6 perf guards) and 188 frontend at 99.1% lines. CI runs
+**Test counts.** 140 Rust (112 unit, 22 integration against generated mp3s,
+6 perf guards) and 237 frontend at 96.8% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -235,6 +240,41 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 - **Every query carries a token.** Responses check it before writing, so a slow
   first search can no longer overwrite the results of a later one — a race the
   paged loader had from the start and that debouncing only made likelier.
+- **A playlist is a filter on the same query, not a query of its own.**
+  `TrackQuery` gained `playlist_id`, which joins `playlist_tracks`. Paging,
+  search-within, column sorting, "select all" and the play queue therefore work
+  inside a playlist with no second code path, and `db::query` grew one `Scope`
+  builder instead of a third variant of the same statement.
+- **`Position` is a `SortField`**, exactly as `Relevance` is: a property of the
+  query rather than of a track, valid only when a playlist is joined in, and
+  falling back to a real column otherwise so a stored sort is harmless when the
+  user clicks back to the library.
+- **Placeholders are anonymous `?` bound in order.** The old code numbered them
+  and branched on whether a search was present; a third optional clause would
+  have made that unreadable. Clauses can now be added or dropped without
+  renumbering the ones around them.
+- **Positions are gapped by 1024.** A drop between two rows is one UPDATE per
+  moved row. When a gap does run out the whole playlist is renumbered once,
+  with a gap wide enough that the retry cannot fail for the same reason — the
+  test drives twenty moves into the same spot to reach that path.
+- **A playlist holds each track at most once.** The membership table is keyed
+  on `(playlist_id, track_id)`. iTunes allows duplicates; the drop reporting
+  "added 6 of 10, 4 already there" is a better answer than silently making a
+  second copy of a song you already put there.
+- **Changing source resets the view.** Opening a playlist clears the search and
+  the selection and switches to its own order. Carrying a library search into a
+  playlist is rarely what was wanted, and the two views do not even have the
+  same sorts available.
+- **Reordering is offered only in a playlist's own order.** Sorted by a column,
+  the arrangement on screen is derived and a drop would have nothing to persist,
+  so the table simply takes no drops.
+- **Drag payloads travel under a private MIME type**, not `text/plain`, so a
+  row cannot be dropped into a text field and a paste cannot be mistaken for a
+  drag. `dragover` can only see the *types*, which is why the check and the
+  read are separate functions.
+- **A sidebar item is named for its destination, not its size.** The track
+  count is visible but `aria-hidden`: a navigation item whose announced name
+  changes every time a song is added is worse to use than one that does not.
 
 ### Defects found on the first real build (2026-08-02)
 
@@ -286,8 +326,14 @@ Running the app against a real library surfaced three, all fixed in
   covered — the integration tests run every fixture mp3 through the shipped
   `rodio`/symphonia decoder — but "sound actually came out" is a manual check.
 - **Nothing repeats or shuffles yet**, and there is no visible queue: the queue
-  is whatever view was playing from. Both are natural additions once playlists
-  land in phase 6.
+  is whatever view was playing from.
+- **Per-playlist column config is not built** — see phase 6's note. It waits on
+  a UI for columns at all.
+- **A playlist cannot hold the same track twice**, by schema. Deliberate, but
+  worth revisiting if anyone ever wants a track to recur in a set.
+- **Dragging is mouse-only.** There is no keyboard route to add a selection to
+  a playlist yet; removing from one has Delete, and reordering has nothing.
+  Worth an "Add to Playlist" command in a menu when one exists.
 
 ---
 
@@ -337,9 +383,25 @@ immediate on Enter), and a per-query token makes stale counts and stale pages
 unwritable. Escape and a clear button empty the box; a search with no hits gets
 its own empty state rather than the "add a folder" one.
 
-**6 — Playlists** `feat/06-playlists`
+**6 — Playlists** `feat/06-playlists` — 🔄 **in review**
 Static playlist CRUD, drag-and-drop of a multi-selection onto a sidebar
 playlist, reordering within one, per-playlist column config.
+
+*As built.* `db/playlists.rs` owns the list and its ordered membership and
+touches no track rows; the tracks a playlist points at come back through the
+ordinary paged query with `playlist_id` set. Positions are gapped so a drop is
+one UPDATE per moved row, with a one-off renumber when a gap runs out. Seven
+commands (`list`/`create`/`rename`/`delete`/`add_to`/`remove_from`/`move_in`).
+Frontend: `src/features/playlists/` with a store, a `PlaylistSidebar` that owns
+its own drop targets and inline rename, and a pure `drag.ts` for the payload
+and the above/below hit test. `SongTable` rows became draggable and, in a
+playlist shown in its own order, drop targets.
+
+*Not built: per-playlist column config.* `playlists.columns_json` exists in the
+schema and stays empty. Columns are still data-driven with no UI to reorder,
+resize or toggle them (a gap from phase 3), so persisting a per-playlist
+arrangement would be storage for something the user cannot change. It belongs
+with the column UI, wherever that lands.
 
 **7 — Smart playlists** `feat/07-smart`
 Filter-tree editor UI (nested and/or groups), the SQL compiler, live

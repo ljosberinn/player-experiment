@@ -1,8 +1,11 @@
+import type { ReactNode } from "react";
+
 /**
  * The source list.
  *
- * Only Music exists today; playlists join it in phase 6, which is why the
- * sections are already modelled as data rather than hard-coded markup.
+ * Sections passed as data cover the fixed sources (Library); anything with
+ * behaviour of its own - playlists, with their renaming, deleting and drop
+ * targets - renders through `children` and owns that behaviour itself.
  */
 export interface SidebarSection {
   title: string;
@@ -19,10 +22,12 @@ export function Sidebar({
   sections,
   selectedId,
   onSelect,
+  children,
 }: {
   sections: SidebarSection[];
   selectedId: string;
   onSelect: (id: string) => void;
+  children?: ReactNode;
 }) {
   return (
     <nav className="sidebar" aria-label="Library">
@@ -50,6 +55,7 @@ export function Sidebar({
           </ul>
         </div>
       ))}
+      {children}
     </nav>
   );
 }

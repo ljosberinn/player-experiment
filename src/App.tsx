@@ -11,6 +11,8 @@ import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
+import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
+import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
 import { formatLibrarySummary } from "./lib/format";
 
 const SIDEBAR_SECTIONS = [
@@ -19,9 +21,11 @@ const SIDEBAR_SECTIONS = [
 
 export function App() {
   const [tab, setTab] = useState<ViewTab>("songs");
-  const [source, setSource] = useState("music");
 
   const total = useLibraryStore((s) => s.total);
+  const playlistId = useLibraryStore((s) => s.playlistId);
+  const sortBy = useLibraryStore((s) => s.sortBy);
+  const showPlaylist = useLibraryStore((s) => s.showPlaylist);
   const searchInput = useLibraryStore((s) => s.searchInput);
   const search = useLibraryStore((s) => s.search);
   const setSearch = useLibraryStore((s) => s.setSearch);
@@ -43,6 +47,13 @@ export function App() {
   const previous = usePlayerStore((s) => s.previous);
   const seek = usePlayerStore((s) => s.seek);
   const setVolume = usePlayerStore((s) => s.setVolume);
+
+  const playlists = usePlaylistsStore((s) => s.playlists);
+  const notice = usePlaylistsStore((s) => s.notice);
+  const playlistError = usePlaylistsStore((s) => s.error);
+  const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
+  const removeTracks = usePlaylistsStore((s) => s.removeTracks);
+  const moveTracks = usePlaylistsStore((s) => s.moveTracks);
 
   useEffect(() => {
     void refresh();
@@ -67,6 +78,14 @@ export function App() {
 
   usePlayerShortcuts();
 
+  useEffect(() => {
+    if (notice === null) {
+      return;
+    }
+    const timer = setTimeout(dismissNotice, NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice, dismissNotice]);
+
   /** Double-click or Enter on a row: queue the whole view, start at that row. */
   const activateRow = async (rowIndex: number) => {
     const ids = await queueIds();
@@ -76,6 +95,13 @@ export function App() {
   };
 
   const columns = columnsFor(DEFAULT_COLUMN_IDS);
+  const currentPlaylistName =
+    playlists.find((playlist) => playlist.id === playlistId)?.name ?? "This playlist";
+  // Rows can only be dragged into a new order where there is an order to
+  // persist: inside a playlist, showing it in its own order. Sorted by a
+  // column, the arrangement is derived and a drop would have nowhere to go.
+  const reorderable = playlistId !== null && sortBy === "position";
+  const searchScope = playlistId === null ? "Search Library" : `Search ${currentPlaylistName}`;
 
   return (
     <div className="app">
@@ -96,12 +122,13 @@ export function App() {
           summary={formatLibrarySummary(total, 0)}
           onSeek={(value) => void seek(value)}
         />
+        {/* The search is scoped to the current view, so it says which one. */}
         <div className="search-box">
           <input
             className="search"
             type="search"
-            placeholder="Search Library"
-            aria-label="Search Library"
+            placeholder={searchScope}
+            aria-label={searchScope}
             value={searchInput}
             onChange={(event) => setSearch(event.currentTarget.value)}
             onKeyDown={(event) => {
@@ -130,7 +157,13 @@ export function App() {
       </TitleBar>
 
       <div className="body">
-        <Sidebar sections={SIDEBAR_SECTIONS} selectedId={source} onSelect={setSource} />
+        <Sidebar
+          sections={SIDEBAR_SECTIONS}
+          selectedId={playlistId === null ? "music" : ""}
+          onSelect={() => void showPlaylist(null)}
+        >
+          <PlaylistSidebar />
+        </Sidebar>
 
         <main className="content">
           <div className="content-header">
@@ -138,13 +171,26 @@ export function App() {
             <ScanBar />
           </div>
 
-          {error || playerError ? (
+          {error || playerError || playlistError ? (
             <p className="content-error" role="alert">
-              {error ?? playerError}
+              {error ?? playerError ?? playlistError}
             </p>
           ) : null}
 
-          {total === 0 && search !== "" ? (
+          {notice ? (
+            <p className="content-notice" role="status">
+              {notice}
+            </p>
+          ) : null}
+
+          {total === 0 && playlistId !== null && search === "" ? (
+            // An empty playlist is neither an empty library nor a search that
+            // found nothing, and both of those give unhelpful advice here.
+            <p className="empty-state">
+              <strong>{currentPlaylistName}</strong> is empty. Drag songs from your library onto it
+              in the sidebar.
+            </p>
+          ) : total === 0 && search !== "" ? (
             // An empty library and an empty result set are different problems,
             // and "add a folder" is unhelpful advice for the second one.
             <p className="empty-state">
@@ -161,6 +207,16 @@ export function App() {
             <SongTable
               columns={columns}
               onActivate={(rowIndex) => void activateRow(rowIndex)}
+              onReorder={
+                reorderable && playlistId !== null
+                  ? (trackIds, targetIndex) => void moveTracks(playlistId, trackIds, targetIndex)
+                  : undefined
+              }
+              onRemove={
+                playlistId !== null
+                  ? (trackIds) => void removeTracks(playlistId, trackIds)
+                  : undefined
+              }
               nowPlayingId={nowPlaying?.id ?? null}
             />
           )}
