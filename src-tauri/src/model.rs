@@ -63,6 +63,12 @@ pub struct Track {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub enum SortField {
+    /// Best match first, from FTS5's bm25 score.
+    ///
+    /// Only meaningful alongside a search; without one there is nothing to
+    /// rank, and [`SortField::as_sql`] has no column to offer, so
+    /// `db::query` substitutes a real column instead.
+    Relevance,
     Title,
     Artist,
     Album,
@@ -78,10 +84,15 @@ pub enum SortField {
 }
 
 impl SortField {
-    /// The SQL fragment for this field. Every arm is a literal, so no caller
-    /// input reaches the statement.
+    /// The column this field sorts by.
+    ///
+    /// Every arm is a literal, so no caller input reaches the statement.
+    /// `Relevance` is not a property of a track but of a match, so it has no
+    /// column of its own; it falls back to `artist`, the default library
+    /// ordering, for the case where there is nothing to rank.
     pub fn as_sql(self) -> &'static str {
         match self {
+            Self::Relevance => "artist",
             Self::Title => "title",
             Self::Artist => "artist",
             Self::Album => "album",

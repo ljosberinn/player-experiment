@@ -22,8 +22,11 @@ export function App() {
   const [source, setSource] = useState("music");
 
   const total = useLibraryStore((s) => s.total);
+  const searchInput = useLibraryStore((s) => s.searchInput);
   const search = useLibraryStore((s) => s.search);
   const setSearch = useLibraryStore((s) => s.setSearch);
+  const commitSearch = useLibraryStore((s) => s.commitSearch);
+  const clearSearch = useLibraryStore((s) => s.clearSearch);
   const refresh = useLibraryStore((s) => s.refresh);
   const error = useLibraryStore((s) => s.error);
   const queueIds = useLibraryStore((s) => s.queueIds);
@@ -93,14 +96,37 @@ export function App() {
           summary={formatLibrarySummary(total, 0)}
           onSeek={(value) => void seek(value)}
         />
-        <input
-          className="search"
-          type="search"
-          placeholder="Search Library"
-          aria-label="Search Library"
-          value={search}
-          onChange={(event) => void setSearch(event.currentTarget.value)}
-        />
+        <div className="search-box">
+          <input
+            className="search"
+            type="search"
+            placeholder="Search Library"
+            aria-label="Search Library"
+            value={searchInput}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              // Enter runs the pending search rather than waiting out the
+              // debounce; Escape clears, the way every search field does.
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commitSearch();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                void clearSearch();
+              }
+            }}
+          />
+          {searchInput === "" ? null : (
+            <button
+              type="button"
+              className="search-clear"
+              aria-label="Clear search"
+              onClick={() => void clearSearch()}
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </TitleBar>
 
       <div className="body">
@@ -118,7 +144,16 @@ export function App() {
             </p>
           ) : null}
 
-          {total === 0 ? (
+          {total === 0 && search !== "" ? (
+            // An empty library and an empty result set are different problems,
+            // and "add a folder" is unhelpful advice for the second one.
+            <p className="empty-state">
+              No results for <strong>{search}</strong>.{" "}
+              <button type="button" className="link-button" onClick={() => void clearSearch()}>
+                Show all songs
+              </button>
+            </p>
+          ) : total === 0 ? (
             <p className="empty-state">
               No songs yet. Use <strong>Add Folder…</strong> to point Player at your music.
             </p>

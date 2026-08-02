@@ -86,4 +86,17 @@ describe("application shell", () => {
     await browser.pause(500);
     await expect(browser.$(".content-error")).not.toBeExisting();
   });
+
+  it("runs a search against FTS5 and clears it again", async () => {
+    const box = browser.$("input[aria-label='Search Library']");
+    await box.setValue("zzzznomatch");
+
+    // The empty-state text only appears once count_tracks has come back with
+    // zero, so it proves the search reached SQLite rather than being swallowed
+    // by the debounce.
+    await expect(browser.$(".empty-state")).toHaveText(/No results for/);
+
+    await browser.$("button[aria-label='Clear search']").click();
+    await expect(browser.$(".empty-state")).toHaveText(/No songs yet/);
+  });
 });

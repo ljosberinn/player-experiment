@@ -155,6 +155,24 @@ fn search_is_cheap_and_uses_the_index() {
 }
 
 #[test]
+fn ranking_a_search_stays_cheap() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery {
+        search: Some("Artist042".to_owned()),
+        sort_by: SortField::Relevance,
+        ..Default::default()
+    };
+
+    // bm25 scores every matching row rather than reading an index in order, so
+    // this is the one sort whose cost grows with the size of the *match*. The
+    // budget guards against a query shape that would score the whole library.
+    assert_under("ranked search page", 150, || {
+        assert!(!query::query_tracks(&conn, &q).unwrap().is_empty());
+    });
+}
+
+#[test]
 fn the_sorted_page_query_plan_uses_an_index_rather_than_sorting_everything() {
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();

@@ -100,16 +100,72 @@ describe("App", () => {
     expect(screen.getAllByRole("columnheader").length).toBeGreaterThan(0);
   });
 
-  it("searches through the backend as the user types", async () => {
+  it("searches through the backend once the user stops typing", async () => {
     render(<App />);
     await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+    countTracksMock.mockClear();
     const user = userEvent.setup();
 
-    await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki");
+    const box = screen.getByRole("searchbox", { name: "Search Library" });
+    await user.type(box, "maki");
 
+    // The box tracks every keystroke; the query does not.
+    expect(box).toHaveValue("maki");
     await waitFor(() => {
       expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: "maki" }));
     });
+    expect(countTracksMock.mock.calls.length).toBeLessThan(4);
+  });
+
+  it("searches immediately on Enter", async () => {
+    render(<App />);
+    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+    countTracksMock.mockClear();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki{Enter}");
+
+    expect(countTracksMock).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ search: "maki" }),
+    );
+  });
+
+  it("clears the search with Escape and with the clear button", async () => {
+    render(<App />);
+    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+    const user = userEvent.setup();
+    const box = screen.getByRole("searchbox", { name: "Search Library" });
+
+    await user.type(box, "maki{Enter}");
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(box).toHaveValue("");
+
+    await user.type(box, "maki{Enter}");
+    await user.type(box, "{Escape}");
+    expect(box).toHaveValue("");
+  });
+
+  it("offers no clear button until there is something to clear", async () => {
+    render(<App />);
+    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+
+    expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an empty library from a search that found nothing", async () => {
+    render(<App />);
+    expect(await screen.findByText(/No songs yet/)).toBeInTheDocument();
+    const user = userEvent.setup();
+
+    countTracksMock.mockResolvedValue(0);
+    await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "nothing{Enter}");
+
+    expect(await screen.findByText(/No results for/)).toBeInTheDocument();
+    expect(screen.queryByText(/No songs yet/)).not.toBeInTheDocument();
+
+    // And the empty state offers the way back out.
+    await user.click(screen.getByRole("button", { name: "Show all songs" }));
+    expect(await screen.findByText(/No songs yet/)).toBeInTheDocument();
   });
 
   it("adds the chosen folder and scans it", async () => {

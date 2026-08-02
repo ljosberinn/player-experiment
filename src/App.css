@@ -201,14 +201,50 @@ body {
   background: var(--accent);
 }
 
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .search {
   width: 190px;
   height: 22px;
-  padding: 0 8px;
+  /* Right padding leaves room for the clear button to sit inside the field. */
+  padding: 0 22px 0 8px;
   border: 1px solid var(--chrome-border);
   border-radius: 11px;
   background: var(--surface);
   color: var(--text);
+}
+
+/* The native `type="search"` clear affordance is WebKit-only and unstyleable,
+   so the app draws its own and hides that one. */
+.search::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.search-clear {
+  position: absolute;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--skeleton);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  font: inherit;
 }
 
 /* ---------- body ---------- */
