@@ -28,6 +28,12 @@ npm run e2e
 **Treat the GitHub Actions `e2e` job as the source of truth** — earlier local
 attempts left `tauri-driver` hung and needing a manual kill.
 
+> The `@wdio/native-utils` entry under `overrides` in `package.json` is a
+> workaround, not a preference: `@wdio/tauri-service@1.2.0` imports
+> `installMockSyncOverride` from `@wdio/native-utils` while pinning that package
+> to `2.4.0`, which does not export it — as published, the service cannot even be
+> imported. `2.5.0` adds the export. Remove the override once upstream repins.
+
 ## Commands
 
 | Command | What it does |

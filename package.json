@@ -18,6 +18,9 @@
     "test:coverage": "vitest run --coverage",
     "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_bindings"
   },
+  "overrides": {
+    "@wdio/native-utils": "2.5.0"
+  },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "react": "^19.1.0",
