@@ -315,7 +315,9 @@ export function App() {
       </div>
 
       <footer className="statusbar">
-        <span>{formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}</span>
+        <span className="statusbar-summary">
+          {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
+        </span>
         {appInfo ? <span className="statusbar-version">v{appInfo.version}</span> : null}
       </footer>
 

@@ -821,7 +821,7 @@ input[type="radio"] {
   text-align: center;
 }
 
-.statusbar > span:first-child {
+.statusbar-summary {
   grid-column: 2;
 }
 
