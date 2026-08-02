@@ -169,26 +169,28 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–3 are merged to `main`; phase 4 (playback) is in review. Next up is
-**phase 5 (search)**.
+Phases 1–4 are merged to `main`; phase 5 (search) is in review. Next up is
+**phase 6 (playlists)**.
 
 | | Phase | State |
 | --- | --- | --- |
 | 1 | Scaffold + CI gate | ✅ merged (`75dd29c`) |
 | 2 | Library core: schema, scan, queries | ✅ merged (`571b5c7`) |
 | 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
-| 4 | Playback: engine, transport, play counts | 🔄 in review (`feat/04-audio`) |
-| 5+ | Search onwards | not started |
+| 4 | Playback: engine, transport, play counts | ✅ merged (`eb24e87`) |
+| 5 | Search: debounce, relevance ranking | 🔄 in review (`feat/05-search`) |
+| 6+ | Playlists onwards | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
 multi-select, cover art over the `cover://` protocol, live scan progress. With
 phase 4, double-clicking a row plays the whole view from that point: transport
 buttons, a draggable scrubber, volume that survives a restart, automatic queue
-advance, and play counts written back to the library.
+advance, and play counts written back to the library. Search debounces, ranks
+by relevance, and puts the previous sort back when cleared.
 
-**Test counts.** 93 Rust (72 unit, 16 integration against generated mp3s,
-5 perf guards) and 166 frontend at 99.4% lines. CI runs
+**Test counts.** 101 Rust (79 unit, 16 integration against generated mp3s,
+6 perf guards) and 188 frontend at 99.1% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -224,6 +226,16 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   and the user gets the message on first play rather than silence.
 - **"Played" means 50% of the track**, matching the last.fm rule in phase 10 so
   play counts and scrobbles can never disagree about what counts.
+- **Searching switches the view to relevance ranking** and restores the previous
+  column sort when the box is cleared — unless the user picked a column while
+  searching, which is treated as an explicit override.
+- **Relevance is a `SortField`, not a flag.** `bm25` is weighted so a title hit
+  outranks one buried in a comment, and it ignores the sort direction: there is
+  no useful "worst match first". Without a search there is nothing to rank, so
+  it falls back to a real column rather than erroring.
+- **Every query carries a token.** Responses check it before writing, so a slow
+  first search can no longer overwrite the results of a later one — a race the
+  paged loader had from the start and that debouncing only made likelier.
 
 ### Known gaps carried forward
 
@@ -289,8 +301,16 @@ table. Frontend: `src/features/player/` (store, shortcut mapping, window-level
 key handler), a real `<input type="range">` scrubber, and row activation by
 double-click or Enter.
 
-**5 — Search** `feat/05-search`
+**5 — Search** `feat/05-search` — 🔄 **in review**
 FTS5 triggers, debounced search box scoped to the current view, ranked results.
+
+*As built.* The FTS5 table and its triggers landed with phase 2; this phase is
+the query and the UI on top. `db::query::order_by` adds a `Relevance` sort over
+weighted `bm25`, applied only when a search is actually running. The store
+separates `searchInput` (every keystroke) from `search` (debounced 200 ms, or
+immediate on Enter), and a per-query token makes stale counts and stale pages
+unwritable. Escape and a clear button empty the box; a search with no hits gets
+its own empty state rather than the "add a folder" one.
 
 **6 — Playlists** `feat/06-playlists`
 Static playlist CRUD, drag-and-drop of a multi-selection onto a sidebar

@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Row};
 
 use crate::error::AppResult;
-use crate::model::{Track, TrackQuery};
+use crate::model::{SortField, Track, TrackQuery};
 
 /// Table-qualified: `tracks_fts` carries columns of the same names, so an
 /// unqualified list is ambiguous the moment a search joins it in.
@@ -76,6 +76,36 @@ fn from_clause(fts: Option<&String>) -> &'static str {
     }
 }
 
+/// Column weights for bm25, in the order the FTS table declares them:
+/// title, artist, album, album_artist, genre, comment.
+///
+/// A hit in the title should outrank a hit buried in a comment, which an
+/// unweighted bm25 would treat as equally good. The numbers are a ranking, not
+/// a measurement - only their relative order matters.
+const BM25_WEIGHTS: &str = "10.0, 8.0, 6.0, 4.0, 2.0, 1.0";
+
+/// The `ORDER BY` body, without the direction.
+///
+/// NULLs always sort last so untagged files do not head up every ascending
+/// view, and `tracks.id` breaks ties so paging stays stable when the sort
+/// column has duplicates.
+fn order_by(query: &TrackQuery, searching: bool) -> String {
+    // Relevance only exists while a search is running: bm25 needs the FTS
+    // table in the query, and without one there is nothing to rank. Falling
+    // back to the field's column keeps a stored "sort by relevance" harmless
+    // when the search box is cleared.
+    if query.sort_by == SortField::Relevance && searching {
+        // Ascending bm25 is best-first - the scores are negative, and more
+        // negative means a better match - so relevance deliberately ignores
+        // the direction rather than offering a "worst match first" order.
+        return format!("bm25(tracks_fts, {BM25_WEIGHTS}), tracks.id ASC");
+    }
+
+    let sort = format!("tracks.{}", query.sort_by.as_sql());
+    let direction = query.direction.as_sql();
+    format!("{sort} IS NULL, {sort} {direction}, tracks.id {direction}")
+}
+
 pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
     let fts = query.search.as_deref().and_then(to_fts_query);
     let sql = format!("SELECT count(*) {}", from_clause(fts.as_ref()));
@@ -92,15 +122,11 @@ pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Trac
     let limit = query.limit.min(MAX_LIMIT);
 
     // `sort_by`/`direction` are enums whose SQL forms are literals, so this
-    // interpolation cannot carry caller input. NULLs always sort last so
-    // untagged files do not head up every ascending view. `id` breaks ties so
-    // paging stays stable when the sort column has duplicates.
-    let sort = format!("tracks.{}", query.sort_by.as_sql());
+    // interpolation cannot carry caller input.
     let sql = format!(
-        "SELECT {COLUMNS} {} ORDER BY {sort} IS NULL, {sort} {}, tracks.id {} LIMIT ?{} OFFSET ?{}",
+        "SELECT {COLUMNS} {} ORDER BY {} LIMIT ?{} OFFSET ?{}",
         from_clause(fts.as_ref()),
-        query.direction.as_sql(),
-        query.direction.as_sql(),
+        order_by(query, fts.is_some()),
         if fts.is_some() { 2 } else { 1 },
         if fts.is_some() { 3 } else { 2 },
     );
@@ -128,12 +154,10 @@ pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Trac
 /// whole library where rows would not be.
 pub fn all_track_ids(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<i64>> {
     let fts = query.search.as_deref().and_then(to_fts_query);
-    let sort = format!("tracks.{}", query.sort_by.as_sql());
     let sql = format!(
-        "SELECT tracks.id {} ORDER BY {sort} IS NULL, {sort} {}, tracks.id {}",
+        "SELECT tracks.id {} ORDER BY {}",
         from_clause(fts.as_ref()),
-        query.direction.as_sql(),
-        query.direction.as_sql(),
+        order_by(query, fts.is_some()),
     );
 
     let mut stmt = conn.prepare(&sql)?;
@@ -159,7 +183,7 @@ pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, V
 mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::model::{SortDirection, SortField};
+    use crate::model::SortDirection;
 
     fn seeded() -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
@@ -429,6 +453,177 @@ mod tests {
             tracks.len(),
             5,
             "capping the limit must not change a small result"
+        );
+    }
+
+    /// Rows whose match lands in a different column, to pin down ranking.
+    fn ranked() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        let rows = [
+            // (path, title, artist, comment)
+            (
+                "/r/1.mp3",
+                "Filler",
+                "Filler",
+                "shields mentioned in passing",
+            ),
+            ("/r/2.mp3", "Shields", "Filler", "nothing"),
+            ("/r/3.mp3", "Filler", "Shields", "nothing"),
+        ];
+        for (path, title, artist, comment) in rows {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, title, artist, comment, added_at)
+                 VALUES (?1, 1, 1, ?2, ?3, ?4, 0)",
+                rusqlite::params![path, title, artist, comment],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    fn paths(tracks: Vec<Track>) -> Vec<String> {
+        tracks.into_iter().map(|track| track.path).collect()
+    }
+
+    fn relevance_query(search: &str) -> TrackQuery {
+        TrackQuery {
+            search: Some(search.to_owned()),
+            sort_by: SortField::Relevance,
+            limit: 100,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn relevance_ranks_a_title_hit_above_an_artist_hit_above_a_comment_hit() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+
+        let found = query_tracks(&conn, &relevance_query("shields")).unwrap();
+
+        assert_eq!(paths(found), ["/r/2.mp3", "/r/3.mp3", "/r/1.mp3"]);
+    }
+
+    #[test]
+    fn relevance_ignores_direction_rather_than_offering_worst_match_first() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+
+        let ascending = query_tracks(&conn, &relevance_query("shields")).unwrap();
+        let descending = query_tracks(
+            &conn,
+            &TrackQuery {
+                direction: SortDirection::Desc,
+                ..relevance_query("shields")
+            },
+        )
+        .unwrap();
+
+        assert_eq!(paths(ascending), paths(descending));
+    }
+
+    #[test]
+    fn relevance_without_a_search_falls_back_to_a_real_column() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        // Nothing to rank, so this must behave exactly like the default sort
+        // rather than erroring on a bm25 call with no FTS table in the query.
+        let ranked = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Relevance,
+                limit: 100,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let by_artist = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Artist,
+                limit: 100,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(paths(ranked), paths(by_artist));
+    }
+
+    #[test]
+    fn a_search_can_still_be_sorted_by_a_column() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+
+        let found = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Path,
+                direction: SortDirection::Desc,
+                ..relevance_query("shields")
+            },
+        )
+        .unwrap();
+
+        assert_eq!(paths(found), ["/r/3.mp3", "/r/2.mp3", "/r/1.mp3"]);
+    }
+
+    #[test]
+    fn relevance_paging_does_not_overlap_or_skip() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+        let page = |offset| {
+            paths(
+                query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        offset,
+                        limit: 2,
+                        ..relevance_query("shields")
+                    },
+                )
+                .unwrap(),
+            )
+        };
+
+        assert_eq!(page(0), ["/r/2.mp3", "/r/3.mp3"]);
+        assert_eq!(page(2), ["/r/1.mp3"]);
+    }
+
+    #[test]
+    fn ids_for_a_ranked_search_arrive_in_the_ranked_order() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+
+        let ids = all_track_ids(&conn, &relevance_query("shields")).unwrap();
+        let rows = query_tracks(&conn, &relevance_query("shields")).unwrap();
+
+        assert_eq!(
+            ids,
+            rows.iter().map(|track| track.id).collect::<Vec<_>>(),
+            "the play queue must match what the table shows"
+        );
+    }
+
+    #[test]
+    fn counting_a_search_is_unaffected_by_how_it_is_sorted() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+
+        assert_eq!(count_tracks(&conn, &relevance_query("shields")).unwrap(), 3);
+        assert_eq!(
+            count_tracks(
+                &conn,
+                &TrackQuery {
+                    sort_by: SortField::Title,
+                    ..relevance_query("shields")
+                }
+            )
+            .unwrap(),
+            3
         );
     }
 }

@@ -7,4 +7,4 @@
  * cannot be a bound parameter), so restricting it at the type level is what
  * keeps that interpolation safe.
  */
-export type SortField = "title" | "artist" | "album" | "albumArtist" | "genre" | "year" | "trackNo" | "durationMs" | "addedAt" | "playCount" | "lastPlayedAt" | "path";
+export type SortField = "relevance" | "title" | "artist" | "album" | "albumArtist" | "genre" | "year" | "trackNo" | "durationMs" | "addedAt" | "playCount" | "lastPlayedAt" | "path";
