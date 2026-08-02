@@ -8,6 +8,25 @@ use serde::{Serialize, Serializer};
 pub enum AppError {
     #[error("{0}")]
     Internal(String),
+
+    #[error("database error: {0}")]
+    Db(#[from] rusqlite::Error),
+
+    #[error("{path}: {source}")]
+    Io {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+impl AppError {
+    pub fn io(path: impl std::fmt::Display, source: std::io::Error) -> Self {
+        Self::Io {
+            path: path.to_string(),
+            source,
+        }
+    }
 }
 
 impl Serialize for AppError {
