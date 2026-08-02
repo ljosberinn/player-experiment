@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { allTrackIds, type Playlist, removeFromPlaylist } from "../../ipc";
+import { allTrackIds, type Playlist, removeFromPlaylist, tracksByIds } from "../../ipc";
 import { usePlaylistsStore } from "../playlists/store";
 import { useLibraryStore } from "./store";
 import { useSelectionShortcuts } from "./useSelectionShortcuts";
@@ -12,6 +12,8 @@ vi.mock("../../ipc", () => ({
   queryTracks: vi.fn(async () => []),
   listPlaylists: vi.fn(async () => []),
   removeFromPlaylist: vi.fn(async () => 2),
+  tracksByIds: vi.fn(async () => []),
+  canUndoTagEdit: vi.fn(async () => false),
 }));
 
 function playlist(id: number, kind: Playlist["kind"]): Playlist {
@@ -108,6 +110,40 @@ describe("useSelectionShortcuts", () => {
     window.removeEventListener("keydown", onWindowKeyDown);
 
     expect(onWindowKeyDown).toHaveBeenCalled();
+  });
+
+  describe("Ctrl+I", () => {
+    it("opens the tag editor on the selection", async () => {
+      useLibraryStore.setState({ selection: { ids: new Set([1, 2]), anchorIndex: 0 } });
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      await user.keyboard("{Control>}i{/Control}");
+
+      // Get Info lost its toolbar button when it moved to the row menu; a
+      // menu is not a substitute for a shortcut, so this had to exist first.
+      expect(tracksByIds).toHaveBeenCalledWith([1, 2]);
+    });
+
+    it("does nothing with an empty selection", async () => {
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      await user.keyboard("{Control>}i{/Control}");
+
+      expect(tracksByIds).not.toHaveBeenCalled();
+    });
+
+    it("stays out of the way while typing", async () => {
+      useLibraryStore.setState({ selection: { ids: new Set([1]), anchorIndex: 0 } });
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      await user.click(screen.getByRole("textbox", { name: "Search" }));
+      await user.keyboard("{Control>}i{/Control}");
+
+      expect(tracksByIds).not.toHaveBeenCalled();
+    });
   });
 
   describe("Delete", () => {

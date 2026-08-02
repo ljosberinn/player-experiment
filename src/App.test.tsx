@@ -522,17 +522,18 @@ describe("App playback", () => {
     expect(moveInPlaylist).not.toHaveBeenCalled();
   });
 
-  it("edits the tags of the selected rows through Get Info", async () => {
+  it("edits the tags of the selected rows through the row menu", async () => {
     vi.mocked(tracksByIds).mockResolvedValue([track(1)]);
     vi.mocked(writeTags).mockResolvedValue({ written: 1, failed: 0, errors: [] });
     await renderWithLibrary();
     const user = userEvent.setup();
 
-    // Nothing selected yet, so there is nothing to get info about.
-    expect(screen.getByRole("button", { name: "Get Info" })).toBeDisabled();
+    // Get Info used to be a toolbar button. It is a per-song action, so it
+    // now lives where a per-song action belongs.
+    expect(screen.queryByRole("button", { name: "Get Info" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByText("Track 1"));
-    await user.click(screen.getByRole("button", { name: "Get Info" }));
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 1") });
+    await user.click(await screen.findByRole("menuitem", { name: "Get Info" }));
     const genre = await screen.findByRole("textbox", { name: "Genre" });
     await user.type(genre, "Dream Pop");
     await user.click(screen.getByRole("button", { name: "Save" }));

@@ -215,6 +215,22 @@ pub fn export_library(db: State<'_, Db>, path: String, scope: ExportScope) -> Ap
     Ok(count)
 }
 
+/// Opens the OS file manager with one track selected.
+///
+/// Takes a track id rather than a path so the frontend never has to hold a
+/// path it might act on; the row it has is enough.
+#[tauri::command]
+pub fn reveal_track(db: State<'_, Db>, track_id: i64) -> AppResult<()> {
+    let conn = db.conn()?;
+    let track = playback::tracks_by_ids(&conn, &[track_id])?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound("That song is not in the library.".into())
+        })?;
+    crate::reveal::reveal(std::path::Path::new(&track.path))
+}
+
 /// Remembers where the window is, so the next launch opens there.
 #[tauri::command]
 pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {

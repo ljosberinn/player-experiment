@@ -169,7 +169,7 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–8 are merged to `main`; phase 9 is in review. That completes the
+Phases 1–9 are merged to `main`; phase 17 is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
 of the later-added phases 13–18, which are independent of it.
 
@@ -183,8 +183,9 @@ of the later-added phases 13–18, which are independent of it.
 | 6 | Playlists: CRUD, drag-and-drop, reorder | ✅ merged (`8f10a3d`) |
 | 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
 | 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
-| 9 | Export & polish: JSON export, window geometry | 🔄 in review |
-| 10+ | last.fm, Sentry, tag sources, 13–18 | not started |
+| 9 | Export & polish: JSON export, window geometry | ✅ merged (`b26feae`) |
+| 17 | Context menus, drop-to-create playlist | 🔄 in review |
+| 10+ | last.fm, Sentry, tag sources, 13–16, 18 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -199,12 +200,15 @@ take rows back out. Phase 7 adds smart playlists: a nested and/or filter built
 in a dialog, compiled to parameterized SQL and re-evaluated live. Phase 8 adds
 tag editing: one dialog for one track or five hundred, writing through a
 temp-and-rename so a crash cannot corrupt an mp3, with one undo step per edit.
+Phase 17 adds right-click menus on songs and playlists - play, get info, add to
+a playlist, remove, export, show in Explorer, rename, delete, edit filter - plus
+Ctrl+I, and dropping songs on the sidebar's empty space to start a playlist.
 Phase 9 adds JSON export of the library, a selection or a playlist against a
 [documented schema](docs/export-schema.md), and a window that reopens where it
 was left.
 
-**Test counts.** 212 Rust (168 unit, 38 integration against generated mp3s,
-6 perf guards) and 359 frontend at 97.9% lines. CI runs
+**Test counts.** 215 Rust (171 unit, 38 integration against generated mp3s,
+6 perf guards) and 430 frontend at 97.4% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -1027,7 +1031,52 @@ more expensive than the deleting one was.
 "playlist entries survive a missing file" is most of the argument for it and
 cannot be tested before playlists exist.
 
-**17 — Context menus, and dropping onto nothing** `feat/17-context-menus`
+**17 — Context menus, and dropping onto nothing** `feat/17-context-menus` — 🔄 **in review**
+
+*Built. What shipped, and where it differed from the sketch below:*
+
+- `ContextMenu.tsx` — one component, positioned at the pointer in **fixed**
+  coordinates (an absolutely-positioned menu inside the scrolling table would
+  travel with the rows it describes), nudged back inside the viewport after
+  measuring rather than by guessing a height, since the playlist submenu makes
+  the size depend on the library. Arrows move, Enter and Space pick, Escape
+  backs out one level then closes, Home/End jump, separators and disabled
+  entries are skipped by the keyboard rather than landed on. It closes on
+  outside click **in the capture phase**, so the click that dismisses it does
+  not also select the row underneath.
+- `rowMenu.ts` — which entries a song row offers, as a **pure function**, so
+  the rules are tested without a pointer: singular/plural labels, smart
+  playlists excluded from "Add to Playlist" rather than greyed, "Remove from
+  Playlist" only inside a static one, "Show in Explorer" disabled unless
+  exactly one row is selected.
+- `reveal.rs` + `reveal_track` — **our own command, not `tauri-plugin-opener`**.
+  The plugin would do the same job, but every plugin API is ACL-gated and a
+  missing permission fails only at runtime; that has now shipped a dead
+  feature twice. Our own commands are not gated, so this route has no such
+  trap. On Windows `/select,` and the path must be **one argument** — passing
+  them apart opens the parent with nothing highlighted, which looks like it
+  half-worked. Pinned by a test.
+- `AppError::NotFound` — a new variant. Revealing a file that is no longer on
+  disk is refused rather than opening an empty folder: "where is it?" and "it
+  is gone" are different answers.
+- **Removed, as the user asked**: the `.sidebar-action` Rename / Delete / ⚙
+  buttons and their CSS, and the **Get Info toolbar button**. Get Info gained
+  **Ctrl+I** first — a menu is not a substitute for a shortcut, so the
+  shortcut had to exist before the button could go. Undo Tag Edit stays in the
+  toolbar: it acts on the last edit, not on a selection, so no row menu is its
+  home. Export stays too, acting on the current view.
+- Right-clicking a row **outside** the selection selects it first, the way
+  every file manager does; right-clicking **inside** one leaves it alone.
+- `playPlaylist` fetches the playlist's ids directly rather than reading the
+  current view, which it switches in the same breath and would otherwise race.
+
+*Still open:* the header-cell menu for choosing columns, which needs the
+column work that has not landed yet.
+
+---
+
+*The original sketch follows.*
+
 Two things the second real build asked for that had never been built.
 
 *Context menus.* There is no right-click menu anywhere in the app, which is

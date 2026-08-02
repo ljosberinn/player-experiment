@@ -1,9 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import type { SortField } from "../../ipc";
+import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
+import { revealTrack, type SortField } from "../../ipc";
+import { useEditorStore } from "../editor/store";
 import { dropIndexFor, hasTrackIds, readTrackIds, setTrackIds } from "../playlists/drag";
+import { usePlaylistsStore } from "../playlists/store";
 import type { ColumnDef } from "./columns";
+import { rowMenuItems } from "./rowMenu";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
 
@@ -34,6 +38,7 @@ export function SongTable({
   onActivate,
   onReorder,
   onRemove,
+  onExport,
   nowPlayingId = null,
 }: {
   columns: ColumnDef[];
@@ -49,6 +54,11 @@ export function SongTable({
   onReorder?: ((trackIds: number[], targetIndex: number) => void) | undefined;
   /** Delete on a selection: take those rows out of the current playlist. */
   onRemove?: ((trackIds: number[]) => void) | undefined;
+  /**
+   * Export the rows named. Lives with the caller because it opens a save
+   * dialog, which is the shell's business rather than the table's.
+   */
+  onExport?: ((trackIds: number[]) => void) | undefined;
   nowPlayingId?: number | null;
 }) {
   const total = useLibraryStore((s) => s.total);
@@ -68,9 +78,20 @@ export function SongTable({
   // re-runs and the table sits on placeholder rows forever.
   const queryToken = useLibraryStore((s) => s.queryToken);
 
+  const playlistId = useLibraryStore((s) => s.playlistId);
+  const playlists = usePlaylistsStore((s) => s.playlists);
+  const addTracks = usePlaylistsStore((s) => s.addTracks);
+  const openEditor = useEditorStore((s) => s.open);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Where a reorder drop would land, as an index into the current order. */
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  /** The open row menu: where it is, and what it acts on. */
+  const [menu, setMenu] = useState<{
+    at: MenuPosition;
+    trackIds: number[];
+    rowIndex: number;
+  } | null>(null);
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -157,6 +178,24 @@ export function SongTable({
                 style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
                 onClick={select}
                 onDoubleClick={() => onActivate?.(item.index)}
+                onContextMenu={(event) => {
+                  if (!track) {
+                    return;
+                  }
+                  event.preventDefault();
+                  // Right-clicking outside the selection acts on the row under
+                  // the pointer, the way every file manager does - otherwise
+                  // the menu would silently apply to rows scrolled off screen.
+                  const inSelection = isSelected(selection, track.id);
+                  if (!inSelection) {
+                    clickRow(item.index, track.id, {});
+                  }
+                  setMenu({
+                    at: { x: event.clientX, y: event.clientY },
+                    trackIds: inSelection ? [...selection.ids] : [track.id],
+                    rowIndex: item.index,
+                  });
+                }}
                 onDragStart={(event) => {
                   if (!track) {
                     event.preventDefault();
@@ -225,6 +264,27 @@ export function SongTable({
           })}
         </tbody>
       </table>
+
+      {menu ? (
+        <ContextMenu
+          position={menu.at}
+          label="Song actions"
+          onClose={() => setMenu(null)}
+          items={rowMenuItems({
+            count: menu.trackIds.length,
+            playlists,
+            openPlaylist: playlists.find((one) => one.id === playlistId) ?? null,
+            onPlay: () => onActivate?.(menu.rowIndex),
+            onGetInfo: () => void openEditor(menu.trackIds),
+            onAddTo: (id) => void addTracks(id, menu.trackIds),
+            onRemove: () => onRemove?.(menu.trackIds),
+            onExport: () => onExport?.(menu.trackIds),
+            // One id: the menu disables this entry unless exactly one row is
+            // selected, so there is no question of which file to show.
+            onReveal: () => void revealTrack(menu.trackIds[0] as number),
+          })}
+        />
+      ) : null}
     </div>
   );
 }

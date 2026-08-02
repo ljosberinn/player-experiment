@@ -94,6 +94,11 @@ export function exportLibrary(path: string, scope: ExportScope): Promise<number>
   return invoke<number>("export_library", { path, scope });
 }
 
+/** Opens the OS file manager with this track selected. */
+export function revealTrack(trackId: number): Promise<void> {
+  return invoke<void>("reveal_track", { trackId });
+}
+
 export function saveWindowGeometry(geometry: string): Promise<void> {
   return invoke<void>("save_window_geometry", { geometry });
 }

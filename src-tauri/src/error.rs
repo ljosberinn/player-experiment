@@ -9,6 +9,11 @@ pub enum AppError {
     #[error("{0}")]
     Internal(String),
 
+    /// The thing asked for is not there - as distinct from something going
+    /// wrong while looking for it.
+    #[error("{0}")]
+    NotFound(String),
+
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
 

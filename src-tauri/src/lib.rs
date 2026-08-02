@@ -4,6 +4,7 @@ pub mod db;
 pub mod error;
 pub mod export;
 pub mod model;
+pub mod reveal;
 pub mod scan;
 pub mod smart;
 pub mod tags;
@@ -80,6 +81,7 @@ pub fn run() {
             commands::remove_from_playlist,
             commands::move_in_playlist,
             commands::export_library,
+            commands::reveal_track,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,

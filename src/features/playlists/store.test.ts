@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addToPlaylist,
+  allTrackIds,
   createPlaylist,
   createSmartPlaylist,
   deletePlaylist,
@@ -14,6 +15,7 @@ import {
   setPlaylistFilter,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
+import { usePlayerStore } from "../player/store";
 import { emptyFilter } from "../smart/filterTree";
 import { usePlaylistsStore } from "./store";
 
@@ -31,6 +33,7 @@ vi.mock("../../ipc", () => ({
   countTracks: vi.fn(async () => 0),
   queryTracks: vi.fn(async () => []),
   allTrackIds: vi.fn(async () => []),
+  playerPlay: vi.fn(async () => undefined),
 }));
 
 function playlist(id: number, name: string, trackCount = 0): Playlist {
@@ -264,5 +267,74 @@ describe("playlists store", () => {
 
     await usePlaylistsStore.getState().addTracks(3, [11]);
     expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
+  });
+});
+
+describe("createFrom", () => {
+  it("creates a playlist holding the songs that were dropped", async () => {
+    vi.mocked(createPlaylist).mockResolvedValue(playlist(9, "New Playlist"));
+    vi.mocked(addToPlaylist).mockResolvedValue(2);
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(9, "New Playlist", 2)]);
+
+    await usePlaylistsStore.getState().createFrom([10, 11]);
+
+    expect(createPlaylist).toHaveBeenCalledWith("New Playlist");
+    expect(addToPlaylist).toHaveBeenCalledWith(9, [10, 11]);
+  });
+
+  it("starts a rename once the songs are in", async () => {
+    vi.mocked(createPlaylist).mockResolvedValue(playlist(9, "New Playlist"));
+    vi.mocked(addToPlaylist).mockResolvedValue(2);
+
+    await usePlaylistsStore.getState().createFrom([10, 11]);
+
+    // Naming it is the only thing left to do, and abandoning the rename still
+    // leaves a playlist with the songs in it.
+    expect(usePlaylistsStore.getState().renaming).toBe(9);
+    expect(usePlaylistsStore.getState().notice).toBe("Added 2 songs to a new playlist.");
+  });
+
+  it("does nothing when the drag carried no songs", async () => {
+    await usePlaylistsStore.getState().createFrom([]);
+
+    expect(createPlaylist).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure rather than leaving a half-made playlist silently", async () => {
+    vi.mocked(createPlaylist).mockRejectedValue(new Error("disk full"));
+
+    await usePlaylistsStore.getState().createFrom([10]);
+
+    expect(usePlaylistsStore.getState().error).toContain("disk full");
+  });
+});
+
+describe("playPlaylist", () => {
+  beforeEach(() => {
+    vi.spyOn(usePlayerStore.getState(), "play").mockResolvedValue(undefined);
+  });
+
+  it("opens the playlist and plays it from the top", async () => {
+    vi.mocked(allTrackIds).mockResolvedValue([7, 8, 9]);
+
+    await usePlaylistsStore.getState().playPlaylist(3);
+
+    // In its own order, not the view's: the sort on screen belongs to
+    // whatever was open a moment ago.
+    expect(allTrackIds).toHaveBeenCalledWith(
+      expect.objectContaining({ playlistId: 3, sortBy: "position" }),
+    );
+    expect(useLibraryStore.getState().playlistId).toBe(3);
+    expect(usePlayerStore.getState().play).toHaveBeenCalledWith([7, 8, 9], 0);
+  });
+
+  it("says so rather than playing nothing when the playlist is empty", async () => {
+    vi.mocked(allTrackIds).mockResolvedValue([]);
+    usePlaylistsStore.setState({ playlists: [playlist(3, "Evening")] });
+
+    await usePlaylistsStore.getState().playPlaylist(3);
+
+    expect(usePlayerStore.getState().play).not.toHaveBeenCalled();
+    expect(usePlaylistsStore.getState().notice).toBe("Evening is empty.");
   });
 });

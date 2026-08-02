@@ -2,8 +2,9 @@ import { createEvent, fireEvent, render, screen, waitFor } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track, TrackQuery } from "../../ipc";
-import { countTracks, queryTracks } from "../../ipc";
+import { addToPlaylist, countTracks, queryTracks, revealTrack } from "../../ipc";
 import { readTrackIds, TRACK_IDS_MIME } from "../playlists/drag";
+import { usePlaylistsStore } from "../playlists/store";
 import { columnsFor } from "./columns";
 import { SongTable } from "./SongTable";
 import { useLibraryStore } from "./store";
@@ -11,7 +12,13 @@ import { useLibraryStore } from "./store";
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
   queryTracks: vi.fn(),
-  allTrackIds: vi.fn(),
+  allTrackIds: vi.fn(async () => []),
+  // Reached through the row menu, via the playlists and editor stores.
+  revealTrack: vi.fn(async () => undefined),
+  listPlaylists: vi.fn(async () => []),
+  addToPlaylist: vi.fn(async () => 1),
+  tracksByIds: vi.fn(async () => []),
+  canUndoTagEdit: vi.fn(async () => false),
 }));
 
 const countTracksMock = vi.mocked(countTracks);
@@ -426,6 +433,110 @@ describe("SongTable", () => {
 
     await waitFor(() => {
       expect(container.querySelectorAll(".song-row.placeholder")).toHaveLength(0);
+    });
+  });
+
+  describe("the row menu", () => {
+    /** Renders a loaded table and right-clicks the first row. */
+    async function openRowMenu(props: Partial<Parameters<typeof SongTable>[0]> = {}) {
+      const user = userEvent.setup();
+      render(<SongTable columns={columns} {...props} />);
+      await useLibraryStore.getState().refresh();
+      await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+      await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 0") });
+      return user;
+    }
+
+    it("opens on right-click and names itself", async () => {
+      await openRowMenu();
+
+      expect(await screen.findByRole("menu", { name: "Song actions" })).toBeInTheDocument();
+    });
+
+    it("selects the row it was opened on when that row was not selected", async () => {
+      await openRowMenu();
+
+      // Otherwise the menu would act on rows scrolled off elsewhere, which is
+      // not what the pointer was aimed at.
+      expect([...useLibraryStore.getState().selection.ids]).toEqual([0]);
+    });
+
+    it("keeps a multi-selection when right-clicking inside it", async () => {
+      const user = userEvent.setup();
+      render(<SongTable columns={columns} />);
+      await useLibraryStore.getState().refresh();
+      await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+
+      await user.click(screen.getByText("Track 0"));
+      await user.keyboard("{Shift>}");
+      await user.click(screen.getByText("Track 2"));
+      await user.keyboard("{/Shift}");
+      const before = [...useLibraryStore.getState().selection.ids];
+      await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 1") });
+
+      expect([...useLibraryStore.getState().selection.ids]).toEqual(before);
+      expect(
+        await screen.findByRole("menuitem", { name: /Get Info for 3 Songs/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("plays the row it was opened on", async () => {
+      const onActivate = vi.fn();
+      const user = await openRowMenu({ onActivate });
+
+      await user.click(await screen.findByRole("menuitem", { name: "Play" }));
+
+      expect(onActivate).toHaveBeenCalledWith(0);
+    });
+
+    it("adds to the playlist picked from the submenu", async () => {
+      usePlaylistsStore.setState({
+        playlists: [{ id: 5, name: "Evening", kind: "static", trackCount: 0, createdAt: 0 }],
+      });
+      const user = await openRowMenu();
+
+      await user.click(await screen.findByRole("menuitem", { name: /Add to Playlist/ }));
+      await user.click(await screen.findByRole("menuitem", { name: "Evening" }));
+
+      // The first keyboard-and-menu route to a playlist; dragging is mouse-only.
+      await waitFor(() => expect(addToPlaylist).toHaveBeenCalledWith(5, [0]));
+    });
+
+    it("reveals a single song on disk", async () => {
+      const user = await openRowMenu();
+
+      await user.click(await screen.findByRole("menuitem", { name: "Show in Explorer" }));
+
+      await waitFor(() => expect(revealTrack).toHaveBeenCalledWith(0));
+    });
+
+    it("exports what the menu was opened on", async () => {
+      const onExport = vi.fn();
+      const user = await openRowMenu({ onExport });
+
+      await user.click(await screen.findByRole("menuitem", { name: "Export 1 Song…" }));
+
+      expect(onExport).toHaveBeenCalledWith([0]);
+    });
+
+    it("does not open on a row whose page has not arrived", async () => {
+      const user = userEvent.setup();
+      // Held pending, so the rows stay placeholders instead of filling in
+      // before the assertion - which is what made an earlier version of this
+      // test pass by finding nothing to right-click.
+      queryTracksMock.mockImplementation(() => new Promise(() => {}));
+      const { container } = render(<SongTable columns={columns} />);
+      await useLibraryStore.getState().refresh();
+
+      const placeholder = await waitFor(() => {
+        const row = container.querySelector(".song-row.placeholder");
+        expect(row).not.toBeNull();
+        return row as Element;
+      });
+      await user.pointer({ keys: "[MouseRight]", target: placeholder });
+
+      // There is no song there yet, so there is nothing for a menu to act on.
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
   });
 });
