@@ -345,9 +345,13 @@ credentials configured, no request is ever made and no code path changes.
 
 **Note on last.fm's own rule**: the service's documented guidance is to
 scrobble at 50% *or 4 minutes, whichever comes first*, and to skip tracks
-under 30 seconds. The 50% trigger above is what was asked for; the 4-minute
-cap and 30-second floor are worth adding as they cost nothing and stop long
-tracks from never scrobbling.
+under 30 seconds. **The 4-minute cap is explicitly not adopted** — 50% is the
+sole trigger, so an hour-long mix scrobbles at 30 minutes, not at 4. Decided
+2026-08-02. This is also the rule `audio/engine.rs` already counts plays by
+(`PLAYED_FRACTION`), and the two must not drift apart.
+
+The 30-second floor is a separate question and is still worth adding: it costs
+nothing and matches what every other client does.
 
 **11 — Crash & error reporting** `feat/11-sentry`
 Optional, opt-in Sentry integration via
