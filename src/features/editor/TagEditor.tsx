@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useDialogKeys } from "../../components/ui/useDialogKeys";
 import { type CoverEdit, coverUrl, type TagEdit, type Track } from "../../ipc";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
 
@@ -26,6 +27,12 @@ export function TagEditor({
   const headingId = useId();
 
   const problem = numericProblem(draft);
+  const canSave = problem === null && hasChanges(draft, cover);
+  const onKeyDown = useDialogKeys({
+    onAccept: () => onSave({ ...toEdit(draft), cover }),
+    onCancel,
+    canAccept: canSave,
+  });
   const commonCover = tracks.every((track) => track.cover_hash === tracks[0]?.cover_hash)
     ? (tracks[0]?.cover_hash ?? null)
     : null;
@@ -35,7 +42,16 @@ export function TagEditor({
       {/* A div with role="dialog" rather than <dialog>: the native element
           only gets its backdrop and focus trap from showModal(), which means
           an effect, and jsdom does not implement it at all. */}
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={headingId}>
+      {/* The key handler is a dialog-level shortcut, not a control:
+          everything focusable inside stays reachable and operable on
+          its own, and Enter/Escape are what a dialog owes the user. */}
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        onKeyDown={onKeyDown}
+      >
         <h2 id={headingId}>
           {tracks.length === 1 ? "Get Info" : `Get Info — ${tracks.length} songs`}
         </h2>
@@ -112,7 +128,7 @@ export function TagEditor({
           <button
             type="button"
             className="primary"
-            disabled={problem !== null || !hasChanges(draft, cover)}
+            disabled={!canSave}
             onClick={() => onSave({ ...toEdit(draft), cover })}
           >
             Save

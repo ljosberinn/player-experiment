@@ -355,6 +355,45 @@ Running the app against a real library surfaced three, all fixed in
   vertical padding sits outside its grid items, so `align-self: stretch` only
   filled the content box.
 
+### Defects found on the second real build (2026-08-02)
+
+Nine reports; four were defects, three were never built, one was already true
+and one was a phase that had not merged yet.
+
+- **Drag and drop could never have worked in the packaged app.** Tauri's
+  `dragDropEnabled` defaults to **true**, and while it is on, the webview hands
+  OS-level drag events to the native file-drop handler instead of the page —
+  which kills HTML5 drag and drop inside the window on Windows. Everything
+  built in phase 6 was correct and untestable in place. Fixed with
+  `"dragDropEnabled": false`. **This has a consequence for phase 15** — see
+  the note there. CI never caught it because WebDriver cannot perform an OS
+  drag, which the plan already recorded as a gap; that gap has now cost a
+  whole feature going unnoticed.
+- **`selectAll` had no keybinding.** It was written in phase 3, tested, and
+  left with **zero callers** — the capability existed and was unreachable.
+  The player shortcuts deliberately ignore anything with a modifier held, so
+  Ctrl+A could never have reached them. Now in its own
+  `useSelectionShortcuts`, along with Escape to clear.
+- **Neither dialog answered Enter or Escape.** Recorded as a known gap when
+  the dialogs were built and deferred to phase 13; that was the wrong call —
+  a form you cannot submit with Enter is broken, not unpolished. Fixed for
+  both, with Enter left alone on buttons and selects so it does not hijack the
+  control the user is operating.
+- **Renaming a playlist had no visible affordance.** Double-click worked and
+  was tested, but an invisible gesture is not an affordance. The open playlist
+  now carries Rename, Delete and (for smart ones) Edit Filter buttons.
+- **Creating a playlist switched the view to it.** Deliberate, and wrong: the
+  new playlist is empty, so it hides the songs you were about to drag into it.
+  It now stays put and puts the new row straight into rename, which is the
+  only thing there is to do with it yet.
+- **"Export doesn't work"** — phase 9 had not merged. It offers a save dialog
+  with a location; nothing to fix.
+- **"Export should not include artwork"** — it never did. Only `coverHash`
+  travels, and there is a test asserting the bytes do not. If the hash itself
+  is unwanted, that is a small change and worth asking about.
+- **Context menus and drag-to-empty-space-to-create** were never built. See
+  phase 17.
+
 ### Known gaps carried forward
 
 - **e2e runs against a decorated window.** `decorations: false` stops the
@@ -393,7 +432,13 @@ Running the app against a real library surfaced three, all fixed in
   worth revisiting if anyone ever wants a track to recur in a set.
 - **Dragging is mouse-only.** There is no keyboard route to add a selection to
   a playlist yet; removing from one has Delete, and reordering has nothing.
-  Worth an "Add to Playlist" command in a menu when one exists.
+  Phase 17's context menu is where that route belongs.
+- **`dragDropEnabled` is off**, which is what makes in-app dragging work at
+  all. Phase 15 needs it on. See the warning in that phase.
+- **There is no context menu anywhere.** Scheduled as phase 17.
+- **e2e cannot exercise dragging**, and that gap let phase 6 ship a feature
+  that could not work in the packaged app. Anything that depends on an OS-level
+  gesture needs a manual check on a real build before it is called done.
 - **The editor's field/operator table is duplicated in TypeScript.**
   `filterTree.ts` mirrors `FilterField::kind` and the operator match in
   `smart/compile`. The backend validates every filter by compiling it before
@@ -791,6 +836,26 @@ folder picker is the only route in.
 - Tauri v2 exposes this through `onDragDropEvent` on the window (paths only,
   never file contents), so the whole thing is a path list handed to the
   existing scan pipeline. Drag *out* of the app is not in scope.
+
+**⚠ This phase conflicts with phase 6 at the platform level.** `onDragDropEvent`
+only fires while `dragDropEnabled` is **true**, and while it is true the
+webview hands OS drag events to the native handler instead of the page — which
+is exactly what stopped phase 6's in-app row dragging from working at all. The
+two cannot both be on. Options, none free:
+
+  1. **Toggle it per gesture.** `WebviewWindow::set_drag_drop_enabled` does not
+     exist in Tauri v2; the flag is fixed at window creation. Ruled out unless
+     upstream adds it.
+  2. **Two windows** — absurd for this.
+  3. **Keep it off and drop the OS-file route**, offering only "Add Folder…".
+     Loses the feature this phase exists for.
+  4. **Keep it off and read paths from the HTML5 drop**, which Tauri
+     deliberately does not expose — a browser `File` has no path.
+  5. **Turn it on and replace in-app dragging** with the context-menu "Add to
+     Playlist ▸" from phase 17, plus a keyboard route for reordering.
+
+Option 5 is the only one that keeps both capabilities, and it means phase 17
+lands *before* this. Worth settling before any of phase 15 is written.
 - Visual affordance: the drop target highlights, and an invalid target (a
   drop of zero audio files) says so instead of silently swallowing it.
 
@@ -863,6 +928,43 @@ more expensive than the deleting one was.
 *Note on ordering:* this wants to land after phase 6 (playlists), because
 "playlist entries survive a missing file" is most of the argument for it and
 cannot be tested before playlists exist.
+
+**17 — Context menus, and dropping onto nothing** `feat/17-context-menus`
+Two things the second real build asked for that had never been built.
+
+*Context menus.* There is no right-click menu anywhere in the app, which is
+why "edit this" is a toolbar button rather than where a desktop user looks
+for it. Wanted:
+
+- **On a song row**: Play, Get Info, Add to Playlist ▸ (a submenu of every
+  static playlist — also the first keyboard route to that, since dragging is
+  mouse-only), Remove from Playlist when one is open, Export Selection,
+  Show in Explorer.
+- **On a sidebar playlist**: Rename, Delete, Edit Filter for a smart one,
+  Export, Play.
+- **On the table's header**: which columns to show, once phase 13-ish column
+  work gives that somewhere to live.
+
+The menu itself has to be built rather than borrowed: `contextmenu` is
+suppressed app-wide by the native-feel pass, and a native OS menu through
+Tauri's menu API cannot render a live list of playlists cheaply. One small
+component, positioned at the pointer, dismissed on Escape, outside click or
+scroll, with arrow-key navigation — the usual list, none of it hard, but it
+is a component with real keyboard semantics rather than a styled `<ul>`.
+
+*Dropping a song onto empty sidebar space creates a playlist* named after…
+nothing obvious, which is the design question. iTunes names it "untitled
+playlist" and starts a rename. Doing the same, with the drop landing first so
+the rename is over something real, seems right.
+
+*Testing:* the menu's keyboard and dismissal behaviour is component-testable;
+the "create by dropping" path is the phase 6 drop handler with a different
+target, so it needs one store test and one component test.
+
+*Note:* this is where the invisible-gesture problem from the second build
+actually gets solved. The Rename/Delete buttons added as a fix are a stopgap —
+they are only on the open playlist, and a row of glyphs in a sidebar is not
+where those actions belong long-term.
 
 ---
 

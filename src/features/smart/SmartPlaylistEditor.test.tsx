@@ -177,6 +177,29 @@ describe("SmartPlaylistEditor", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it("saves on Enter and closes on Escape", async () => {
+    const { onSave, onCancel, user } = open(artistIs("Guitar"));
+
+    await user.type(screen.getByRole("textbox", { name: "Value for condition 1" }), "{Enter}");
+    expect(onSave).toHaveBeenCalledOnce();
+
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "{Escape}");
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("leaves Enter on a select and a button alone", async () => {
+    const { onSave, user } = open();
+
+    screen.getByRole("combobox", { name: "Match rules" }).focus();
+    await user.keyboard("{Enter}");
+    screen.getByRole("button", { name: "+ Rule" }).focus();
+    await user.keyboard("{Enter}");
+
+    // The + Rule button did its job; the dialog did not close over it.
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", { name: "Field for condition 1" })).toBeInTheDocument();
+  });
+
   it("is announced as a dialog with its own name", () => {
     open();
 

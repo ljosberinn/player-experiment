@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -45,7 +45,13 @@ const initialPlaylists = usePlaylistsStore.getState();
 beforeEach(() => {
   vi.clearAllMocks();
   useLibraryStore.setState({ ...initialLibrary, playlistId: null, total: 0, pages: new Map() });
-  usePlaylistsStore.setState({ ...initialPlaylists, playlists: [], notice: null, error: null });
+  usePlaylistsStore.setState({
+    ...initialPlaylists,
+    playlists: [],
+    notice: null,
+    error: null,
+    renaming: null,
+  });
   vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 4), playlist(2, "Focus", 9)]);
 });
 
@@ -158,6 +164,39 @@ describe("PlaylistSidebar", () => {
     // The backend would refuse a blank name anyway; not asking is better than
     // showing the user an error for a keystroke they will fix themselves.
     expect(renamePlaylist).not.toHaveBeenCalled();
+  });
+
+  it("offers a visible rename control on the open playlist", async () => {
+    vi.mocked(renamePlaylist).mockResolvedValue(undefined);
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    // Double-click renames too, but an invisible gesture is not an affordance:
+    // this is how the user finds out the action exists at all.
+    expect(
+      screen.queryByRole("button", { name: "Rename playlist Evening" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Evening" }));
+    await user.click(await screen.findByRole("button", { name: "Rename playlist Evening" }));
+
+    const field = screen.getByRole("textbox", { name: "Rename playlist Evening" });
+    await user.clear(field);
+    await user.type(field, "Late Night{Enter}");
+
+    await waitFor(() => expect(renamePlaylist).toHaveBeenCalledWith(1, "Late Night"));
+  });
+
+  it("renames whichever playlist the store asks it to", async () => {
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    // Creating a playlist starts a rename from outside this component.
+    act(() => usePlaylistsStore.getState().startRename(2));
+
+    expect(
+      await screen.findByRole("textbox", { name: "Rename playlist Focus" }),
+    ).toBeInTheDocument();
   });
 
   it("offers deletion only on the playlist that is open", async () => {

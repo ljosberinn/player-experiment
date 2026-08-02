@@ -26,7 +26,11 @@ export function PlaylistSidebar() {
 
   /** Which playlist the pointer is currently over with a valid drag. */
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
-  const [renamingId, setRenamingId] = useState<number | null>(null);
+  // Renaming lives in the store because creating a playlist starts one, and
+  // that can happen from outside this component.
+  const renamingId = usePlaylistsStore((s) => s.renaming);
+  const startRename = usePlaylistsStore((s) => s.startRename);
+  const endRename = usePlaylistsStore((s) => s.endRename);
 
   useEffect(() => {
     void load();
@@ -101,12 +105,12 @@ export function PlaylistSidebar() {
                 <RenameField
                   name={playlist.name}
                   onCommit={(name) => {
-                    setRenamingId(null);
+                    endRename();
                     if (name !== playlist.name) {
                       void renamePlaylist(playlist.id, name);
                     }
                   }}
-                  onCancel={() => setRenamingId(null)}
+                  onCancel={endRename}
                 />
               ) : (
                 <>
@@ -120,7 +124,7 @@ export function PlaylistSidebar() {
                     aria-label={playlist.name}
                     aria-current={playlist.id === selectedId ? "page" : undefined}
                     onClick={() => void showPlaylist(playlist.id)}
-                    onDoubleClick={() => setRenamingId(playlist.id)}
+                    onDoubleClick={() => startRename(playlist.id)}
                   >
                     <span className="sidebar-icon" aria-hidden="true">
                       {playlist.kind === "smart" ? "⚙" : "≡"}
@@ -128,23 +132,38 @@ export function PlaylistSidebar() {
                     <span className="sidebar-label">{playlist.name}</span>
                     <span className="sidebar-count">{playlist.trackCount}</span>
                   </button>
+                  {/* Shown only on the open playlist rather than on hover: an
+                      always-present row of delete buttons is a hazard, and a
+                      hover-only control is a web affordance. Double-click also
+                      renames, but an invisible gesture is not an affordance -
+                      these are how you find out the actions exist. */}
                   {playlist.id === selectedId && playlist.kind === "smart" ? (
                     <button
                       type="button"
-                      className="sidebar-delete"
+                      className="sidebar-action"
+                      title="Edit filter"
                       aria-label={`Edit filter for ${playlist.name}`}
                       onClick={() => void editSmart(playlist.id)}
+                    >
+                      ⚙
+                    </button>
+                  ) : null}
+                  {playlist.id === selectedId ? (
+                    <button
+                      type="button"
+                      className="sidebar-action"
+                      title="Rename"
+                      aria-label={`Rename playlist ${playlist.name}`}
+                      onClick={() => startRename(playlist.id)}
                     >
                       ✎
                     </button>
                   ) : null}
                   {playlist.id === selectedId ? (
-                    // Shown only on the open playlist rather than on hover:
-                    // an always-present row of delete buttons is a hazard, and
-                    // a hover-only control is a web affordance.
                     <button
                       type="button"
-                      className="sidebar-delete"
+                      className="sidebar-action"
+                      title="Delete"
                       aria-label={`Delete playlist ${playlist.name}`}
                       onClick={() => void removePlaylist(playlist.id)}
                     >

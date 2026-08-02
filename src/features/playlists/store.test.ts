@@ -58,6 +58,7 @@ beforeEach(() => {
     notice: null,
     error: null,
     editing: null,
+    renaming: null,
   });
   vi.mocked(listPlaylists).mockResolvedValue([]);
 });
@@ -71,14 +72,23 @@ describe("playlists store", () => {
     expect(usePlaylistsStore.getState().playlists).toEqual([playlist(1, "Evening", 4)]);
   });
 
-  it("opens a playlist as soon as it is created", async () => {
+  it("puts a new playlist straight into rename without stealing the view", async () => {
     vi.mocked(createPlaylist).mockResolvedValue(playlist(7, "New Playlist"));
 
     await usePlaylistsStore.getState().create("New Playlist");
 
-    expect(useLibraryStore.getState().playlistId).toBe(7);
-    // A playlist opens in its own order; the library opens by artist.
-    expect(useLibraryStore.getState().sortBy).toBe("position");
+    // Switching to it would hide the songs you were about to drag into it,
+    // and there is nothing in it to look at yet.
+    expect(useLibraryStore.getState().playlistId).toBeNull();
+    expect(usePlaylistsStore.getState().renaming).toBe(7);
+  });
+
+  it("starts and ends a rename on demand", () => {
+    usePlaylistsStore.getState().startRename(3);
+    expect(usePlaylistsStore.getState().renaming).toBe(3);
+
+    usePlaylistsStore.getState().endRename();
+    expect(usePlaylistsStore.getState().renaming).toBeNull();
   });
 
   it("leaves a deleted playlist's view before the sidebar drops it", async () => {

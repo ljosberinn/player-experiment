@@ -38,8 +38,18 @@ interface PlaylistsState {
    */
   editing: { playlistId: number | null; name: string; filter: FilterGroup } | null;
 
-  /** Creates a playlist and switches the view to it. */
+  /**
+   * Which playlist the sidebar should be renaming in place, if any.
+   *
+   * Lives in the store rather than in the sidebar because creating a playlist
+   * is what usually starts a rename, and that happens elsewhere.
+   */
+  renaming: number | null;
+
+  /** Creates a playlist and puts its new row straight into rename. */
   create: (name: string) => Promise<void>;
+  startRename: (playlistId: number) => void;
+  endRename: () => void;
   /** Opens the filter editor, on an existing smart playlist or a new one. */
   editSmart: (playlistId: number | null) => Promise<void>;
   closeEditor: () => void;
@@ -70,6 +80,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   notice: null,
   error: null,
   editing: null,
+  renaming: null,
 
   load: async () => {
     try {
@@ -83,11 +94,18 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     try {
       const playlist = await createPlaylist(name);
       await get().load();
-      await useLibraryStore.getState().showPlaylist(playlist.id);
+      // The view deliberately does not follow: a playlist created a moment ago
+      // is empty, and switching to an empty view hides the songs you were
+      // about to drag into it. Instead the new row goes straight into rename,
+      // which is the only thing there is to do with it yet.
+      set({ renaming: playlist.id });
     } catch (cause) {
       set({ error: String(cause) });
     }
   },
+
+  startRename: (playlistId) => set({ renaming: playlistId }),
+  endRename: () => set({ renaming: null }),
 
   editSmart: async (playlistId) => {
     if (playlistId === null) {

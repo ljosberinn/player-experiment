@@ -327,7 +327,7 @@ body {
 }
 
 .sidebar-add,
-.sidebar-delete {
+.sidebar-action {
   width: 18px;
   height: 18px;
   padding: 0;
