@@ -541,6 +541,12 @@ Small enough to do rather than schedule:
   which is why the test passed. Both gestures now live in one `mousedown`
   handler keyed off `event.detail === 2`, the only signal available before the
   drag begins, and the test fires the events the OS actually produces.
+- **The "Add to Playlist" flyout opened at the top of the menu** instead of
+  beside the row that opened it. The submenu is `position: absolute` and its
+  wrapper had no positioning context, so it resolved against the menu panel -
+  the nearest positioned ancestor, the panel being `fixed`. One
+  `position: relative` on the row, plus a stylesheet-guard assertion that the
+  pair stays together, since the two rules are meaningless apart.
 - **Media keys do not work unfocused** - correct for a window-scoped
   `keydown` listener, wrong for a music player. Now phase 22, which registers
   the media keys with the OS and deliberately does **not** register Space:

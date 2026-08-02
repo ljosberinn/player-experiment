@@ -131,4 +131,16 @@ describe("the stylesheet", () => {
     expect(rule?.body).toMatch(/[^-]height:\s*\d/);
     expect(rule?.body).not.toMatch(/min-height/);
   });
+
+  it("gives submenus a positioning context on the row, not the panel", () => {
+    const row = all.find((one) => /(^|\s)\.context-row$/.test(one.selector));
+    const submenu = all.find((one) => /(^|\s)\.context-submenu$/.test(one.selector));
+
+    // The submenu is absolutely positioned. Without `position: relative` on the
+    // row, that resolves against the menu panel - the nearest positioned
+    // ancestor, since the panel is `fixed` - and the flyout pins itself to the
+    // top of the menu rather than to the item that opened it.
+    expect(submenu?.body).toMatch(/position:\s*absolute/);
+    expect(row?.body).toMatch(/position:\s*relative/);
+  });
 });

@@ -872,6 +872,13 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
+/* The positioning context for a submenu. Without this the submenu's `absolute`
+   resolves against the menu panel - which is the `fixed` ancestor - and pins
+   itself to the top of the panel instead of to the row that opened it. */
+.context-row {
+  position: relative;
+}
+
 /* Submenus hang off their parent item rather than the menu, so they line up
    with the row that opened them. */
 .context-submenu {
