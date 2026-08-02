@@ -4,9 +4,22 @@ targets = [{ triple = "x86_64-pc-windows-msvc" }]
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+  # The rust-unic crates are unmaintained with no upgrade path. They reach us
+  # only through tauri-utils -> urlpattern, are compile-time/parsing helpers,
+  # and the advisories are "unmaintained", not vulnerabilities. Revisit when
+  # tauri drops urlpattern.
+  "RUSTSEC-2025-0075", # unic-char-property
+  "RUSTSEC-2025-0080", # unic-char-range
+  "RUSTSEC-2025-0081", # unic-common
+  "RUSTSEC-2025-0098", # unic-ucd-version
+  "RUSTSEC-2025-0100", # unic-ucd-ident
+]
 
 [licenses]
 version = 2
+# This crate is a private, unpublished application and carries no license field.
+private = { ignore = true }
 allow = [
   "MIT",
   "Apache-2.0",

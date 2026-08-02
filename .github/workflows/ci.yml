@@ -79,12 +79,25 @@ jobs:
       - run: npm ci
       - name: Install tauri-driver
         run: cargo install tauri-driver --locked
+      # The runner's preinstalled msedgedriver is pinned to the Edge browser
+      # version, which drifts from the evergreen WebView2 runtime the app
+      # actually embeds. A mismatch surfaces as "DevToolsActivePort file
+      # doesn't exist", so fetch the driver matching the installed runtime.
+      - name: Install version-matched Edge WebDriver
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = (Get-ItemProperty $key).pv
+          Write-Host "WebView2 runtime: $version"
+          $dest = Join-Path $env:RUNNER_TEMP 'edgedriver'
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" `
+            -OutFile "$env:RUNNER_TEMP\edgedriver.zip" -UseBasicParsing
+          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" -DestinationPath $dest -Force
+          "MSEDGEDRIVER=$dest\msedgedriver.exe" | Out-File $env:GITHUB_ENV -Append
       - name: Build app (debug)
         run: npm run tauri -- build --debug --no-bundle
       - name: Run WebDriver smoke suite
         run: npm run e2e
-        env:
-          MSEDGEDRIVER: C:\SeleniumWebDrivers\EdgeDriver\msedgedriver.exe
       - name: Upload failure screenshots
         if: failure()
         uses: actions/upload-artifact@v4

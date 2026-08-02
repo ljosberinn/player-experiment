@@ -9,9 +9,10 @@ Tauri v2 (Rust core) + React 19 / TypeScript / Vite.
 - Node 24 (`node --version`)
 - Rust stable (`rustup toolchain install stable`)
 - Visual Studio Build Tools 2022 with the "Desktop development with C++" workload
-- For e2e only: `cargo install tauri-driver --locked` and Microsoft Edge WebDriver
-  (`msedgedriver.exe`, version-matched to the installed Edge). Point `MSEDGEDRIVER`
-  at it if it is not in the default GitHub-runner location.
+
+The e2e suite is **CI-only** for now — `tauri-driver` hangs on Windows locally and
+has to be killed by hand. Treat the GitHub Actions `e2e` job as the source of
+truth and debug it from the run logs.
 
 ## Commands
 
@@ -22,7 +23,7 @@ Tauri v2 (Rust core) + React 19 / TypeScript / Vite.
 | `npm run lint` / `lint:fix` | Biome check |
 | `npm test` / `test:coverage` | Vitest unit + component tests |
 | `npm run bindings` | Regenerate `src/ipc/bindings/` from the Rust types |
-| `npm run e2e` | WebDriver smoke suite against the debug build |
+| `npm run e2e` | WebDriver smoke suite (CI only — see above) |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit + integration tests |
 
 ## Layout

@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Local music player"
 authors = ["Gerrit Alex"]
 edition = "2021"
+# Local-only application, never published; also what lets cargo-deny skip the
+# missing license field via `[licenses] private.ignore`.
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,7 +15,9 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "player_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop-only: the staticlib/cdylib targets the template ships are for mobile
+# and only produce linker warnings here.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
