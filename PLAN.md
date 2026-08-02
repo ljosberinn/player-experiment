@@ -573,6 +573,38 @@ Small enough to do rather than schedule:
   minisign key, which is free and unrelated to the Authenticode signing that
   was ruled out at the start.
 
+### Releases and versioning (2026-08-02)
+
+Installers are published from CI, versioned from the commit history.
+
+- **release-please** reads the conventional-commit titles landing on `main` -
+  which this repo has used from the start - and keeps **one open release pull
+  request** holding the version bump and the changelog. Nothing publishes
+  while that PR sits there; merging it cuts the tag and the GitHub release.
+  That keeps the same review gate every other change goes through, rather
+  than a tag appearing because somebody wrote `feat:` in a message.
+- **`bump-minor-pre-major`**: while below 1.0.0, a `feat` bumps the minor and
+  a breaking change does not jump to 1.0.0. Going 1.0 is then a deliberate
+  act rather than an accident of wording.
+- **The version lives in three files** - `package.json`, `tauri.conf.json`
+  (installer name, Add/Remove Programs) and `Cargo.toml` (`CARGO_PKG_VERSION`,
+  which reaches users through `get_app_info` and the `generator` block of
+  every export). release-please updates all three, and `src/version.test.ts`
+  asserts they agree, that the manifest matches, and that the config still
+  lists every file carrying a version. Verified by drifting one and watching
+  it fail.
+- **`Cargo.lock` is deliberately excluded** from that check. Cargo rewrites it
+  on the next build, so it lags by design rather than drifting, and asserting
+  on it would fail every release for nothing.
+- **The installers are unsigned**, which was settled at the start - local-only
+  product, no code signing. Windows SmartScreen will warn on first run of each
+  new version until it accrues reputation. Nothing to fix; worth knowing
+  before wondering whether the build is broken.
+- **Untested until it runs once.** A release workflow cannot be exercised by
+  CI - the first real tag is the test. The YAML parses and the version guard
+  is proven, but whether `release-please-action` picks up this config and
+  whether the bundle paths are right are things only the first run answers.
+
 ### Known gaps carried forward
 
 - **e2e runs against a decorated window.** `decorations: false` stops the

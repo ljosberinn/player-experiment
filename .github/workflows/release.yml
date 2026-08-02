@@ -1,0 +1,81 @@
+name: Release
+
+# Two steps, deliberately separated by a human gate.
+#
+# release-please reads the conventional-commit titles that land on main and
+# maintains one open "release" pull request holding the version bump and the
+# changelog. Nothing is published while that PR sits there. Merging it is what
+# creates the tag and the GitHub release - which is the same review gate every
+# other change goes through, rather than a tag appearing because someone wrote
+# "feat:" in a commit message.
+#
+# Only then does the second job build the installers and attach them.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release PR
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  installers:
+    name: installers
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+
+      # A real release build, not the `--debug --no-bundle` one the e2e job
+      # makes: this is the artifact people install.
+      - name: Build installers
+        run: npm run tauri build
+
+      # Attached to the release release-please just cut. Both bundles are
+      # produced because tauri.conf.json lists both targets; NSIS is the
+      # smaller download and MSI is what group policy and IT tooling expect.
+      #
+      # `--clobber` so re-running a failed job replaces the partial upload
+      # rather than erroring on a name that already exists.
+      - name: Attach installers to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          msi=(src-tauri/target/release/bundle/msi/*.msi)
+          nsis=(src-tauri/target/release/bundle/nsis/*-setup.exe)
+          # Fail loudly rather than publishing a release with nothing attached:
+          # a glob that matched nothing expands to the literal pattern.
+          for file in "${msi[@]}" "${nsis[@]}"; do
+            test -f "$file" || { echo "missing bundle: $file" >&2; exit 1; }
+          done
+          gh release upload "$TAG" "${msi[@]}" "${nsis[@]}" --clobber
