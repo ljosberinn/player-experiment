@@ -118,4 +118,17 @@ describe("the stylesheet", () => {
     // the dark theme, which is how dark modes end up with one unreadable panel.
     expect(names(dark?.body ?? "")).toEqual(names(light?.body ?? ""));
   });
+
+  it("gives the status display a fixed height, not a growing one", () => {
+    // `selector` carries any comment that preceded the rule, so this matches
+    // the tail rather than the whole string.
+    const rule = all.find((one) => /(^|\s)\.status-display$/.test(one.selector));
+
+    // Idle shows one line; playing shows three plus a scrubber. A box that
+    // sizes to its contents grows the moment a song starts and shoves the
+    // toolbar down - the layout shift this pins shut.
+    expect(rule).toBeDefined();
+    expect(rule?.body).toMatch(/[^-]height:\s*\d/);
+    expect(rule?.body).not.toMatch(/min-height/);
+  });
 });

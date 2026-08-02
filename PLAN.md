@@ -171,7 +171,7 @@ repo.
 
 Phases 1–9 and 13, 14, 17 are merged to `main`. Nothing is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
-of the later-added phases 15, 16, 18–21, which are independent of it.
+of the later-added phases 15, 16, 18–22, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -187,7 +187,7 @@ of the later-added phases 15, 16, 18–21, which are independent of it.
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
 | 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
 | 14 | Library totals in the footer | ✅ merged (`e079457`) |
-| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–21 | not started |
+| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–22 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -525,6 +525,27 @@ Small enough to do rather than schedule:
   second brighter line and reserved space around it. `--menu-border` is a new
   variable because `--chrome-border` is nearly `--surface` in dark mode, which
   is why the panel had no edge at all.
+
+### Sixth build (2026-08-02)
+
+- **The toolbar jumped when playback started.** `.status-display` was
+  `min-height: 42px`, and the playing state renders a title, a subtitle and a
+  scrubber - taller than that, so the box grew and shoved the toolbar down.
+  Now a fixed height sized to the playing state, with a stylesheet-guard
+  assertion that it stays fixed.
+- **Double-click to maximize did not work in the real build**, though it
+  passed a green test. `startDragging` hands the drag loop to the OS, which
+  swallows the mouseup and the second click, so a `dblclick` event never
+  arrives on a bar that also drags - the `onDoubleClick` handler was dead code
+  the moment it was written. jsdom delivers a synthetic `dblclick` happily,
+  which is why the test passed. Both gestures now live in one `mousedown`
+  handler keyed off `event.detail === 2`, the only signal available before the
+  drag begins, and the test fires the events the OS actually produces.
+- **Media keys do not work unfocused** - correct for a window-scoped
+  `keydown` listener, wrong for a music player. Now phase 22, which registers
+  the media keys with the OS and deliberately does **not** register Space:
+  global shortcuts are exclusive, so that would break the space bar in every
+  other application.
 
 ### Known gaps carried forward
 
@@ -1471,6 +1492,42 @@ in CI rather than silently doing nothing - which is exactly how `dialog.save`,
 *Sequencing:* 21a stands alone and is worth doing first - it is the fix for
 the actual complaint. 21b is the adjustable knob on top, and if 21a lands the
 density well it may be wanted less urgently than it looks now.
+
+**22 — Media keys that work without focus** `feat/22-global-keys`
+Play/pause already answers `MediaPlayPause` and the transport keys, but only
+while the window has focus - `shortcutFor` is wired to a `keydown` listener on
+`window`, and a background app receives no key events at all. That is a
+correct web app and a wrong music player: the whole point of a media key is
+that the player is behind something else.
+
+- `tauri-plugin-global-shortcut` registers with the OS, so the keys arrive
+  whatever has focus. New Rust dependency, new npm package, and a capability
+  entry - which the guard's table needs a row for, since a missing permission
+  here fails silently at runtime exactly like the last three.
+- **Register the media keys only**: `MediaPlayPause`, `MediaTrackNext`,
+  `MediaTrackPrevious`, `MediaStop`. **Not Space**, and not the arrow keys.
+  A global shortcut is exclusive - the OS routes it to whoever claimed it and
+  to nobody else - so binding Space system-wide would break the space bar in
+  every other application on the machine. The in-window bindings for Space and
+  the arrows stay exactly as they are; this phase adds a second, narrower path
+  rather than moving the first one.
+- **Registration can fail, and that is normal.** Another player already
+  holding the key means `register` errors, and the honest response is to carry
+  on without it rather than to show an error - the user has two media players
+  installed, which is not a fault condition. Worth surfacing once in settings
+  ("Media keys are in use by another application") rather than as a toast.
+- **Unregister on exit**, and on window close, so a killed app does not leave
+  the OS routing media keys to nothing.
+- Windows also has SMTC (the volume-flyout transport panel) for title, artist
+  and artwork. That is a bigger piece of work, is not what was asked for, and
+  is worth a separate phase if it is ever wanted. Flagged, not folded in.
+
+*Testing:* the registration list and the failure path are unit-testable
+against a mocked plugin; that the in-window mapping still handles Space and
+the arrows unchanged is already covered and must stay green; a capability
+guard row. Whether the OS actually delivers the key when the window is
+unfocused cannot be tested in CI or in jsdom - it needs a real build, the same
+as drag-and-drop and Show in Explorer.
 
 ---
 

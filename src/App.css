@@ -181,7 +181,12 @@ input[type="radio"] {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 42px;
+  /* Fixed rather than content-sized. Idle shows one line and playing shows
+     three plus a scrubber, so a box that grows to fit its contents jumps the
+     moment a song starts and shoves the toolbar down. The value is playing's
+     height - title 15 + subtitle 13 + 3 gap + scrubber 12, plus 8 padding and
+     2 border - with a pixel of slack for font metrics. */
+  height: 56px;
   padding: 4px 10px;
   border: 1px solid var(--chrome-border);
   border-radius: 5px;

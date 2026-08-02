@@ -80,6 +80,32 @@ describe("TitleBar", () => {
     expect(toggleMaximize).toHaveBeenCalledOnce();
   });
 
+  it("does not maximize on a single click", async () => {
+    const user = userEvent.setup();
+    render(<TitleBar>chrome</TitleBar>);
+
+    await user.click(screen.getByTestId("titlebar"));
+
+    expect(toggleMaximize).not.toHaveBeenCalled();
+    expect(startDragging).toHaveBeenCalledOnce();
+  });
+
+  it("reads the double click off mousedown, not off dblclick", () => {
+    render(<TitleBar>chrome</TitleBar>);
+    const bar = screen.getByTestId("titlebar");
+
+    // `startDragging` hands the drag loop to the OS, which swallows the mouseup
+    // and the second click - so a `dblclick` event never arrives on a bar that
+    // also drags, and an onDoubleClick handler would be dead code. This is the
+    // regression: it shipped green because the test fired a synthetic dblclick,
+    // which jsdom delivers happily and Windows does not.
+    fireEvent.dblClick(bar);
+    expect(toggleMaximize).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(bar, { detail: 2 });
+    expect(toggleMaximize).toHaveBeenCalledOnce();
+  });
+
   it("does not maximize when the double click lands on a control", async () => {
     const user = userEvent.setup();
     render(
