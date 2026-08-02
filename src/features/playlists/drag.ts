@@ -58,3 +58,31 @@ export function hasTrackIds(data: Pick<DragData, "types">): boolean {
 export function dropIndexFor(rowIndex: number, offsetY: number, rowHeight: number): number {
   return offsetY >= rowHeight / 2 ? rowIndex + 1 : rowIndex;
 }
+
+/**
+ * The badge shown under the pointer while rows are being dragged.
+ *
+ * The default drag image is a translucent screenshot of the row, which for a
+ * full-width table row is a wide smear of page - unmistakably a web drag. Every
+ * desktop music player instead shows a small count, because what is being
+ * carried is "seven songs", not a rectangle of the screen.
+ *
+ * Returns a cleanup function: the element has to be in the document for the
+ * browser to rasterize it, and has to be gone by the next frame.
+ */
+export function setDragImage(
+  event: { dataTransfer: { setDragImage?: (image: Element, x: number, y: number) => void } },
+  count: number,
+): () => void {
+  const badge = document.createElement("div");
+  badge.className = "drag-badge";
+  badge.textContent = `${count} song${count === 1 ? "" : "s"}`;
+  // Off-screen rather than hidden: `display: none` and `visibility: hidden`
+  // both make it unrasterizable, so it would silently do nothing.
+  badge.style.position = "fixed";
+  badge.style.top = "-1000px";
+  badge.style.left = "-1000px";
+  document.body.appendChild(badge);
+  event.dataTransfer.setDragImage?.(badge, 12, 12);
+  return () => badge.remove();
+}

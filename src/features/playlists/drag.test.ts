@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { dropIndexFor, hasTrackIds, readTrackIds, setTrackIds, TRACK_IDS_MIME } from "./drag";
+import { describe, expect, it, vi } from "vitest";
+import {
+  dropIndexFor,
+  hasTrackIds,
+  readTrackIds,
+  setDragImage,
+  setTrackIds,
+  TRACK_IDS_MIME,
+} from "./drag";
 
 /** A stand-in for `DataTransfer`, which jsdom does not implement usefully. */
 function dataTransfer(initial: Record<string, string> = {}) {
@@ -70,5 +77,44 @@ describe("dropIndexFor", () => {
     // Without the lower half resolving to index+1 there would be no way to
     // move something to the very end.
     expect(dropIndexFor(9, 20, 22)).toBe(10);
+  });
+});
+
+describe("setDragImage", () => {
+  it("carries a count rather than a picture of the table", () => {
+    const setDragImageSpy = vi.fn();
+    const cleanUp = setDragImage({ dataTransfer: { setDragImage: setDragImageSpy } }, 7);
+
+    expect(setDragImageSpy).toHaveBeenCalled();
+    const [badge] = setDragImageSpy.mock.calls[0] as [HTMLElement];
+    expect(badge.textContent).toBe("7 songs");
+    cleanUp();
+  });
+
+  it("says it in the singular for one", () => {
+    const setDragImageSpy = vi.fn();
+    const cleanUp = setDragImage({ dataTransfer: { setDragImage: setDragImageSpy } }, 1);
+
+    const [badge] = setDragImageSpy.mock.calls[0] as [HTMLElement];
+    expect(badge.textContent).toBe("1 song");
+    cleanUp();
+  });
+
+  it("puts the badge in the document so it can be rasterized", () => {
+    const setDragImageSpy = vi.fn();
+    const cleanUp = setDragImage({ dataTransfer: { setDragImage: setDragImageSpy } }, 2);
+
+    // Off-screen rather than hidden: display:none and visibility:hidden both
+    // make it unrasterizable, so it would silently do nothing.
+    expect(document.querySelector(".drag-badge")).not.toBeNull();
+
+    cleanUp();
+    expect(document.querySelector(".drag-badge")).toBeNull();
+  });
+
+  it("survives a DataTransfer that cannot take one", () => {
+    // jsdom's DataTransfer has no setDragImage, and neither will some
+    // synthetic events - a missing method must not break the drag itself.
+    expect(() => setDragImage({ dataTransfer: {} }, 3)()).not.toThrow();
   });
 });
