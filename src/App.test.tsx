@@ -569,9 +569,10 @@ describe("App playback", () => {
     // Get Info used to be a toolbar button. It is a per-song action, so it
     // now lives where a per-song action belongs.
     expect(screen.queryByRole("button", { name: "Get Info" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
 
     await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 1") });
-    await user.click(await screen.findByRole("menuitem", { name: "Get Info" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
     const genre = await screen.findByRole("textbox", { name: "Genre" });
     await user.type(genre, "Dream Pop");
     await user.click(screen.getByRole("button", { name: "Save" }));

@@ -202,7 +202,7 @@ describe("PlaylistSidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("deletes from the right-click menu", async () => {
+  it("deletes from the right-click menu, once confirmed", async () => {
     vi.mocked(deletePlaylist).mockResolvedValue(undefined);
     render(<PlaylistSidebar />);
     const user = userEvent.setup();
@@ -213,7 +213,100 @@ describe("PlaylistSidebar", () => {
     });
     await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
+    // Nothing is gone yet: deleting a playlist cannot be undone.
+    expect(deletePlaylist).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+
     expect(deletePlaylist).toHaveBeenCalledWith(1);
+  });
+
+  it("keeps the playlist when the confirmation is cancelled", async () => {
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(deletePlaylist).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Evening" })).toBeInTheDocument();
+  });
+
+  it("abandons the confirmation on Escape", async () => {
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(deletePlaylist).not.toHaveBeenCalled();
+  });
+
+  it("says the songs are safe, because that is the actual worry", async () => {
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      "The 4 songs in it stay in your library",
+    );
+  });
+
+  it("puts focus on Cancel rather than on Delete", async () => {
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+
+    // A reflex Enter on an unexpected dialog must not destroy anything.
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("opens the playlist that was right-clicked", async () => {
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Focus" }),
+    });
+
+    // The row the menu belongs to is then the highlighted one, so there is no
+    // guessing which playlist Delete is about to remove.
+    expect(useLibraryStore.getState().playlistId).toBe(2);
+  });
+
+  it("offers neither Play nor Export on an empty playlist", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 0)]);
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+
+    // Disabled rather than absent: the actions exist, this playlist just has
+    // nothing for them to act on yet.
+    expect(await screen.findByRole("menuitem", { name: "Play" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Export…" })).toBeDisabled();
   });
 
   it("names the menu after the playlist it will act on", async () => {

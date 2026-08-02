@@ -9,6 +9,7 @@
   --muted: #6d7076;
   --surface: #ffffff;
   --skeleton: #e3e6ea;
+  --menu-border: #c4c4c8;
 
   color-scheme: light dark;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -28,6 +29,7 @@
     --muted: #9a9ca2;
     --surface: #191a1c;
     --skeleton: #303035;
+    --menu-border: #3d3d42;
   }
 }
 
@@ -114,28 +116,36 @@ input[type="radio"] {
   border-bottom: 1px solid var(--chrome-border);
 }
 
+/* A compact cluster in the top-right corner, after Discord's, rather than the
+   full-height 44px caption buttons Windows uses. This bar is tall enough to
+   hold the status display, and stretching the buttons down it made three
+   oversized bands where an application wants a quiet corner.
+
+   Still pulled flush with the top edge: the top-right corner is the one place
+   a caption button has to be hittable by throwing the pointer at it, and a
+   dead strip above would swallow exactly that. The bottom of the column is no
+   longer button, which costs nothing - nobody aims there. */
 .window-buttons {
   display: flex;
-  align-self: stretch;
-  /* Cancels the bar's vertical padding so the buttons reach the very top and
-     bottom edges, as Windows' own caption buttons do. `align-self: stretch`
-     alone only fills the content box, leaving a dead strip above and below
-     that swallows clicks aimed at the corner. Must match `.titlebar`. */
-  margin-block: -6px;
+  align-self: start;
+  margin-block-start: -6px;
 }
 
 .window-buttons button {
-  width: 44px;
+  width: 34px;
+  height: 30px;
   border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   font-family: "Segoe MDL2 Assets", "Segoe Fluent Icons", sans-serif;
   font-size: 10px;
   cursor: default;
 }
 
 .window-buttons button:hover {
-  background: rgba(128, 128, 128, 0.25);
+  background: rgb(128 128 128 / 20%);
+  color: var(--text);
 }
 
 .window-buttons button.close:hover {
@@ -179,7 +189,12 @@ input[type="radio"] {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 42px;
+  /* Fixed rather than content-sized. Idle shows one line and playing shows
+     three plus a scrubber, so a box that grows to fit its contents jumps the
+     moment a song starts and shoves the toolbar down. The value is playing's
+     height - title 15 + subtitle 13 + 3 gap + scrubber 12, plus 8 padding and
+     2 border - with a pixel of slack for font metrics. */
+  height: 56px;
   padding: 4px 10px;
   border: 1px solid var(--chrome-border);
   border-radius: 5px;
@@ -263,7 +278,8 @@ input[type="radio"] {
 }
 
 .search {
-  width: 190px;
+  /* 190px plus the 30px the narrower caption buttons gave back. */
+  width: 220px;
   height: 22px;
   /* Right padding leaves room for the clear button to sit inside the field. */
   padding: 0 22px 0 8px;
@@ -271,6 +287,17 @@ input[type="radio"] {
   border-radius: 11px;
   background: var(--surface);
   color: var(--text);
+}
+
+/* Text fields are the one place a focus ring is redundant: the caret already
+   says where typing goes, and a ring around a rounded search field is the most
+   web-looking thing on the bar. The ring stays everywhere else - on a button or
+   a list it is the only focus indication there is. */
+.search:focus-visible,
+.modal input:focus-visible,
+.modal textarea:focus-visible,
+.sidebar-rename:focus-visible {
+  outline: none;
 }
 
 /* The native `type="search"` clear affordance is WebKit-only and unstyleable,
@@ -797,12 +824,12 @@ input[type="radio"] {
   z-index: 40;
   min-width: 180px;
   margin: 0;
-  padding: 4px 0;
+  padding: 4px;
   list-style: none;
   background: var(--surface);
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--menu-border);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
   outline: none;
 }
 
@@ -812,8 +839,11 @@ input[type="radio"] {
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  padding: 4px 12px;
+  padding: 5px 10px;
+  /* Inset and rounded, so the highlight reads as a menu row rather than as a
+     full-bleed band across the panel. */
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -835,16 +865,27 @@ input[type="radio"] {
   cursor: default;
 }
 
+/* An <hr> carries a default `border: 1px inset`, which drew a second, brighter
+   line and reserved space around it - the gap that made hovering the rows
+   either side look mis-spaced. The rule is the background, nothing else. */
 .context-separator {
   height: 1px;
-  margin: 4px 0;
-  background: var(--chrome-border);
+  margin: 4px 6px;
+  border: 0;
+  background: var(--menu-border);
 }
 
 .context-empty {
   padding: 4px 12px;
   color: var(--muted);
   white-space: nowrap;
+}
+
+/* The positioning context for a submenu. Without this the submenu's `absolute`
+   resolves against the menu panel - which is the `fixed` ancestor - and pins
+   itself to the top of the panel instead of to the row that opened it. */
+.context-row {
+  position: relative;
 }
 
 /* Submenus hang off their parent item rather than the menu, so they line up
@@ -903,4 +944,16 @@ body:not(:focus-within) .sidebar-row.current {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 12px;
   white-space: nowrap;
+}
+
+/* A destructive confirmation is narrower than an editor - it asks one thing. */
+.modal.confirm {
+  max-width: 380px;
+}
+
+/* The one place a colour carries meaning rather than decoration. */
+.modal-actions .destructive {
+  border-color: #c0392b;
+  background: #c0392b;
+  color: #fff;
 }

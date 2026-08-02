@@ -32,14 +32,14 @@ function labels(menu: ReturnType<typeof rowMenuItems>): string[] {
 
 describe("rowMenuItems", () => {
   it("counts the songs it is about to act on", () => {
-    expect(labels(items({ count: 3 }))).toContain("Get Info for 3 Songs");
+    expect(labels(items({ count: 3 }))).toContain("Edit 3 Songs");
     expect(labels(items({ count: 3 }))).toContain("Export 3 Songs…");
   });
 
   it("says it in the singular for one", () => {
-    // "Get Info for 1 Songs" is the kind of thing that makes an app feel
-    // unfinished, and it is the default if nobody looks.
-    expect(labels(items({ count: 1 }))).toContain("Get Info");
+    // "Edit 1 Songs" is the kind of thing that makes an app feel unfinished,
+    // and it is the default if nobody looks.
+    expect(labels(items({ count: 1 }))).toContain("Edit");
     expect(labels(items({ count: 1 }))).toContain("Export 1 Song…");
   });
 

@@ -70,6 +70,57 @@ describe("TitleBar", () => {
     expect(startDragging).toHaveBeenCalledOnce();
   });
 
+  it("maximizes on a double click of the bar itself", async () => {
+    const user = userEvent.setup();
+    render(<TitleBar>chrome</TitleBar>);
+
+    await user.dblClick(screen.getByTestId("titlebar"));
+
+    // What every desktop title bar does, and the app did not.
+    expect(toggleMaximize).toHaveBeenCalledOnce();
+  });
+
+  it("does not maximize on a single click", async () => {
+    const user = userEvent.setup();
+    render(<TitleBar>chrome</TitleBar>);
+
+    await user.click(screen.getByTestId("titlebar"));
+
+    expect(toggleMaximize).not.toHaveBeenCalled();
+    expect(startDragging).toHaveBeenCalledOnce();
+  });
+
+  it("reads the double click off mousedown, not off dblclick", () => {
+    render(<TitleBar>chrome</TitleBar>);
+    const bar = screen.getByTestId("titlebar");
+
+    // `startDragging` hands the drag loop to the OS, which swallows the mouseup
+    // and the second click - so a `dblclick` event never arrives on a bar that
+    // also drags, and an onDoubleClick handler would be dead code. This is the
+    // regression: it shipped green because the test fired a synthetic dblclick,
+    // which jsdom delivers happily and Windows does not.
+    fireEvent.dblClick(bar);
+    expect(toggleMaximize).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(bar, { detail: 2 });
+    expect(toggleMaximize).toHaveBeenCalledOnce();
+  });
+
+  it("does not maximize when the double click lands on a control", async () => {
+    const user = userEvent.setup();
+    render(
+      <TitleBar>
+        <input aria-label="Search" />
+      </TitleBar>,
+    );
+
+    // Double-clicking a text field selects a word; it must not also resize the
+    // window out from under the user.
+    await user.dblClick(screen.getByRole("textbox", { name: "Search" }));
+
+    expect(toggleMaximize).not.toHaveBeenCalled();
+  });
+
   it("does not drag when the press lands on a control inside the bar", async () => {
     const user = userEvent.setup();
     render(

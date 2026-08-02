@@ -36,7 +36,7 @@ export function rowMenuItems({
   const items: MenuItem[] = [
     { label: "Play", onSelect: onPlay },
     { kind: "separator" },
-    { label: count === 1 ? "Get Info" : `Get Info for ${songs}`, onSelect: onGetInfo },
+    { label: count === 1 ? "Edit" : `Edit ${songs}`, onSelect: onGetInfo },
     {
       label: "Add to Playlist",
       // Smart playlists are excluded rather than shown disabled: their

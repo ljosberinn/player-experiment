@@ -171,7 +171,7 @@ repo.
 
 Phases 1–9 and 13, 14, 17 are merged to `main`. Nothing is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
-of the later-added phases 15, 16, 18–20, which are independent of it.
+of the later-added phases 15, 16, 18–22, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -187,7 +187,7 @@ of the later-added phases 15, 16, 18–20, which are independent of it.
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
 | 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
 | 14 | Library totals in the footer | ✅ merged (`e079457`) |
-| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–20 | not started |
+| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–22 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -493,11 +493,71 @@ and one was a phase that had not merged yet.
   `warning.code` later is allowed, with a comment; loosening it back to the
   default handler is not.
 - **`npm run tauri build` needing a manual PATH export was not a
-  misconfiguration.** The persisted user PATH has `.cargoin` first, the
+  misconfiguration.** The persisted user PATH has `.cargo\bin` first, the
   registry value is `ExpandString`, and a fresh `cmd` resolves cargo. The
   failing shells were started before rustup wrote that entry and never saw it;
   a process gets its environment at launch. Confirmed working by the user once
   the terminal was replaced. Nothing to change.
+### Fifth build (2026-08-02): fixed rather than planned
+
+Small enough to do rather than schedule:
+
+- **Right-clicking a playlist now opens it**, so the highlighted row is the
+  one the menu will act on. There is no other cue saying which playlist Delete
+  means.
+- **Deleting a playlist asks first.** A new `ConfirmDialog` reusing the
+  existing `.modal` chrome rather than the OS message box, which is a separate
+  ACL-gated plugin call that looks nothing like the window it interrupts.
+  **Cancel takes focus, not Delete**, so a reflex Enter destroys nothing, and
+  the body says the songs stay in the library - that is the actual fear.
+- **Play and Export are disabled on an empty playlist**, rather than offering
+  to play nothing or write an empty file.
+- **"Get Info" is now "Edit".** iTunes' name for it; not what it does.
+- **The search field lost its focus ring.** Scoped to text inputs only - a
+  caret already says where typing goes, and the ring stays on buttons and
+  lists where it is the sole focus indication.
+- **Double-clicking the title bar maximizes and restores**, using the same
+  target guard as dragging so double-clicking the search box still selects a
+  word.
+- **The context menu had no visible edge and mis-spaced separators.** Both had
+  the same root cause as the fix that introduced them: switching separators to
+  `<hr>` left the browser default `border: 1px inset` in place, which drew a
+  second brighter line and reserved space around it. `--menu-border` is a new
+  variable because `--chrome-border` is nearly `--surface` in dark mode, which
+  is why the panel had no edge at all.
+
+### Sixth build (2026-08-02)
+
+- **The toolbar jumped when playback started.** `.status-display` was
+  `min-height: 42px`, and the playing state renders a title, a subtitle and a
+  scrubber - taller than that, so the box grew and shoved the toolbar down.
+  Now a fixed height sized to the playing state, with a stylesheet-guard
+  assertion that it stays fixed.
+- **Double-click to maximize did not work in the real build**, though it
+  passed a green test. `startDragging` hands the drag loop to the OS, which
+  swallows the mouseup and the second click, so a `dblclick` event never
+  arrives on a bar that also drags - the `onDoubleClick` handler was dead code
+  the moment it was written. jsdom delivers a synthetic `dblclick` happily,
+  which is why the test passed. Both gestures now live in one `mousedown`
+  handler keyed off `event.detail === 2`, the only signal available before the
+  drag begins, and the test fires the events the OS actually produces.
+- **The "Add to Playlist" flyout opened at the top of the menu** instead of
+  beside the row that opened it. The submenu is `position: absolute` and its
+  wrapper had no positioning context, so it resolved against the menu panel -
+  the nearest positioned ancestor, the panel being `fixed`. One
+  `position: relative` on the row, plus a stylesheet-guard assertion that the
+  pair stays together, since the two rules are meaningless apart.
+- **The caption buttons were oversized.** 44px wide and stretched down a bar
+  tall enough to hold the status display, which made three large bands where
+  an app wants a quiet corner. Now a compact 34x30 cluster after Discord's,
+  still pulled flush with the top edge - the top-right corner has to stay
+  hittable by throwing the pointer at it - with the reclaimed width given to
+  the search field, as asked.
+- **Media keys do not work unfocused** - correct for a window-scoped
+  `keydown` listener, wrong for a music player. Now phase 22, which registers
+  the media keys with the OS and deliberately does **not** register Space:
+  global shortcuts are exclusive, so that would break the space bar in every
+  other application.
 
 ### Known gaps carried forward
 
@@ -1255,7 +1315,7 @@ follow-up, and the phase is not done until they happen:
 The Export button is the one that stays put: it acts on the current view,
 which is a toolbar's job, not a specific row's.
 
-**18 — Tag autocompletion** `feat/18-tag-complete`
+**18 — Tag and filter autocompletion** `feat/18-tag-complete`
 Typing "Godspeed You! Black Emperor" correctly, by hand, for the fourth time
 is how libraries acquire three spellings of one band. The tag editor should
 suggest values already present elsewhere in the library.
@@ -1294,6 +1354,16 @@ Lookup is `WHERE field = ? AND value LIKE ? ESCAPE '\' COLLATE NOCASE
 ORDER BY uses DESC LIMIT 8`, reusing phase 7's `like_escape`. Prefix matches
 rank above interior ones. Query on the Rust side, debounced on the JS side —
 the same debounce phase 5 already has.
+
+*Also the smart playlist editor.* A filter rule's value field is the same
+problem wearing a different hat - "artist is ___" wants the same suggestions
+as the tag editor's Artist field, and typing a band name by hand into a
+filter is how a smart playlist ends up matching nothing. The rule's chosen
+`FilterField` picks which vocabulary to offer, and the fields with no shared
+vocabulary (track number, comment) offer none, exactly as in the editor. The
+`is`/`is not` operators want the full list; `contains` wants it too but
+matches loosely. Requested on the fifth build; the lookup is the same, so
+this is one phase, not two.
 
 *Interaction.* A combobox, not a hijack: the field stays free text, because
 a new artist has to be typeable. Suggestions appear below, Down/Up move
@@ -1366,6 +1436,110 @@ playlist" - that phase 3's plan entry claimed and phase 3 did not deliver.
 and falling back to the global set, and that a hidden column that is also the
 current sort does not leave the view sorted by something invisible - the case
 that will actually bite.
+
+---
+
+**21 — Density and zoom** `feat/21-scale`
+
+> **Revised (2026-08-02), at the user's direction:** *"consider increasing
+> size across the board so the new default remains 1.0. if there's a better
+> approach to increase scaling rather than literally scaling, please use
+> that."* Both points taken. The phase is now two separable pieces, and the
+> earlier sketch's CSS-`zoom`/`--scale` approach is dropped.
+
+**21a — Rebase the density so 1.0 is right.**
+
+A slider defaulting to 1.2x would have shipped an app that admits its own
+sizing is wrong and makes the user correct it on every install. The sizes
+themselves move instead:
+
+- Base `font-size` 12px, `ROW_HEIGHT` 22, and the control heights around them
+  were taken from iTunes 11 and Explorer, which were designed for displays of
+  their day. Multiply the type and spacing scale by ~1.2 and **round to whole
+  pixels** rather than carrying fractions - a 26px row is a row; a 26.4px row
+  is a blurry one on a 1x display.
+- `ROW_HEIGHT` is the number to get right first, because it is the one the
+  virtualizer measures and everything else in the table hangs off it.
+- The `App.css.test.ts` guard already asserts that light and dark define the
+  same variables; the density values are not variables today, and part of this
+  is making the ones that repeat (`--row-height`, control height, gutter) into
+  variables so a future pass is one edit rather than forty.
+
+**21b — Zoom, through the webview rather than through CSS.**
+
+`getCurrentWebview().setZoom(factor)` - confirmed present in
+`@tauri-apps/api`, gated behind `core:webview:allow-set-webview-zoom`, which
+the capability file and the guard's table both need a row for.
+
+This is the better approach the user asked for, and specifically it **removes
+the risk that made the earlier sketch a phase at all**: the webview scales the
+whole rendering, and CSS pixel coordinates are unchanged by it. `ROW_HEIGHT`
+stays 26 whatever the zoom, `getBoundingClientRect` keeps returning CSS
+pixels, and TanStack Virtual's `estimateSize` needs no knowledge of the
+setting. Under a CSS transform or `zoom` the rendered row and the estimate
+drift apart, which surfaces as overlapping rows and a scrollbar that lies.
+Text is also laid out at the target size rather than rasterized and stretched,
+so it stays crisp.
+
+- **Default 1.0**, range 0.8-2.0 in 0.1 steps, current value shown as a
+  number beside the slider.
+- **Persisted** in `settings` next to volume and window geometry, and applied
+  during startup **before the window is shown** - the window already starts
+  hidden for the geometry restore, so this costs nothing extra and avoids a
+  visible resize.
+- **Ctrl+plus / Ctrl+minus / Ctrl+0** should drive the same setting. Users try
+  them; if the app does not handle them the webview may act on its own and
+  leave the slider lying about the current value.
+- Where the slider lives is worth a look during the work: the status bar is
+  what was asked for, and it is also the app's quietest strip, which suits a
+  control touched once.
+
+*Testing:* the clamp and step arithmetic as a pure function; persistence
+round-trip; that startup applies the stored zoom before showing the window;
+that the keyboard shortcuts and the slider converge on one value rather than
+two; and a capability-guard row, so a missing `allow-set-webview-zoom` fails
+in CI rather than silently doing nothing - which is exactly how `dialog.save`,
+`setPosition` and `maximize` each shipped dead.
+
+*Sequencing:* 21a stands alone and is worth doing first - it is the fix for
+the actual complaint. 21b is the adjustable knob on top, and if 21a lands the
+density well it may be wanted less urgently than it looks now.
+
+**22 — Media keys that work without focus** `feat/22-global-keys`
+Play/pause already answers `MediaPlayPause` and the transport keys, but only
+while the window has focus - `shortcutFor` is wired to a `keydown` listener on
+`window`, and a background app receives no key events at all. That is a
+correct web app and a wrong music player: the whole point of a media key is
+that the player is behind something else.
+
+- `tauri-plugin-global-shortcut` registers with the OS, so the keys arrive
+  whatever has focus. New Rust dependency, new npm package, and a capability
+  entry - which the guard's table needs a row for, since a missing permission
+  here fails silently at runtime exactly like the last three.
+- **Register the media keys only**: `MediaPlayPause`, `MediaTrackNext`,
+  `MediaTrackPrevious`, `MediaStop`. **Not Space**, and not the arrow keys.
+  A global shortcut is exclusive - the OS routes it to whoever claimed it and
+  to nobody else - so binding Space system-wide would break the space bar in
+  every other application on the machine. The in-window bindings for Space and
+  the arrows stay exactly as they are; this phase adds a second, narrower path
+  rather than moving the first one.
+- **Registration can fail, and that is normal.** Another player already
+  holding the key means `register` errors, and the honest response is to carry
+  on without it rather than to show an error - the user has two media players
+  installed, which is not a fault condition. Worth surfacing once in settings
+  ("Media keys are in use by another application") rather than as a toast.
+- **Unregister on exit**, and on window close, so a killed app does not leave
+  the OS routing media keys to nothing.
+- Windows also has SMTC (the volume-flyout transport panel) for title, artist
+  and artwork. That is a bigger piece of work, is not what was asked for, and
+  is worth a separate phase if it is ever wanted. Flagged, not folded in.
+
+*Testing:* the registration list and the failure path are unit-testable
+against a mocked plugin; that the in-window mapping still handles Space and
+the arrows unchanged is already covered and must stay green; a capability
+guard row. Whether the OS actually delivers the key when the window is
+unfocused cannot be tested in CI or in jsdom - it needs a real build, the same
+as drag-and-drop and Show in Explorer.
 
 ---
 

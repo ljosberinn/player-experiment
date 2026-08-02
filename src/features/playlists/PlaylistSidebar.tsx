@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
 import type { Playlist } from "../../ipc";
 import { useLibraryStore } from "../library/store";
@@ -45,6 +46,8 @@ export function PlaylistSidebar({
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
   /** The open right-click menu, and which playlist it acts on. */
   const [menu, setMenu] = useState<{ at: MenuPosition; playlist: Playlist } | null>(null);
+  /** The playlist awaiting a yes/no on deletion. */
+  const [confirming, setConfirming] = useState<Playlist | null>(null);
   // Renaming lives in the store because creating a playlist starts one, and
   // that can happen from outside this component.
   const renamingId = usePlaylistsStore((s) => s.renaming);
@@ -121,6 +124,10 @@ export function PlaylistSidebar({
               }}
               onContextMenu={(event) => {
                 event.preventDefault();
+                // Opening it first is what makes the menu legible: the sidebar
+                // row it belongs to is then the highlighted one, so there is no
+                // guessing which playlist Delete is about to remove.
+                void showPlaylist(playlist.id);
                 setMenu({ at: { x: event.clientX, y: event.clientY }, playlist });
               }}
             >
@@ -185,21 +192,54 @@ export function PlaylistSidebar({
         {playlists.length === 0 ? null : "Drop songs here for a new playlist"}
       </div>
 
+      {confirming ? (
+        <ConfirmDialog
+          title={`Delete "${confirming.name}"?`}
+          // Says what is and is not lost. Deleting a playlist removes the list,
+          // never the songs, and that is exactly the fear this dialog exists to
+          // answer.
+          body={
+            confirming.kind === "smart"
+              ? "The playlist and its filter are removed. No songs are deleted."
+              : `The playlist is removed. The ${confirming.trackCount} song${
+                  confirming.trackCount === 1 ? "" : "s"
+                } in it stay in your library.`
+          }
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            const playlist = confirming;
+            setConfirming(null);
+            void removePlaylist(playlist.id);
+          }}
+        />
+      ) : null}
+
       {menu ? (
         <ContextMenu
           position={menu.at}
           label={`${menu.playlist.name} actions`}
           onClose={() => setMenu(null)}
           items={[
-            { label: "Play", onSelect: () => void playPlaylist(menu.playlist.id) },
+            {
+              label: "Play",
+              // Nothing to play, and nothing to write into an export file.
+              // Disabled rather than absent: the actions still exist, this
+              // playlist just has no contents for them to act on yet.
+              disabled: menu.playlist.trackCount === 0,
+              onSelect: () => void playPlaylist(menu.playlist.id),
+            },
             { kind: "separator" },
             ...(menu.playlist.kind === "smart"
               ? [{ label: "Edit Filter…", onSelect: () => void editSmart(menu.playlist.id) }]
               : []),
             { label: "Rename", onSelect: () => startRename(menu.playlist.id) },
-            { label: "Delete", onSelect: () => void removePlaylist(menu.playlist.id) },
+            { label: "Delete", onSelect: () => setConfirming(menu.playlist) },
             { kind: "separator" },
-            { label: "Export…", onSelect: () => onExport?.(menu.playlist) },
+            {
+              label: "Export…",
+              disabled: menu.playlist.trackCount === 0,
+              onSelect: () => onExport?.(menu.playlist),
+            },
           ]}
         />
       ) : null}

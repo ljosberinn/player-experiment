@@ -173,7 +173,7 @@ export function ContextMenu({
           return <hr key={`sep-${index}`} className="context-separator" />;
         }
         return (
-          <div key={item.label} role="none">
+          <div key={item.label} className="context-row" role="none">
             <button
               type="button"
               role="menuitem"
