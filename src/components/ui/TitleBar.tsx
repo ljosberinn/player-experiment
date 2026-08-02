@@ -19,7 +19,6 @@ export function TitleBar({ children }: { children: ReactNode }) {
   };
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: the drag region is window chrome, not a control
     <header className="titlebar" onPointerDown={startDragging} data-testid="titlebar">
       {children}
       <WindowButtons />

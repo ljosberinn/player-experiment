@@ -98,6 +98,7 @@ describe("SongTable", () => {
       "Time",
       "Artist",
     ]);
+    // aria-sort lives on the header cell; the button inside it is the control.
     expect(screen.getByRole("columnheader", { name: /Artist/ })).toHaveAttribute(
       "aria-sort",
       "ascending",
@@ -122,7 +123,7 @@ describe("SongTable", () => {
     await renderTable();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("columnheader", { name: /Name/ }));
+    await user.click(screen.getByRole("button", { name: /Name/ }));
 
     await waitFor(() => {
       expect(useLibraryStore.getState()).toMatchObject({ sortBy: "title", direction: "asc" });
@@ -135,7 +136,7 @@ describe("SongTable", () => {
   it("flips to descending on a second click of the same header", async () => {
     await renderTable();
     const user = userEvent.setup();
-    const header = screen.getByRole("columnheader", { name: /Name/ });
+    const header = screen.getByRole("button", { name: /Name/ });
 
     await user.click(header);
     await user.click(header);

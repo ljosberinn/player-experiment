@@ -334,24 +334,43 @@ body {
 
 /* ---------- song table ---------- */
 
-.song-table {
-  display: flex;
+.song-body {
   flex: 1;
-  flex-direction: column;
-  min-height: 0;
+  overflow: auto;
+  background: var(--surface);
 }
 
-.song-header {
-  display: flex;
+/* Real table markup, laid out as blocks so rows can be absolutely positioned
+   for virtualization while keeping grid semantics for screen readers. */
+.song-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+.song-table thead {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--chrome);
   border-bottom: 1px solid var(--chrome-border);
 }
 
-.song-header-cell {
+.song-table thead tr {
+  display: flex;
+}
+
+.song-table th {
   flex: none;
+  padding: 0;
+  border-right: 1px solid var(--chrome-border);
+}
+
+.song-header-cell {
+  width: 100%;
   padding: 3px 8px;
   border: 0;
-  border-right: 1px solid var(--chrome-border);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -365,15 +384,18 @@ body {
   font-size: 8px;
 }
 
-.song-body {
-  flex: 1;
-  overflow: auto;
-  background: var(--surface);
+.song-table tbody {
+  display: block;
+  position: relative;
 }
 
 .song-row {
   display: flex;
   align-items: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   cursor: default;
 }
 
