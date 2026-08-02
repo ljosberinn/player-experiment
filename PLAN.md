@@ -169,8 +169,9 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–7 are merged to `main`; phase 8 is in review. Next up is **phase 9
-(export & polish)**.
+Phases 1–8 are merged to `main`; phase 9 is in review. That completes the
+originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
+of the later-added phases 13–16, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -181,8 +182,9 @@ Phases 1–7 are merged to `main`; phase 8 is in review. Next up is **phase 9
 | 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
 | 6 | Playlists: CRUD, drag-and-drop, reorder | ✅ merged (`8f10a3d`) |
 | 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
-| 8 | Tag editing: atomic writer + undo journal | 🔄 in review |
-| 9+ | Export & polish onwards | not started |
+| 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
+| 9 | Export & polish: JSON export, window geometry | 🔄 in review |
+| 10+ | last.fm, Sentry, tag sources, 13–16 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -197,9 +199,12 @@ take rows back out. Phase 7 adds smart playlists: a nested and/or filter built
 in a dialog, compiled to parameterized SQL and re-evaluated live. Phase 8 adds
 tag editing: one dialog for one track or five hundred, writing through a
 temp-and-rename so a crash cannot corrupt an mp3, with one undo step per edit.
+Phase 9 adds JSON export of the library, a selection or a playlist against a
+[documented schema](docs/export-schema.md), and a window that reopens where it
+was left.
 
-**Test counts.** 200 Rust (156 unit, 38 integration against generated mp3s,
-6 perf guards) and 325 frontend at 98.0% lines. CI runs
+**Test counts.** 212 Rust (168 unit, 38 integration against generated mp3s,
+6 perf guards) and 359 frontend at 97.9% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -335,6 +340,18 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   to render.
 - **The undo journal references cover art by hash**, and nothing prunes the
   `covers` table. That is what lets undo put removed artwork back.
+- **Exported settings go through an allowlist, not a denylist.** See phase 9.
+  Fail closed: an unknown key is not exported.
+- **A smart playlist exports its filter, not its members.** A membership list
+  would be a lie the moment the library changed. Exactly one of `trackIds` and
+  `filter` is present, which tells a reader which kind it holds without having
+  to trust `kind`.
+- **The export scope is derived from the view, not asked in a dialog.** A
+  selection beats an open playlist beats the library, and the button says
+  which — so it is never a guess to be verified afterwards.
+- **A maximized window stores the flag, not the bounds.** Storing the
+  maximized rectangle would restore a manually-sized window that happens to
+  fill the screen, which un-maximizing then cannot undo.
 
 ### Defects found on the first real build (2026-08-02)
 
@@ -461,7 +478,14 @@ and one was a phase that had not merged yet.
 - **Tag edits are single-threaded.** 500 files are written one after another on
   the IPC thread; the dialog has no progress and the window will sit still for
   a large batch. Worth moving to `spawn_blocking` with a progress event, the
-  way scanning already is.
+  way scanning already is. **Export has the same shape** — it builds the whole
+  document in memory on the IPC thread — and would want the same treatment at
+  a large enough library.
+- **There is no import.** Export is a one-way door: the schema is documented
+  well enough to read, but nothing reads it back. Restoring play counts onto a
+  rebuilt library is the obvious use and is not built.
+- **`sort_json` and `columns_json` are both still unused.** Per-playlist sort
+  and column configuration wait on a UI for columns at all.
 
 ---
 
@@ -568,9 +592,32 @@ are written first — they are what survives the app — and the rows follow in 
 transaction afterwards, re-read from the files rather than assumed from the
 edit.
 
-**9 — Export & polish** `feat/09-export`
+**9 — Export & polish** `feat/09-export` — 🔄 **in review**
 JSON export (full library / selection / playlist, documented stable schema),
 settings persistence, window geometry, dark mode pass, empty and error states.
+
+*As built.* `src-tauri/src/export/` assembles the document through the same
+query layer the UI uses, so an export of a playlist contains exactly what the
+playlist showed — including a smart playlist's live evaluation. It pages, so a
+library over the 1000-row query cap exports completely; there is a test for
+that, because forgetting would truncate silently. The schema is published in
+[docs/export-schema.md](docs/export-schema.md).
+
+Window geometry persists through `settings`, with the parsing and the
+on-screen check in a pure module: a remembered position on an unplugged
+monitor is the ordinary way a window becomes unreachable.
+
+*Deviation: an allowlist, not a denylist.* The plan specified a denylist so
+last.fm and Discogs credentials could never reach an export. An allowlist gets
+the same result and fails the safe way round — forgetting to deny a new
+credential leaks it, while forgetting to allow a new preference merely omits
+it. Every future secret is excluded by default rather than by memory.
+
+*Not built: the dark mode pass and the "empty and error states" sweep.* Both
+have been happening continuously — every phase added its own empty state, and
+`prefers-color-scheme` has been in place since phase 3. What is left of that
+item is a deliberate visual review, which is what phase 13 is for; doing it
+twice would be doing it badly once.
 
 **10 — last.fm scrobbling** `feat/10-lastfm`
 Depends on phase 4 (playback), since both triggers are positions in a track.

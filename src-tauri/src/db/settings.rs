@@ -8,6 +8,35 @@ use rusqlite::{Connection, OptionalExtension};
 use crate::error::AppResult;
 
 pub const VOLUME: &str = "player.volume";
+pub const WINDOW_GEOMETRY: &str = "window.geometry";
+
+/// Settings a library export is allowed to carry.
+///
+/// **An allowlist, not a denylist.** The plan called for a denylist so that
+/// last.fm and Discogs credentials could never leak into an export; an
+/// allowlist gets the same result and fails the safe way round. Forgetting to
+/// list a new credential key on a denylist leaks it; forgetting to list a new
+/// preference here merely omits it from an export, which nobody loses sleep
+/// over. Every future secret is excluded by default rather than by memory.
+const EXPORTABLE: &[&str] = &[VOLUME, WINDOW_GEOMETRY];
+
+pub fn is_exportable(key: &str) -> bool {
+    EXPORTABLE.contains(&key)
+}
+
+/// Every setting an export may include, in a stable order.
+pub fn exportable(conn: &Connection) -> AppResult<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT key, value FROM settings ORDER BY key")?;
+    let all = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(all
+        .into_iter()
+        .filter(|(key, _)| is_exportable(key))
+        .collect())
+}
 
 pub fn get(conn: &Connection, key: &str) -> AppResult<Option<String>> {
     Ok(conn
@@ -79,6 +108,27 @@ mod tests {
         let (_dir, conn) = conn();
         set(&conn, VOLUME, "0.25").unwrap();
         assert_eq!(volume(&conn).unwrap(), 0.25);
+    }
+
+    #[test]
+    fn an_export_carries_known_preferences_and_nothing_else() {
+        let (_dir, conn) = conn();
+        set(&conn, VOLUME, "0.5").unwrap();
+        set(&conn, WINDOW_GEOMETRY, "{}").unwrap();
+        // Exactly the shape phases 10 and 12 will store.
+        set(&conn, "lastfm.session_key", "super-secret").unwrap();
+        set(&conn, "discogs.token", "also-secret").unwrap();
+        // And something nobody has thought of yet.
+        set(&conn, "something.new", "unknown").unwrap();
+
+        let exported = exportable(&conn).unwrap();
+        let keys: Vec<&str> = exported.iter().map(|(key, _)| key.as_str()).collect();
+
+        assert_eq!(keys, [VOLUME, WINDOW_GEOMETRY]);
+        // The point of the allowlist: a key added later is excluded by
+        // default, rather than by someone remembering to deny it.
+        assert!(!is_exportable("something.new"));
+        assert!(!is_exportable("lastfm.session_key"));
     }
 
     #[test]

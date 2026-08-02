@@ -12,10 +12,12 @@ import {
   createSmartPlaylist,
   defaultTrackQuery,
   deletePlaylist,
+  exportLibrary,
   type FilterGroup,
   getAppInfo,
   listPlaylists,
   listWatchFolders,
+  loadWindowGeometry,
   moveInPlaylist,
   onPlayerError,
   onPlayerPosition,
@@ -35,6 +37,7 @@ import {
   queryTracks,
   removeFromPlaylist,
   renamePlaylist,
+  saveWindowGeometry,
   scanLibrary,
   setPlaylistFilter,
   type TagEdit,
@@ -123,6 +126,30 @@ describe("ipc", () => {
 
     await expect(allTrackIds(defaultTrackQuery)).resolves.toEqual([1, 2, 3]);
     expect(invokeMock).toHaveBeenCalledWith("all_track_ids", { query: defaultTrackQuery });
+  });
+
+  describe("export and settings", () => {
+    it("sends the path and the scope, and reports the count back", async () => {
+      invokeMock.mockResolvedValue(42);
+
+      await expect(
+        exportLibrary("D:/out.json", { kind: "selection", trackIds: [1, 2] }),
+      ).resolves.toBe(42);
+      expect(invokeMock).toHaveBeenCalledWith("export_library", {
+        path: "D:/out.json",
+        scope: { kind: "selection", trackIds: [1, 2] },
+      });
+    });
+
+    it("round-trips window geometry as an opaque string", async () => {
+      invokeMock.mockResolvedValue(undefined);
+      await saveWindowGeometry('{"x":1}');
+      expect(invokeMock).toHaveBeenCalledWith("save_window_geometry", { geometry: '{"x":1}' });
+
+      invokeMock.mockResolvedValue(null);
+      await expect(loadWindowGeometry()).resolves.toBeNull();
+      expect(invokeMock).toHaveBeenCalledWith("load_window_geometry");
+    });
   });
 
   describe("tags", () => {
