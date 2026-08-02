@@ -169,9 +169,9 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–9, 13 and 17 are merged to `main`; phase 14 is in review. That completes the
+Phases 1–9 and 13, 14, 17 are merged to `main`. Nothing is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
-of the later-added phases 13–18, which are independent of it.
+of the later-added phases 15, 16, 18–20, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -186,8 +186,8 @@ of the later-added phases 13–18, which are independent of it.
 | 9 | Export & polish: JSON export, window geometry | ✅ merged (`b26feae`) |
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
 | 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
-| 14 | Library totals in the footer | 🔄 in review |
-| 10+ | last.fm, Sentry, tag sources, 15, 16, 18 | not started |
+| 14 | Library totals in the footer | ✅ merged (`e079457`) |
+| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–20 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -454,6 +454,35 @@ and one was a phase that had not merged yet.
   right-click songs to locate on disk or edit) — already phase 17, which now
   also spells out that the stopgap buttons get removed there.
 
+### Defects found on the fourth real build (2026-08-02)
+
+- **Show in Explorer opened the Documents folder.** The token was right and
+  the *escaping* was wrong: `Command::arg` applies standard C-runtime rules,
+  which wrap an argument containing a space in quotes as a whole -
+  `"/select,C:\My Music\a.mp3"`. Explorer parses its own command line, cannot
+  read that, and answers an unparseable one by opening Documents. Fixed with
+  `raw_arg` and the quotes around the path only. **My test asserted the wrong
+  thing** - it checked that no quotes were added, which was precisely the
+  broken behaviour - so it passed while the feature did not work. Verified
+  this time by running both forms through `cmd /c echo` and reading the
+  command line each produced, rather than by trusting the assertion.
+- **A white flash at startup**, at the default size and position, before the
+  window jumped to the stored one. The window now starts hidden
+  (`"visible": false`) and is shown once the geometry has been applied. The
+  `show()` call sits **outside** the try that restores: a window that never
+  appears is a far worse failure than one in the wrong place.
+- **`maximize()` was never permitted** - found by the capability guard the
+  moment `show()` was added to its table, not by anyone using the app.
+  Restoring a maximized window has silently failed since phase 9. That is the
+  third ACL hole this guard has caught and the first it caught *before* it
+  shipped.
+- **The Songs / Albums / Artists / Genres tabs do nothing.** They are rendered
+  `disabled` with a "Not implemented yet" tooltip and have been since phase 3.
+  Now phase 19.
+- **Columns cannot be customized.** See the correction on phase 3 above: that
+  entry claimed resizable, reorderable and toggleable columns and was ticked
+  as merged, which is how this went unnoticed. Now phase 20.
+
 ### Known gaps carried forward
 
 - **e2e runs against a decorated window.** `decorations: false` stops the
@@ -548,9 +577,17 @@ cover extraction/dedupe, incremental rescan, `scan://progress` events. Commands:
 here.
 
 **3 — Shell UI** `feat/03-shell` — ✅ **merged** ([PR #3](https://github.com/ljosberinn/player-experiment/pull/3))
-Sidebar, LCD status display, segmented tab bar, virtualized table with
-resizable/reorderable/toggleable columns, sorting, selection model, scan
-progress. Reads real data from phase 2.
+Sidebar, LCD status display, segmented tab bar, virtualized table, sorting,
+selection model, scan progress. Reads real data from phase 2.
+
+> **Correction (2026-08-02).** This entry read "virtualized table with
+> resizable/reorderable/toggleable columns" and was ticked as merged. The
+> table shipped with a **fixed** column set: `ALL_COLUMNS` exists and
+> `columnsFor` takes ids, but the only caller passes `DEFAULT_COLUMN_IDS` and
+> there is no UI to change them. Sorting works; resizing, reordering and
+> toggling never shipped. Now phase 20. Two of the original feature
+> requirements - "adjustable column display" and "per playlist" - are still
+> outstanding, and this line made them look done.
 
 **4 — Playback** `feat/04-audio` — 🔄 **in review**
 Audio thread, transport (play/pause/stop/next/prev), seek via the LCD scrubber,
@@ -1248,6 +1285,65 @@ undo (this is where it will break), `LIKE` escaping, the field whitelist,
 and a perf-lite assertion that a lookup against a 50k-row fixture stays
 under budget. Frontend — keyboard navigation, that Escape closes the list
 before the dialog, and that the non-suggested fields have no combobox at all.
+
+---
+
+**19 — Browse by album, artist and genre** `feat/19-browse`
+The Songs / Albums / Artists / Genres tabs are rendered `disabled` with a
+"Not implemented yet" tooltip. They have been since phase 3, and they are the
+last piece of the reference layout that is chrome rather than function.
+
+- **A grouped query, not a new store.** Albums are
+  `SELECT album, album_artist, count(*), sum(duration_ms), min(cover_hash),
+  min(year) FROM tracks <scope> GROUP BY album_artist, album`, run through the
+  same `scope()` the songs table uses - so a search or an open playlist
+  narrows the album list exactly as it narrows the rows, for free.
+- **Grouping key.** `(album_artist, album)`, falling back to `artist` where
+  `album_artist` is absent, so a compilation does not shatter into one album
+  per track. Untagged files group under a single "Unknown Album" rather than
+  vanishing.
+- **Albums** is a grid of cover tiles; **Artists** and **Genres** are lists.
+  All three drill into the songs table with the corresponding filter applied,
+  which is the existing view with a query change - not a fourth table.
+- **Virtualized too.** Ten thousand mp3s is perhaps eight hundred albums and
+  three hundred artists, which is small enough to render whole and large
+  enough that doing so would be the one place in the app that stutters.
+- Cover art comes through the existing `cover://` protocol, one request per
+  album rather than per track, which is what `covers.hash` dedupes for.
+
+*Testing:* the grouping SQL against a fixture including a compilation, an
+untagged file and an album spanning two discs; a perf guard, since this is a
+`GROUP BY` over the whole library rather than a paged read; component tests
+for the drill-in and for the empty state of each tab.
+
+**20 — Column customization** `feat/20-columns`
+Two of the original requirements - "adjustable column display" and "per
+playlist" - that phase 3's plan entry claimed and phase 3 did not deliver.
+
+- **Which columns**: a right-click menu on the table header, listing every
+  entry in `ALL_COLUMNS` with a check beside the visible ones. This is the
+  header menu phase 17 deferred for want of somewhere to put it; the
+  `ContextMenu` component it needs now exists.
+- **Width**: drag a header divider. Widths are already per-column data
+  (`ColumnDef.width`), so this is a stored override rather than new plumbing.
+- **Order**: drag a header. Confirmed absent by the user on the fourth build -
+  *"it's currently not possible to reorder them, but sorting does work"* -
+  which is the split this phase inherits: clicking a header sorts, and that is
+  all a header does today. Dragging one has to become a reorder without
+  swallowing the click that sorts, so the two need a drag threshold between
+  them rather than a mode.
+- **Persistence** is what makes this per-playlist: `playlists.columns_json`
+  has been in the schema since phase 2 and has never been written. The global
+  view keeps its own row in `settings`, as planned. A playlist with no stored
+  configuration inherits the global one rather than starting bare.
+- Reset to defaults belongs in the same menu; a user who hides five columns
+  needs a way back that is not "guess which ones".
+
+*Testing:* the visible/order/width reducer as a pure function including the
+"you cannot hide every column" floor, persistence round-tripping per playlist
+and falling back to the global set, and that a hidden column that is also the
+current sort does not leave the view sorted by something invisible - the case
+that will actually bite.
 
 ---
 

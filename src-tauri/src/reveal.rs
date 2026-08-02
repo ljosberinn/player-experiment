@@ -6,35 +6,49 @@
 //! there fails only at runtime - twice now that has shipped a dead feature.
 //! Our own commands are not ACL-gated, so this route has no such trap.
 //!
-//! The argv construction is pure and tested per platform; the spawn itself is
+//! The command line is built by pure functions and tested; the spawn itself is
 //! not, because asserting that Explorer opened is not something a test can do.
 
 use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 
-/// What to run to reveal `path`, as (program, args).
+/// The **raw** command line for `explorer.exe`, quotes and all.
 ///
-/// Split out from [`reveal`] so the platform quirks below are testable without
-/// launching a file manager on the machine running the tests.
-fn argv(path: &Path) -> (&'static str, Vec<String>) {
-    let display = path.to_string_lossy().into_owned();
+/// Explorer parses its own command line rather than taking argv, and it is
+/// fussy in two ways that fight each other:
+///
+/// 1. `/select,` and the path must arrive as **one** token. Split apart,
+///    Explorer opens the parent folder with nothing highlighted.
+/// 2. A path containing a space must be **quoted**, or Explorer stops reading
+///    at the space.
+///
+/// Rust's `Command::arg` escapes for the *standard* C runtime rules, which
+/// wrap an argument containing a space in quotes as a whole -
+/// `"/select,C:\My Music\a.mp3"`. Explorer cannot parse that, and its response
+/// to a command line it cannot parse is to open the Documents folder, which is
+/// exactly the bug this fixes. So on Windows the line is built here and passed
+/// through `raw_arg` unescaped.
+#[cfg(target_os = "windows")]
+pub(crate) fn windows_command_line(path: &Path) -> String {
+    // Only the path is quoted, never the switch: the quotes have to be inside
+    // the single token, not around it.
+    format!("/select,\"{}\"", path.to_string_lossy())
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        // `/select,` and the path are **one argument**, not two: Explorer
-        // parses its own command line and treats a separated path as a folder
-        // to open rather than an item to highlight. Passing them apart opens
-        // the parent with nothing selected, which looks like it half-worked.
-        ("explorer.exe", vec![format!("/select,{display}")])
-    }
+/// What to run to reveal `path` on the platforms whose file managers take a
+/// normal argv.
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn argv(path: &Path) -> (&'static str, Vec<String>) {
+    let display = path.to_string_lossy().into_owned();
 
     #[cfg(target_os = "macos")]
     {
+        // `open` without -R would *play* the file, which is not the ask.
         ("open", vec!["-R".to_owned(), display])
     }
 
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         // No portable "select this file" on Linux - the freedesktop
         // FileManager1 D-Bus interface is not universally implemented. Opening
@@ -60,10 +74,21 @@ pub fn reveal(path: &Path) -> AppResult<()> {
         )));
     }
 
-    let (program, args) = argv(path);
-    std::process::Command::new(program)
-        .args(args)
-        .spawn()
+    #[cfg(target_os = "windows")]
+    let spawned = {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer.exe")
+            .raw_arg(windows_command_line(path))
+            .spawn()
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let spawned = {
+        let (program, args) = argv(path);
+        std::process::Command::new(program).args(args).spawn()
+    };
+
+    spawned
         .map_err(|cause| AppError::Internal(format!("Could not open the file manager: {cause}")))?;
     Ok(())
 }
@@ -80,24 +105,40 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
-    #[test]
-    fn windows_passes_the_switch_and_path_as_one_argument() {
-        let (program, args) = argv(Path::new(r"C:\Music\01 Maki.mp3"));
+    mod windows {
+        use super::*;
 
-        assert_eq!(program, "explorer.exe");
-        // Two arguments here would open the folder without selecting anything.
-        assert_eq!(args, vec![r"/select,C:\Music\01 Maki.mp3".to_owned()]);
-    }
+        #[test]
+        fn keeps_the_switch_and_path_in_one_token() {
+            let line = windows_command_line(Path::new(r"C:\Music\Maki.mp3"));
 
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn windows_keeps_spaces_without_quoting_them() {
-        let (_, args) = argv(Path::new(r"C:\My Music\a b.mp3"));
+            // Split apart, Explorer opens the parent with nothing highlighted.
+            assert_eq!(line, "/select,\"C:\\Music\\Maki.mp3\"");
+            assert!(!line.contains("/select, "));
+        }
 
-        // `Command` passes each argument through as-is; adding quotes here
-        // would put literal quote characters into the path Explorer sees.
-        assert_eq!(args, vec![r"/select,C:\My Music\a b.mp3".to_owned()]);
-        assert!(!args[0].contains('"'));
+        #[test]
+        fn quotes_a_path_containing_spaces() {
+            let line = windows_command_line(Path::new(r"C:\My Music\a b.mp3"));
+
+            // This is the case that was broken: an earlier version passed the
+            // token through `Command::arg`, which quoted the *whole* thing as
+            // `"/select,C:\My Music\a b.mp3"`. Explorer cannot parse that, and
+            // answers an unparseable command line by opening Documents.
+            assert_eq!(line, "/select,\"C:\\My Music\\a b.mp3\"");
+            assert!(line.starts_with("/select,\""));
+            assert!(line.ends_with('"'));
+        }
+
+        #[test]
+        fn quotes_wrap_only_the_path() {
+            let line = windows_command_line(Path::new(r"C:\Music\Maki.mp3"));
+
+            // Exactly two quotes, both around the path. A quote before the
+            // switch is the failure mode being guarded against.
+            assert_eq!(line.matches('"').count(), 2);
+            assert!(!line.starts_with('"'));
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -105,7 +146,6 @@ mod tests {
     fn macos_reveals_rather_than_opens() {
         let (program, args) = argv(Path::new("/Music/01 Maki.mp3"));
 
-        // `open` without -R would *play* the file, which is not the ask.
         assert_eq!(program, "open");
         assert_eq!(args, vec!["-R".to_owned(), "/Music/01 Maki.mp3".to_owned()]);
     }

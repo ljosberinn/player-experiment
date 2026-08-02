@@ -76,6 +76,18 @@ export function useWindowGeometry(): void {
         // Leave the window where the OS put it.
       }
 
+      // The window starts hidden (`"visible": false` in tauri.conf.json) so
+      // the user never sees it appear at the default size and position and
+      // then jump to the stored one. Showing it is therefore not optional:
+      // this runs even when the restore above threw, or there was nothing
+      // stored, or the effect was cancelled - a window that never shows is a
+      // far worse failure than one in the wrong place.
+      try {
+        await appWindow.show();
+      } catch {
+        // Nothing left to do about it, and nothing worth saying to the user.
+      }
+
       if (cancelled) {
         return;
       }
