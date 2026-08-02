@@ -37,6 +37,11 @@ export function SongTable({
   // Subscribing to `pages` is what re-renders rows when a page lands; `rowAt`
   // reads from the store and would otherwise look unchanged to React.
   useLibraryStore((s) => s.pages);
+  // A new query drops every cached page, so the visible range has to be
+  // fetched again - but the range itself has not moved, and neither has the
+  // row count when only the sort changed. Without this the effect below never
+  // re-runs and the table sits on placeholder rows forever.
+  const queryToken = useLibraryStore((s) => s.queryToken);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -51,11 +56,12 @@ export function SongTable({
   const firstIndex = items[0]?.index ?? 0;
   const lastIndex = items[items.length - 1]?.index ?? 0;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: queryToken is a cache key, not a value this effect reads - it changes exactly when the cached pages are dropped, which is when the visible range must be fetched again even though the range itself has not moved.
   useEffect(() => {
     if (total > 0) {
       void ensureRange(firstIndex, lastIndex);
     }
-  }, [ensureRange, firstIndex, lastIndex, total]);
+  }, [ensureRange, firstIndex, lastIndex, total, queryToken]);
 
   return (
     <div className="song-body" ref={scrollRef} data-testid="song-scroll">

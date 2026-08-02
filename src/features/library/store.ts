@@ -114,6 +114,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     try {
       const total = await countTracks(queryFor(get()));
+      // A superseded count is dropped, but `loading` is left alone rather than
+      // cleared: the query that replaced this one owns it now, and clearing it
+      // here would report "done" while that one is still running.
       if (get().queryToken !== token) {
         return;
       }
