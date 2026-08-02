@@ -1,5 +1,5 @@
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect } from "react";
 import { loadWindowGeometry, saveWindowGeometry } from "../../ipc";
 import { debounce } from "../../lib/debounce";
@@ -102,7 +102,9 @@ export function useWindowGeometry(): void {
 /** The monitors Tauri knows about, or none if it will not say. */
 async function availableScreens() {
   try {
-    const { availableMonitors } = await import("@tauri-apps/api/window");
+    // Statically imported: this module is already in the entry chunk via
+    // `getCurrentWindow` above, so a dynamic import here bought no splitting
+    // and only made Vite warn about the mixed usage.
     const monitors = await availableMonitors();
     return monitors.map((monitor) => ({
       x: monitor.position.x,
