@@ -605,6 +605,24 @@ Installers are published from CI, versioned from the commit history.
   is proven, but whether `release-please-action` picks up this config and
   whether the bundle paths are right are things only the first run answers.
 
+### release-please vs the formatter (2026-08-03)
+
+The first release PR failed `biome check`, and would have failed on every
+release after it. release-please does not patch a version in place - it parses
+the JSON, sets the field and re-serializes the whole file with its own printer.
+That rewrote `"targets": ["msi", "nsis"]` across four lines and emitted the
+manifest as `{".":"0.2.0"}`, both of which Biome then wanted to undo.
+
+- **Irreconcilable by configuration.** Biome collapses that array because it
+  fits in 100 columns; release-please always expands. No setting satisfies both.
+- **The two files are now excluded from the formatter**, not from Biome
+  entirely, so they are still linted - `Checked 89 files` is unchanged. Same
+  principle already applied to `src/ipc/bindings`: a formatter should not own a
+  file it does not write.
+- **Reproduced before fixing.** Re-serializing the config the way release-please
+  does produced exactly the two hunks CI complained about, which is what made it
+  safe to claim the exclusion was the fix rather than hoping.
+
 ### e2e wall time (2026-08-03)
 
 The smoke suite took **328s** for six assertion-only tests. It was not the
