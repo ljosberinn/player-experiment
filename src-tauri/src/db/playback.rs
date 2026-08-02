@@ -36,6 +36,20 @@ pub fn track_by_id(conn: &Connection, id: i64) -> AppResult<Option<Track>> {
     Ok(conn.query_row(&sql, [id], row_to_track).optional()?)
 }
 
+/// Loads the rows behind a set of ids, skipping any the library no longer has.
+///
+/// Order follows the caller's list, so an editor showing "3 tracks selected"
+/// lists them the way the table did.
+pub fn tracks_by_ids(conn: &Connection, ids: &[i64]) -> AppResult<Vec<Track>> {
+    let mut found = Vec::with_capacity(ids.len());
+    for &id in ids {
+        if let Some(track) = track_by_id(conn, id)? {
+            found.push(track);
+        }
+    }
+    Ok(found)
+}
+
 /// Turns a list of track ids into queue entries, preserving the caller's order.
 ///
 /// Ids the library no longer has are dropped rather than erroring: a queue

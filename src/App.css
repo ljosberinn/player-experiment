@@ -581,6 +581,31 @@ body {
   background: var(--skeleton);
 }
 
+/* ---------- tag editor ---------- */
+
+.tag-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+/* A field a save will write is marked, which matters most when the selection
+   is large and most fields are deliberately being left alone. */
+.tag-grid input.touched {
+  border-color: var(--accent);
+}
+
+.tag-cover {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-cover-note {
+  color: var(--muted);
+}
+
 /* ---------- smart playlist editor ---------- */
 
 .modal-backdrop {

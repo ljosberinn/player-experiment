@@ -169,8 +169,8 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–6 are merged to `main`; phase 7 is in review. Next up is **phase 8
-(tag editing)**.
+Phases 1–7 are merged to `main`; phase 8 is in review. Next up is **phase 9
+(export & polish)**.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -180,8 +180,9 @@ Phases 1–6 are merged to `main`; phase 7 is in review. Next up is **phase 8
 | 4 | Playback: engine, transport, play counts | ✅ merged (`eb24e87`) |
 | 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
 | 6 | Playlists: CRUD, drag-and-drop, reorder | ✅ merged (`8f10a3d`) |
-| 7 | Smart playlists: filter compiler + editor | 🔄 in review |
-| 8+ | Tag editing onwards | not started |
+| 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
+| 8 | Tag editing: atomic writer + undo journal | 🔄 in review |
+| 9+ | Export & polish onwards | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -193,10 +194,12 @@ by relevance, and puts the previous sort back when cleared. With phase 6 the
 sidebar grows a Playlists section: create, rename in place, delete, drag a
 multi-selection onto one, reorder inside it by dragging rows, and Delete to
 take rows back out. Phase 7 adds smart playlists: a nested and/or filter built
-in a dialog, compiled to parameterized SQL and re-evaluated live.
+in a dialog, compiled to parameterized SQL and re-evaluated live. Phase 8 adds
+tag editing: one dialog for one track or five hundred, writing through a
+temp-and-rename so a crash cannot corrupt an mp3, with one undo step per edit.
 
-**Test counts.** 176 Rust (148 unit, 22 integration against generated mp3s,
-6 perf guards) and 284 frontend at 98.1% lines. CI runs
+**Test counts.** 200 Rust (156 unit, 38 integration against generated mp3s,
+6 perf guards) and 325 frontend at 98.0% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -306,6 +309,32 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   nothing while the sidebar catches up.
 - **The editor stays open when the backend refuses a filter**, so a rejected
   save does not throw away what the user built.
+- **Absent means "leave alone", empty means "clear".** Every `TagEdit` field is
+  an optional string with that rule, numbers included. It is what makes a bulk
+  edit over tracks that disagree safe: the fields showing "Mixed" stay absent
+  and survive untouched on every track.
+- **A file is never edited in place.** Tags go onto a copy beside the original,
+  which then replaces it in one rename. A crash or a full disk leaves either
+  the old file or the new one, never a truncated mp3. The temp file keeps the
+  original extension as a *prefixed* marker — lofty picks its writer from the
+  extension, and `01 Maki.mp3.player-tmp` is not something it will write mp3
+  tags into. That cost an hour; the test now asserts the extension.
+- **Rows are re-read from the file, not assumed from the edit.** The file is
+  the source of truth, and a value lofty normalised on write would otherwise
+  leave the row disagreeing with the disk until the next scan. `mtime` and
+  `size` update in the same step, so an incremental rescan finds nothing to do.
+- **One bad file does not undo the good ones.** A locked or vanished file in
+  the middle of a 500-track edit is counted and reported; the rest are written.
+  Failures are not journalled, so undo will not try to restore them.
+- **Undo is one level and is not itself undoable.** A redo stack invites the
+  "undo, edit, undo" confusion; one level of certainty is worth more here than
+  two levels of guessing. Undo also has to *clear* a field the edit added,
+  which is why a snapshot restores every field rather than only changed ones.
+- **Cover mime types are sniffed from the bytes**, not trusted from the
+  extension: a `.jpg` that is really a PNG would be stored mislabelled and fail
+  to render.
+- **The undo journal references cover art by hash**, and nothing prunes the
+  `covers` table. That is what lets undo put removed artwork back.
 
 ### Defects found on the first real build (2026-08-02)
 
@@ -374,10 +403,20 @@ Running the app against a real library surfaced three, all fixed in
 - **A smart playlist has no sort of its own.** `playlists.sort_json` is still
   unused; a smart playlist opens in the library's default order and the user
   sorts by column. Belongs with the same work as `columns_json`.
-- **The filter dialog has no focus trap and no Escape-to-close.** It is a
-  `div` with `role="dialog"` rather than `<dialog>`, because the native element
-  needs `showModal()` from an effect and jsdom does not implement it. Worth
+- **Neither dialog has a focus trap or Escape-to-close.** Both are a `div` with
+  `role="dialog"` rather than `<dialog>`, because the native element needs
+  `showModal()` from an effect and jsdom does not implement it. Worth
   revisiting in the phase 13 native-feel pass.
+- **`covers` is never pruned.** Undo depends on that, but it means artwork
+  replaced a hundred times leaves a hundred rows. A vacuum that keeps anything
+  referenced by `tracks` or `tag_undo` would be safe; nothing needs it yet.
+- **The undo journal is unbounded.** Every edit adds a row per track and
+  nothing trims it, so a library edited for years accumulates them. Capping it
+  to the last N batches is a one-line delete whenever it matters.
+- **Tag edits are single-threaded.** 500 files are written one after another on
+  the IPC thread; the dialog has no progress and the window will sit still for
+  a large batch. Worth moving to `spawn_blocking` with a progress event, the
+  way scanning already is.
 
 ---
 
@@ -464,10 +503,25 @@ path-addressed function, and `SmartPlaylistEditor.tsx` is a dialog over it.
 Field/operator compatibility is enforced in the editor *and* validated by the
 backend, which compiles a filter before storing it.
 
-**8 — Tag editing** `feat/08-tags`
-Single and bulk editor (mixed-value "—" fields that only write when touched),
+**8 — Tag editing** `feat/08-tags` — 🔄 **in review**
+Single and bulk editor (mixed-value fields that only write when touched),
 cover art replace/remove, atomic writer, undo journal and an "Undo last edit"
-affordance. DB rows update in the same transaction as the file write batch.
+affordance.
+
+*As built.* `tags/write.rs` holds the writer. Migration 3 finally creates
+`tag_undo`, which the original schema planned but never built. A `TagEdit`
+carries every field as an optional string: absent means "leave it alone",
+empty means "clear it" — that one distinction is the whole mixed-value
+contract, and it is what lets a bulk edit over disagreeing tracks be safe.
+Frontend: `features/editor/fields.ts` decides what a field shows across a
+selection and what a save sends; `TagEditor.tsx` is a dialog over it, used
+identically for one track and for five hundred.
+
+*Correction to the plan's wording.* Files and database rows are **not** in one
+transaction, because a filesystem write cannot join a SQL transaction. Files
+are written first — they are what survives the app — and the rows follow in one
+transaction afterwards, re-read from the files rather than assumed from the
+edit.
 
 **9 — Export & polish** `feat/09-export`
 JSON export (full library / selection / playlist, documented stable schema),

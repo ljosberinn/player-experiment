@@ -5,6 +5,7 @@ import {
   addToPlaylist,
   addWatchFolder,
   allTrackIds,
+  canUndoTagEdit,
   countTracks,
   coverUrl,
   createPlaylist,
@@ -36,6 +37,10 @@ import {
   renamePlaylist,
   scanLibrary,
   setPlaylistFilter,
+  type TagEdit,
+  tracksByIds,
+  undoTagEdit,
+  writeTags,
 } from "./index";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: vi.fn() }));
@@ -118,6 +123,49 @@ describe("ipc", () => {
 
     await expect(allTrackIds(defaultTrackQuery)).resolves.toEqual([1, 2, 3]);
     expect(invokeMock).toHaveBeenCalledWith("all_track_ids", { query: defaultTrackQuery });
+  });
+
+  describe("tags", () => {
+    it("loads the rows behind a selection by id", async () => {
+      invokeMock.mockResolvedValue([]);
+
+      await tracksByIds([1, 2]);
+
+      expect(invokeMock).toHaveBeenCalledWith("tracks_by_ids", { trackIds: [1, 2] });
+    });
+
+    it("sends the edit alongside the tracks it applies to", async () => {
+      const edit: TagEdit = {
+        title: null,
+        artist: null,
+        album: null,
+        albumArtist: null,
+        genre: "Dream Pop",
+        comment: null,
+        year: null,
+        trackNo: null,
+        discNo: null,
+        cover: { kind: "remove" },
+      };
+      invokeMock.mockResolvedValue({ written: 2, failed: 0, errors: [] });
+
+      await expect(writeTags([1, 2], edit)).resolves.toEqual({
+        written: 2,
+        failed: 0,
+        errors: [],
+      });
+      expect(invokeMock).toHaveBeenCalledWith("write_tags", { trackIds: [1, 2], edit });
+    });
+
+    it("undoes and reports whether there is anything to undo", async () => {
+      invokeMock.mockResolvedValue({ written: 1, failed: 0, errors: [] });
+      await undoTagEdit();
+      expect(invokeMock).toHaveBeenCalledWith("undo_tag_edit");
+
+      invokeMock.mockResolvedValue(true);
+      await expect(canUndoTagEdit()).resolves.toBe(true);
+      expect(invokeMock).toHaveBeenCalledWith("can_undo_tag_edit");
+    });
   });
 
   describe("playlists", () => {

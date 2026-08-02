@@ -96,4 +96,23 @@ CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
     VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre, new.comment);
 END;
 "#,
+    // 3 - the tag-edit undo journal
+    //
+    // Planned with the original schema but only built now, with the writer
+    // that fills it. One row per track per edit; `batch_id` groups the tracks
+    // one user action touched, so undo restores all of them together.
+    //
+    // ON DELETE CASCADE rather than keeping orphans: a track removed from the
+    // library has no file left to restore tags to.
+    r#"
+CREATE TABLE tag_undo (
+    id             INTEGER PRIMARY KEY,
+    batch_id       INTEGER NOT NULL,
+    track_id       INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    prev_tags_json TEXT NOT NULL,
+    applied_at     INTEGER NOT NULL
+);
+
+CREATE INDEX idx_tag_undo_batch ON tag_undo(batch_id);
+"#,
 ];
