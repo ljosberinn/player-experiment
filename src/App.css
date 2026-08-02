@@ -974,3 +974,22 @@ body:not(:focus-within) .sidebar-row.current {
   background: #c0392b;
   color: #fff;
 }
+
+/* The update prompt replaces the version in the corner rather than adding a
+   second thing to read. It is the only part of updating the user ever sees. */
+.statusbar-update {
+  grid-column: 3;
+  justify-self: end;
+  padding: 1px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: default;
+}
+
+.statusbar-update:disabled {
+  border-color: var(--chrome-border);
+  color: var(--muted);
+}
