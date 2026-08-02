@@ -167,22 +167,84 @@ repo.
 
 ---
 
+## Status — 2026-08-02
+
+Phases 1–3 are merged to `main`. Next up is **phase 4 (playback)**.
+
+| | Phase | State |
+| --- | --- | --- |
+| 1 | Scaffold + CI gate | ✅ merged (`75dd29c`) |
+| 2 | Library core: schema, scan, queries | ✅ merged (`571b5c7`) |
+| 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
+| 4+ | Playback onwards | not started |
+
+**What works today.** Point the app at a folder, scan it, and browse the result:
+sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
+multi-select, cover art over the `cover://` protocol, live scan progress. No
+playback yet — the transport controls render disabled on purpose rather than
+pretending to work.
+
+**Test counts.** 49 Rust (31 unit, 11 integration against generated mp3s,
+5 perf guards, 2 doc-level) and 101 frontend at 99.4% lines. CI runs
+frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
+
+### Decisions taken since this plan was written
+
+- **Custom title bar.** `decorations: false` with our own drag region and
+  window buttons, so transport, status display and search share one bar.
+- **Placeholder rows.** Pages not yet fetched render skeleton rows; scrolling
+  never blocks on IPC. Pages beyond a radius of the viewport are evicted, which
+  a test pins by walking all 250 pages of a 50k library.
+- **`all_track_ids` command.** "Select all" needs ids, not rows — routing it
+  through the paged query would have silently capped a 50k selection at 1000.
+- **`i64` fields are annotated `number`, not ts-rs's default `bigint`.** These
+  cross as JSON and `JSON.parse` never produces a bigint, so the default
+  described a value the frontend never receives.
+- **Real `<table>` markup**, not divs with ARIA roles, after Biome's a11y rules
+  correctly objected. `aria-rowcount` carries the true library size even though
+  only a window is in the DOM.
+- **Git hooks** (`.githooks/`, wired by the `prepare` script): pre-commit runs
+  Biome on staged files and `cargo fmt --check`; pre-push adds repo-wide Biome,
+  typecheck and rustfmt on top of the `main` block. Added after a Biome failure
+  reached CI because its exit code went unread locally.
+
+### Known gaps carried forward
+
+- **e2e runs against a decorated window.** `decorations: false` stops the
+  embedded WebDriver from ever seeing the Tauri webview — scripts execute but
+  `__TAURI_INTERNALS__` never appears, so the harness times out. `tauri.wdio.conf.json`
+  therefore pins `decorations: true` for the e2e build only. Cost: the frameless
+  window, custom title bar, drag region and window buttons are **not covered
+  end-to-end**; they have component tests only. Worth revisiting if
+  `@wdio/tauri-service` gains a fix.
+- **`@wdio/native-utils` is pinned via `overrides` to 2.5.0.** `@wdio/tauri-service@1.2.0`
+  imports a symbol from the 2.4.0 it pins, which 2.4.0 does not export — the
+  package cannot be imported as published. Drop the override once upstream
+  repins.
+- **Footer totals are counts only.** Duration and size need a library-wide
+  aggregate query that does not exist yet.
+- **Column reorder/resize** is data-driven in `columns.ts` but has no UI.
+- **`main` is not protected server-side** — GitHub gates that behind Pro for
+  private repos. The pre-push hook is advisory only.
+
+---
+
 ## Implementation phases
 
 Each phase is one branch and one PR, green CI required.
 
-**1 — Scaffold** `feat/01-scaffold` — *in review, [PR #1](https://github.com/ljosberinn/player-experiment/pull/1)*
+**1 — Scaffold** `feat/01-scaffold` — ✅ **merged** ([PR #1](https://github.com/ljosberinn/player-experiment/pull/1))
 Tauri v2 + Vite + React + strict TS, Biome, Vitest, ts-rs binding generation,
 the CI workflow, `cargo-deny` policy, branch protection. Deliverable: window
 opens, CI green.
 
-**2 — Library core** `feat/02-db-scan`
+**2 — Library core** `feat/02-db-scan` — ✅ **merged** ([PR #2](https://github.com/ljosberinn/player-experiment/pull/2))
 Migrations, the schema above, `walkdir` + `rayon` scan with `lofty` tag read,
 cover extraction/dedupe, incremental rescan, `scan://progress` events. Commands:
 `add_watch_folder`, `scan`, `query_tracks`, `count_tracks`. The perf guard lands
 here.
 
-**3 — Shell UI** `feat/03-shell`
+**3 — Shell UI** `feat/03-shell` — ✅ **merged** ([PR #3](https://github.com/ljosberinn/player-experiment/pull/3))
 Sidebar, LCD status display, segmented tab bar, virtualized table with
 resizable/reorderable/toggleable columns, sorting, selection model, scan
 progress. Reads real data from phase 2.
@@ -250,6 +312,153 @@ scrobble at 50% *or 4 minutes, whichever comes first*, and to skip tracks
 under 30 seconds. The 50% trigger above is what was asked for; the 4-minute
 cap and 30-second floor are worth adding as they cost nothing and stop long
 tracks from never scrobbling.
+
+**11 — Crash & error reporting** `feat/11-sentry`
+Optional, opt-in Sentry integration via
+[`tauri-plugin-sentry`](https://github.com/timfish/sentry-tauri) (crate
+`tauri-plugin-sentry`, npm `tauri-plugin-sentry-api`). Depends on nothing;
+sequenced last because it is diagnostics, not product.
+
+*Why it fits.* The plugin initializes `@sentry/browser` in the webview but
+routes its events and breadcrumbs **through Rust over `invoke`** rather than
+over HTTP. That gives three things a plain browser SDK cannot:
+
+- One event stream. A React render error and a `rusqlite` failure during a 50k
+  scan land in the same issue list with the same OS/device/release context, and
+  breadcrumbs from both sides are merged into one timeline.
+- Native crash reports. The optional `minidump` feature (via
+  `sentry-rust-minidump`) captures hard crashes — the audio thread, `symphonia`
+  decode on a malformed mp3, a panic inside the `rayon` scan pool. This is
+  exactly the failure class that is otherwise invisible: the window disappears
+  and no JS handler ever runs.
+- No CSP change. Because the browser transport is IPC, `connect-src` never has
+  to be opened to `*.sentry.io`; the current `default-src 'self'` policy stands
+  as written.
+
+*Steps.*
+
+1. `src-tauri/Cargo.toml`: `sentry = "0.42"`, `tauri-plugin-sentry = "0.5"`
+   (with `features = ["minidump"]` once step 6 is decided). **`sentry` must be
+   pinned to 0.42** — see the version-lag note below.
+2. `npm i tauri-plugin-sentry-api` (only needed for the manual-init path in
+   step 5; the default injection path needs no npm package).
+3. Add `"sentry:default"` to `permissions` in
+   [src-tauri/capabilities/default.json](src-tauri/capabilities/default.json).
+4. In [src-tauri/src/lib.rs](src-tauri/src/lib.rs), before
+   `tauri::Builder::default()`: build the client with `sentry::init`, hold the
+   guard for the process lifetime, then `.plugin(tauri_plugin_sentry::init(&client))`.
+   Set `release` from `env!("CARGO_PKG_VERSION")` and `environment` from the
+   build profile so dev noise is separable.
+5. Decide injection: default auto-injection is one line; `init_with_no_injection()`
+   plus a frontend `Sentry.init({ ...defaultOptions })` is needed to add
+   `tracesSampleRate`, `beforeSend`, or the React error-boundary integration.
+   Prefer the manual path — the scrubbing in step 8 has to run on both sides.
+6. Minidumps: `tauri_plugin_sentry::minidump::init(&client)` **restarts the
+   current executable** in crash-reporter mode, so everything above that call
+   runs twice. Keep it as the first statement in `run()`, and verify it against
+   the `wdio` feature build before enabling it in CI.
+7. DSN: read from a build-time env var (`option_env!`), not a literal. It is not
+   a secret, but absent-DSN must be a supported state — see step 8.
+8. **Opt-in and scrubbing.** This is the second outbound network dependency
+   after last.fm, and the more sensitive one: file paths, folder names, track
+   titles and artists are personal data, and Sentry captures them incidentally
+   through error messages, breadcrumbs and `rusqlite` errors carrying a path. So:
+   a settings toggle defaulting to **off**, no client initialized at all while
+   it is off, and a `before_send`/`before_breadcrumb` pair that replaces any
+   absolute path with its basename hash and drops event `extra` wholesale. The
+   `settings` denylist that already keeps last.fm credentials out of JSON export
+   covers the DSN too.
+9. `deny.toml`: `sentry` pulls in `reqwest` and a TLS stack, so re-run
+   `cargo deny check` and expect new advisories/licenses to triage. Licenses are
+   fine as-is (`tauri-plugin-sentry` and `sentry-rust-minidump` are
+   `MIT OR Apache-2.0`, `sentry` is `MIT` — all already on the allow list).
+10. Tests: `before_send` scrubbing gets unit tests against fabricated events
+    containing a real-looking Windows path; a disabled-toggle test asserts no
+    client is constructed. Nothing in CI may talk to sentry.io.
+
+*Caveats, weighed.*
+
+- **Version lag.** `tauri-plugin-sentry` 0.5.0 (Sept 2025) pins `sentry ^0.42`
+  while `sentry` is at 0.49. Taking the plugin means holding `sentry` back two
+  years of releases, and the two must agree or the shared types stop lining up.
+- **Unreleased fix on master.** The most recent commit (Feb 2026, "disable
+  tauri's default features") is not in any published version. Consuming it needs
+  a git dependency, which `deny.toml`'s `[sources] unknown-git = "deny"` forbids
+  — relaxing that is a deliberate decision, not a workaround to slip in.
+- **Maintenance.** Single-maintainer project, 234 stars, ~126k recent crate
+  downloads, no release in 11 months. Healthy enough to adopt, not healthy
+  enough to depend on for a fast Tauri-3 or `sentry` 0.5x migration.
+- **The minidump child process** is a second copy of the app in the process
+  list; expect antivirus curiosity on Windows and a conversation with the e2e
+  harness. Without the `ipc` feature, native crashes arrive with no breadcrumbs,
+  user or tags — bare stack only.
+- **Alternative if the above sours:** `@sentry/browser` in the webview plus
+  `sentry` in Rust, initialized independently. Loses the merged context and the
+  CSP-free transport, gains an unpinned `sentry` and one less dependency to
+  track. Worth keeping in the back pocket.
+
+**12 — Online tag lookup (MusicBrainz + Discogs)** `feat/12-tag-sources`
+Depends on phase 8 (tag writing) — this only produces a candidate tag set; phase
+8's atomic writer and undo journal apply it.
+
+*How Mp3tag does it, and whether we can.* Mp3tag's mechanism is public, not
+reverse-engineered: the [Web Sources
+Framework](https://docs.mp3tag.de/tag-sources/development/) reads plain-text
+`*.src` (plus optional `*.inc`/`*.settings`) files from a `sources` folder. Each
+declares `[BasedOn]`, `[IndexUrl]` (the search endpoint, `%s` = user input),
+`[AlbumUrl]`, `[Encoding]`, `[WordSeparator]`, then a small stack-based parser
+script that walks the response; since the JSON extension (`json_foreach`,
+`json_select`, `json_select_many`) it prefers a site's JSON API over scraping
+its HTML. The shipped `Discogs.src` is exactly this, pointed at the public
+Discogs API. So Mp3tag has no private arrangement with either service — it is an
+ordinary API client with a data-driven request/parse layer.
+
+We should **call the same public APIs directly** from Rust rather than port the
+`.src` DSL. The DSL exists so non-programmers can add sources without a rebuild;
+our equivalent is two typed clients, and that trade only flips if we ever want
+user-contributed sources.
+
+- **MusicBrainz** — no authentication for reads. `GET
+  /ws/2/release?query=…&fmt=json` to search, `GET
+  /ws/2/release/<mbid>?inc=recordings+artist-credits+labels&fmt=json` for the
+  tracklist. Free for non-commercial use. Two hard rules: **max 1 request/sec**
+  (IP-level, exceeding it gets the IP blocked) and a **meaningful User-Agent**
+  identifying the app, version and a contact URL. Both go in the client, not at
+  call sites — a shared rate-limiter guard, and a UA built from
+  `CARGO_PKG_NAME`/`CARGO_PKG_VERSION`.
+- **Cover art** — [Cover Art Archive](https://musicbrainz.org/doc/Cover_Art_Archive/API),
+  keyed by the same release MBID (`https://coverartarchive.org/release/<mbid>`).
+  No auth, no key. Feeds straight into the existing `covers` table and
+  `cover://<hash>` protocol.
+- **Discogs** — richer for electronic/vinyl releases, but authentication has
+  been mandatory since Aug 2014. 25 req/min unauthenticated, 60 req/min
+  authenticated; **image URLs require authentication at all**. Registering an
+  app is free. The wrinkle for an open-source client is that OAuth 1.0a wants a
+  consumer key *and secret* baked into the binary, where it is not actually
+  secret. Avoid that: use **Discogs personal access token**, entered by the user
+  in the same settings pane as the last.fm credentials and stored the same way
+  (`settings`, on the export denylist). Discogs then stays a strictly opt-in
+  second source, and the feature is fully useful with MusicBrainz alone.
+
+*Cost:* nothing. Both services are free at this scale; only Discogs needs the
+user to hold an account.
+
+*Shape.* `src-tauri/src/tagsource/` with a `TagSource` trait
+(`search(query) -> Vec<ReleaseSummary>`, `fetch(id) -> ReleaseDetail`) and one
+impl per provider, over an injected HTTP transport so tests run offline exactly
+like the last.fm client. Commands: `tagsource_search`, `tagsource_fetch`. The UI
+mirrors Mp3tag's flow because it is the right one — search per album, pick a
+result, then a **confirm dialog** mapping remote tracks to selected files (with
+manual reorder) and per-field checkboxes, so nothing is written unreviewed.
+Never automatic, never bulk-applied without confirmation.
+
+*Testing:* recorded JSON fixtures for search/lookup parsing incl. multi-disc and
+various-artists releases; the rate limiter asserted to serialize concurrent
+calls at ≥1s spacing; a missing/404 cover treated as "no cover", not an error;
+UA header asserted present. One `#[ignore]`d live test per provider.
+
+*Note on scope:* third outbound network dependency, and like the other two it
+must be inert when unused — no request unless the user opens the lookup dialog.
 
 ---
 
