@@ -116,28 +116,36 @@ input[type="radio"] {
   border-bottom: 1px solid var(--chrome-border);
 }
 
+/* A compact cluster in the top-right corner, after Discord's, rather than the
+   full-height 44px caption buttons Windows uses. This bar is tall enough to
+   hold the status display, and stretching the buttons down it made three
+   oversized bands where an application wants a quiet corner.
+
+   Still pulled flush with the top edge: the top-right corner is the one place
+   a caption button has to be hittable by throwing the pointer at it, and a
+   dead strip above would swallow exactly that. The bottom of the column is no
+   longer button, which costs nothing - nobody aims there. */
 .window-buttons {
   display: flex;
-  align-self: stretch;
-  /* Cancels the bar's vertical padding so the buttons reach the very top and
-     bottom edges, as Windows' own caption buttons do. `align-self: stretch`
-     alone only fills the content box, leaving a dead strip above and below
-     that swallows clicks aimed at the corner. Must match `.titlebar`. */
-  margin-block: -6px;
+  align-self: start;
+  margin-block-start: -6px;
 }
 
 .window-buttons button {
-  width: 44px;
+  width: 34px;
+  height: 30px;
   border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   font-family: "Segoe MDL2 Assets", "Segoe Fluent Icons", sans-serif;
   font-size: 10px;
   cursor: default;
 }
 
 .window-buttons button:hover {
-  background: rgba(128, 128, 128, 0.25);
+  background: rgb(128 128 128 / 20%);
+  color: var(--text);
 }
 
 .window-buttons button.close:hover {
@@ -270,7 +278,8 @@ input[type="radio"] {
 }
 
 .search {
-  width: 190px;
+  /* 190px plus the 30px the narrower caption buttons gave back. */
+  width: 220px;
   height: 22px;
   /* Right padding leaves room for the clear button to sit inside the field. */
   padding: 0 22px 0 8px;

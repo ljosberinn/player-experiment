@@ -547,6 +547,12 @@ Small enough to do rather than schedule:
   the nearest positioned ancestor, the panel being `fixed`. One
   `position: relative` on the row, plus a stylesheet-guard assertion that the
   pair stays together, since the two rules are meaningless apart.
+- **The caption buttons were oversized.** 44px wide and stretched down a bar
+  tall enough to hold the status display, which made three large bands where
+  an app wants a quiet corner. Now a compact 34x30 cluster after Discord's,
+  still pulled flush with the top edge - the top-right corner has to stay
+  hittable by throwing the pointer at it - with the reclaimed width given to
+  the search field, as asked.
 - **Media keys do not work unfocused** - correct for a window-scoped
   `keydown` listener, wrong for a music player. Now phase 22, which registers
   the media keys with the OS and deliberately does **not** register Space:
