@@ -10,7 +10,8 @@ use crate::model::{Track, TrackQuery};
 
 /// Table-qualified: `tracks_fts` carries columns of the same names, so an
 /// unqualified list is ambiguous the moment a search joins it in.
-const COLUMNS: &str = "tracks.id, tracks.path, tracks.duration_ms, tracks.title, tracks.artist, \
+pub(crate) const COLUMNS: &str =
+    "tracks.id, tracks.path, tracks.duration_ms, tracks.title, tracks.artist, \
                        tracks.album, tracks.album_artist, tracks.genre, tracks.year, \
                        tracks.track_no, tracks.disc_no, tracks.comment, tracks.bitrate, \
                        tracks.sample_rate, tracks.cover_hash, tracks.added_at, \
@@ -20,7 +21,7 @@ const COLUMNS: &str = "tracks.id, tracks.path, tracks.duration_ms, tracks.title,
 /// library and blow up the IPC payload.
 pub const MAX_LIMIT: u32 = 1_000;
 
-fn row_to_track(row: &Row<'_>) -> rusqlite::Result<Track> {
+pub(crate) fn row_to_track(row: &Row<'_>) -> rusqlite::Result<Track> {
     Ok(Track {
         id: row.get(0)?,
         path: row.get(1)?,

@@ -16,7 +16,16 @@ const OVERSCAN = 12;
  * Virtualization comes from CSS - thead/tbody are laid out as blocks so rows
  * can be absolutely positioned.
  */
-export function SongTable({ columns }: { columns: ColumnDef[] }) {
+export function SongTable({
+  columns,
+  onActivate,
+  nowPlayingId = null,
+}: {
+  columns: ColumnDef[];
+  /** Double-click or Enter on a row: play the library from that row. */
+  onActivate?: (rowIndex: number) => void;
+  nowPlayingId?: number | null;
+}) {
   const total = useLibraryStore((s) => s.total);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const direction = useLibraryStore((s) => s.direction);
@@ -101,17 +110,22 @@ export function SongTable({ columns }: { columns: ColumnDef[] }) {
                   "song-row",
                   item.index % 2 === 1 ? "odd" : "",
                   track && isSelected(selection, track.id) ? "selected" : "",
+                  track && track.id === nowPlayingId ? "playing" : "",
                   track ? "" : "placeholder",
                 ]
                   .filter(Boolean)
                   .join(" ")}
                 style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
                 onClick={select}
+                onDoubleClick={() => onActivate?.(item.index)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+                  if (event.key === "Enter") {
                     event.preventDefault();
                     select(event);
+                    onActivate?.(item.index);
                   }
+                  // Space is deliberately not handled: it is the global
+                  // play/pause shortcut and has to reach the window.
                 }}
               >
                 {columns.map((column) => (

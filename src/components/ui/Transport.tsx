@@ -1,10 +1,8 @@
 /**
  * Transport controls and volume.
  *
- * Presentational in this phase: playback lands in phase 4, so the handlers are
- * optional and the buttons disable themselves when nothing is wired up. That
- * keeps the chrome honest rather than showing controls that silently do
- * nothing.
+ * Handlers are optional and a button without one disables itself, so the
+ * chrome can never show a control that silently does nothing.
  */
 export function Transport({
   playing = false,

@@ -1,6 +1,9 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "./bindings/AppInfo";
+import type { PlaybackStatus } from "./bindings/PlaybackStatus";
+import type { PlayerPosition } from "./bindings/PlayerPosition";
+import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
 import type { ScanProgress } from "./bindings/ScanProgress";
 import type { ScanSummary } from "./bindings/ScanSummary";
 import type { SortDirection } from "./bindings/SortDirection";
@@ -8,7 +11,18 @@ import type { SortField } from "./bindings/SortField";
 import type { Track } from "./bindings/Track";
 import type { TrackQuery } from "./bindings/TrackQuery";
 
-export type { AppInfo, ScanProgress, ScanSummary, SortDirection, SortField, Track, TrackQuery };
+export type {
+  AppInfo,
+  PlaybackStatus,
+  PlayerPosition,
+  PlayerSnapshot,
+  ScanProgress,
+  ScanSummary,
+  SortDirection,
+  SortField,
+  Track,
+  TrackQuery,
+};
 
 /**
  * Typed wrappers around `invoke`. Components never call `invoke` directly, so
@@ -51,6 +65,68 @@ export function allTrackIds(query: TrackQuery): Promise<number[]> {
 
 export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {
   return listen<ScanProgress>("scan://progress", (event) => handler(event.payload));
+}
+
+/**
+ * Replaces the play queue with `trackIds` and starts at `index`.
+ *
+ * Ids rather than rows: the backend resolves paths and durations itself, so a
+ * queue can never carry stale metadata, and the frontend already has the id
+ * list for the current view.
+ */
+export function playerPlay(trackIds: number[], index: number): Promise<void> {
+  return invoke<void>("player_play", { trackIds, index });
+}
+
+export function playerToggle(): Promise<void> {
+  return invoke<void>("player_toggle");
+}
+
+export function playerPause(): Promise<void> {
+  return invoke<void>("player_pause");
+}
+
+export function playerResume(): Promise<void> {
+  return invoke<void>("player_resume");
+}
+
+export function playerStop(): Promise<void> {
+  return invoke<void>("player_stop");
+}
+
+export function playerNext(): Promise<void> {
+  return invoke<void>("player_next");
+}
+
+export function playerPrevious(): Promise<void> {
+  return invoke<void>("player_previous");
+}
+
+export function playerSeek(positionMs: number): Promise<void> {
+  return invoke<void>("player_seek", { positionMs });
+}
+
+export function playerSetVolume(volume: number): Promise<void> {
+  return invoke<void>("player_set_volume", { volume });
+}
+
+/** The current state, for a window that started after playback did. */
+export function playerSnapshot(): Promise<PlayerSnapshot> {
+  return invoke<PlayerSnapshot>("player_snapshot");
+}
+
+export function onPlayerState(handler: (snapshot: PlayerSnapshot) => void): Promise<UnlistenFn> {
+  return listen<PlayerSnapshot>("player://state", (event) => handler(event.payload));
+}
+
+/** Playhead ticks, a few times a second while something is playing. */
+export function onPlayerPosition(handler: (position: PlayerPosition) => void): Promise<UnlistenFn> {
+  return listen<PlayerPosition>("player://position", (event) => handler(event.payload));
+}
+
+/** Playback problems the user should see: an unreadable file, no audio device. */
+export function onPlayerError(handler: (message: string) => void): Promise<UnlistenFn> {
+  return listen<string>("player://error", (event) => handler(event.payload));
 }
 
 /**

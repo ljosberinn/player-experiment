@@ -1,5 +1,7 @@
+pub mod playback;
 pub mod query;
 pub mod schema;
+pub mod settings;
 
 use std::path::{Path, PathBuf};
 

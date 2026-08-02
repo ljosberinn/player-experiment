@@ -222,4 +222,57 @@ describe("SongTable", () => {
       expect([...useLibraryStore.getState().selection.ids]).toEqual([1]);
     });
   });
+
+  it("activates a row on double click, reporting its index not its id", async () => {
+    const onActivate = vi.fn();
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} onActivate={onActivate} />);
+    await waitFor(() => expect(screen.getByText("Track 3")).toBeInTheDocument());
+
+    const user = userEvent.setup();
+    await user.dblClick(screen.getByText("Track 3").closest(".song-row") as HTMLElement);
+
+    expect(onActivate).toHaveBeenCalledWith(3);
+  });
+
+  it("activates a row with Enter, so the keyboard reaches playback too", async () => {
+    const onActivate = vi.fn();
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} onActivate={onActivate} />);
+    await waitFor(() => expect(screen.getByText("Track 2")).toBeInTheDocument());
+
+    const user = userEvent.setup();
+    (screen.getByText("Track 2").closest(".song-row") as HTMLElement).focus();
+    await user.keyboard("{Enter}");
+
+    expect(onActivate).toHaveBeenCalledWith(2);
+  });
+
+  it("leaves space alone so it reaches the global play/pause shortcut", async () => {
+    const onActivate = vi.fn();
+    const onWindowKeyDown = vi.fn();
+    window.addEventListener("keydown", onWindowKeyDown);
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} onActivate={onActivate} />);
+    await waitFor(() => expect(screen.getByText("Track 1")).toBeInTheDocument());
+
+    const user = userEvent.setup();
+    (screen.getByText("Track 1").closest(".song-row") as HTMLElement).focus();
+    await user.keyboard(" ");
+
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(onWindowKeyDown).toHaveBeenCalled();
+    expect(onWindowKeyDown.mock.calls.at(-1)?.[0].defaultPrevented).toBe(false);
+    window.removeEventListener("keydown", onWindowKeyDown);
+  });
+
+  it("marks the row that is playing", async () => {
+    await useLibraryStore.getState().refresh();
+    const { container } = render(<SongTable columns={columns} nowPlayingId={4} />);
+    await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
+
+    const playing = container.querySelectorAll(".song-row.playing");
+    expect(playing).toHaveLength(1);
+    expect(playing[0]).toHaveTextContent("Track 4");
+  });
 });

@@ -61,4 +61,29 @@ describe("application shell", () => {
     await expect(browser.$("//button[text()='Add Folder…']")).toBeExisting();
     await expect(browser.$("//button[text()='Rescan']")).toBeExisting();
   });
+
+  it("wires the transport up to a player that is actually running", async () => {
+    // With an empty library there is nothing to play, but the buttons must be
+    // live rather than the disabled placeholders of the pre-playback shell:
+    // that is what proves the player thread started and the commands exist.
+    // CI runners have no audio device, so the app falls back to a null sink -
+    // deliberately, since refusing to start there would be worse.
+    for (const label of ["Previous", "Play", "Next"]) {
+      const button = browser.$(`button[aria-label='${label}']`);
+      await expect(button).toBeExisting();
+      await expect(button).toBeEnabled();
+    }
+
+    await expect(browser.$("input[aria-label='Volume']")).toBeExisting();
+  });
+
+  it("survives a play command with an empty queue", async () => {
+    // A round trip through player_toggle: if the command were missing or the
+    // player thread had died, invoke would reject and the store would put the
+    // message in the alert region.
+    await browser.$("button[aria-label='Play']").click();
+
+    await browser.pause(500);
+    await expect(browser.$(".content-error")).not.toBeExisting();
+  });
 });

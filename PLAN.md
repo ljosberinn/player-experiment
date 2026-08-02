@@ -169,23 +169,26 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–3 are merged to `main`. Next up is **phase 4 (playback)**.
+Phases 1–3 are merged to `main`; phase 4 (playback) is in review. Next up is
+**phase 5 (search)**.
 
 | | Phase | State |
 | --- | --- | --- |
 | 1 | Scaffold + CI gate | ✅ merged (`75dd29c`) |
 | 2 | Library core: schema, scan, queries | ✅ merged (`571b5c7`) |
 | 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
-| 4+ | Playback onwards | not started |
+| 4 | Playback: engine, transport, play counts | 🔄 in review (`feat/04-audio`) |
+| 5+ | Search onwards | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
-multi-select, cover art over the `cover://` protocol, live scan progress. No
-playback yet — the transport controls render disabled on purpose rather than
-pretending to work.
+multi-select, cover art over the `cover://` protocol, live scan progress. With
+phase 4, double-clicking a row plays the whole view from that point: transport
+buttons, a draggable scrubber, volume that survives a restart, automatic queue
+advance, and play counts written back to the library.
 
-**Test counts.** 49 Rust (31 unit, 11 integration against generated mp3s,
-5 perf guards, 2 doc-level) and 101 frontend at 99.4% lines. CI runs
+**Test counts.** 93 Rust (72 unit, 16 integration against generated mp3s,
+5 perf guards) and 166 frontend at 99.4% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -207,6 +210,20 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   Biome on staged files and `cargo fmt --check`; pre-push adds repo-wide Biome,
   typecheck and rustfmt on top of the `main` block. Added after a Biome failure
   reached CI because its exit code went unread locally.
+- **The play queue is a list of ids sent to Rust**, not a view the backend
+  re-derives. `player_play` takes the ordered ids of the current view plus the
+  index that was activated; paths and durations are looked up backend-side, so
+  a queue can never carry stale metadata.
+- **One `rodio::Player` per track**, dropped and recreated on each load, rather
+  than one long-lived player with an append queue. `Player::clear` blocks until
+  the mixer drains and `Drop` already stops the sound, so per-track is both
+  simpler and cheaper than working around the queue semantics.
+- **A missing audio device is not fatal.** `RodioSink::open` failing puts a
+  null sink behind the same interface and reports the reason on
+  `player://error`, so the app still runs (headless CI is exactly this case)
+  and the user gets the message on first play rather than silence.
+- **"Played" means 50% of the track**, matching the last.fm rule in phase 10 so
+  play counts and scrobbles can never disagree about what counts.
 
 ### Known gaps carried forward
 
@@ -226,6 +243,14 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 - **Column reorder/resize** is data-driven in `columns.ts` but has no UI.
 - **`main` is not protected server-side** — GitHub gates that behind Pro for
   private repos. The pre-push hook is advisory only.
+- **No audio is asserted end to end.** GitHub's Windows runners have no output
+  device, so CI exercises the engine, the queue and the IPC surface against a
+  fake sink and only checks that the transport is live in e2e. Decoding is
+  covered — the integration tests run every fixture mp3 through the shipped
+  `rodio`/symphonia decoder — but "sound actually came out" is a manual check.
+- **Nothing repeats or shuffles yet**, and there is no visible queue: the queue
+  is whatever view was playing from. Both are natural additions once playlists
+  land in phase 6.
 
 ---
 
@@ -249,9 +274,20 @@ Sidebar, LCD status display, segmented tab bar, virtualized table with
 resizable/reorderable/toggleable columns, sorting, selection model, scan
 progress. Reads real data from phase 2.
 
-**4 — Playback** `feat/04-audio`
+**4 — Playback** `feat/04-audio` — 🔄 **in review**
 Audio thread, transport (play/pause/stop/next/prev), seek via the LCD scrubber,
 volume, position events, play counts, keyboard shortcuts.
+
+*As built.* `src-tauri/src/audio/` splits into `engine.rs` (a passive state
+machine: queue advance, seek clamping, the 50% play-count rule, giving up after
+five unreadable files in a row), `sink.rs` (the `AudioSink` trait plus the
+`rodio` and null implementations) and `mod.rs` (the thread that ticks the engine
+every 250 ms and forwards events). Nothing in `audio/` knows about Tauri or
+SQLite; `lib.rs` wires events to `player://state`, `player://position` and
+`player://error`, and writes play counts. Volume persists through the `settings`
+table. Frontend: `src/features/player/` (store, shortcut mapping, window-level
+key handler), a real `<input type="range">` scrubber, and row activation by
+double-click or Enter.
 
 **5 — Search** `feat/05-search`
 FTS5 triggers, debounced search box scoped to the current view, ranked results.
@@ -309,9 +345,13 @@ credentials configured, no request is ever made and no code path changes.
 
 **Note on last.fm's own rule**: the service's documented guidance is to
 scrobble at 50% *or 4 minutes, whichever comes first*, and to skip tracks
-under 30 seconds. The 50% trigger above is what was asked for; the 4-minute
-cap and 30-second floor are worth adding as they cost nothing and stop long
-tracks from never scrobbling.
+under 30 seconds. **The 4-minute cap is explicitly not adopted** — 50% is the
+sole trigger, so an hour-long mix scrobbles at 30 minutes, not at 4. Decided
+2026-08-02. This is also the rule `audio/engine.rs` already counts plays by
+(`PLAYED_FRACTION`), and the two must not drift apart.
+
+The 30-second floor is a separate question and is still worth adding: it costs
+nothing and matches what every other client does.
 
 **11 — Crash & error reporting** `feat/11-sentry`
 Optional, opt-in Sentry integration via
@@ -459,6 +499,38 @@ UA header asserted present. One `#[ignore]`d live test per provider.
 
 *Note on scope:* third outbound network dependency, and like the other two it
 must be inert when unused — no request unless the user opens the lookup dialog.
+
+**13 — Native feel pass** `feat/13-native-feel`
+A dedicated pass over the whole UI to stop it reading as a web page in a
+window. The tells are mostly things to *remove*:
+
+- **No hover effects.** Rows, cells and list items do not light up under the
+  pointer. Hover states are a web affordance for "this is a link"; a desktop
+  list communicates through selection and focus instead. Buttons keep a
+  pressed state, and genuinely clickable chrome (sort headers, sidebar items)
+  keeps focus rings — those are accessibility, not decoration.
+- **No transitions or animations** on hover/selection/expansion. State changes
+  are instant, the way a native list view changes.
+- **Selection, not hover, is the highlight.** Selected rows stay tinted when
+  the window loses focus (dimmed, as Explorer and Finder do) rather than
+  clearing.
+- **Text is not selectable** outside actual text inputs (`user-select: none`
+  on chrome and rows), and the caret never appears over a list.
+- **No pointer cursor** on non-text UI: `cursor: default` everywhere except
+  text fields and drag handles.
+- **No browser focus/scroll artefacts**: no bounce or overscroll glow, no
+  focus outline on click (`:focus-visible` only), no native drag-image on
+  rows, no context menu where the app does not provide one.
+- **Density and hit targets** checked against Explorer/iTunes rather than
+  against web defaults; system font stack and font smoothing verified on
+  Windows.
+
+*Testing:* an assertion pass in the component tests that no rule under the
+table/sidebar/chrome selectors declares a `:hover` background, plus a manual
+walkthrough on the checklist above. Cheap to test, easy to regress.
+
+*Placement:* deliberately after the features, not before — every phase adds
+chrome, and doing this once at the end is cheaper than policing it per PR.
 
 ---
 
