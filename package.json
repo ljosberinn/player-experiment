@@ -41,6 +41,7 @@
     "@wdio/local-runner": "^9.30.0",
     "@wdio/mocha-framework": "^9.30.0",
     "@wdio/spec-reporter": "^9.29.1",
+    "@wdio/tauri-service": "^1.2.0",
     "jsdom": "^26.1.0",
     "ts-node": "^10.9.2",
     "typescript": "~5.8.3",

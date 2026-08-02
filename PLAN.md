@@ -229,12 +229,15 @@ settings persistence, window geometry, dark mode pass, empty and error states.
 
 ## Open items
 
-- **e2e harness is not green yet.** Session creation needed a WebDriver
-  version-matched to the installed WebView2 runtime (the runner's preinstalled
-  `msedgedriver` tracks the Edge browser, not the evergreen runtime; a mismatch
-  reads as `DevToolsActivePort file doesn't exist`). With that fixed the session
-  attaches but lands on `about:blank` rather than the app document — under
-  investigation via CI.
+- **e2e harness.** External drivers (`tauri-driver` + `msedgedriver`) never got
+  past `session not created: DevToolsActivePort file doesn't exist`, with both a
+  hand-rolled version-matched driver and the provisioning from Tauri's own
+  WebDriver CI. Replaced by `@wdio/tauri-service` on its default `embedded`
+  provider, which runs the WebDriver server inside the app and removes external
+  drivers entirely. The instrumentation is gated behind the `wdio` cargo feature
+  plus a `--config` capability overlay so release builds never contain a
+  WebDriver server. Verified building locally; the suite itself is verified in
+  CI.
 - mp3-only ingest to start; the schema and `lofty` both allow flac/m4a later
   without migration.
 - Gapless playback is out of scope for phase 4; the Rust-side engine keeps the

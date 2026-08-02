@@ -10,9 +10,23 @@ Tauri v2 (Rust core) + React 19 / TypeScript / Vite.
 - Rust stable (`rustup toolchain install stable`)
 - Visual Studio Build Tools 2022 with the "Desktop development with C++" workload
 
-The e2e suite is **CI-only** for now — `tauri-driver` hangs on Windows locally and
-has to be killed by hand. Treat the GitHub Actions `e2e` job as the source of
-truth and debug it from the run logs.
+### e2e
+
+E2E runs on `@wdio/tauri-service` with its default `embedded` driver provider:
+the WebDriver server runs *inside* the app via `tauri-plugin-wdio-webdriver`, so
+there is no `tauri-driver` or `msedgedriver` to install or version-match.
+
+That instrumentation is behind the `wdio` cargo feature and its Tauri capability
+comes from a `--config` overlay, so a normal build ships neither. Build the
+instrumented binary before running the suite:
+
+```bash
+npm run tauri -- build --debug --no-bundle --features wdio --config src-tauri/tauri.wdio.conf.json
+npm run e2e
+```
+
+**Treat the GitHub Actions `e2e` job as the source of truth** — earlier local
+attempts left `tauri-driver` hung and needing a manual kill.
 
 ## Commands
 
@@ -23,7 +37,7 @@ truth and debug it from the run logs.
 | `npm run lint` / `lint:fix` | Biome check |
 | `npm test` / `test:coverage` | Vitest unit + component tests |
 | `npm run bindings` | Regenerate `src/ipc/bindings/` from the Rust types |
-| `npm run e2e` | WebDriver smoke suite (CI only — see above) |
+| `npm run e2e` | WebDriver smoke suite (needs the instrumented build — see above) |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit + integration tests |
 
 ## Layout
