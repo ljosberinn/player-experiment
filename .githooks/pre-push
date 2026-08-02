@@ -1,0 +1,22 @@
+#!/bin/sh
+# Refuses direct pushes to main.
+#
+# This is a local stand-in for server-side branch protection, which GitHub
+# gates behind Pro for private repositories. It is advisory only - it cannot
+# stop a push made from another clone, and `--no-verify` bypasses it. Enable
+# real protection if the repo ever goes public or onto a paid plan.
+#
+# Wired up by the `prepare` script in package.json (core.hooksPath=.githooks).
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "pre-push: direct pushes to main are blocked." >&2
+      echo "  Work on a feat/* branch and open a PR instead." >&2
+      echo "  Emergency bypass: git push --no-verify" >&2
+      exit 1
+      ;;
+  esac
+done
+
+exit 0

@@ -116,8 +116,14 @@ user input reaches SQL as text, and nesting depth is capped to bound recursion.
 
 ## Branch & CI workflow
 
-`main` is protected and off limits — PR only. One feature branch per phase
+`main` is off limits — PR only. One feature branch per phase
 (`feat/01-scaffold`, `feat/02-db-scan`, …), squash-merged via PR.
+
+Server-side protection is unavailable: GitHub gates branch protection *and*
+rulesets behind Pro for private repositories, so the API returns 403 for both.
+A `.githooks/pre-push` hook refuses pushes to `main` instead, wired up by the
+`prepare` npm script. It is advisory only — see the README. Applying a real
+ruleset is a one-liner once the repo is public or on a paid plan.
 
 `.github/workflows/ci.yml` runs on `pull_request` and `push: main`:
 

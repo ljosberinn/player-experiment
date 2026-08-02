@@ -61,5 +61,13 @@ bindings drift from the Rust source.
 
 ## Contributing
 
-`main` is protected. Work on `feat/*` branches and open a PR; CI (frontend,
-rust, cargo-deny, e2e) must pass before merge.
+Work on `feat/*` branches and open a PR; CI (frontend, rust, cargo-deny, e2e)
+must pass before merge.
+
+**`main` is not protected server-side.** GitHub gates both branch protection and
+rulesets behind Pro for private repositories, so neither could be enabled here.
+The substitute is a `pre-push` hook in `.githooks/` that refuses pushes to
+`main`, wired up by the `prepare` script on `npm install`. It is advisory: it
+cannot stop a push from a clone that skipped `npm install`, and `--no-verify`
+bypasses it. To get real enforcement, make the repo public or move it to a paid
+plan, then apply a ruleset requiring the four checks.
