@@ -616,14 +616,21 @@ build and not the cache - the debug build is 61s and `rust-cache` restores in
   the window states through `window.__TAURI__.core.invoke`, spin-waiting for it
   in 50ms steps and giving up after 5s. The real work underneath was 5ms - the
   `findElement` for the sidebar returned in `30.788` -> `30.793`.
-- **`window.__TAURI__` only exists when `app.withGlobalTauri` is true.** This
-  app imports `@tauri-apps/api` as ES modules, so the global was never there
-  and the probe could only ever time out. Each `toBeExisting()` cost 10s
-  because it issues `findElement` *then* `findElements`, stalling on both.
-- **Set in the wdio overlay only**, next to `decorations` and the `wdio`
-  capability, so a shipped build still does not expose the API globally. The
-  e2e binary drifting further from the released one is the price; it was
-  already a debug build with decorations and a WebDriver server inside it.
+- **The plugin has two halves and only one was installed.** `tauri-plugin-wdio`
+  was in `Cargo.toml`, registered in `lib.rs`, and granted `wdio:default` - the
+  README's steps 1-3. Step 4, `import '@wdio/tauri-plugin'` in the frontend
+  entry, was missed, and that npm package was not even a dependency. It is what
+  assigns `window.__wdio_original_core__`, the exact property the service polls
+  for. Nothing was ever going to set it.
+- **It also needs `app.withGlobalTauri`**, because the frontend half reads
+  `window.__TAURI__?.core` to find what to snapshot, and this app imports
+  `@tauri-apps/api` as ES modules. Both halves are required; the first attempt
+  set only the config flag and the suite came back at 340s, unchanged.
+- **Both are e2e-only.** `withGlobalTauri` sits in the wdio `--config` overlay
+  next to `decorations`; the import sits behind `import.meta.env.VITE_E2E`,
+  which CI sets on the build step alone, so rollup drops the branch everywhere
+  else. Verified in both directions: the normal bundle is 284.42 kB with no
+  match for `wdio`, the e2e bundle adds a 16.46 kB chunk that has it.
 - **The failure was silent by design** - a `WARN` the suite continued past,
   with everything still green. Worth remembering that a passing suite can be
   hiding a broken assumption; only the wall clock showed it.

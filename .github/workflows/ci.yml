@@ -91,6 +91,10 @@ jobs:
       # neither. That overlay also sets `withGlobalTauri`, which the service
       # needs on every command - see PLAN.md, "e2e wall time".
       - name: Build app (debug, e2e-instrumented)
+        env:
+          # Pulls @wdio/tauri-plugin into the bundle. Every other build leaves
+          # that import in a dead branch, so it ships nowhere else.
+          VITE_E2E: "true"
         run: npm run tauri -- build --debug --no-bundle --features wdio --config src-tauri/tauri.wdio.conf.json
       - name: Run WebDriver smoke suite
         run: npm run e2e
