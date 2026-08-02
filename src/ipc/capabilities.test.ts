@@ -17,6 +17,8 @@ import { describe, expect, it } from "vitest";
 const REQUIRED: ReadonlyArray<{ call: RegExp; permission: string }> = [
   { call: /\bsave\s*\(/, permission: "dialog:allow-save" },
   { call: /\bopen\s*\(/, permission: "dialog:allow-open" },
+  { call: /\.show\s*\(/, permission: "core:window:allow-show" },
+  { call: /\.maximize\s*\(/, permission: "core:window:allow-maximize" },
   { call: /\.setPosition\s*\(/, permission: "core:window:allow-set-position" },
   { call: /\.setSize\s*\(/, permission: "core:window:allow-set-size" },
   { call: /\.minimize\s*\(/, permission: "core:window:allow-minimize" },

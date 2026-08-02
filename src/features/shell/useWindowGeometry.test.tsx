@@ -15,6 +15,7 @@ const appWindow = {
   setPosition: vi.fn(async (_position: { x: number; y: number }) => {}),
   setSize: vi.fn(async (_size: { width: number; height: number }) => {}),
   maximize: vi.fn(async () => {}),
+  show: vi.fn(async () => {}),
   onMoved: vi.fn(async (handler: () => void) => {
     moved = handler;
     return () => {};
@@ -139,5 +140,49 @@ describe("useWindowGeometry", () => {
     // Losing a window position is not worth interrupting anyone over.
     expect(() => renderHook(() => useWindowGeometry())).not.toThrow();
     await waitFor(() => expect(loadWindowGeometry).toHaveBeenCalled());
+  });
+});
+
+describe("showing the window", () => {
+  it("shows it once the stored geometry has been applied", async () => {
+    vi.mocked(loadWindowGeometry).mockResolvedValue(
+      JSON.stringify({ x: 100, y: 120, width: 1200, height: 800, maximized: false }),
+    );
+
+    renderHook(() => useWindowGeometry());
+
+    // The window starts hidden so it is never seen at the default size and
+    // position before jumping to the stored one.
+    await waitFor(() => expect(appWindow.show).toHaveBeenCalled());
+    expect(appWindow.setPosition).toHaveBeenCalledBefore(appWindow.show);
+  });
+
+  it("shows it even when there is nothing stored", async () => {
+    vi.mocked(loadWindowGeometry).mockResolvedValue(null);
+
+    renderHook(() => useWindowGeometry());
+
+    await waitFor(() => expect(appWindow.show).toHaveBeenCalled());
+  });
+
+  it("shows it even when restoring the geometry fails", async () => {
+    vi.mocked(loadWindowGeometry).mockRejectedValue("database is locked");
+
+    renderHook(() => useWindowGeometry());
+
+    // A window that never appears is a far worse failure than one in the
+    // wrong place, so this must not be inside the try that restores.
+    await waitFor(() => expect(appWindow.show).toHaveBeenCalled());
+  });
+
+  it("shows it even when the position cannot be set", async () => {
+    vi.mocked(loadWindowGeometry).mockResolvedValue(
+      JSON.stringify({ x: 100, y: 120, width: 1200, height: 800, maximized: false }),
+    );
+    appWindow.setPosition.mockRejectedValueOnce(new Error("not allowed by ACL"));
+
+    renderHook(() => useWindowGeometry());
+
+    await waitFor(() => expect(appWindow.show).toHaveBeenCalled());
   });
 });
