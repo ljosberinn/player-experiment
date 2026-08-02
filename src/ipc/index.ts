@@ -10,6 +10,7 @@ import type { FilterNode } from "./bindings/FilterNode";
 import type { FilterOp } from "./bindings/FilterOp";
 import type { FilterRule } from "./bindings/FilterRule";
 import type { FilterValue } from "./bindings/FilterValue";
+import type { LibraryStats } from "./bindings/LibraryStats";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
 import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
@@ -35,6 +36,7 @@ export type {
   FilterOp,
   FilterRule,
   FilterValue,
+  LibraryStats,
   PlaybackStatus,
   PlayerPosition,
   PlayerSnapshot,
@@ -77,6 +79,16 @@ export function queryTracks(query: TrackQuery): Promise<Track[]> {
 
 export function countTracks(query: TrackQuery): Promise<number> {
   return invoke<number>("count_tracks", { query });
+}
+
+/**
+ * Count, total duration and total size for a view.
+ *
+ * What the store asks for on a query change: the table needs the count for its
+ * scrollbar and the footer needs all three, and they always change together.
+ */
+export function libraryStats(query: TrackQuery): Promise<LibraryStats> {
+  return invoke<LibraryStats>("library_stats", { query });
 }
 
 /**

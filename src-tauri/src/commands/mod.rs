@@ -12,8 +12,8 @@ use crate::db::{playback, playlists, query, settings, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::model::{
-    AppInfo, FilterGroup, PlayerSnapshot, Playlist, ScanSummary, TagEdit, TagWriteSummary, Track,
-    TrackQuery,
+    AppInfo, FilterGroup, LibraryStats, PlayerSnapshot, Playlist, ScanSummary, TagEdit,
+    TagWriteSummary, Track, TrackQuery,
 };
 use crate::{scan, tags};
 
@@ -73,6 +73,17 @@ pub fn query_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<Vec<Track
 pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
     let conn = db.conn()?;
     query::count_tracks(&conn, &query)
+}
+
+/// Count, total duration and total size for the current view.
+///
+/// The table needs the count for its scrollbar and the footer needs all three,
+/// and they change together, so this is what the store calls on a query change
+/// rather than asking twice.
+#[tauri::command]
+pub fn library_stats(db: State<'_, Db>, query: TrackQuery) -> AppResult<LibraryStats> {
+    let conn = db.conn()?;
+    query::library_stats(&conn, &query)
 }
 
 /// Ids of every track matching `query`, for "select all".

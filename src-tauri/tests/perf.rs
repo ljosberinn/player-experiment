@@ -198,3 +198,33 @@ fn the_sorted_page_query_plan_uses_an_index_rather_than_sorting_everything() {
         "the artist index should be used, plan was: {detail}"
     );
 }
+
+#[test]
+fn totalling_the_library_stays_cheap() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery::default();
+
+    // This runs on every query change - every keystroke that survives the
+    // search debounce, every sort, every playlist switch - so it sits on the
+    // same hot path as the page fetch. A full scan of three columns is what it
+    // is; the budget catches it becoming three separate scans, or a join that
+    // multiplies rows and quietly inflates the sums as well as the cost.
+    assert_under("library totals", 60, || {
+        assert_eq!(query::library_stats(&conn, &q).unwrap().tracks, ROWS as u32);
+    });
+}
+
+#[test]
+fn totalling_a_filtered_view_stays_cheap() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery {
+        search: Some("Artist042".to_owned()),
+        ..Default::default()
+    };
+
+    assert_under("filtered totals", 60, || {
+        assert!(query::library_stats(&conn, &q).unwrap().tracks > 0);
+    });
+}

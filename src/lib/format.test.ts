@@ -46,6 +46,22 @@ describe("formatLibrarySummary", () => {
   it("falls back to minutes below an hour", () => {
     expect(formatLibrarySummary(3, 600_000)).toBe("3 songs, 10 minutes");
   });
+
+  it("adds the size when there is one", () => {
+    expect(formatLibrarySummary(5, 3_000_000, 214_000_000)).toBe("5 songs, 50 minutes, 214 MB");
+  });
+
+  it("leaves the size out when it was not asked for", () => {
+    // The toolbar display has room for two facts, the status bar for three.
+    expect(formatLibrarySummary(5, 3_000_000)).toBe("5 songs, 50 minutes");
+  });
+
+  it("leaves a zero size out rather than claiming 0 MB", () => {
+    // Zero duration is a real answer - a library of empty files - but a zero
+    // size means the scanner recorded none, and "0 MB" beside 237 songs reads
+    // as a bug rather than as a fact.
+    expect(formatLibrarySummary(237, 3_600_000, 0)).not.toContain("MB");
+  });
 });
 
 describe("formatBytes", () => {

@@ -501,6 +501,22 @@ pub struct ScanProgress {
     pub done: bool,
 }
 
+/// The totals behind a view, for the footer.
+///
+/// `duration_ms` and `bytes` are `i64` rather than `u32`: a library of tens of
+/// thousands of tracks passes four billion milliseconds at about seven hundred
+/// hours, and four billion bytes long before that.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LibraryStats {
+    pub tracks: u32,
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    #[ts(type = "number")]
+    pub bytes: i64,
+}
+
 /// What a completed scan changed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

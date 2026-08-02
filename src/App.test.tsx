@@ -11,10 +11,10 @@ import {
   addWatchFolder,
   allTrackIds,
   canUndoTagEdit,
-  countTracks,
   createPlaylist,
   createSmartPlaylist,
   exportLibrary,
+  libraryStats,
   listPlaylists,
   loadWindowGeometry,
   moveInPlaylist,
@@ -32,6 +32,7 @@ import {
 
 vi.mock("./ipc", () => ({
   countTracks: vi.fn(),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   addWatchFolder: vi.fn(),
@@ -86,7 +87,13 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 
-const countTracksMock = vi.mocked(countTracks);
+const statsMock = vi.mocked(libraryStats);
+/** A `LibraryStats` with the count set; the footer's other totals are not what
+    these tests are about. */
+function stats(tracks: number) {
+  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000 };
+}
+
 const queryTracksMock = vi.mocked(queryTracks);
 const addWatchFolderMock = vi.mocked(addWatchFolder);
 const scanLibraryMock = vi.mocked(scanLibrary);
@@ -113,7 +120,7 @@ beforeEach(async () => {
   useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
   vi.mocked(canUndoTagEdit).mockResolvedValue(false);
-  countTracksMock.mockResolvedValue(0);
+  statsMock.mockResolvedValue(stats(0));
   queryTracksMock.mockResolvedValue([]);
   scanLibraryMock.mockResolvedValue({ added: 0, updated: 0, removed: 0, unchanged: 0 });
   vi.mocked(playerSnapshot).mockResolvedValue({
@@ -144,15 +151,48 @@ describe("App", () => {
   it("shows the chrome: sidebar, tabs, search and status bar", async () => {
     render(<App />);
 
-    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
     expect(screen.getByRole("navigation", { name: "Library" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Songs" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search Library" })).toBeInTheDocument();
     expect(screen.getAllByText("No songs").length).toBeGreaterThan(0);
   });
 
+  it("puts real totals in the footer, not a zero", async () => {
+    statsMock.mockResolvedValue({ tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 });
+
+    render(<App />);
+
+    // The footer promised "N songs, H hours" from phase 3 and always said zero
+    // for the time, because no query produced the sum.
+    expect(await screen.findByText("5 songs, 50 minutes, 214 MB")).toBeInTheDocument();
+  });
+
+  it("leaves the size off the toolbar display, which has less room", async () => {
+    statsMock.mockResolvedValue({ tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 });
+
+    render(<App />);
+    await screen.findByText("5 songs, 50 minutes, 214 MB");
+
+    expect(screen.getByText("5 songs, 50 minutes")).toBeInTheDocument();
+  });
+
+  it("totals what is on screen rather than the whole library", async () => {
+    statsMock.mockResolvedValue({ tracks: 200, durationMs: 36_000_000, bytes: 1_000_000_000 });
+    render(<App />);
+    await screen.findAllByText(/200 songs/);
+    const user = userEvent.setup();
+
+    statsMock.mockResolvedValue({ tracks: 2, durationMs: 600_000, bytes: 9_000_000 });
+    await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki");
+
+    // A search showing two songs while the footer claims the library's total
+    // would be worse than showing nothing.
+    expect(await screen.findByText("2 songs, 10 minutes, 9 MB")).toBeInTheDocument();
+  });
+
   it("swaps the empty state for the table once the library has rows", async () => {
-    countTracksMock.mockResolvedValue(3);
+    statsMock.mockResolvedValue(stats(3));
     queryTracksMock.mockResolvedValue([]);
 
     render(<App />);
@@ -163,8 +203,8 @@ describe("App", () => {
 
   it("searches through the backend once the user stops typing", async () => {
     render(<App />);
-    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
-    countTracksMock.mockClear();
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+    statsMock.mockClear();
     const user = userEvent.setup();
 
     const box = screen.getByRole("searchbox", { name: "Search Library" });
@@ -173,27 +213,25 @@ describe("App", () => {
     // The box tracks every keystroke; the query does not.
     expect(box).toHaveValue("maki");
     await waitFor(() => {
-      expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: "maki" }));
+      expect(statsMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: "maki" }));
     });
-    expect(countTracksMock.mock.calls.length).toBeLessThan(4);
+    expect(statsMock.mock.calls.length).toBeLessThan(4);
   });
 
   it("searches immediately on Enter", async () => {
     render(<App />);
-    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
-    countTracksMock.mockClear();
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+    statsMock.mockClear();
     const user = userEvent.setup();
 
     await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki{Enter}");
 
-    expect(countTracksMock).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ search: "maki" }),
-    );
+    expect(statsMock).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ search: "maki" }));
   });
 
   it("clears the search with Escape and with the clear button", async () => {
     render(<App />);
-    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
     const user = userEvent.setup();
     const box = screen.getByRole("searchbox", { name: "Search Library" });
 
@@ -208,7 +246,7 @@ describe("App", () => {
 
   it("offers no clear button until there is something to clear", async () => {
     render(<App />);
-    await waitFor(() => expect(countTracksMock).toHaveBeenCalled());
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
   });
@@ -218,7 +256,7 @@ describe("App", () => {
     expect(await screen.findByText(/No songs yet/)).toBeInTheDocument();
     const user = userEvent.setup();
 
-    countTracksMock.mockResolvedValue(0);
+    statsMock.mockResolvedValue(stats(0));
     await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "nothing{Enter}");
 
     expect(await screen.findByText(/No results for/)).toBeInTheDocument();
@@ -262,7 +300,7 @@ describe("App", () => {
   });
 
   it("surfaces a query failure from the store", async () => {
-    countTracksMock.mockRejectedValue("database is locked");
+    statsMock.mockRejectedValue("database is locked");
 
     render(<App />);
 
@@ -294,7 +332,7 @@ describe("App playback", () => {
   /** A library of three tracks the table can render and play. */
   async function renderWithLibrary({ waitForRows = true } = {}) {
     stubLayout();
-    countTracksMock.mockResolvedValue(3);
+    statsMock.mockResolvedValue(stats(3));
     queryTracksMock.mockResolvedValue([0, 1, 2].map(track));
     vi.mocked(allTrackIds).mockResolvedValue([10, 11, 12]);
 
@@ -339,7 +377,7 @@ describe("App playback", () => {
   });
 
   it("does not start playback when the view is empty", async () => {
-    countTracksMock.mockResolvedValue(0);
+    statsMock.mockResolvedValue(stats(0));
     vi.mocked(allTrackIds).mockResolvedValue([]);
     render(<App />);
     await screen.findByText(/No songs yet/);
@@ -365,7 +403,7 @@ describe("App playback", () => {
 
     expect(await screen.findByRole("searchbox", { name: "Search Evening" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(countTracksMock).toHaveBeenLastCalledWith(
+      expect(statsMock).toHaveBeenLastCalledWith(
         expect.objectContaining({ playlistId: 1, sortBy: "position" }),
       ),
     );
@@ -373,7 +411,7 @@ describe("App playback", () => {
 
   it("says an open playlist is empty rather than blaming the library", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening")]);
-    countTracksMock.mockResolvedValue(0);
+    statsMock.mockResolvedValue(stats(0));
     render(<App />);
     const user = userEvent.setup();
 
@@ -498,7 +536,7 @@ describe("App playback", () => {
       }),
     );
     await waitFor(() =>
-      expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 9 })),
+      expect(statsMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 9 })),
     );
   });
 

@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track, TrackQuery } from "../../ipc";
-import { addToPlaylist, countTracks, queryTracks, revealTrack } from "../../ipc";
+import { addToPlaylist, libraryStats, queryTracks, revealTrack } from "../../ipc";
 import { readTrackIds, TRACK_IDS_MIME } from "../playlists/drag";
 import { usePlaylistsStore } from "../playlists/store";
 import { columnsFor } from "./columns";
@@ -11,6 +11,7 @@ import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(async () => []),
   // Reached through the row menu, via the playlists and editor stores.
@@ -21,7 +22,13 @@ vi.mock("../../ipc", () => ({
   canUndoTagEdit: vi.fn(async () => false),
 }));
 
-const countTracksMock = vi.mocked(countTracks);
+const statsMock = vi.mocked(libraryStats);
+/** A `LibraryStats` with the count set; the footer's other totals are not what
+    these tests are about. */
+function stats(tracks: number) {
+  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000 };
+}
+
 const queryTracksMock = vi.mocked(queryTracks);
 
 function track(id: number): Track {
@@ -84,7 +91,7 @@ beforeEach(() => {
     selection: { ids: new Set(), anchorIndex: null },
     error: null,
   });
-  countTracksMock.mockResolvedValue(500);
+  statsMock.mockResolvedValue(stats(500));
   queryTracksMock.mockImplementation(async (query: TrackQuery) =>
     Array.from({ length: query.limit }, (_, i) => track(query.offset + i)),
   );
@@ -172,7 +179,7 @@ describe("SongTable", () => {
     await waitFor(() => {
       expect(useLibraryStore.getState()).toMatchObject({ sortBy: "title", direction: "asc" });
     });
-    expect(countTracksMock).toHaveBeenLastCalledWith(
+    expect(statsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ sortBy: "title", direction: "asc" }),
     );
   });
