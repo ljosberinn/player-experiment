@@ -11,9 +11,10 @@ use crate::audio::{Command, Player};
 use crate::db::{playback, playlists, query, settings, Db};
 use crate::error::AppResult;
 use crate::model::{
-    AppInfo, FilterGroup, PlayerSnapshot, Playlist, ScanSummary, Track, TrackQuery,
+    AppInfo, FilterGroup, PlayerSnapshot, Playlist, ScanSummary, TagEdit, TagWriteSummary, Track,
+    TrackQuery,
 };
-use crate::scan;
+use crate::{scan, tags};
 
 pub fn app_info() -> AppInfo {
     AppInfo {
@@ -163,6 +164,39 @@ pub fn move_in_playlist(
 ) -> AppResult<()> {
     let mut conn = db.conn()?;
     playlists::move_tracks(&mut conn, playlist_id, &track_ids, target_index as usize)
+}
+
+/// The rows behind a selection, so the editor can show what they hold.
+///
+/// Ids rather than a query: the selection survives scrolling, and the rows it
+/// names may have been evicted from the frontend's page cache.
+#[tauri::command]
+pub fn tracks_by_ids(db: State<'_, Db>, track_ids: Vec<i64>) -> AppResult<Vec<Track>> {
+    let conn = db.conn()?;
+    playback::tracks_by_ids(&conn, &track_ids)
+}
+
+/// Applies one edit to every track named, reporting what it managed.
+#[tauri::command]
+pub fn write_tags(
+    db: State<'_, Db>,
+    track_ids: Vec<i64>,
+    edit: TagEdit,
+) -> AppResult<TagWriteSummary> {
+    let mut conn = db.conn()?;
+    tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds())
+}
+
+#[tauri::command]
+pub fn undo_tag_edit(db: State<'_, Db>) -> AppResult<TagWriteSummary> {
+    let mut conn = db.conn()?;
+    tags::write::undo_last(&mut conn)
+}
+
+#[tauri::command]
+pub fn can_undo_tag_edit(db: State<'_, Db>) -> AppResult<bool> {
+    let conn = db.conn()?;
+    tags::write::can_undo(&conn)
 }
 
 /// Replaces the play queue and starts at `index`.

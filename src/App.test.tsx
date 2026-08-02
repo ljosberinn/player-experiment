@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { useEditorStore } from "./features/editor/store";
 import { useLibraryStore } from "./features/library/store";
 import { TRACK_IDS_MIME } from "./features/playlists/drag";
 import { usePlaylistsStore } from "./features/playlists/store";
@@ -9,6 +10,7 @@ import {
   addToPlaylist,
   addWatchFolder,
   allTrackIds,
+  canUndoTagEdit,
   countTracks,
   createPlaylist,
   createSmartPlaylist,
@@ -21,6 +23,9 @@ import {
   queryTracks,
   removeFromPlaylist,
   scanLibrary,
+  tracksByIds,
+  undoTagEdit,
+  writeTags,
 } from "./ipc";
 
 vi.mock("./ipc", () => ({
@@ -42,6 +47,10 @@ vi.mock("./ipc", () => ({
   playerPrevious: vi.fn(),
   playerSeek: vi.fn(),
   playerSetVolume: vi.fn(),
+  tracksByIds: vi.fn(),
+  writeTags: vi.fn(),
+  undoTagEdit: vi.fn(),
+  canUndoTagEdit: vi.fn(),
   listPlaylists: vi.fn(),
   createPlaylist: vi.fn(),
   createSmartPlaylist: vi.fn(),
@@ -70,6 +79,7 @@ const scanLibraryMock = vi.mocked(scanLibrary);
 
 const initial = useLibraryStore.getState();
 const initialPlaylists = usePlaylistsStore.getState();
+const initialEditor = useEditorStore.getState();
 
 function playlist(id: number, name: string, trackCount = 0): Playlist {
   return { id, name, kind: "static", trackCount, createdAt: 0 };
@@ -85,7 +95,9 @@ beforeEach(async () => {
     error: null,
     editing: null,
   });
+  useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
+  vi.mocked(canUndoTagEdit).mockResolvedValue(false);
   countTracksMock.mockResolvedValue(0);
   queryTracksMock.mockResolvedValue([]);
   scanLibraryMock.mockResolvedValue({ added: 0, updated: 0, removed: 0, unchanged: 0 });
@@ -488,6 +500,41 @@ describe("App playback", () => {
       dataTransfer: { types: [TRACK_IDS_MIME], getData: () => JSON.stringify([10]) },
     });
     expect(moveInPlaylist).not.toHaveBeenCalled();
+  });
+
+  it("edits the tags of the selected rows through Get Info", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([track(1)]);
+    vi.mocked(writeTags).mockResolvedValue({ written: 1, failed: 0, errors: [] });
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    // Nothing selected yet, so there is nothing to get info about.
+    expect(screen.getByRole("button", { name: "Get Info" })).toBeDisabled();
+
+    await user.click(screen.getByText("Track 1"));
+    await user.click(screen.getByRole("button", { name: "Get Info" }));
+    const genre = await screen.findByRole("textbox", { name: "Genre" });
+    await user.type(genre, "Dream Pop");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(writeTags).toHaveBeenCalledWith([11], expect.objectContaining({ genre: "Dream Pop" })),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Updated 1 song.");
+  });
+
+  it("offers Undo Tag Edit only once there is one to undo", async () => {
+    vi.mocked(canUndoTagEdit).mockResolvedValue(true);
+    vi.mocked(undoTagEdit).mockResolvedValue({ written: 2, failed: 0, errors: [] });
+    render(<App />);
+    const user = userEvent.setup();
+
+    const undo = await screen.findByRole("button", { name: "Undo Tag Edit" });
+    await waitFor(() => expect(undo).toBeEnabled());
+    await user.click(undo);
+
+    expect(undoTagEdit).toHaveBeenCalled();
+    expect(await screen.findByRole("status")).toHaveTextContent("Reverted 2 songs.");
   });
 
   it("shows the current track in the status display once the backend reports one", async () => {

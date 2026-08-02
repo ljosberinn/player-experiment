@@ -1,8 +1,11 @@
 //! Reading tags off disk.
 //!
-//! Writing lands in a later phase; this module only needs to be fast and
-//! forgiving, since a real library always contains files with missing or
-//! malformed tags and a scan must not stop for them.
+//! Reading is fast and forgiving, since a real library always contains files
+//! with missing or malformed tags and a scan must not stop for them. Writing
+//! lives in [`write`], where the rules are the opposite: careful, atomic, and
+//! never without a record of what was there before.
+
+pub mod write;
 
 use std::path::Path;
 

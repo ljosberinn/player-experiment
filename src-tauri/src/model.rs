@@ -194,6 +194,59 @@ impl PlaylistKind {
     }
 }
 
+/// What one tag edit changes.
+///
+/// Every field is optional in two senses, which is the whole point: absent
+/// means "the user did not touch this, leave it exactly as it is", and an
+/// empty string means "clear it". That is what lets one edit apply to a
+/// selection whose values differ - the fields showing a mixed-value dash stay
+/// absent and survive untouched.
+///
+/// Numbers are strings here for the same reason: the editor's inputs hold
+/// strings, and an empty one has to mean "clear" rather than zero.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TagEdit {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub genre: Option<String>,
+    pub comment: Option<String>,
+    pub year: Option<String>,
+    pub track_no: Option<String>,
+    pub disc_no: Option<String>,
+    pub cover: Option<CoverEdit>,
+}
+
+/// A cover art change. Absent from [`TagEdit`] means the artwork stays put.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum CoverEdit {
+    Remove,
+    /// The image file the user picked. A path rather than bytes: the picker
+    /// already produced one, and megabytes of base64 over IPC would be waste.
+    Replace {
+        path: String,
+    },
+}
+
+/// What a tag write actually managed to do.
+///
+/// A locked or read-only file in the middle of a 500-track edit should not
+/// undo the other 499, so failures are counted and reported rather than
+/// aborting the batch.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TagWriteSummary {
+    pub written: u32,
+    pub failed: u32,
+    pub errors: Vec<String>,
+}
+
 /// A track column a smart playlist can filter on.
 ///
 /// A whitelist enum rather than a string, for the same reason [`SortField`] is

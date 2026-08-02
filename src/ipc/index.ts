@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { Combinator } from "./bindings/Combinator";
+import type { CoverEdit } from "./bindings/CoverEdit";
 import type { FilterField } from "./bindings/FilterField";
 import type { FilterGroup } from "./bindings/FilterGroup";
 import type { FilterNode } from "./bindings/FilterNode";
@@ -17,12 +18,15 @@ import type { ScanProgress } from "./bindings/ScanProgress";
 import type { ScanSummary } from "./bindings/ScanSummary";
 import type { SortDirection } from "./bindings/SortDirection";
 import type { SortField } from "./bindings/SortField";
+import type { TagEdit } from "./bindings/TagEdit";
+import type { TagWriteSummary } from "./bindings/TagWriteSummary";
 import type { Track } from "./bindings/Track";
 import type { TrackQuery } from "./bindings/TrackQuery";
 
 export type {
   AppInfo,
   Combinator,
+  CoverEdit,
   FilterField,
   FilterGroup,
   FilterNode,
@@ -38,6 +42,8 @@ export type {
   ScanSummary,
   SortDirection,
   SortField,
+  TagEdit,
+  TagWriteSummary,
   Track,
   TrackQuery,
 };
@@ -79,6 +85,29 @@ export function countTracks(query: TrackQuery): Promise<number> {
  */
 export function allTrackIds(query: TrackQuery): Promise<number[]> {
   return invoke<number[]>("all_track_ids", { query });
+}
+
+/**
+ * The rows behind a selection.
+ *
+ * Ids rather than a query: the selection survives scrolling, and the rows it
+ * names may have been evicted from the page cache.
+ */
+export function tracksByIds(trackIds: number[]): Promise<Track[]> {
+  return invoke<Track[]>("tracks_by_ids", { trackIds });
+}
+
+/** Applies one edit to every track named, reporting what it managed. */
+export function writeTags(trackIds: number[], edit: TagEdit): Promise<TagWriteSummary> {
+  return invoke<TagWriteSummary>("write_tags", { trackIds, edit });
+}
+
+export function undoTagEdit(): Promise<TagWriteSummary> {
+  return invoke<TagWriteSummary>("undo_tag_edit");
+}
+
+export function canUndoTagEdit(): Promise<boolean> {
+  return invoke<boolean>("can_undo_tag_edit");
 }
 
 export function listPlaylists(): Promise<Playlist[]> {

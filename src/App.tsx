@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import "./App.css";
 import { Sidebar } from "./components/ui/Sidebar";
@@ -5,6 +6,8 @@ import { StatusDisplay } from "./components/ui/StatusDisplay";
 import { TabBar, type ViewTab } from "./components/ui/TabBar";
 import { TitleBar } from "./components/ui/TitleBar";
 import { Transport } from "./components/ui/Transport";
+import { useEditorStore } from "./features/editor/store";
+import { TagEditor } from "./features/editor/TagEditor";
 import { columnsFor, DEFAULT_COLUMN_IDS } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
 import { SongTable } from "./features/library/SongTable";
@@ -55,6 +58,17 @@ export function App() {
   const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
+  const selection = useLibraryStore((s) => s.selection);
+  const editorTracks = useEditorStore((s) => s.tracks);
+  const canUndoTags = useEditorStore((s) => s.canUndo);
+  const tagNotice = useEditorStore((s) => s.notice);
+  const tagError = useEditorStore((s) => s.error);
+  const openEditor = useEditorStore((s) => s.open);
+  const closeTagEditor = useEditorStore((s) => s.close);
+  const saveTags = useEditorStore((s) => s.save);
+  const undoTags = useEditorStore((s) => s.undo);
+  const refreshUndo = useEditorStore((s) => s.refreshUndo);
+
   const editing = usePlaylistsStore((s) => s.editing);
   const closeEditor = usePlaylistsStore((s) => s.closeEditor);
   const saveSmart = usePlaylistsStore((s) => s.saveSmart);
@@ -89,6 +103,10 @@ export function App() {
     const timer = setTimeout(dismissNotice, NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice, dismissNotice]);
+
+  useEffect(() => {
+    void refreshUndo();
+  }, [refreshUndo]);
 
   /** Double-click or Enter on a row: queue the whole view, start at that row. */
   const activateRow = async (rowIndex: number) => {
@@ -175,18 +193,30 @@ export function App() {
         <main className="content">
           <div className="content-header">
             <TabBar active={tab} onChange={setTab} />
+            <div className="scanbar">
+              <button
+                type="button"
+                disabled={selection.ids.size === 0}
+                onClick={() => void openEditor([...selection.ids])}
+              >
+                Get Info
+              </button>
+              <button type="button" disabled={!canUndoTags} onClick={() => void undoTags()}>
+                Undo Tag Edit
+              </button>
+            </div>
             <ScanBar />
           </div>
 
-          {error || playerError || playlistError ? (
+          {error || playerError || playlistError || tagError ? (
             <p className="content-error" role="alert">
-              {error ?? playerError ?? playlistError}
+              {error ?? playerError ?? playlistError ?? tagError}
             </p>
           ) : null}
 
-          {notice ? (
+          {notice || tagNotice ? (
             <p className="content-notice" role="status">
-              {notice}
+              {notice ?? tagNotice}
             </p>
           ) : null}
 
@@ -233,6 +263,21 @@ export function App() {
       </div>
 
       <footer className="statusbar">{formatLibrarySummary(total, 0)}</footer>
+
+      {editorTracks ? (
+        <TagEditor
+          tracks={editorTracks}
+          onSave={(edit) => void saveTags(edit)}
+          onCancel={closeTagEditor}
+          onPickCover={async () => {
+            const picked = await open({
+              multiple: false,
+              filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png"] }],
+            });
+            return typeof picked === "string" ? picked : null;
+          }}
+        />
+      ) : null}
 
       {editing ? (
         <SmartPlaylistEditor
