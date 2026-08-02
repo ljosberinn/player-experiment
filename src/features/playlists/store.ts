@@ -2,14 +2,19 @@ import { create } from "zustand";
 import {
   addToPlaylist,
   createPlaylist,
+  createSmartPlaylist,
   deletePlaylist,
+  type FilterGroup,
   listPlaylists,
   moveInPlaylist,
   type Playlist,
+  playlistFilter,
   removeFromPlaylist,
   renamePlaylist,
+  setPlaylistFilter,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
+import { emptyFilter } from "../smart/filterTree";
 
 /**
  * How long a drop confirmation stays on screen.
@@ -26,8 +31,20 @@ interface PlaylistsState {
   error: string | null;
 
   load: () => Promise<void>;
+  /**
+   * The smart playlist being edited, if the editor is open.
+   *
+   * `playlistId: null` means "new"; the filter is what the dialog opened with.
+   */
+  editing: { playlistId: number | null; name: string; filter: FilterGroup } | null;
+
   /** Creates a playlist and switches the view to it. */
   create: (name: string) => Promise<void>;
+  /** Opens the filter editor, on an existing smart playlist or a new one. */
+  editSmart: (playlistId: number | null) => Promise<void>;
+  closeEditor: () => void;
+  /** Saves what the editor holds, creating the playlist if it is new. */
+  saveSmart: (name: string, filter: FilterGroup) => Promise<void>;
   rename: (playlistId: number, name: string) => Promise<void>;
   /** Deletes a playlist; the view falls back to the library if it was open. */
   remove: (playlistId: number) => Promise<void>;
@@ -52,6 +69,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   playlists: [],
   notice: null,
   error: null,
+  editing: null,
 
   load: async () => {
     try {
@@ -67,6 +85,58 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       await get().load();
       await useLibraryStore.getState().showPlaylist(playlist.id);
     } catch (cause) {
+      set({ error: String(cause) });
+    }
+  },
+
+  editSmart: async (playlistId) => {
+    if (playlistId === null) {
+      set({ editing: { playlistId: null, name: "New Smart Playlist", filter: emptyFilter } });
+      return;
+    }
+    try {
+      // Read the stored filter rather than trusting anything cached: it is the
+      // one piece of a playlist the sidebar does not carry.
+      const filter = (await playlistFilter(playlistId)) ?? emptyFilter;
+      set({
+        editing: { playlistId, name: nameOf(get().playlists, playlistId), filter },
+        error: null,
+      });
+    } catch (cause) {
+      set({ error: String(cause) });
+    }
+  },
+
+  closeEditor: () => set({ editing: null }),
+
+  saveSmart: async (name, filter) => {
+    const editing = get().editing;
+    if (editing === null) {
+      return;
+    }
+    try {
+      if (editing.playlistId === null) {
+        const created = await createSmartPlaylist(name, filter);
+        set({ editing: null });
+        await get().load();
+        await useLibraryStore.getState().showPlaylist(created.id);
+        return;
+      }
+
+      await setPlaylistFilter(editing.playlistId, filter);
+      if (name !== editing.name) {
+        await renamePlaylist(editing.playlistId, name);
+      }
+      set({ editing: null });
+      await get().load();
+      // Its membership is its filter, so a changed filter is a changed view -
+      // there is nothing to recompute, only to re-ask.
+      if (useLibraryStore.getState().playlistId === editing.playlistId) {
+        await useLibraryStore.getState().refresh();
+      }
+    } catch (cause) {
+      // The editor stays open on a rejected filter, so the user can fix it
+      // rather than losing what they built.
       set({ error: String(cause) });
     }
   },

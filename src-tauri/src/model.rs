@@ -194,6 +194,181 @@ impl PlaylistKind {
     }
 }
 
+/// A track column a smart playlist can filter on.
+///
+/// A whitelist enum rather than a string, for the same reason [`SortField`] is
+/// one: the column name is interpolated into SQL, so restricting it at the
+/// type level is what keeps that interpolation safe. Every arm below returns a
+/// literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum FilterField {
+    Title,
+    Artist,
+    Album,
+    AlbumArtist,
+    Genre,
+    Comment,
+    Path,
+    Year,
+    TrackNo,
+    DiscNo,
+    DurationMs,
+    Bitrate,
+    SampleRate,
+    PlayCount,
+    AddedAt,
+    LastPlayedAt,
+}
+
+/// What kind of value a field holds, which decides the operators it accepts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterFieldKind {
+    Text,
+    Number,
+    /// Unix seconds. Numeric underneath, but "in the last N days" only makes
+    /// sense here, and a date picker is the right editor rather than a spinner.
+    Timestamp,
+}
+
+impl FilterField {
+    pub fn as_sql(self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::Artist => "artist",
+            Self::Album => "album",
+            Self::AlbumArtist => "album_artist",
+            Self::Genre => "genre",
+            Self::Comment => "comment",
+            Self::Path => "path",
+            Self::Year => "year",
+            Self::TrackNo => "track_no",
+            Self::DiscNo => "disc_no",
+            Self::DurationMs => "duration_ms",
+            Self::Bitrate => "bitrate",
+            Self::SampleRate => "sample_rate",
+            Self::PlayCount => "play_count",
+            Self::AddedAt => "added_at",
+            Self::LastPlayedAt => "last_played_at",
+        }
+    }
+
+    pub fn kind(self) -> FilterFieldKind {
+        match self {
+            Self::Title
+            | Self::Artist
+            | Self::Album
+            | Self::AlbumArtist
+            | Self::Genre
+            | Self::Comment
+            | Self::Path => FilterFieldKind::Text,
+            Self::Year
+            | Self::TrackNo
+            | Self::DiscNo
+            | Self::DurationMs
+            | Self::Bitrate
+            | Self::SampleRate
+            | Self::PlayCount => FilterFieldKind::Number,
+            Self::AddedAt | Self::LastPlayedAt => FilterFieldKind::Timestamp,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum FilterOp {
+    Is,
+    IsNot,
+    Contains,
+    DoesNotContain,
+    StartsWith,
+    EndsWith,
+    GreaterThan,
+    LessThan,
+    Between,
+    /// Within the last N days. Only meaningful on a timestamp field.
+    InLast,
+    IsEmpty,
+    IsNotEmpty,
+}
+
+/// The right-hand side of a rule.
+///
+/// Typed rather than a bare JSON value: the compiler has to know whether it is
+/// binding text or a number, and a rule whose value does not match its field
+/// is a mistake worth reporting rather than coercing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum FilterValue {
+    Text {
+        text: String,
+    },
+    Number {
+        #[ts(type = "number")]
+        number: i64,
+    },
+    /// Both ends of a `Between`, inclusive.
+    Range {
+        #[ts(type = "number")]
+        from: i64,
+        #[ts(type = "number")]
+        to: i64,
+    },
+    /// For operators that take no value at all.
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FilterRule {
+    pub field: FilterField,
+    pub op: FilterOp,
+    pub value: FilterValue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum Combinator {
+    All,
+    Any,
+}
+
+/// One level of the filter tree: rules and nested groups, side by side.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", tag = "type")]
+#[ts(export)]
+pub enum FilterNode {
+    Rule(FilterRule),
+    Group(FilterGroup),
+}
+
+/// A saved filter, as stored in `playlists.filter_json`.
+///
+/// Persisted as a tree rather than as SQL: the editor has to read it back, and
+/// a stored SQL string would be both unparseable for the UI and an injection
+/// surface the moment anything wrote to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FilterGroup {
+    pub combinator: Combinator,
+    pub children: Vec<FilterNode>,
+}
+
+impl Default for FilterGroup {
+    fn default() -> Self {
+        Self {
+            combinator: Combinator::All,
+            children: Vec::new(),
+        }
+    }
+}
+
 /// One entry in the sidebar's playlist section.
 ///
 /// `track_count` is part of the row because the sidebar shows it and a second

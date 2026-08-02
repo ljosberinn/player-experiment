@@ -10,7 +10,9 @@ use tauri::{Emitter, Manager, State};
 use crate::audio::{Command, Player};
 use crate::db::{playback, playlists, query, settings, Db};
 use crate::error::AppResult;
-use crate::model::{AppInfo, PlayerSnapshot, Playlist, ScanSummary, Track, TrackQuery};
+use crate::model::{
+    AppInfo, FilterGroup, PlayerSnapshot, Playlist, ScanSummary, Track, TrackQuery,
+};
 use crate::scan;
 
 pub fn app_info() -> AppInfo {
@@ -88,6 +90,34 @@ pub fn list_playlists(db: State<'_, Db>) -> AppResult<Vec<Playlist>> {
 pub fn create_playlist(db: State<'_, Db>, name: String) -> AppResult<Playlist> {
     let conn = db.conn()?;
     playlists::create(&conn, &name, crate::now_seconds())
+}
+
+/// Creates a smart playlist. Its contents are its filter, evaluated live.
+#[tauri::command]
+pub fn create_smart_playlist(
+    db: State<'_, Db>,
+    name: String,
+    filter: FilterGroup,
+) -> AppResult<Playlist> {
+    let conn = db.conn()?;
+    playlists::create_smart(&conn, &name, &filter, crate::now_seconds())
+}
+
+#[tauri::command]
+pub fn set_playlist_filter(
+    db: State<'_, Db>,
+    playlist_id: i64,
+    filter: FilterGroup,
+) -> AppResult<()> {
+    let conn = db.conn()?;
+    playlists::set_filter(&conn, playlist_id, &filter, crate::now_seconds())
+}
+
+/// The stored filter, for the editor to open.
+#[tauri::command]
+pub fn playlist_filter(db: State<'_, Db>, playlist_id: i64) -> AppResult<Option<FilterGroup>> {
+    let conn = db.conn()?;
+    playlists::filter(&conn, playlist_id)
 }
 
 #[tauri::command]

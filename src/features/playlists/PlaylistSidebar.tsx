@@ -19,6 +19,7 @@ export function PlaylistSidebar() {
   const renamePlaylist = usePlaylistsStore((s) => s.rename);
   const removePlaylist = usePlaylistsStore((s) => s.remove);
   const addTracks = usePlaylistsStore((s) => s.addTracks);
+  const editSmart = usePlaylistsStore((s) => s.editSmart);
 
   const selectedId = useLibraryStore((s) => s.playlistId);
   const showPlaylist = useLibraryStore((s) => s.showPlaylist);
@@ -45,6 +46,15 @@ export function PlaylistSidebar() {
         >
           +
         </button>
+        <button
+          type="button"
+          className="sidebar-add"
+          aria-label="New smart playlist"
+          title="New smart playlist"
+          onClick={() => void editSmart(null)}
+        >
+          ⚙
+        </button>
       </div>
 
       {playlists.length === 0 ? (
@@ -64,7 +74,10 @@ export function PlaylistSidebar() {
                 .filter(Boolean)
                 .join(" ")}
               onDragOver={(event) => {
-                if (!hasTrackIds(event.dataTransfer)) {
+                // A smart playlist's contents come from its filter, so there
+                // is nothing a drop could add. Refusing the drag outright says
+                // so more clearly than accepting it and doing nothing.
+                if (playlist.kind !== "static" || !hasTrackIds(event.dataTransfer)) {
                   return;
                 }
                 // Both are required: without preventDefault the browser
@@ -76,6 +89,9 @@ export function PlaylistSidebar() {
               }}
               onDragLeave={() => setDropTargetId((id) => (id === playlist.id ? null : id))}
               onDrop={(event) => {
+                if (playlist.kind !== "static") {
+                  return;
+                }
                 event.preventDefault();
                 setDropTargetId(null);
                 void addTracks(playlist.id, readTrackIds(event.dataTransfer));
@@ -107,11 +123,21 @@ export function PlaylistSidebar() {
                     onDoubleClick={() => setRenamingId(playlist.id)}
                   >
                     <span className="sidebar-icon" aria-hidden="true">
-                      ≡
+                      {playlist.kind === "smart" ? "⚙" : "≡"}
                     </span>
                     <span className="sidebar-label">{playlist.name}</span>
                     <span className="sidebar-count">{playlist.trackCount}</span>
                   </button>
+                  {playlist.id === selectedId && playlist.kind === "smart" ? (
+                    <button
+                      type="button"
+                      className="sidebar-delete"
+                      aria-label={`Edit filter for ${playlist.name}`}
+                      onClick={() => void editSmart(playlist.id)}
+                    >
+                      ✎
+                    </button>
+                  ) : null}
                   {playlist.id === selectedId ? (
                     // Shown only on the open playlist rather than on hover:
                     // an always-present row of delete buttons is a hazard, and

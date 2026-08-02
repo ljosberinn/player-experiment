@@ -13,6 +13,7 @@ import { usePlayerStore } from "./features/player/store";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { formatLibrarySummary } from "./lib/format";
 
 const SIDEBAR_SECTIONS = [
@@ -54,6 +55,9 @@ export function App() {
   const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
+  const editing = usePlaylistsStore((s) => s.editing);
+  const closeEditor = usePlaylistsStore((s) => s.closeEditor);
+  const saveSmart = usePlaylistsStore((s) => s.saveSmart);
 
   useEffect(() => {
     void refresh();
@@ -95,12 +99,15 @@ export function App() {
   };
 
   const columns = columnsFor(DEFAULT_COLUMN_IDS);
-  const currentPlaylistName =
-    playlists.find((playlist) => playlist.id === playlistId)?.name ?? "This playlist";
+  const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
+  const currentPlaylistName = currentPlaylist?.name ?? "This playlist";
+  // A smart playlist's membership is its filter, so it has neither an order to
+  // rearrange nor rows to take out - editing it means editing the filter.
+  const editable = currentPlaylist?.kind === "static";
   // Rows can only be dragged into a new order where there is an order to
-  // persist: inside a playlist, showing it in its own order. Sorted by a
-  // column, the arrangement is derived and a drop would have nowhere to go.
-  const reorderable = playlistId !== null && sortBy === "position";
+  // persist: inside a static playlist, showing it in its own order. Sorted by
+  // a column the arrangement is derived and a drop would have nowhere to go.
+  const reorderable = editable && sortBy === "position";
   const searchScope = playlistId === null ? "Search Library" : `Search ${currentPlaylistName}`;
 
   return (
@@ -187,8 +194,10 @@ export function App() {
             // An empty playlist is neither an empty library nor a search that
             // found nothing, and both of those give unhelpful advice here.
             <p className="empty-state">
-              <strong>{currentPlaylistName}</strong> is empty. Drag songs from your library onto it
-              in the sidebar.
+              <strong>{currentPlaylistName}</strong> is empty.{" "}
+              {editable
+                ? "Drag songs from your library onto it in the sidebar."
+                : "Nothing in your library matches its filter yet."}
             </p>
           ) : total === 0 && search !== "" ? (
             // An empty library and an empty result set are different problems,
@@ -213,7 +222,7 @@ export function App() {
                   : undefined
               }
               onRemove={
-                playlistId !== null
+                editable && playlistId !== null
                   ? (trackIds) => void removeTracks(playlistId, trackIds)
                   : undefined
               }
@@ -224,6 +233,20 @@ export function App() {
       </div>
 
       <footer className="statusbar">{formatLibrarySummary(total, 0)}</footer>
+
+      {editing ? (
+        <SmartPlaylistEditor
+          // Keyed on which playlist is open, so reopening the editor on a
+          // different one starts from that one's filter rather than from the
+          // draft state left behind by the last.
+          key={editing.playlistId ?? "new"}
+          title={editing.playlistId === null ? "New Smart Playlist" : "Edit Smart Playlist"}
+          name={editing.name}
+          filter={editing.filter}
+          onSave={(name, filter) => void saveSmart(name, filter)}
+          onCancel={closeEditor}
+        />
+      ) : null}
     </div>
   );
 }

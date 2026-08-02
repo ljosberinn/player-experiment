@@ -4,6 +4,7 @@ pub mod db;
 pub mod error;
 pub mod model;
 pub mod scan;
+pub mod smart;
 pub mod tags;
 
 use tauri::{Emitter, Manager};
@@ -69,6 +70,9 @@ pub fn run() {
             commands::all_track_ids,
             commands::list_playlists,
             commands::create_playlist,
+            commands::create_smart_playlist,
+            commands::set_playlist_filter,
+            commands::playlist_filter,
             commands::rename_playlist,
             commands::delete_playlist,
             commands::add_to_playlist,

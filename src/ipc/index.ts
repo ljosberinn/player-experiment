@@ -1,6 +1,13 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "./bindings/AppInfo";
+import type { Combinator } from "./bindings/Combinator";
+import type { FilterField } from "./bindings/FilterField";
+import type { FilterGroup } from "./bindings/FilterGroup";
+import type { FilterNode } from "./bindings/FilterNode";
+import type { FilterOp } from "./bindings/FilterOp";
+import type { FilterRule } from "./bindings/FilterRule";
+import type { FilterValue } from "./bindings/FilterValue";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
 import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
@@ -15,6 +22,13 @@ import type { TrackQuery } from "./bindings/TrackQuery";
 
 export type {
   AppInfo,
+  Combinator,
+  FilterField,
+  FilterGroup,
+  FilterNode,
+  FilterOp,
+  FilterRule,
+  FilterValue,
   PlaybackStatus,
   PlayerPosition,
   PlayerSnapshot,
@@ -73,6 +87,20 @@ export function listPlaylists(): Promise<Playlist[]> {
 
 export function createPlaylist(name: string): Promise<Playlist> {
   return invoke<Playlist>("create_playlist", { name });
+}
+
+/** Creates a smart playlist. Its contents are its filter, evaluated live. */
+export function createSmartPlaylist(name: string, filter: FilterGroup): Promise<Playlist> {
+  return invoke<Playlist>("create_smart_playlist", { name, filter });
+}
+
+export function setPlaylistFilter(playlistId: number, filter: FilterGroup): Promise<void> {
+  return invoke<void>("set_playlist_filter", { playlistId, filter });
+}
+
+/** The stored filter, for the editor to open. Null when there is none to read. */
+export function playlistFilter(playlistId: number): Promise<FilterGroup | null> {
+  return invoke<FilterGroup | null>("playlist_filter", { playlistId });
 }
 
 export function renamePlaylist(playlistId: number, name: string): Promise<void> {
