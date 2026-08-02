@@ -39,6 +39,16 @@ export function countTracks(query: TrackQuery): Promise<number> {
   return invoke<number>("count_tracks", { query });
 }
 
+/**
+ * Ids of every track matching the query, ignoring offset/limit.
+ *
+ * Backs "select all": selection is a set of ids, so it must not be truncated
+ * by the page cap that applies to full rows.
+ */
+export function allTrackIds(query: TrackQuery): Promise<number[]> {
+  return invoke<number[]>("all_track_ids", { query });
+}
+
 export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {
   return listen<ScanProgress>("scan://progress", (event) => handler(event.payload));
 }

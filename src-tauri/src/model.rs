@@ -15,26 +15,42 @@ pub struct AppInfo {
 ///
 /// Cover art is referenced by hash only - the bytes are served separately so a
 /// page of rows stays small enough to send over IPC cheaply.
+///
+/// The `i64` fields are annotated as `number` rather than taking ts-rs's
+/// default of `bigint`: these cross the boundary as JSON, and `JSON.parse`
+/// produces numbers, never bigints. Every one of them (row ids, durations,
+/// unix seconds, play counts) is far inside the 2^53 range where that is
+/// lossless, so `bigint` would describe a value the frontend never receives.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct Track {
+    #[ts(type = "number")]
     pub id: i64,
     pub path: String,
+    #[ts(type = "number")]
     pub duration_ms: i64,
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
     pub album_artist: Option<String>,
     pub genre: Option<String>,
+    #[ts(type = "number | null")]
     pub year: Option<i64>,
+    #[ts(type = "number | null")]
     pub track_no: Option<i64>,
+    #[ts(type = "number | null")]
     pub disc_no: Option<i64>,
     pub comment: Option<String>,
+    #[ts(type = "number | null")]
     pub bitrate: Option<i64>,
+    #[ts(type = "number | null")]
     pub sample_rate: Option<i64>,
     pub cover_hash: Option<String>,
+    #[ts(type = "number")]
     pub added_at: i64,
+    #[ts(type = "number")]
     pub play_count: i64,
+    #[ts(type = "number | null")]
     pub last_played_at: Option<i64>,
 }
 

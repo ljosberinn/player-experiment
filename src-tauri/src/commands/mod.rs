@@ -70,6 +70,13 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
     query::count_tracks(&conn, &query)
 }
 
+/// Ids of every track matching `query`, for "select all".
+#[tauri::command]
+pub fn all_track_ids(db: State<'_, Db>, query: TrackQuery) -> AppResult<Vec<i64>> {
+    let conn = db.conn()?;
+    query::all_track_ids(&conn, &query)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

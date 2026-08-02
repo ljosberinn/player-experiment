@@ -120,6 +120,33 @@ pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Trac
     Ok(tracks)
 }
 
+/// Every matching track id, in the query's sort order.
+///
+/// Backs "select all": selection is a set of ids, so it must not be limited by
+/// the page cap that applies to full rows. Ids are cheap enough to send for a
+/// whole library where rows would not be.
+pub fn all_track_ids(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<i64>> {
+    let fts = query.search.as_deref().and_then(to_fts_query);
+    let sort = format!("tracks.{}", query.sort_by.as_sql());
+    let sql = format!(
+        "SELECT tracks.id {} ORDER BY {sort} IS NULL, {sort} {}, tracks.id {}",
+        from_clause(fts.as_ref()),
+        query.direction.as_sql(),
+        query.direction.as_sql(),
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let ids = match &fts {
+        Some(match_expr) => stmt
+            .query_map([match_expr], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?,
+        None => stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?,
+    };
+    Ok(ids)
+}
+
 /// Cover bytes for the custom protocol handler.
 pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, Vec<u8>)>> {
     let mut stmt = conn.prepare("SELECT mime, bytes FROM covers WHERE hash = ?1")?;
@@ -323,6 +350,66 @@ mod tests {
         };
 
         assert_eq!(count_tracks(&conn, &query).unwrap(), 0);
+    }
+
+    #[test]
+    fn all_track_ids_is_not_subject_to_the_page_cap() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        let ids = all_track_ids(
+            &conn,
+            &TrackQuery {
+                limit: 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(ids.len(), 5, "select-all must ignore limit and offset");
+    }
+
+    #[test]
+    fn all_track_ids_respects_the_search_filter_and_sort_order() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        let filtered = all_track_ids(
+            &conn,
+            &TrackQuery {
+                search: Some("Grizzly".to_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            filtered.len(),
+            2,
+            "select-all must only cover the filtered view"
+        );
+
+        let by_path = all_track_ids(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Path,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let page = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Path,
+                limit: 500,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            by_path,
+            page.iter().map(|t| t.id).collect::<Vec<_>>(),
+            "ids must arrive in the same order as the rows"
+        );
     }
 
     #[test]

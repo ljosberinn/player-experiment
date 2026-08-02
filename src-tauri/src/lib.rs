@@ -25,6 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_wdio_webdriver::init());
 
     builder
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let path = database_path(app.handle())?;
             let db = Db::open(&path)?;
@@ -61,6 +62,7 @@ pub fn run() {
             commands::scan_library,
             commands::query_tracks,
             commands::count_tracks,
+            commands::all_track_ids,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
