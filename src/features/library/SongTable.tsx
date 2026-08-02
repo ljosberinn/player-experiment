@@ -1,6 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef } from "react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SortField } from "../../ipc";
+import { dropIndexFor, hasTrackIds, readTrackIds, setTrackIds } from "../playlists/drag";
 import type { ColumnDef } from "./columns";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
@@ -8,6 +10,17 @@ import { useLibraryStore } from "./store";
 const ROW_HEIGHT = 22;
 /** Rows rendered beyond the viewport, so a fast flick shows content not gaps. */
 const OVERSCAN = 12;
+
+/**
+ * How far down the row the pointer is.
+ *
+ * Measured from the row rather than read off `offsetY`, which is relative to
+ * whichever descendant the pointer happens to be over - a cell, not the row -
+ * and so would put the halfway line in a different place per column.
+ */
+function offsetWithin(event: React.DragEvent<HTMLElement>): number {
+  return event.clientY - event.currentTarget.getBoundingClientRect().top;
+}
 
 /**
  * Real table markup rather than divs with ARIA roles: `role="grid"` gives
@@ -19,11 +32,23 @@ const OVERSCAN = 12;
 export function SongTable({
   columns,
   onActivate,
+  onReorder,
+  onRemove,
   nowPlayingId = null,
 }: {
   columns: ColumnDef[];
   /** Double-click or Enter on a row: play the library from that row. */
   onActivate?: (rowIndex: number) => void;
+  /**
+   * Accepts a drag of rows dropped back onto the table.
+   *
+   * Absent means the view has no order of its own to rearrange - the library
+   * and any column-sorted view are derived orders, and dropping a row into one
+   * would have nothing to persist.
+   */
+  onReorder?: ((trackIds: number[], targetIndex: number) => void) | undefined;
+  /** Delete on a selection: take those rows out of the current playlist. */
+  onRemove?: ((trackIds: number[]) => void) | undefined;
   nowPlayingId?: number | null;
 }) {
   const total = useLibraryStore((s) => s.total);
@@ -44,6 +69,8 @@ export function SongTable({
   const queryToken = useLibraryStore((s) => s.queryToken);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Where a reorder drop would land, as an index into the current order. */
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -94,7 +121,10 @@ export function SongTable({
           </tr>
         </thead>
 
-        <tbody style={{ height: virtualizer.getTotalSize() }}>
+        <tbody
+          style={{ height: virtualizer.getTotalSize() }}
+          onDragLeave={() => setDropIndex(null)}
+        >
           {items.map((item) => {
             const track = rowAt(item.index);
             const select = (event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
@@ -112,23 +142,68 @@ export function SongTable({
                 aria-rowindex={item.index + 1}
                 aria-selected={track ? isSelected(selection, track.id) : undefined}
                 tabIndex={0}
+                draggable={track !== null}
                 className={[
                   "song-row",
                   item.index % 2 === 1 ? "odd" : "",
                   track && isSelected(selection, track.id) ? "selected" : "",
                   track && track.id === nowPlayingId ? "playing" : "",
                   track ? "" : "placeholder",
+                  dropIndex === item.index ? "drop-before" : "",
+                  dropIndex === total && item.index === total - 1 ? "drop-after" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
                 style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
                 onClick={select}
                 onDoubleClick={() => onActivate?.(item.index)}
+                onDragStart={(event) => {
+                  if (!track) {
+                    event.preventDefault();
+                    return;
+                  }
+                  // Dragging a row outside the selection makes that row the
+                  // selection first, so what moves is what the pointer grabbed
+                  // rather than something scrolled off elsewhere.
+                  const wasSelected = isSelected(selection, track.id);
+                  if (!wasSelected) {
+                    clickRow(item.index, track.id, {});
+                  }
+                  setTrackIds(event.dataTransfer, wasSelected ? [...selection.ids] : [track.id]);
+                  event.dataTransfer.effectAllowed = "copyMove";
+                }}
+                onDragOver={(event) => {
+                  if (!onReorder || !hasTrackIds(event.dataTransfer)) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDropIndex(dropIndexFor(item.index, offsetWithin(event), ROW_HEIGHT));
+                }}
+                onDrop={(event) => {
+                  if (!onReorder) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const target = dropIndexFor(item.index, offsetWithin(event), ROW_HEIGHT);
+                  setDropIndex(null);
+                  const ids = readTrackIds(event.dataTransfer);
+                  if (ids.length > 0) {
+                    onReorder(ids, target);
+                  }
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
                     select(event);
                     onActivate?.(item.index);
+                  } else if (event.key === "Delete" && onRemove) {
+                    event.preventDefault();
+                    const ids =
+                      track && !isSelected(selection, track.id) ? [track.id] : [...selection.ids];
+                    if (ids.length > 0) {
+                      onRemove(ids);
+                    }
                   }
                   // Space is deliberately not handled: it is the global
                   // play/pause shortcut and has to reach the window.

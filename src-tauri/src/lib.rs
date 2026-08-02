@@ -67,6 +67,13 @@ pub fn run() {
             commands::query_tracks,
             commands::count_tracks,
             commands::all_track_ids,
+            commands::list_playlists,
+            commands::create_playlist,
+            commands::rename_playlist,
+            commands::delete_playlist,
+            commands::add_to_playlist,
+            commands::remove_from_playlist,
+            commands::move_in_playlist,
             commands::player_play,
             commands::player_toggle,
             commands::player_pause,
@@ -128,7 +135,7 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
     })
 }
 
-fn now_seconds() -> i64 {
+pub(crate) fn now_seconds() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64)

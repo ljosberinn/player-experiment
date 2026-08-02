@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
 
 use crate::audio::{Command, Player};
-use crate::db::{playback, query, settings, Db};
+use crate::db::{playback, playlists, query, settings, Db};
 use crate::error::AppResult;
-use crate::model::{AppInfo, PlayerSnapshot, ScanSummary, Track, TrackQuery};
+use crate::model::{AppInfo, PlayerSnapshot, Playlist, ScanSummary, Track, TrackQuery};
 use crate::scan;
 
 pub fn app_info() -> AppInfo {
@@ -76,6 +76,63 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
 pub fn all_track_ids(db: State<'_, Db>, query: TrackQuery) -> AppResult<Vec<i64>> {
     let conn = db.conn()?;
     query::all_track_ids(&conn, &query)
+}
+
+#[tauri::command]
+pub fn list_playlists(db: State<'_, Db>) -> AppResult<Vec<Playlist>> {
+    let conn = db.conn()?;
+    playlists::list(&conn)
+}
+
+#[tauri::command]
+pub fn create_playlist(db: State<'_, Db>, name: String) -> AppResult<Playlist> {
+    let conn = db.conn()?;
+    playlists::create(&conn, &name, crate::now_seconds())
+}
+
+#[tauri::command]
+pub fn rename_playlist(db: State<'_, Db>, playlist_id: i64, name: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    playlists::rename(&conn, playlist_id, &name)
+}
+
+#[tauri::command]
+pub fn delete_playlist(db: State<'_, Db>, playlist_id: i64) -> AppResult<()> {
+    let conn = db.conn()?;
+    playlists::delete(&conn, playlist_id)
+}
+
+/// Appends tracks to a playlist, returning how many were actually added.
+///
+/// The count is what the drop target reports: dragging ten tracks onto a
+/// playlist that already holds four of them added six, and saying so is more
+/// useful than claiming ten.
+#[tauri::command]
+pub fn add_to_playlist(db: State<'_, Db>, playlist_id: i64, track_ids: Vec<i64>) -> AppResult<u32> {
+    let mut conn = db.conn()?;
+    playlists::add_tracks(&mut conn, playlist_id, &track_ids)
+}
+
+#[tauri::command]
+pub fn remove_from_playlist(
+    db: State<'_, Db>,
+    playlist_id: i64,
+    track_ids: Vec<i64>,
+) -> AppResult<u32> {
+    let mut conn = db.conn()?;
+    playlists::remove_tracks(&mut conn, playlist_id, &track_ids)
+}
+
+/// Moves tracks so they sit immediately before the row at `target_index`.
+#[tauri::command]
+pub fn move_in_playlist(
+    db: State<'_, Db>,
+    playlist_id: i64,
+    track_ids: Vec<i64>,
+    target_index: u32,
+) -> AppResult<()> {
+    let mut conn = db.conn()?;
+    playlists::move_tracks(&mut conn, playlist_id, &track_ids, target_index as usize)
 }
 
 /// Replaces the play queue and starts at `index`.

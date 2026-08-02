@@ -69,6 +69,12 @@ pub enum SortField {
     /// rank, and [`SortField::as_sql`] has no column to offer, so
     /// `db::query` substitutes a real column instead.
     Relevance,
+    /// The order a static playlist stores its tracks in.
+    ///
+    /// Like [`SortField::Relevance`], a property of the query rather than of a
+    /// track: outside a playlist there is no position, so `db::query`
+    /// substitutes a real column.
+    Position,
     Title,
     Artist,
     Album,
@@ -87,12 +93,14 @@ impl SortField {
     /// The column this field sorts by.
     ///
     /// Every arm is a literal, so no caller input reaches the statement.
-    /// `Relevance` is not a property of a track but of a match, so it has no
-    /// column of its own; it falls back to `artist`, the default library
-    /// ordering, for the case where there is nothing to rank.
+    /// `Relevance` is not a property of a track but of a match, and `Position`
+    /// is a property of a playlist membership, so neither has a column of its
+    /// own. They fall back to a real column for the case where there is
+    /// nothing to rank and no playlist to be positioned in.
     pub fn as_sql(self) -> &'static str {
         match self {
             Self::Relevance => "artist",
+            Self::Position => "added_at",
             Self::Title => "title",
             Self::Artist => "artist",
             Self::Album => "album",
@@ -132,6 +140,13 @@ impl SortDirection {
 pub struct TrackQuery {
     /// Free-text search; matched through FTS5 when present.
     pub search: Option<String>,
+    /// Restricts the query to one playlist's members.
+    ///
+    /// A playlist is a filter on the same query rather than a query of its own,
+    /// so paging, searching, sorting, "select all" and the play queue all work
+    /// inside a playlist without a second code path.
+    #[ts(type = "number | null")]
+    pub playlist_id: Option<i64>,
     pub sort_by: SortField,
     pub direction: SortDirection,
     pub offset: u32,
@@ -142,12 +157,60 @@ impl Default for TrackQuery {
     fn default() -> Self {
         Self {
             search: None,
+            playlist_id: None,
             sort_by: SortField::Artist,
             direction: SortDirection::Asc,
             offset: 0,
             limit: 100,
         }
     }
+}
+
+/// What decides a playlist's membership.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PlaylistKind {
+    /// An explicit, ordered list of tracks.
+    Static,
+    /// A saved filter, evaluated live. Lands in phase 7.
+    Smart,
+}
+
+impl PlaylistKind {
+    pub fn as_sql(self) -> &'static str {
+        match self {
+            Self::Static => "static",
+            Self::Smart => "smart",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "static" => Some(Self::Static),
+            "smart" => Some(Self::Smart),
+            _ => None,
+        }
+    }
+}
+
+/// One entry in the sidebar's playlist section.
+///
+/// `track_count` is part of the row because the sidebar shows it and a second
+/// round trip per playlist to fetch it would be waste; it is a `COUNT` over an
+/// indexed column, not a scan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Playlist {
+    #[ts(type = "number")]
+    pub id: i64,
+    pub name: String,
+    pub kind: PlaylistKind,
+    #[ts(type = "number")]
+    pub track_count: i64,
+    #[ts(type = "number")]
+    pub created_at: i64,
 }
 
 /// What the player is doing right now.

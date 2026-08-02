@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track, TrackQuery } from "../../ipc";
 import { countTracks, queryTracks } from "../../ipc";
+import { readTrackIds, TRACK_IDS_MIME } from "../playlists/drag";
 import { columnsFor } from "./columns";
 import { SongTable } from "./SongTable";
 import { useLibraryStore } from "./store";
@@ -81,6 +82,42 @@ beforeEach(() => {
     Array.from({ length: query.limit }, (_, i) => track(query.offset + i)),
   );
 });
+
+/** A writable stand-in for `DataTransfer`, which jsdom does not provide. */
+function dragData() {
+  const store = new Map<string, string>();
+  return {
+    setData: (format: string, data: string) => void store.set(format, data),
+    getData: (format: string) => store.get(format) ?? "",
+    get types() {
+      return [...store.keys()];
+    },
+    effectAllowed: "none",
+    dropEffect: "none",
+  };
+}
+
+/** An incoming drag already carrying ids, as a drop handler would see it. */
+function trackDrag(ids: number[]) {
+  return {
+    types: [TRACK_IDS_MIME],
+    getData: () => JSON.stringify(ids),
+    dropEffect: "none",
+  };
+}
+
+/**
+ * Fires a drag event with a pointer position on it.
+ *
+ * jsdom has no `DragEvent`, so Testing Library builds a plain `Event` and
+ * `clientY` from the init is dropped on the floor; it has to be defined on the
+ * event itself. Which half of the row was hit is the whole point here.
+ */
+function fireDrag(type: "dragOver" | "drop", row: HTMLElement, ids: number[], clientY: number) {
+  const event = createEvent[type](row, { dataTransfer: trackDrag(ids) });
+  Object.defineProperty(event, "clientY", { value: clientY });
+  fireEvent(row, event);
+}
 
 async function renderTable() {
   await useLibraryStore.getState().refresh();
@@ -195,6 +232,88 @@ describe("SongTable", () => {
       const row = screen.getByText("Track 2").closest(".song-row");
       expect(row).toHaveClass("selected");
     });
+  });
+
+  it("carries the whole selection when one of its rows is dragged", async () => {
+    await renderTable();
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Track 1"));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByText("Track 3"));
+    await user.keyboard("{/Shift}");
+
+    const data = dragData();
+    fireEvent.dragStart(screen.getByText("Track 2").closest(".song-row") as HTMLElement, {
+      dataTransfer: data,
+    });
+
+    expect(readTrackIds(data)).toEqual([1, 2, 3]);
+  });
+
+  it("dragging a row outside the selection makes it the selection", async () => {
+    await renderTable();
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Track 1"));
+
+    const data = dragData();
+    fireEvent.dragStart(screen.getByText("Track 5").closest(".song-row") as HTMLElement, {
+      dataTransfer: data,
+    });
+
+    // What moves has to be what the pointer grabbed, not what happened to be
+    // selected somewhere else in the list.
+    expect(readTrackIds(data)).toEqual([5]);
+    await waitFor(() => expect([...useLibraryStore.getState().selection.ids]).toEqual([5]));
+  });
+
+  it("reorders on a drop, above or below depending on where it landed", async () => {
+    const onReorder = vi.fn();
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} onReorder={onReorder} />);
+    await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
+    const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
+
+    fireDrag("drop", row, [9], 2);
+    expect(onReorder).toHaveBeenLastCalledWith([9], 4);
+
+    fireDrag("drop", row, [9], 20);
+    expect(onReorder).toHaveBeenLastCalledWith([9], 5);
+  });
+
+  it("shows where a drop would land", async () => {
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} onReorder={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
+    const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
+
+    fireDrag("dragOver", row, [9], 2);
+
+    expect(row).toHaveClass("drop-before");
+  });
+
+  it("takes no drops at all in a view with no order of its own", async () => {
+    await renderTable();
+    const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
+
+    // No `onReorder`: the library's order is derived from a column sort, so
+    // there is nothing a drop could persist.
+    fireDrag("dragOver", row, [9], 2);
+
+    expect(row).not.toHaveClass("drop-before");
+  });
+
+  it("removes the selection on Delete when the view supports it", async () => {
+    const onRemove = vi.fn();
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} onRemove={onRemove} />);
+    await waitFor(() => expect(screen.getByText("Track 2")).toBeInTheDocument());
+    const user = userEvent.setup();
+
+    await user.click(screen.getByText("Track 2"));
+    (screen.getByText("Track 2").closest(".song-row") as HTMLElement).focus();
+    await user.keyboard("{Delete}");
+
+    expect(onRemove).toHaveBeenCalledWith([2]);
   });
 
   it("renders placeholder rows for pages that have not arrived", async () => {

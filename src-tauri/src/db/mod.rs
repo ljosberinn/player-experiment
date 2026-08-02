@@ -1,4 +1,5 @@
 pub mod playback;
+pub mod playlists;
 pub mod query;
 pub mod schema;
 pub mod settings;

@@ -4,6 +4,8 @@ import type { AppInfo } from "./bindings/AppInfo";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
 import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
+import type { Playlist } from "./bindings/Playlist";
+import type { PlaylistKind } from "./bindings/PlaylistKind";
 import type { ScanProgress } from "./bindings/ScanProgress";
 import type { ScanSummary } from "./bindings/ScanSummary";
 import type { SortDirection } from "./bindings/SortDirection";
@@ -16,6 +18,8 @@ export type {
   PlaybackStatus,
   PlayerPosition,
   PlayerSnapshot,
+  Playlist,
+  PlaylistKind,
   ScanProgress,
   ScanSummary,
   SortDirection,
@@ -61,6 +65,45 @@ export function countTracks(query: TrackQuery): Promise<number> {
  */
 export function allTrackIds(query: TrackQuery): Promise<number[]> {
   return invoke<number[]>("all_track_ids", { query });
+}
+
+export function listPlaylists(): Promise<Playlist[]> {
+  return invoke<Playlist[]>("list_playlists");
+}
+
+export function createPlaylist(name: string): Promise<Playlist> {
+  return invoke<Playlist>("create_playlist", { name });
+}
+
+export function renamePlaylist(playlistId: number, name: string): Promise<void> {
+  return invoke<void>("rename_playlist", { playlistId, name });
+}
+
+export function deletePlaylist(playlistId: number): Promise<void> {
+  return invoke<void>("delete_playlist", { playlistId });
+}
+
+/** Appends tracks to a playlist; resolves to how many were actually added. */
+export function addToPlaylist(playlistId: number, trackIds: number[]): Promise<number> {
+  return invoke<number>("add_to_playlist", { playlistId, trackIds });
+}
+
+export function removeFromPlaylist(playlistId: number, trackIds: number[]): Promise<number> {
+  return invoke<number>("remove_from_playlist", { playlistId, trackIds });
+}
+
+/**
+ * Moves tracks so they sit immediately before the row at `targetIndex`.
+ *
+ * The index is stated against the playlist as it looks right now, moved rows
+ * included, which is what a drop on a visible row means.
+ */
+export function moveInPlaylist(
+  playlistId: number,
+  trackIds: number[],
+  targetIndex: number,
+): Promise<void> {
+  return invoke<void>("move_in_playlist", { playlistId, trackIds, targetIndex });
 }
 
 export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {
@@ -146,6 +189,7 @@ export function coverUrl(hash: string): string {
 
 export const defaultTrackQuery: TrackQuery = {
   search: null,
+  playlistId: null,
   sortBy: "artist",
   direction: "asc",
   offset: 0,

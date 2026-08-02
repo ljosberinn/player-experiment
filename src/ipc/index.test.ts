@@ -2,13 +2,18 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { describe, expect, it, vi } from "vitest";
 import {
+  addToPlaylist,
   addWatchFolder,
   allTrackIds,
   countTracks,
   coverUrl,
+  createPlaylist,
   defaultTrackQuery,
+  deletePlaylist,
   getAppInfo,
+  listPlaylists,
   listWatchFolders,
+  moveInPlaylist,
   onPlayerError,
   onPlayerPosition,
   onPlayerState,
@@ -24,6 +29,8 @@ import {
   playerStop,
   playerToggle,
   queryTracks,
+  removeFromPlaylist,
+  renamePlaylist,
   scanLibrary,
 } from "./index";
 
@@ -107,6 +114,64 @@ describe("ipc", () => {
 
     await expect(allTrackIds(defaultTrackQuery)).resolves.toEqual([1, 2, 3]);
     expect(invokeMock).toHaveBeenCalledWith("all_track_ids", { query: defaultTrackQuery });
+  });
+
+  describe("playlists", () => {
+    it("lists and creates", async () => {
+      const playlist = { id: 1, name: "Evening", kind: "static", trackCount: 0, createdAt: 0 };
+      invokeMock.mockResolvedValue([playlist]);
+      await expect(listPlaylists()).resolves.toEqual([playlist]);
+      expect(invokeMock).toHaveBeenCalledWith("list_playlists");
+
+      invokeMock.mockResolvedValue(playlist);
+      await expect(createPlaylist("Evening")).resolves.toEqual(playlist);
+      expect(invokeMock).toHaveBeenCalledWith("create_playlist", { name: "Evening" });
+    });
+
+    it("renames and deletes by id", async () => {
+      invokeMock.mockResolvedValue(undefined);
+
+      await renamePlaylist(1, "Late Night");
+      expect(invokeMock).toHaveBeenCalledWith("rename_playlist", {
+        playlistId: 1,
+        name: "Late Night",
+      });
+
+      await deletePlaylist(1);
+      expect(invokeMock).toHaveBeenCalledWith("delete_playlist", { playlistId: 1 });
+    });
+
+    it("reports how many of an add actually landed", async () => {
+      invokeMock.mockResolvedValue(2);
+
+      await expect(addToPlaylist(1, [10, 11, 12])).resolves.toBe(2);
+      expect(invokeMock).toHaveBeenCalledWith("add_to_playlist", {
+        playlistId: 1,
+        trackIds: [10, 11, 12],
+      });
+    });
+
+    it("reports how many of a removal actually went", async () => {
+      invokeMock.mockResolvedValue(1);
+
+      await expect(removeFromPlaylist(1, [10, 99])).resolves.toBe(1);
+      expect(invokeMock).toHaveBeenCalledWith("remove_from_playlist", {
+        playlistId: 1,
+        trackIds: [10, 99],
+      });
+    });
+
+    it("names the reorder arguments the way the command expects", async () => {
+      invokeMock.mockResolvedValue(undefined);
+
+      await moveInPlaylist(1, [10, 11], 4);
+
+      expect(invokeMock).toHaveBeenCalledWith("move_in_playlist", {
+        playlistId: 1,
+        trackIds: [10, 11],
+        targetIndex: 4,
+      });
+    });
   });
 
   it("resolves a cover url through Tauri so the shape stays platform-correct", () => {

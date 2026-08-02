@@ -6,4 +6,12 @@ export type TrackQuery = {
 /**
  * Free-text search; matched through FTS5 when present.
  */
-search: string | null, sortBy: SortField, direction: SortDirection, offset: number, limit: number, };
+search: string | null, 
+/**
+ * Restricts the query to one playlist's members.
+ *
+ * A playlist is a filter on the same query rather than a query of its own,
+ * so paging, searching, sorting, "select all" and the play queue all work
+ * inside a playlist without a second code path.
+ */
+playlistId: number | null, sortBy: SortField, direction: SortDirection, offset: number, limit: number, };

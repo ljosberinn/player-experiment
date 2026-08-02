@@ -303,6 +303,78 @@ body {
   color: #fff;
 }
 
+.sidebar-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sidebar-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-item[aria-current="page"] .sidebar-count {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.sidebar-add,
+.sidebar-delete {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-empty {
+  margin: 0 12px;
+  color: var(--muted);
+}
+
+/* The playlist row is the item plus its delete button; the button only exists
+   on the open playlist, so the row has no reserved gutter to leave for it. */
+.sidebar-row {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-row .sidebar-item {
+  min-width: 0;
+}
+
+/* The drop target is outlined rather than filled: the fill is what marks the
+   selected source, and a drop must not look like a selection. */
+.sidebar-row.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 3px;
+}
+
+.sidebar-rename {
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
 .content {
   display: flex;
   flex: 1;
@@ -381,6 +453,14 @@ body {
 .scan-error,
 .content-error {
   color: #c0392b;
+}
+
+.content-notice {
+  margin: 0;
+  padding: 4px 10px;
+  background: var(--row-odd);
+  border-bottom: 1px solid var(--chrome-border);
+  color: var(--muted);
 }
 
 .empty-state {
@@ -468,6 +548,16 @@ body {
    Weight rather than colour alone, so it reads on the selected row too. */
 .song-row.playing {
   font-weight: 600;
+}
+
+/* Where a reorder drop would land. A line between rows rather than a
+   highlight on one, because the drop goes between them, not onto one. */
+.song-row.drop-before {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.song-row.drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
 }
 
 .song-cell {

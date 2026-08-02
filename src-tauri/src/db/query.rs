@@ -67,12 +67,46 @@ fn to_fts_query(search: &str) -> Option<String> {
     (!terms.is_empty()).then(|| terms.join(" AND "))
 }
 
-/// Builds the shared FROM/WHERE, which count and page queries must agree on.
-fn from_clause(fts: Option<&String>) -> &'static str {
-    if fts.is_some() {
-        "FROM tracks JOIN tracks_fts ON tracks_fts.rowid = tracks.id WHERE tracks_fts MATCH ?1"
-    } else {
-        "FROM tracks"
+/// What restricts a query: the FROM/WHERE the count and the page must agree
+/// on, its bind values, and which optional clauses ended up in it.
+struct Scope {
+    from_where: String,
+    params: Vec<Box<dyn rusqlite::ToSql>>,
+    searching: bool,
+    in_playlist: bool,
+}
+
+/// Builds the shared FROM/WHERE.
+///
+/// Placeholders are anonymous `?` bound in textual order, so a clause can be
+/// added or dropped without renumbering the ones around it.
+fn scope(query: &TrackQuery) -> Scope {
+    let fts = query.search.as_deref().and_then(to_fts_query);
+    let mut from_where = String::from("FROM tracks");
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(playlist_id) = query.playlist_id {
+        // A join rather than an `IN (SELECT …)`: the playlist's position column
+        // has to stay reachable from `ORDER BY`.
+        from_where.push_str(
+            " JOIN playlist_tracks ON playlist_tracks.track_id = tracks.id \
+             AND playlist_tracks.playlist_id = ?",
+        );
+        params.push(Box::new(playlist_id));
+    }
+
+    let searching = fts.is_some();
+    if let Some(match_expr) = fts {
+        from_where.push_str(" JOIN tracks_fts ON tracks_fts.rowid = tracks.id");
+        from_where.push_str(" WHERE tracks_fts MATCH ?");
+        params.push(Box::new(match_expr));
+    }
+
+    Scope {
+        from_where,
+        params,
+        searching,
+        in_playlist: query.playlist_id.is_some(),
     }
 }
 
@@ -89,16 +123,25 @@ const BM25_WEIGHTS: &str = "10.0, 8.0, 6.0, 4.0, 2.0, 1.0";
 /// NULLs always sort last so untagged files do not head up every ascending
 /// view, and `tracks.id` breaks ties so paging stays stable when the sort
 /// column has duplicates.
-fn order_by(query: &TrackQuery, searching: bool) -> String {
+fn order_by(scope: &Scope, query: &TrackQuery) -> String {
     // Relevance only exists while a search is running: bm25 needs the FTS
     // table in the query, and without one there is nothing to rank. Falling
     // back to the field's column keeps a stored "sort by relevance" harmless
     // when the search box is cleared.
-    if query.sort_by == SortField::Relevance && searching {
+    if query.sort_by == SortField::Relevance && scope.searching {
         // Ascending bm25 is best-first - the scores are negative, and more
         // negative means a better match - so relevance deliberately ignores
         // the direction rather than offering a "worst match first" order.
         return format!("bm25(tracks_fts, {BM25_WEIGHTS}), tracks.id ASC");
+    }
+
+    // Position is likewise a property of the query, not of a track: the column
+    // only exists while a playlist is joined in. Outside one it falls back the
+    // same way relevance does, so a playlist's stored sort is harmless when
+    // the user clicks back to the library.
+    if query.sort_by == SortField::Position && scope.in_playlist {
+        let direction = query.direction.as_sql();
+        return format!("playlist_tracks.position {direction}, tracks.id {direction}");
     }
 
     let sort = format!("tracks.{}", query.sort_by.as_sql());
@@ -107,42 +150,37 @@ fn order_by(query: &TrackQuery, searching: bool) -> String {
 }
 
 pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
-    let fts = query.search.as_deref().and_then(to_fts_query);
-    let sql = format!("SELECT count(*) {}", from_clause(fts.as_ref()));
+    let scope = scope(query);
+    let sql = format!("SELECT count(*) {}", scope.from_where);
 
-    let count: i64 = match &fts {
-        Some(match_expr) => conn.query_row(&sql, [match_expr], |row| row.get(0))?,
-        None => conn.query_row(&sql, [], |row| row.get(0))?,
-    };
+    let count: i64 = conn.query_row(
+        &sql,
+        rusqlite::params_from_iter(scope.params.iter()),
+        |row| row.get(0),
+    )?;
     Ok(count as u32)
 }
 
 pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Track>> {
-    let fts = query.search.as_deref().and_then(to_fts_query);
-    let limit = query.limit.min(MAX_LIMIT);
+    let mut scope = scope(query);
 
     // `sort_by`/`direction` are enums whose SQL forms are literals, so this
     // interpolation cannot carry caller input.
     let sql = format!(
-        "SELECT {COLUMNS} {} ORDER BY {} LIMIT ?{} OFFSET ?{}",
-        from_clause(fts.as_ref()),
-        order_by(query, fts.is_some()),
-        if fts.is_some() { 2 } else { 1 },
-        if fts.is_some() { 3 } else { 2 },
+        "SELECT {COLUMNS} {} ORDER BY {} LIMIT ? OFFSET ?",
+        scope.from_where,
+        order_by(&scope, query),
     );
+    scope.params.push(Box::new(query.limit.min(MAX_LIMIT)));
+    scope.params.push(Box::new(query.offset));
 
     let mut stmt = conn.prepare(&sql)?;
-    let tracks = match &fts {
-        Some(match_expr) => stmt
-            .query_map(
-                rusqlite::params![match_expr, limit, query.offset],
-                row_to_track,
-            )?
-            .collect::<rusqlite::Result<Vec<_>>>()?,
-        None => stmt
-            .query_map(rusqlite::params![limit, query.offset], row_to_track)?
-            .collect::<rusqlite::Result<Vec<_>>>()?,
-    };
+    let tracks = stmt
+        .query_map(
+            rusqlite::params_from_iter(scope.params.iter()),
+            row_to_track,
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
 
     Ok(tracks)
 }
@@ -153,22 +191,19 @@ pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Trac
 /// the page cap that applies to full rows. Ids are cheap enough to send for a
 /// whole library where rows would not be.
 pub fn all_track_ids(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<i64>> {
-    let fts = query.search.as_deref().and_then(to_fts_query);
+    let scope = scope(query);
     let sql = format!(
         "SELECT tracks.id {} ORDER BY {}",
-        from_clause(fts.as_ref()),
-        order_by(query, fts.is_some()),
+        scope.from_where,
+        order_by(&scope, query),
     );
 
     let mut stmt = conn.prepare(&sql)?;
-    let ids = match &fts {
-        Some(match_expr) => stmt
-            .query_map([match_expr], |row| row.get(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?,
-        None => stmt
-            .query_map([], |row| row.get(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?,
-    };
+    let ids = stmt
+        .query_map(rusqlite::params_from_iter(scope.params.iter()), |row| {
+            row.get(0)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(ids)
 }
 
@@ -606,6 +641,154 @@ mod tests {
             rows.iter().map(|track| track.id).collect::<Vec<_>>(),
             "the play queue must match what the table shows"
         );
+    }
+
+    /// The seeded library with tracks 1, 3 and 4 in a playlist, deliberately
+    /// in an order no column sort would produce.
+    fn with_playlist() -> (tempfile::TempDir, Db, i64) {
+        let (dir, db) = seeded();
+        let mut conn = db.conn().unwrap();
+        let ids: Vec<i64> = conn
+            .prepare("SELECT id FROM tracks ORDER BY path")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+
+        let playlist = crate::db::playlists::create(&conn, "Mix", 0).unwrap();
+        crate::db::playlists::add_tracks(&mut conn, playlist.id, &[ids[3], ids[0], ids[2]])
+            .unwrap();
+        (dir, db, playlist.id)
+    }
+
+    fn playlist_query(playlist_id: i64) -> TrackQuery {
+        TrackQuery {
+            playlist_id: Some(playlist_id),
+            sort_by: SortField::Position,
+            limit: 100,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_playlist_view_shows_only_its_members_in_its_own_order() {
+        let (_dir, db, playlist_id) = with_playlist();
+        let conn = db.conn().unwrap();
+
+        let found = query_tracks(&conn, &playlist_query(playlist_id)).unwrap();
+        assert_eq!(paths(found), ["/m/4.mp3", "/m/1.mp3", "/m/3.mp3"]);
+        assert_eq!(
+            count_tracks(&conn, &playlist_query(playlist_id)).unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn a_playlist_view_can_still_be_sorted_by_a_column() {
+        let (_dir, db, playlist_id) = with_playlist();
+        let conn = db.conn().unwrap();
+
+        let found = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Path,
+                ..playlist_query(playlist_id)
+            },
+        )
+        .unwrap();
+        assert_eq!(paths(found), ["/m/1.mp3", "/m/3.mp3", "/m/4.mp3"]);
+    }
+
+    #[test]
+    fn a_playlist_view_can_be_searched_within() {
+        let (_dir, db, playlist_id) = with_playlist();
+        let conn = db.conn().unwrap();
+
+        // "Grizzly" matches tracks 3 and 4 in the library; only both of those
+        // are in the playlist, while "Guitar" matches 1 and 2 but only 1 is.
+        let query = TrackQuery {
+            search: Some("Guitar".to_owned()),
+            ..playlist_query(playlist_id)
+        };
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 1);
+        assert_eq!(paths(query_tracks(&conn, &query).unwrap()), ["/m/1.mp3"]);
+    }
+
+    #[test]
+    fn a_playlist_view_pages_without_overlapping_or_skipping() {
+        let (_dir, db, playlist_id) = with_playlist();
+        let conn = db.conn().unwrap();
+        let page = |offset| {
+            paths(
+                query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        offset,
+                        limit: 2,
+                        ..playlist_query(playlist_id)
+                    },
+                )
+                .unwrap(),
+            )
+        };
+
+        assert_eq!(page(0), ["/m/4.mp3", "/m/1.mp3"]);
+        assert_eq!(page(2), ["/m/3.mp3"]);
+    }
+
+    #[test]
+    fn the_play_queue_for_a_playlist_matches_what_the_table_shows() {
+        let (_dir, db, playlist_id) = with_playlist();
+        let conn = db.conn().unwrap();
+
+        let ids = all_track_ids(&conn, &playlist_query(playlist_id)).unwrap();
+        let rows = query_tracks(&conn, &playlist_query(playlist_id)).unwrap();
+        assert_eq!(ids, rows.iter().map(|track| track.id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn position_without_a_playlist_falls_back_to_a_real_column() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        // Nothing to be positioned in, so this must behave like an ordinary
+        // sort rather than erroring on a column that is not in the query.
+        let positioned = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::Position,
+                limit: 100,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let by_added = query_tracks(
+            &conn,
+            &TrackQuery {
+                sort_by: SortField::AddedAt,
+                limit: 100,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(paths(positioned), paths(by_added));
+    }
+
+    #[test]
+    fn an_empty_playlist_is_an_empty_view_not_the_whole_library() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let playlist = crate::db::playlists::create(&conn, "Empty", 0).unwrap();
+
+        assert_eq!(
+            count_tracks(&conn, &playlist_query(playlist.id)).unwrap(),
+            0
+        );
+        assert!(query_tracks(&conn, &playlist_query(playlist.id))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

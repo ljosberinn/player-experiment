@@ -37,6 +37,8 @@ interface LibraryState {
   searchInput: string;
   /** What the current query is filtered by; trails the input by the debounce. */
   search: string;
+  /** The playlist being shown, or null for the whole library. */
+  playlistId: number | null;
   sortBy: SortField;
   direction: SortDirection;
   /**
@@ -60,6 +62,8 @@ interface LibraryState {
 
   /** Reloads the count and drops cached pages; call after any query change. */
   refresh: () => Promise<void>;
+  /** Switches the view to a playlist, or back to the whole library. */
+  showPlaylist: (playlistId: number | null) => Promise<void>;
   ensureRange: (startIndex: number, endIndex: number) => Promise<void>;
   rowAt: (rowIndex: number) => Track | null;
   /** Types into the search box; the query itself is debounced. */
@@ -75,14 +79,24 @@ interface LibraryState {
   queueIds: () => Promise<number[]>;
 }
 
-function queryFor(state: Pick<LibraryState, "search" | "sortBy" | "direction">): TrackQuery {
+function queryFor(
+  state: Pick<LibraryState, "search" | "playlistId" | "sortBy" | "direction">,
+): TrackQuery {
   return {
     search: state.search.trim() === "" ? null : state.search,
+    playlistId: state.playlistId,
     sortBy: state.sortBy,
     direction: state.direction,
     offset: 0,
     limit: PAGE_SIZE,
   };
+}
+
+/** The order a view is in before anyone sorts it. */
+function defaultSortFor(playlistId: number | null): SortField {
+  // A playlist's own order is the point of it, so that is what it opens in;
+  // the library has no inherent order and opens by artist.
+  return playlistId === null ? "artist" : "position";
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -91,6 +105,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   inFlight: new Set(),
   searchInput: "",
   search: "",
+  playlistId: null,
   sortBy: "artist",
   direction: "asc",
   sortBeforeSearch: null,
@@ -127,6 +142,27 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       }
       set({ error: String(cause), loading: false });
     }
+  },
+
+  showPlaylist: async (playlistId) => {
+    if (get().playlistId === playlistId) {
+      return;
+    }
+    // Changing source resets the view rather than carrying the old sort and
+    // search across: a search typed against the library is rarely the one you
+    // want against a playlist, and the sorts are not even the same set - only
+    // a playlist has a position to order by.
+    runSearch.cancel();
+    set({
+      playlistId,
+      searchInput: "",
+      search: "",
+      sortBy: defaultSortFor(playlistId),
+      direction: "asc",
+      sortBeforeSearch: null,
+      selection: emptySelection,
+    });
+    await get().refresh();
   },
 
   ensureRange: async (startIndex, endIndex) => {

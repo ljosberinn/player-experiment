@@ -56,6 +56,7 @@ beforeEach(() => {
     sortBy: "artist",
     direction: "asc",
     sortBeforeSearch: null,
+    playlistId: null,
     selection: { ids: new Set(), anchorIndex: null },
     error: null,
     queryToken: 0,
@@ -80,6 +81,62 @@ describe("refresh", () => {
     await useLibraryStore.getState().refresh();
 
     expect(useLibraryStore.getState().error).toContain("db is locked");
+  });
+});
+
+describe("showPlaylist", () => {
+  it("scopes the query to the playlist and opens it in its own order", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+
+    expect(countTracksMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ playlistId: 5, sortBy: "position", direction: "asc" }),
+    );
+  });
+
+  it("goes back to the library's own default on the way out", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+
+    await useLibraryStore.getState().showPlaylist(null);
+
+    expect(countTracksMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ playlistId: null, sortBy: "artist" }),
+    );
+  });
+
+  it("drops the search and the selection when the source changes", async () => {
+    useLibraryStore.setState({
+      searchInput: "maki",
+      search: "maki",
+      selection: { ids: new Set([1, 2]), anchorIndex: 0 },
+    });
+
+    await useLibraryStore.getState().showPlaylist(5);
+
+    // A search typed against the library is rarely the one you want against a
+    // playlist, and the selected ids may not even be in it.
+    expect(useLibraryStore.getState().searchInput).toBe("");
+    expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: null }));
+    expect(useLibraryStore.getState().selection.ids.size).toBe(0);
+  });
+
+  it("does not requery when the source did not change", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+    countTracksMock.mockClear();
+
+    await useLibraryStore.getState().showPlaylist(5);
+
+    expect(countTracksMock).not.toHaveBeenCalled();
+  });
+
+  it("carries the playlist into every query the view makes", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+    allTrackIdsMock.mockResolvedValue([1, 2]);
+
+    await useLibraryStore.getState().ensureRange(0, 10);
+    await useLibraryStore.getState().queueIds();
+
+    expect(queryTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 5 }));
+    expect(allTrackIdsMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 5 }));
   });
 });
 
