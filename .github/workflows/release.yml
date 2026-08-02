@@ -55,8 +55,50 @@ jobs:
 
       # A real release build, not the `--debug --no-bundle` one the e2e job
       # makes: this is the artifact people install.
+      # The signing key is what lets an installed copy trust an update. Without
+      # it in the environment `createUpdaterArtifacts` produces no `.sig`
+      # files, and every install then refuses the update - silently, from the
+      # user's side - so the manifest step below checks rather than assumes.
       - name: Build installers
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
+
+      # `latest.json` is what an installed copy polls. Tauri does not write it -
+      # it only produces the signed bundles - so it is assembled here. NSIS
+      # rather than MSI because the updater replaces an installed app in place,
+      # and NSIS is the bundle that does that without a UAC prompt per update.
+      - name: Write the update manifest
+        shell: bash
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          bundle=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe)
+          signature="${bundle}.sig"
+          # No signature means the signing secret is missing or wrong. Failing
+          # here is the point: a release published without one looks complete
+          # and can never be installed by anybody's updater.
+          test -f "$signature" || {
+            echo "no .sig beside $bundle - is TAURI_SIGNING_PRIVATE_KEY set?" >&2
+            exit 1
+          }
+          version="${TAG#v}"
+          cat > latest.json <<JSON
+          {
+            "version": "$version",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "$(cat "$signature")",
+                "url": "https://github.com/$REPO/releases/download/$TAG/$(basename "$bundle")"
+              }
+            }
+          }
+          JSON
+          cat latest.json
 
       # Attached to the release release-please just cut. Both bundles are
       # produced because tauri.conf.json lists both targets; NSIS is the
@@ -78,4 +120,4 @@ jobs:
           for file in "${msi[@]}" "${nsis[@]}"; do
             test -f "$file" || { echo "missing bundle: $file" >&2; exit 1; }
           done
-          gh release upload "$TAG" "${msi[@]}" "${nsis[@]}" --clobber
+          gh release upload "$TAG" "${msi[@]}" "${nsis[@]}" latest.json --clobber
