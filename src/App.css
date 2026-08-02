@@ -581,6 +581,128 @@ body {
   background: var(--skeleton);
 }
 
+/* ---------- smart playlist editor ---------- */
+
+.modal-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(760px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 6px;
+  background: var(--chrome);
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.modal-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-field input {
+  flex: 1;
+}
+
+.modal input,
+.modal select {
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.modal-summary {
+  margin: 0;
+  color: var(--muted);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal button {
+  height: 24px;
+  padding: 0 12px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.modal button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.modal button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Nested groups are indented and ruled, so which rules belong to which
+   combinator is readable without tracing brackets. */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.filter-group .filter-group {
+  margin-left: 14px;
+  border-left: 3px solid var(--accent);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-rule select,
+.filter-rule input {
+  min-width: 0;
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.filter-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
 /* ---------- status bar ---------- */
 
 .statusbar {

@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::{AppError, AppResult};
-use crate::model::{Playlist, PlaylistKind};
+use crate::model::{FilterGroup, Playlist, PlaylistKind};
 
 /// Spacing between consecutive positions.
 ///
@@ -61,9 +61,25 @@ fn row_to_playlist(row: &rusqlite::Row<'_>) -> rusqlite::Result<Playlist> {
 /// things up in, so a stable alphabetical order beats "most recent last".
 pub fn list(conn: &Connection) -> AppResult<Vec<Playlist>> {
     let mut stmt = conn.prepare(&format!("{SELECT} ORDER BY playlists.name COLLATE NOCASE"))?;
-    let playlists = stmt
+    let mut playlists = stmt
         .query_map([], row_to_playlist)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+
+    for playlist in &mut playlists {
+        if playlist.kind == PlaylistKind::Smart {
+            // A smart playlist has no membership rows to count, so the count
+            // is whatever its filter currently matches. Routed through the
+            // ordinary count so the sidebar and the view cannot disagree.
+            playlist.track_count = crate::db::query::count_tracks(
+                conn,
+                &crate::model::TrackQuery {
+                    playlist_id: Some(playlist.id),
+                    ..Default::default()
+                },
+            )? as i64;
+        }
+    }
     Ok(playlists)
 }
 
@@ -89,6 +105,74 @@ pub fn create(conn: &Connection, name: &str, at: i64) -> AppResult<Playlist> {
     )?;
     let id = conn.last_insert_rowid();
     get(conn, id)?.ok_or_else(|| AppError::Internal("playlist vanished after insert".to_owned()))
+}
+
+/// Creates a smart playlist: a name plus the filter that decides its contents.
+///
+/// The filter is validated by compiling it before it is stored, so a filter
+/// that cannot run never reaches the database and the error arrives while the
+/// user is still looking at the editor.
+pub fn create_smart(
+    conn: &Connection,
+    name: &str,
+    filter: &FilterGroup,
+    at: i64,
+) -> AppResult<Playlist> {
+    let name = normalize_name(name)?;
+    crate::smart::compile(filter, at)?;
+    conn.execute(
+        "INSERT INTO playlists (name, kind, filter_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![name, PlaylistKind::Smart.as_sql(), to_json(filter)?, at],
+    )?;
+    let id = conn.last_insert_rowid();
+    get(conn, id)?.ok_or_else(|| AppError::Internal("playlist vanished after insert".to_owned()))
+}
+
+/// Replaces a smart playlist's filter. Its membership follows immediately,
+/// because membership is the filter - there is nothing to recompute.
+pub fn set_filter(conn: &Connection, id: i64, filter: &FilterGroup, now: i64) -> AppResult<()> {
+    match get(conn, id)? {
+        None => {
+            return Err(AppError::Internal(
+                "That playlist no longer exists.".to_owned(),
+            ))
+        }
+        Some(playlist) if playlist.kind != PlaylistKind::Smart => {
+            return Err(AppError::Internal(
+                "A static playlist's contents are the tracks in it, not a filter.".to_owned(),
+            ))
+        }
+        Some(_) => {}
+    }
+    crate::smart::compile(filter, now)?;
+    conn.execute(
+        "UPDATE playlists SET filter_json = ?2 WHERE id = ?1",
+        rusqlite::params![id, to_json(filter)?],
+    )?;
+    Ok(())
+}
+
+/// The stored filter, for the editor and for the query layer.
+///
+/// A smart playlist whose `filter_json` is absent or unreadable reads as no
+/// filter at all - which matches everything - rather than failing the view. A
+/// corrupt row should be editable back into shape, not an unopenable playlist.
+pub fn filter(conn: &Connection, id: i64) -> AppResult<Option<FilterGroup>> {
+    let stored: Option<Option<String>> = conn
+        .query_row(
+            "SELECT filter_json FROM playlists WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(stored
+        .flatten()
+        .and_then(|json| serde_json::from_str(&json).ok()))
+}
+
+fn to_json(filter: &FilterGroup) -> AppResult<String> {
+    serde_json::to_string(filter)
+        .map_err(|e| AppError::Internal(format!("could not store that filter: {e}")))
 }
 
 pub fn rename(conn: &Connection, id: i64, name: &str) -> AppResult<()> {
@@ -606,6 +690,83 @@ mod tests {
     fn editing_a_playlist_that_is_gone_is_an_error() {
         let (_dir, mut conn) = seeded();
         assert!(add_tracks(&mut conn, 404, &[1]).is_err());
+    }
+
+    fn year_is(year: i64) -> FilterGroup {
+        FilterGroup {
+            combinator: crate::model::Combinator::All,
+            children: vec![crate::model::FilterNode::Rule(crate::model::FilterRule {
+                field: crate::model::FilterField::Year,
+                op: crate::model::FilterOp::Is,
+                value: crate::model::FilterValue::Number { number: year },
+            })],
+        }
+    }
+
+    #[test]
+    fn a_smart_playlist_stores_and_returns_its_filter() {
+        let (_dir, conn) = seeded();
+        let playlist = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+
+        assert_eq!(playlist.kind, PlaylistKind::Smart);
+        assert_eq!(filter(&conn, playlist.id).unwrap(), Some(year_is(2012)));
+    }
+
+    #[test]
+    fn a_filter_that_cannot_run_is_refused_before_it_is_stored() {
+        let (_dir, conn) = seeded();
+        let broken = FilterGroup {
+            combinator: crate::model::Combinator::All,
+            children: vec![crate::model::FilterNode::Rule(crate::model::FilterRule {
+                // A text value on a numeric field: caught by the compiler.
+                field: crate::model::FilterField::Year,
+                op: crate::model::FilterOp::Is,
+                value: crate::model::FilterValue::Text {
+                    text: "2012".to_owned(),
+                },
+            })],
+        };
+
+        assert!(create_smart(&conn, "Broken", &broken, 0).is_err());
+        assert!(
+            list(&conn).unwrap().is_empty(),
+            "nothing should have been stored"
+        );
+    }
+
+    #[test]
+    fn the_two_kinds_do_not_accept_each_others_edits() {
+        let (_dir, conn) = seeded();
+        let stat = create(&conn, "Mix", 0).unwrap();
+        let smart = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+
+        assert!(set_filter(&conn, stat.id, &year_is(2017), 0).is_err());
+        assert!(add_tracks(&mut seeded().1, smart.id, &[1]).is_err());
+    }
+
+    #[test]
+    fn replacing_a_filter_replaces_it_wholesale() {
+        let (_dir, conn) = seeded();
+        let playlist = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+
+        set_filter(&conn, playlist.id, &year_is(2017), 0).unwrap();
+
+        assert_eq!(filter(&conn, playlist.id).unwrap(), Some(year_is(2017)));
+    }
+
+    #[test]
+    fn an_unreadable_filter_reads_as_no_filter_rather_than_an_unopenable_playlist() {
+        let (_dir, conn) = seeded();
+        let playlist = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+        conn.execute(
+            "UPDATE playlists SET filter_json = 'not json' WHERE id = ?1",
+            [playlist.id],
+        )
+        .unwrap();
+
+        // Matching everything is recoverable - the user can edit it back into
+        // shape. Failing the view would leave them with no way in.
+        assert_eq!(filter(&conn, playlist.id).unwrap(), None);
     }
 
     #[test]

@@ -169,8 +169,8 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–5 are merged to `main`; phase 6 is in review. Next up is **phase 7
-(smart playlists)**.
+Phases 1–6 are merged to `main`; phase 7 is in review. Next up is **phase 8
+(tag editing)**.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -179,8 +179,9 @@ Phases 1–5 are merged to `main`; phase 6 is in review. Next up is **phase 7
 | 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
 | 4 | Playback: engine, transport, play counts | ✅ merged (`eb24e87`) |
 | 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
-| 6 | Playlists: CRUD, drag-and-drop, reorder | 🔄 in review |
-| 7+ | Smart playlists onwards | not started |
+| 6 | Playlists: CRUD, drag-and-drop, reorder | ✅ merged (`8f10a3d`) |
+| 7 | Smart playlists: filter compiler + editor | 🔄 in review |
+| 8+ | Tag editing onwards | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -191,10 +192,11 @@ advance, and play counts written back to the library. Search debounces, ranks
 by relevance, and puts the previous sort back when cleared. With phase 6 the
 sidebar grows a Playlists section: create, rename in place, delete, drag a
 multi-selection onto one, reorder inside it by dragging rows, and Delete to
-take rows back out.
+take rows back out. Phase 7 adds smart playlists: a nested and/or filter built
+in a dialog, compiled to parameterized SQL and re-evaluated live.
 
-**Test counts.** 140 Rust (112 unit, 22 integration against generated mp3s,
-6 perf guards) and 237 frontend at 96.8% lines. CI runs
+**Test counts.** 176 Rust (148 unit, 22 integration against generated mp3s,
+6 perf guards) and 284 frontend at 98.1% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -275,6 +277,35 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 - **A sidebar item is named for its destination, not its size.** The track
   count is visible but `aria-hidden`: a navigation item whose announced name
   changes every time a song is added is worse to use than one that does not.
+- **The filter is stored as a tree, never as SQL.** The editor has to read it
+  back, and a stored SQL string would be both unparseable for the UI and an
+  injection surface the moment anything wrote to it.
+- **`FilterValue` is typed, not a bare JSON value.** The compiler has to know
+  whether it is binding text or a number, and a rule whose value does not match
+  its field is a mistake worth reporting rather than coercing. Mismatches are
+  refused at save time, not silently reinterpreted.
+- **Exclusion rules spell out the NULL case.** `NULL <> 'Guitar'` is NULL, so
+  the obvious translation of "artist is not Guitar" quietly drops every
+  untagged file. `IsNot`, `DoesNotContain` and their kin all read
+  `(col IS NULL OR …)`, and a test pins it.
+- **`LIKE` patterns escape `%`, `_` and the escape character.** Otherwise
+  searching for "50%" matches every title starting with "50".
+- **Depth and rule count are capped** (10 and 200). Compilation recurses, so a
+  corrupt or hand-edited `filter_json` would otherwise be a stack overflow, and
+  SQLite caps bound parameters anyway.
+- **An empty filter matches everything.** A smart playlist that has just been
+  created has no rules yet; showing the whole library to narrow down beats
+  showing nothing to look at.
+- **`now` is passed into the compiler**, not read inside it, so "added in the
+  last 7 days" is testable without waiting a week.
+- **A smart playlist's count is its query's count.** Routed through the same
+  `count_tracks` the view uses, so the sidebar and the table cannot disagree.
+  It costs one extra count per smart playlist per sidebar reload.
+- **A deleted playlist reads as an empty view, not an error.** Dropping the
+  clause instead would show the whole library, which is worse than showing
+  nothing while the sidebar catches up.
+- **The editor stays open when the backend refuses a filter**, so a rejected
+  save does not throw away what the user built.
 
 ### Defects found on the first real build (2026-08-02)
 
@@ -334,6 +365,19 @@ Running the app against a real library surfaced three, all fixed in
 - **Dragging is mouse-only.** There is no keyboard route to add a selection to
   a playlist yet; removing from one has Delete, and reordering has nothing.
   Worth an "Add to Playlist" command in a menu when one exists.
+- **The editor's field/operator table is duplicated in TypeScript.**
+  `filterTree.ts` mirrors `FilterField::kind` and the operator match in
+  `smart/compile`. The backend validates every filter by compiling it before
+  storing, so drift shows up as the editor offering a combination the backend
+  refuses — annoying, never unsafe. Generating the table from Rust would remove
+  the duplication if it ever bites.
+- **A smart playlist has no sort of its own.** `playlists.sort_json` is still
+  unused; a smart playlist opens in the library's default order and the user
+  sorts by column. Belongs with the same work as `columns_json`.
+- **The filter dialog has no focus trap and no Escape-to-close.** It is a
+  `div` with `role="dialog"` rather than `<dialog>`, because the native element
+  needs `showModal()` from an effect and jsdom does not implement it. Worth
+  revisiting in the phase 13 native-feel pass.
 
 ---
 
@@ -403,9 +447,22 @@ resize or toggle them (a gap from phase 3), so persisting a per-playlist
 arrangement would be storage for something the user cannot change. It belongs
 with the column UI, wherever that lands.
 
-**7 — Smart playlists** `feat/07-smart`
+**7 — Smart playlists** `feat/07-smart` — 🔄 **in review**
 Filter-tree editor UI (nested and/or groups), the SQL compiler, live
 re-evaluation.
+
+*As built.* `src-tauri/src/smart/mod.rs` is the whole compiler: pure, no
+database, ~200 lines, and tested by running its output against a real library
+rather than by asserting on the string it produced. `db::query::scope` resolves
+a `playlist_id` to either a membership join (static) or a compiled `WHERE`
+(smart), so a smart playlist needs no new query path — paging, search-within
+and the play queue work on it unchanged, and its sidebar count goes through the
+same `count_tracks` the view does, so the two cannot disagree.
+
+Frontend: `src/features/smart/filterTree.ts` holds every tree edit as a pure
+path-addressed function, and `SmartPlaylistEditor.tsx` is a dialog over it.
+Field/operator compatibility is enforced in the editor *and* validated by the
+backend, which compiles a filter before storing it.
 
 **8 — Tag editing** `feat/08-tags`
 Single and bulk editor (mixed-value "—" fields that only write when touched),

@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Row};
 
 use crate::error::AppResult;
-use crate::model::{SortField, Track, TrackQuery};
+use crate::model::{PlaylistKind, SortField, Track, TrackQuery};
 
 /// Table-qualified: `tracks_fts` carries columns of the same names, so an
 /// unqualified list is ambiguous the moment a search joins it in.
@@ -80,34 +80,60 @@ struct Scope {
 ///
 /// Placeholders are anonymous `?` bound in textual order, so a clause can be
 /// added or dropped without renumbering the ones around it.
-fn scope(query: &TrackQuery) -> Scope {
+///
+/// Takes a connection because a playlist id alone does not say what it means:
+/// a static playlist is a join on its membership, a smart one is its compiled
+/// filter. Resolving it here rather than in the caller keeps every query - page,
+/// count and id list - agreeing about what the view contains.
+fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
     let fts = query.search.as_deref().and_then(to_fts_query);
     let mut from_where = String::from("FROM tracks");
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let mut conditions: Vec<String> = Vec::new();
+    let mut in_playlist = false;
 
     if let Some(playlist_id) = query.playlist_id {
-        // A join rather than an `IN (SELECT …)`: the playlist's position column
-        // has to stay reachable from `ORDER BY`.
-        from_where.push_str(
-            " JOIN playlist_tracks ON playlist_tracks.track_id = tracks.id \
-             AND playlist_tracks.playlist_id = ?",
-        );
-        params.push(Box::new(playlist_id));
+        match crate::db::playlists::get(conn, playlist_id)? {
+            // A playlist deleted from under an open view is an empty view
+            // rather than an error: the sidebar is about to drop it anyway.
+            None => conditions.push("1 = 0".to_owned()),
+            Some(playlist) if playlist.kind == PlaylistKind::Static => {
+                // A join rather than an `IN (SELECT …)`: the playlist's
+                // position column has to stay reachable from `ORDER BY`.
+                from_where.push_str(
+                    " JOIN playlist_tracks ON playlist_tracks.track_id = tracks.id \
+                     AND playlist_tracks.playlist_id = ?",
+                );
+                params.push(Box::new(playlist_id));
+                in_playlist = true;
+            }
+            Some(_) => {
+                let filter = crate::db::playlists::filter(conn, playlist_id)?.unwrap_or_default();
+                let compiled = crate::smart::compile(&filter, crate::now_seconds())?;
+                conditions.push(compiled.sql);
+                params.extend(compiled.params);
+            }
+        }
     }
 
     let searching = fts.is_some();
     if let Some(match_expr) = fts {
         from_where.push_str(" JOIN tracks_fts ON tracks_fts.rowid = tracks.id");
-        from_where.push_str(" WHERE tracks_fts MATCH ?");
+        conditions.push("tracks_fts MATCH ?".to_owned());
         params.push(Box::new(match_expr));
     }
 
-    Scope {
+    if !conditions.is_empty() {
+        from_where.push_str(" WHERE ");
+        from_where.push_str(&conditions.join(" AND "));
+    }
+
+    Ok(Scope {
         from_where,
         params,
         searching,
-        in_playlist: query.playlist_id.is_some(),
-    }
+        in_playlist,
+    })
 }
 
 /// Column weights for bm25, in the order the FTS table declares them:
@@ -150,7 +176,7 @@ fn order_by(scope: &Scope, query: &TrackQuery) -> String {
 }
 
 pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
-    let scope = scope(query);
+    let scope = scope(conn, query)?;
     let sql = format!("SELECT count(*) {}", scope.from_where);
 
     let count: i64 = conn.query_row(
@@ -162,7 +188,7 @@ pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
 }
 
 pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Track>> {
-    let mut scope = scope(query);
+    let mut scope = scope(conn, query)?;
 
     // `sort_by`/`direction` are enums whose SQL forms are literals, so this
     // interpolation cannot carry caller input.
@@ -191,7 +217,7 @@ pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Trac
 /// the page cap that applies to full rows. Ids are cheap enough to send for a
 /// whole library where rows would not be.
 pub fn all_track_ids(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<i64>> {
-    let scope = scope(query);
+    let scope = scope(conn, query)?;
     let sql = format!(
         "SELECT tracks.id {} ORDER BY {}",
         scope.from_where,
@@ -789,6 +815,124 @@ mod tests {
         assert!(query_tracks(&conn, &playlist_query(playlist.id))
             .unwrap()
             .is_empty());
+    }
+
+    fn smart(db: &Db, filter: crate::model::FilterGroup) -> i64 {
+        let conn = db.conn().unwrap();
+        crate::db::playlists::create_smart(&conn, "Smart", &filter, 0)
+            .unwrap()
+            .id
+    }
+
+    fn artist_is(name: &str) -> crate::model::FilterGroup {
+        crate::model::FilterGroup {
+            combinator: crate::model::Combinator::All,
+            children: vec![crate::model::FilterNode::Rule(crate::model::FilterRule {
+                field: crate::model::FilterField::Artist,
+                op: crate::model::FilterOp::Is,
+                value: crate::model::FilterValue::Text {
+                    text: name.to_owned(),
+                },
+            })],
+        }
+    }
+
+    #[test]
+    fn a_smart_playlist_view_is_its_filter() {
+        let (_dir, db) = seeded();
+        let id = smart(&db, artist_is("Grizzly Bear"));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
+        assert_eq!(
+            paths(query_tracks(&conn, &query).unwrap()),
+            ["/m/3.mp3", "/m/4.mp3"]
+        );
+    }
+
+    #[test]
+    fn a_smart_playlist_re_evaluates_as_the_library_changes() {
+        let (_dir, db) = seeded();
+        let id = smart(&db, artist_is("Grizzly Bear"));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            ..Default::default()
+        };
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
+
+        conn.execute(
+            "INSERT INTO tracks (path, mtime, size, title, artist, added_at)
+             VALUES ('/m/9.mp3', 1, 1, 'Yet Again', 'Grizzly Bear', 0)",
+            [],
+        )
+        .unwrap();
+
+        // Nothing was materialised, so nothing has to be invalidated.
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 3);
+    }
+
+    #[test]
+    fn a_search_narrows_a_smart_playlist_rather_than_replacing_it() {
+        let (_dir, db) = seeded();
+        let id = smart(&db, artist_is("Grizzly Bear"));
+        let conn = db.conn().unwrap();
+
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            search: Some("Shields".to_owned()),
+            sort_by: SortField::Relevance,
+            limit: 100,
+            ..Default::default()
+        };
+
+        // "Shields" matches both Grizzly Bear tracks in the library, and only
+        // one of the two is on the Shields album.
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
+        assert_eq!(
+            paths(query_tracks(&conn, &query).unwrap()),
+            ["/m/3.mp3", "/m/4.mp3"]
+        );
+    }
+
+    #[test]
+    fn a_playlist_that_has_been_deleted_reads_as_an_empty_view() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(404),
+            limit: 100,
+            ..Default::default()
+        };
+
+        // Not the whole library, which is what dropping the clause would give.
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 0);
+        assert!(query_tracks(&conn, &query).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_sidebar_count_for_a_smart_playlist_is_what_its_view_shows() {
+        let (_dir, db) = seeded();
+        let id = smart(&db, artist_is("Guitar"));
+        let conn = db.conn().unwrap();
+
+        let listed = crate::db::playlists::list(&conn).unwrap();
+        let counted = count_tracks(
+            &conn,
+            &TrackQuery {
+                playlist_id: Some(id),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(listed[0].track_count, counted as i64);
+        assert_eq!(counted, 2);
     }
 
     #[test]

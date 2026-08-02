@@ -8,8 +8,10 @@ import {
   countTracks,
   coverUrl,
   createPlaylist,
+  createSmartPlaylist,
   defaultTrackQuery,
   deletePlaylist,
+  type FilterGroup,
   getAppInfo,
   listPlaylists,
   listWatchFolders,
@@ -28,10 +30,12 @@ import {
   playerSnapshot,
   playerStop,
   playerToggle,
+  playlistFilter,
   queryTracks,
   removeFromPlaylist,
   renamePlaylist,
   scanLibrary,
+  setPlaylistFilter,
 } from "./index";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: vi.fn() }));
@@ -159,6 +163,31 @@ describe("ipc", () => {
         playlistId: 1,
         trackIds: [10, 99],
       });
+    });
+
+    it("carries a filter tree to and from the smart-playlist commands", async () => {
+      const filter: FilterGroup = {
+        combinator: "all",
+        children: [
+          { type: "rule", field: "year", op: "is", value: { kind: "number", number: 2012 } },
+        ],
+      };
+      const playlist = { id: 4, name: "Recent", kind: "smart", trackCount: 9, createdAt: 0 };
+
+      invokeMock.mockResolvedValue(playlist);
+      await expect(createSmartPlaylist("Recent", filter)).resolves.toEqual(playlist);
+      expect(invokeMock).toHaveBeenCalledWith("create_smart_playlist", {
+        name: "Recent",
+        filter,
+      });
+
+      invokeMock.mockResolvedValue(undefined);
+      await setPlaylistFilter(4, filter);
+      expect(invokeMock).toHaveBeenCalledWith("set_playlist_filter", { playlistId: 4, filter });
+
+      invokeMock.mockResolvedValue(filter);
+      await expect(playlistFilter(4)).resolves.toEqual(filter);
+      expect(invokeMock).toHaveBeenCalledWith("playlist_filter", { playlistId: 4 });
     });
 
     it("names the reorder arguments the way the command expects", async () => {

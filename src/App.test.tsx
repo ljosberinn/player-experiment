@@ -11,6 +11,7 @@ import {
   allTrackIds,
   countTracks,
   createPlaylist,
+  createSmartPlaylist,
   listPlaylists,
   moveInPlaylist,
   type Playlist,
@@ -43,6 +44,9 @@ vi.mock("./ipc", () => ({
   playerSetVolume: vi.fn(),
   listPlaylists: vi.fn(),
   createPlaylist: vi.fn(),
+  createSmartPlaylist: vi.fn(),
+  setPlaylistFilter: vi.fn(),
+  playlistFilter: vi.fn(),
   renamePlaylist: vi.fn(),
   deletePlaylist: vi.fn(),
   addToPlaylist: vi.fn(),
@@ -74,7 +78,13 @@ function playlist(id: number, name: string, trackCount = 0): Playlist {
 beforeEach(async () => {
   vi.clearAllMocks();
   useLibraryStore.setState({ ...initial, total: 0, pages: new Map(), error: null });
-  usePlaylistsStore.setState({ ...initialPlaylists, playlists: [], notice: null, error: null });
+  usePlaylistsStore.setState({
+    ...initialPlaylists,
+    playlists: [],
+    notice: null,
+    error: null,
+    editing: null,
+  });
   vi.mocked(listPlaylists).mockResolvedValue([]);
   countTracksMock.mockResolvedValue(0);
   queryTracksMock.mockResolvedValue([]);
@@ -422,6 +432,62 @@ describe("App playback", () => {
     await waitFor(() =>
       expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 7 })),
     );
+  });
+
+  it("builds a smart playlist through the editor and opens it", async () => {
+    vi.mocked(createSmartPlaylist).mockResolvedValue({
+      id: 9,
+      name: "Grizzly",
+      kind: "smart",
+      trackCount: 2,
+      createdAt: 0,
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "New smart playlist" }));
+    await user.clear(screen.getByRole("textbox", { name: "Name" }));
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Grizzly");
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByRole("textbox", { name: "Value for condition 1" }), "Grizzly Bear");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(createSmartPlaylist).toHaveBeenCalledWith("Grizzly", {
+        combinator: "all",
+        children: [
+          {
+            type: "rule",
+            field: "artist",
+            op: "is",
+            value: { kind: "text", text: "Grizzly Bear" },
+          },
+        ],
+      }),
+    );
+    await waitFor(() =>
+      expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 9 })),
+    );
+  });
+
+  it("offers no reordering or removal inside a smart playlist", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0 },
+    ]);
+    await renderWithLibrary();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Grizzly" }));
+    const row = (await screen.findByText("Track 1")).closest(".song-row") as HTMLElement;
+    await user.click(row);
+    await user.type(row, "{Delete}");
+
+    // Its membership is its filter - editing it means editing that.
+    expect(removeFromPlaylist).not.toHaveBeenCalled();
+    fireEvent.drop(row, {
+      dataTransfer: { types: [TRACK_IDS_MIME], getData: () => JSON.stringify([10]) },
+    });
+    expect(moveInPlaylist).not.toHaveBeenCalled();
   });
 
   it("shows the current track in the status display once the backend reports one", async () => {
