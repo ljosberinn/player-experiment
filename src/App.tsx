@@ -21,7 +21,7 @@ import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
-import { exportLibrary } from "./ipc";
+import { type AppInfo, exportLibrary, getAppInfo } from "./ipc";
 import { formatLibrarySummary } from "./lib/format";
 
 const SIDEBAR_SECTIONS = [
@@ -31,6 +31,7 @@ const SIDEBAR_SECTIONS = [
 export function App() {
   const [tab, setTab] = useState<ViewTab>("songs");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
   const total = useLibraryStore((s) => s.total);
   const stats = useLibraryStore((s) => s.stats);
@@ -124,6 +125,17 @@ export function App() {
   useEffect(() => {
     void refreshUndo();
   }, [refreshUndo]);
+
+  useEffect(() => {
+    // Read once from the backend rather than baked in at build time: the Rust
+    // crate's version is the one the installer and every export report, so
+    // asking it is what keeps the footer honest if they ever disagree.
+    void getAppInfo()
+      .then(setAppInfo)
+      .catch(() => {
+        // A missing version is not worth an error state; the line just omits it.
+      });
+  }, []);
 
   /**
    * Writes `choice` to a JSON file the user names.
@@ -303,7 +315,10 @@ export function App() {
       </div>
 
       <footer className="statusbar">
-        {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
+        <span className="statusbar-summary">
+          {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
+        </span>
+        {appInfo ? <span className="statusbar-version">v{appInfo.version}</span> : null}
       </footer>
 
       {editorTracks ? (

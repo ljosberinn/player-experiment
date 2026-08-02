@@ -53,7 +53,11 @@ describe("application shell", () => {
     // This text only renders after count_tracks resolves, so it asserts the
     // whole round trip: SQLite opened, migrations ran, IPC replied. A failure
     // in any of those would leave the app on its loading state instead.
-    const status = await browser.$(".statusbar");
+    // The summary specifically, not the whole bar: the status bar also carries
+    // the app version, and asserting on the bar made this fail the moment that
+    // arrived - "No songsv0.1.0" - for a reason that had nothing to do with
+    // whether the database answered.
+    const status = await browser.$(".statusbar-summary");
     await expect(status).toHaveText(/songs?$|^No songs$/);
   });
 

@@ -14,6 +14,7 @@ import {
   createPlaylist,
   createSmartPlaylist,
   exportLibrary,
+  getAppInfo,
   libraryStats,
   listPlaylists,
   loadWindowGeometry,
@@ -32,6 +33,7 @@ import {
 
 vi.mock("./ipc", () => ({
   countTracks: vi.fn(),
+  getAppInfo: vi.fn(async () => ({ name: "player", version: "0.4.2" })),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
@@ -189,6 +191,23 @@ describe("App", () => {
     // A search showing two songs while the footer claims the library's total
     // would be worse than showing nothing.
     expect(await screen.findByText("2 songs, 10 minutes, 9 MB")).toBeInTheDocument();
+  });
+
+  it("shows the app version in the footer", async () => {
+    render(<App />);
+
+    // Read from the backend rather than baked in at build time: the Rust
+    // crate's version is the one the installer and every export report.
+    expect(await screen.findByText("v0.4.2")).toBeInTheDocument();
+  });
+
+  it("says nothing about the version when it cannot be read", async () => {
+    vi.mocked(getAppInfo).mockRejectedValue("no backend");
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    // A missing version is not worth an error state; the line just omits it.
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
   });
 
   it("swaps the empty state for the table once the library has rows", async () => {

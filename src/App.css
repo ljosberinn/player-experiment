@@ -806,12 +806,29 @@ input[type="radio"] {
 
 /* ---------- status bar ---------- */
 
+/* The summary stays centred in the bar, not in the space left over beside the
+   version - a total that shifts when a version number gets a digit longer
+   would be worse than one sitting slightly off-centre. Hence the grid rather
+   than flex with space-between. */
 .statusbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
   padding: 4px 10px;
   background: var(--chrome);
   border-top: 1px solid var(--chrome-border);
   color: var(--muted);
   text-align: center;
+}
+
+.statusbar-summary {
+  grid-column: 2;
+}
+
+.statusbar-version {
+  grid-column: 3;
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Context menus
