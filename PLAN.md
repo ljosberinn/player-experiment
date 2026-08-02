@@ -211,6 +211,46 @@ affordance. DB rows update in the same transaction as the file write batch.
 JSON export (full library / selection / playlist, documented stable schema),
 settings persistence, window geometry, dark mode pass, empty and error states.
 
+**10 — last.fm scrobbling** `feat/10-lastfm`
+Depends on phase 4 (playback), since both triggers are positions in a track.
+
+- **Now playing**: after **5 seconds** of continuous playback, send
+  `track.updateNowPlaying`. Fire-and-forget — it is not queued or retried,
+  because it describes a moment that has passed by the time a retry lands.
+- **Scrobble**: once playback passes **50% of the track's length**, submit
+  `track.scrobble` with the timestamp the track *started*. One scrobble per
+  play; seeking backwards past the threshold must not submit twice.
+- **Credentials**: a settings pane takes the user's last.fm API key and shared
+  secret, then runs the desktop auth flow (`auth.getToken` → open the
+  authorize URL in a browser → `auth.getSession`) to obtain a session key.
+  Only the session key is needed after that.
+- **Storage**: credentials live in `settings`, not in exported JSON. The
+  export writer must have an explicit denylist so a key cannot leak into a
+  library export.
+- **Offline queue**: scrobbles that fail to send are persisted in a
+  `scrobble_queue` table and retried on the next successful call. `now playing`
+  never enters the queue.
+- **Signing**: every authenticated call needs an `api_sig` — an md5 of the
+  sorted parameters plus the shared secret. Wrong ordering is the classic
+  failure here, so the signature builder gets its own unit tests against
+  known-good vectors.
+
+Testing: the last.fm client is written against an injected HTTP transport so
+every test runs offline — trigger timing (5s / 50%, no double-submit on
+seek-back), signature construction, queue-and-retry on failure, and that a
+too-short or skipped track produces neither call. A single opt-in test hitting
+the real API stays `#[ignore]`d.
+
+**Note on scope**: this is the product's first outbound network dependency —
+everything else is local-only. It must stay entirely optional: with no
+credentials configured, no request is ever made and no code path changes.
+
+**Note on last.fm's own rule**: the service's documented guidance is to
+scrobble at 50% *or 4 minutes, whichever comes first*, and to skip tracks
+under 30 seconds. The 50% trigger above is what was asked for; the 4-minute
+cap and 30-second floor are worth adding as they cost nothing and stop long
+tracks from never scrobbling.
+
 ---
 
 ## Verification

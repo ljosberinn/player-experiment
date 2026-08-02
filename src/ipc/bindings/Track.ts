@@ -5,5 +5,11 @@
  *
  * Cover art is referenced by hash only - the bytes are served separately so a
  * page of rows stays small enough to send over IPC cheaply.
+ *
+ * The `i64` fields are annotated as `number` rather than taking ts-rs's
+ * default of `bigint`: these cross the boundary as JSON, and `JSON.parse`
+ * produces numbers, never bigints. Every one of them (row ids, durations,
+ * unix seconds, play counts) is far inside the 2^53 range where that is
+ * lossless, so `bigint` would describe a value the frontend never receives.
  */
-export type Track = { id: bigint, path: string, duration_ms: bigint, title: string | null, artist: string | null, album: string | null, album_artist: string | null, genre: string | null, year: bigint | null, track_no: bigint | null, disc_no: bigint | null, comment: string | null, bitrate: bigint | null, sample_rate: bigint | null, cover_hash: string | null, added_at: bigint, play_count: bigint, last_played_at: bigint | null, };
+export type Track = { id: number, path: string, duration_ms: number, title: string | null, artist: string | null, album: string | null, album_artist: string | null, genre: string | null, year: number | null, track_no: number | null, disc_no: number | null, comment: string | null, bitrate: number | null, sample_rate: number | null, cover_hash: string | null, added_at: number, play_count: number, last_played_at: number | null, };

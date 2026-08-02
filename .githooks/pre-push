@@ -1,10 +1,11 @@
 #!/bin/sh
-# Refuses direct pushes to main.
+# Refuses direct pushes to main, then runs the checks that catch the mistakes
+# CI would otherwise catch ten minutes later.
 #
-# This is a local stand-in for server-side branch protection, which GitHub
-# gates behind Pro for private repositories. It is advisory only - it cannot
-# stop a push made from another clone, and `--no-verify` bypasses it. Enable
-# real protection if the repo ever goes public or onto a paid plan.
+# main protection is a local stand-in for server-side branch protection, which
+# GitHub gates behind Pro for private repositories. It is advisory only - it
+# cannot stop a push made from another clone, and `--no-verify` bypasses it.
+# Enable real protection if the repo ever goes public or onto a paid plan.
 #
 # Wired up by the `prepare` script in package.json (core.hooksPath=.githooks).
 
@@ -18,5 +19,34 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
       ;;
   esac
 done
+
+# Repo-wide rather than staged: a push carries every commit on the branch, and
+# these are the same commands CI runs. Tests and clippy are left to CI, which
+# has the cache for them.
+if command -v npx >/dev/null 2>&1; then
+  echo "pre-push: biome"
+  npx --no-install biome check . || {
+    echo "pre-push: biome failed. Fix with: npm run lint:fix" >&2
+    exit 1
+  }
+
+  echo "pre-push: typecheck"
+  npm run --silent typecheck || {
+    echo "pre-push: typecheck failed." >&2
+    exit 1
+  }
+else
+  echo "pre-push: npx not on PATH, skipping frontend checks" >&2
+fi
+
+if command -v cargo >/dev/null 2>&1; then
+  echo "pre-push: cargo fmt"
+  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check || {
+    echo "pre-push: rustfmt failed. Fix with: cargo fmt --manifest-path src-tauri/Cargo.toml --all" >&2
+    exit 1
+  }
+else
+  echo "pre-push: cargo not on PATH, skipping rustfmt" >&2
+fi
 
 exit 0

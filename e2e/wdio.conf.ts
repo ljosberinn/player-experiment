@@ -39,6 +39,9 @@ export const config: WebdriverIO.Config = {
   ],
   reporters: ["spec"],
   framework: "mocha",
-  mochaOpts: { ui: "bdd", timeout: 60_000 },
+  // Generous: on failure the spec probes the webview, and each probe can block
+  // for seconds against a stalled one. A tighter budget loses the diagnostics
+  // to a Mocha timeout, which is exactly what happened before.
+  mochaOpts: { ui: "bdd", timeout: 180_000 },
   waitforTimeout: 10_000,
 };

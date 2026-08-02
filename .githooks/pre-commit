@@ -1,0 +1,42 @@
+#!/bin/sh
+# Fast checks on what is being committed.
+#
+# Deliberately staged-only and lint-only: anything slower than a second or two
+# gets bypassed with --no-verify and stops being a check at all. The full
+# suite runs on pre-push and in CI.
+#
+# Wired up by the `prepare` script in package.json (core.hooksPath=.githooks).
+
+set -e
+
+staged() {
+  git diff --cached --name-only --diff-filter=ACMR
+}
+
+if staged | grep -qE '\.(ts|tsx|js|jsx|json|css|html)$'; then
+  if command -v npx >/dev/null 2>&1; then
+    echo "pre-commit: biome"
+    # --staged checks exactly what is being committed, so unrelated work in
+    # progress cannot block the commit.
+    npx --no-install biome check --staged --no-errors-on-unmatched || {
+      echo "pre-commit: biome failed. Fix with: npm run lint:fix" >&2
+      exit 1
+    }
+  else
+    echo "pre-commit: npx not on PATH, skipping biome" >&2
+  fi
+fi
+
+if staged | grep -qE '\.rs$'; then
+  if command -v cargo >/dev/null 2>&1; then
+    echo "pre-commit: cargo fmt"
+    cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check || {
+      echo "pre-commit: rustfmt failed. Fix with: cargo fmt --manifest-path src-tauri/Cargo.toml --all" >&2
+      exit 1
+    }
+  else
+    echo "pre-commit: cargo not on PATH, skipping rustfmt" >&2
+  fi
+fi
+
+exit 0

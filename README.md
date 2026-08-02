@@ -64,6 +64,19 @@ bindings drift from the Rust source.
 Work on `feat/*` branches and open a PR; CI (frontend, rust, cargo-deny, e2e)
 must pass before merge.
 
+### Git hooks
+
+`npm install` points `core.hooksPath` at `.githooks/`:
+
+| Hook | Runs |
+| --- | --- |
+| `pre-commit` | Biome on **staged** files, `cargo fmt --check` if Rust changed |
+| `pre-push` | Blocks pushes to `main`; Biome, typecheck and `cargo fmt --check` repo-wide |
+
+Tests and clippy are left to CI, which has the build cache for them. Each hook
+skips gracefully if `npx`/`cargo` is not on `PATH`, and `--no-verify` bypasses
+either when you need it.
+
 **`main` is not protected server-side.** GitHub gates both branch protection and
 rulesets behind Pro for private repositories, so neither could be enabled here.
 The substitute is a `pre-push` hook in `.githooks/` that refuses pushes to
