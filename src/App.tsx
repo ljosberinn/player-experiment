@@ -21,6 +21,8 @@ import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
+import { useUpdaterStore } from "./features/updater/store";
+import { tauriUpdater, useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, exportLibrary, getAppInfo } from "./ipc";
 import { formatLibrarySummary } from "./lib/format";
 
@@ -32,6 +34,9 @@ export function App() {
   const [tab, setTab] = useState<ViewTab>("songs");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const updateStatus = useUpdaterStore((s) => s.status);
+  const updateVersion = useUpdaterStore((s) => s.version);
+  const installUpdate = useUpdaterStore((s) => s.install);
 
   const total = useLibraryStore((s) => s.total);
   const stats = useLibraryStore((s) => s.stats);
@@ -104,6 +109,7 @@ export function App() {
   usePlayerShortcuts();
   useSelectionShortcuts();
   useNativeFeel();
+  useUpdater();
   useWindowGeometry();
 
   useEffect(() => {
@@ -318,7 +324,23 @@ export function App() {
         <span className="statusbar-summary">
           {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
         </span>
-        {appInfo ? <span className="statusbar-version">v{appInfo.version}</span> : null}
+        {/* Only `ready` says anything. Checking and downloading happen quietly,
+            and a failed check usually means the machine is offline, which is
+            not news. */}
+        {updateStatus === "ready" || updateStatus === "installing" ? (
+          <button
+            type="button"
+            className="statusbar-update"
+            disabled={updateStatus === "installing"}
+            onClick={() => void installUpdate(tauriUpdater)}
+          >
+            {updateStatus === "installing"
+              ? "Restarting…"
+              : `${updateVersion} ready — restart to install`}
+          </button>
+        ) : appInfo ? (
+          <span className="statusbar-version">v{appInfo.version}</span>
+        ) : null}
       </footer>
 
       {editorTracks ? (
