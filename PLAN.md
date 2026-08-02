@@ -171,7 +171,7 @@ repo.
 
 Phases 1–8 are merged to `main`; phase 9 is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
-of the later-added phases 13–16, which are independent of it.
+of the later-added phases 13–18, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -184,7 +184,7 @@ of the later-added phases 13–16, which are independent of it.
 | 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
 | 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
 | 9 | Export & polish: JSON export, window geometry | 🔄 in review |
-| 10+ | last.fm, Sentry, tag sources, 13–16 | not started |
+| 10+ | last.fm, Sentry, tag sources, 13–18 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -410,6 +410,37 @@ and one was a phase that had not merged yet.
   is unwanted, that is a small change and worth asking about.
 - **Context menus and drag-to-empty-space-to-create** were never built. See
   phase 17.
+
+### Defects found on the third real build (2026-08-02)
+
+- **`dialog.save` was not in the capability file.** Tauri v2 gates every
+  built-in API behind `src-tauri/capabilities/default.json`, and export called
+  `save()` without `dialog:allow-save` — so it typechecked, passed its tests,
+  and failed in the packaged app with *"command plugin:dialog|save not allowed
+  by ACL"*. `dialog:allow-open` had been added back in phase 2 for the watch
+  folder; nothing made the omission of its sibling visible.
+- **Window geometry restore had the same hole**, found while fixing the first
+  one and not yet reported by anyone: `core:default` grants the *reads*
+  (`outerPosition`, `outerSize`, `availableMonitors`) but not `setPosition` or
+  `setSize`. Phase 9's restore would have failed on every launch. Both added.
+- **A guard now exists for the whole class**: `src/ipc/capabilities.test.ts`
+  maps each Tauri API the source calls to the permission it needs and asserts
+  the capability file lists it. It is a lookup table rather than an analysis —
+  a call it does not know about still slips through — but it turns the failure
+  from a runtime surprise into a red CI job, and it fails on `main` as it
+  stood before this fix. The mocked suite cannot catch these on its own,
+  because the mocks answer regardless of whether the permission exists.
+- **Delete removed songs from a playlist only while a row had focus.** The
+  handler was on the row, so it worked after clicking one and did nothing
+  after Ctrl+A or after clicking the sidebar — the same "reachable in theory"
+  shape as `selectAll`. A window-level fallback now handles it when focus is
+  elsewhere, deferring to the row when the row already acted, and refusing on
+  smart playlists, where there is no membership row to remove and Delete must
+  never be read as "delete the file".
+- **Tag autocompletion** was never built — new phase 18.
+- **Actions in the wrong place** (right-click a playlist to edit or delete,
+  right-click songs to locate on disk or edit) — already phase 17, which now
+  also spells out that the stopgap buttons get removed there.
 
 ### Known gaps carried forward
 
@@ -1012,6 +1043,74 @@ target, so it needs one store test and one component test.
 actually gets solved. The Rename/Delete buttons added as a fix are a stopgap —
 they are only on the open playlist, and a row of glyphs in a sidebar is not
 where those actions belong long-term.
+
+*Confirmed by the third build (2026-08-02):* the user asked for exactly this —
+"move actions to where they are commonly found… then the buttons to do so
+currently can get removed". So the removals are part of the phase, not a
+follow-up, and the phase is not done until they happen:
+
+- `.sidebar-action` Rename / Delete / ⚙ Edit Filter buttons in
+  `PlaylistSidebar.tsx` — deleted, their tests moved onto the menu.
+- The Get Info toolbar button — the menu becomes the primary route. Keep the
+  Ctrl+I-style keyboard path; a menu is not a substitute for a shortcut.
+- Double-click-to-rename stays. It is invisible, but it is also the gesture
+  every file manager has, and it costs nothing to keep.
+
+The Export button is the one that stays put: it acts on the current view,
+which is a toolbar's job, not a specific row's.
+
+**18 — Tag autocompletion** `feat/18-tag-complete`
+Typing "Godspeed You! Black Emperor" correctly, by hand, for the fourth time
+is how libraries acquire three spellings of one band. The tag editor should
+suggest values already present elsewhere in the library.
+
+*Which fields.* Only the ones with a shared vocabulary — where two songs
+genuinely ought to agree:
+
+| Suggested | Not suggested |
+|---|---|
+| Artist, Album Artist, Album, Genre, Composer, Year | Title, Track Number, Disc Number, Comment |
+
+The right-hand column is per-song by nature; a dropdown of other songs'
+comments is noise at best and a way to paste the wrong data at worst. This
+was called out explicitly in the request.
+
+*Where the values come from.* `SELECT DISTINCT` over 50k rows on every
+keystroke is not viable, so the distinct values get their own table,
+maintained as part of the same writes that already touch `tracks`:
+
+```sql
+CREATE TABLE tag_values (
+    field TEXT NOT NULL,        -- 'artist' | 'album' | …, a whitelist, never user text
+    value TEXT NOT NULL,
+    uses  INTEGER NOT NULL,     -- how many tracks carry it
+    PRIMARY KEY (field, value)) WITHOUT ROWID;
+CREATE INDEX idx_tag_values_lookup ON tag_values(field, value COLLATE NOCASE);
+```
+
+Rebuilt at the end of a scan (one pass, already paying for the walk) and
+adjusted incrementally by the phase 8 tag writer, so an edit's new value is
+suggestable immediately. `uses` orders the suggestions, so the spelling you
+use 400 times outranks the typo you made once — and a value that drops to
+zero uses is deleted, so a corrected typo stops being offered.
+
+Lookup is `WHERE field = ? AND value LIKE ? ESCAPE '\' COLLATE NOCASE
+ORDER BY uses DESC LIMIT 8`, reusing phase 7's `like_escape`. Prefix matches
+rank above interior ones. Query on the Rust side, debounced on the JS side —
+the same debounce phase 5 already has.
+
+*Interaction.* A combobox, not a hijack: the field stays free text, because
+a new artist has to be typeable. Suggestions appear below, Down/Up move
+through them, Enter or Tab accepts, Escape dismisses the list without
+dismissing the dialog — which needs care, since `useDialogKeys` currently
+takes Escape as "cancel the edit". Ties into the bulk editor's mixed-value
+"—" state: picking a suggestion is a touch, and so it writes.
+
+*Testing:* Rust — the incremental `uses` bookkeeping through an edit and an
+undo (this is where it will break), `LIKE` escaping, the field whitelist,
+and a perf-lite assertion that a lookup against a 50k-row fixture stays
+under budget. Frontend — keyboard navigation, that Escape closes the list
+before the dialog, and that the non-suggested fields have no combobox at all.
 
 ---
 

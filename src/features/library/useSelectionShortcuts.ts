@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { isTypingTarget } from "../player/shortcuts";
+import { usePlaylistsStore } from "../playlists/store";
 import { useLibraryStore } from "./store";
 
 /**
@@ -32,6 +33,26 @@ export function useSelectionShortcuts(): void {
       if (event.key === "Escape" && useLibraryStore.getState().selection.ids.size > 0) {
         event.preventDefault();
         useLibraryStore.getState().clearSelection();
+        return;
+      }
+
+      // A focused row handles Delete itself, because it can act on the row
+      // under the cursor even when that row is not part of the selection.
+      // This is the case it cannot cover: Ctrl+A and a click on the sidebar
+      // both leave focus off the table, and Delete has to keep working.
+      if (event.key === "Delete" && !event.defaultPrevented) {
+        const { playlistId, selection } = useLibraryStore.getState();
+        if (playlistId === null || selection.ids.size === 0) {
+          return;
+        }
+        const open = usePlaylistsStore.getState().playlists.find((one) => one.id === playlistId);
+        // Smart playlists are a query, not a list - there is no membership to
+        // remove a song from, and deleting the file is not what Delete means.
+        if (open?.kind !== "static") {
+          return;
+        }
+        event.preventDefault();
+        void usePlaylistsStore.getState().removeTracks(playlistId, [...selection.ids]);
       }
     };
 

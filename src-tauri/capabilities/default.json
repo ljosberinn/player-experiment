@@ -9,6 +9,9 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
-    "dialog:allow-open"
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }
