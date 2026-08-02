@@ -33,6 +33,7 @@ export function App() {
   const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   const total = useLibraryStore((s) => s.total);
+  const stats = useLibraryStore((s) => s.stats);
   const playlistId = useLibraryStore((s) => s.playlistId);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const showPlaylist = useLibraryStore((s) => s.showPlaylist);
@@ -179,12 +180,10 @@ export function App() {
           onNext={() => void next()}
           onVolumeChange={(value) => void setVolume(value)}
         />
-        {/* Duration totals need a library-wide sum, which arrives with the
-            footer work in a later phase; the count is honest today. */}
         <StatusDisplay
           track={nowPlaying}
           positionMs={positionMs}
-          summary={formatLibrarySummary(total, 0)}
+          summary={formatLibrarySummary(stats.tracks, stats.durationMs)}
           onSeek={(value) => void seek(value)}
         />
         {/* The search is scoped to the current view, so it says which one. */}
@@ -303,7 +302,9 @@ export function App() {
         </main>
       </div>
 
-      <footer className="statusbar">{formatLibrarySummary(total, 0)}</footer>
+      <footer className="statusbar">
+        {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
+      </footer>
 
       {editorTracks ? (
         <TagEditor

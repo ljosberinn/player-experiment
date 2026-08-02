@@ -23,6 +23,7 @@ vi.mock("../../ipc", () => ({
   removeFromPlaylist: vi.fn(),
   moveInPlaylist: vi.fn(),
   countTracks: vi.fn(async () => 0),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(async () => []),
   allTrackIds: vi.fn(async () => []),
 }));

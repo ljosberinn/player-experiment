@@ -15,6 +15,7 @@ import {
   exportLibrary,
   type FilterGroup,
   getAppInfo,
+  libraryStats,
   listPlaylists,
   listWatchFolders,
   loadWindowGeometry,
@@ -97,6 +98,14 @@ describe("ipc", () => {
 
     await expect(countTracks(defaultTrackQuery)).resolves.toBe(42);
     expect(invokeMock).toHaveBeenCalledWith("count_tracks", { query: defaultTrackQuery });
+  });
+
+  it("asks for the view's totals in one call", async () => {
+    const stats = { tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 };
+    invokeMock.mockResolvedValue(stats);
+
+    await expect(libraryStats(defaultTrackQuery)).resolves.toEqual(stats);
+    expect(invokeMock).toHaveBeenCalledWith("library_stats", { query: defaultTrackQuery });
   });
 
   it("unwraps the event payload for scan progress subscribers", async () => {

@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import {
   allTrackIds,
-  countTracks,
+  type LibraryStats,
+  libraryStats,
   queryTracks,
   type SortDirection,
   type SortField,
@@ -31,6 +32,14 @@ export const SEARCH_DEBOUNCE_MS = 200;
 interface LibraryState {
   /** Total rows matching the current query; drives the scrollbar. */
   total: number;
+  /**
+   * Totals for the current view, for the footer.
+   *
+   * Fetched with the count rather than beside it: the two always change
+   * together, and `total` is just `stats.tracks` under another name kept for
+   * the table, which asks for it on every render.
+   */
+  stats: LibraryStats;
   pages: PageState;
   inFlight: Set<number>;
   /** What is in the search box right now; updates on every keystroke. */
@@ -101,6 +110,7 @@ function defaultSortFor(playlistId: number | null): SortField {
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
+  stats: { tracks: 0, durationMs: 0, bytes: 0 },
   pages: new Map(),
   inFlight: new Set(),
   searchInput: "",
@@ -128,14 +138,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       inFlight: new Set(),
     });
     try {
-      const total = await countTracks(queryFor(get()));
+      const stats = await libraryStats(queryFor(get()));
       // A superseded count is dropped, but `loading` is left alone rather than
       // cleared: the query that replaced this one owns it now, and clearing it
       // here would report "done" while that one is still running.
       if (get().queryToken !== token) {
         return;
       }
-      set({ total, loading: false });
+      set({ stats, total: stats.tracks, loading: false });
     } catch (cause) {
       if (get().queryToken !== token) {
         return;

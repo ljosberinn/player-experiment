@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Row};
 
 use crate::error::AppResult;
-use crate::model::{PlaylistKind, SortField, Track, TrackQuery};
+use crate::model::{LibraryStats, PlaylistKind, SortField, Track, TrackQuery};
 
 /// Table-qualified: `tracks_fts` carries columns of the same names, so an
 /// unqualified list is ambiguous the moment a search joins it in.
@@ -176,15 +176,35 @@ fn order_by(scope: &Scope, query: &TrackQuery) -> String {
 }
 
 pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
-    let scope = scope(conn, query)?;
-    let sql = format!("SELECT count(*) {}", scope.from_where);
+    Ok(library_stats(conn, query)?.tracks)
+}
 
-    let count: i64 = conn.query_row(
+/// Count, total duration and total size for the rows `query` covers.
+///
+/// One statement rather than three: the three always change together, and the
+/// table asks for them on every query change, so a round trip each would be
+/// waste. `count_tracks` is a thin wrapper over this.
+pub fn library_stats(conn: &Connection, query: &TrackQuery) -> AppResult<LibraryStats> {
+    let scope = scope(conn, query)?;
+    // `sum()` of no rows is NULL in SQLite, not 0 - `coalesce` is what stops an
+    // empty library, or a search that matched nothing, from failing to decode.
+    let sql = format!(
+        "SELECT count(*), coalesce(sum(tracks.duration_ms), 0), coalesce(sum(tracks.size), 0) {}",
+        scope.from_where
+    );
+
+    let stats = conn.query_row(
         &sql,
         rusqlite::params_from_iter(scope.params.iter()),
-        |row| row.get(0),
+        |row| {
+            Ok(LibraryStats {
+                tracks: row.get::<_, i64>(0)? as u32,
+                duration_ms: row.get(1)?,
+                bytes: row.get(2)?,
+            })
+        },
     )?;
-    Ok(count as u32)
+    Ok(stats)
 }
 
 pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Track>> {
@@ -952,5 +972,108 @@ mod tests {
             .unwrap(),
             3
         );
+    }
+
+    #[test]
+    fn totals_cover_the_whole_view() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        let stats = library_stats(&conn, &TrackQuery::default()).unwrap();
+
+        assert_eq!(stats.tracks, 5);
+        // The untagged row has a NULL duration, which `sum` skips rather than
+        // poisoning the total with.
+        assert_eq!(stats.duration_ms, 208_000 + 301_000 + 330_000 + 271_000);
+        assert_eq!(stats.bytes, 5);
+    }
+
+    #[test]
+    fn an_empty_library_totals_zero_rather_than_failing() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+
+        // `sum()` of no rows is NULL in SQLite, not 0. Without the coalesce
+        // this does not return zeroes, it fails to decode.
+        let stats = library_stats(&conn, &TrackQuery::default()).unwrap();
+
+        assert_eq!(stats, LibraryStats::default());
+    }
+
+    #[test]
+    fn a_search_that_matches_nothing_totals_zero() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        let stats = library_stats(
+            &conn,
+            &TrackQuery {
+                search: Some("nothingmatchesthis".to_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(stats, LibraryStats::default());
+    }
+
+    #[test]
+    fn totals_follow_the_filter_rather_than_the_library() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        let stats = library_stats(
+            &conn,
+            &TrackQuery {
+                search: Some("Grizzly".to_owned()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // The footer describes what is on screen. A search showing two songs
+        // that claims the library's total would be worse than showing nothing.
+        assert_eq!(stats.tracks, 2);
+        assert_eq!(stats.duration_ms, 330_000 + 271_000);
+    }
+
+    #[test]
+    fn counting_and_totalling_agree() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            search: Some("Guitar".to_owned()),
+            ..Default::default()
+        };
+
+        // `count_tracks` is a wrapper over `library_stats`; if they ever
+        // disagree the scrollbar and the footer are describing different views.
+        assert_eq!(
+            count_tracks(&conn, &query).unwrap(),
+            library_stats(&conn, &query).unwrap().tracks
+        );
+    }
+
+    #[test]
+    fn totals_survive_a_library_larger_than_a_32_bit_sum() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        // Four rows of roughly 1.5 billion each: past u32 in both columns, and
+        // the reason these are i64 rather than the u32 the count uses.
+        for i in 0..4 {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, duration_ms, added_at)
+                 VALUES (?1, 1, ?2, ?2, 0)",
+                rusqlite::params![format!("/m/big{i}.mp3"), 1_500_000_000_i64],
+            )
+            .unwrap();
+        }
+
+        let stats = library_stats(&conn, &TrackQuery::default()).unwrap();
+
+        assert_eq!(stats.duration_ms, 6_000_000_000);
+        assert_eq!(stats.bytes, 6_000_000_000);
     }
 }

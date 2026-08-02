@@ -169,7 +169,7 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–9 and 17 are merged to `main`; phase 13 is in review. That completes the
+Phases 1–9, 13 and 17 are merged to `main`; phase 14 is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
 of the later-added phases 13–18, which are independent of it.
 
@@ -185,8 +185,9 @@ of the later-added phases 13–18, which are independent of it.
 | 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
 | 9 | Export & polish: JSON export, window geometry | ✅ merged (`b26feae`) |
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
-| 13 | Native feel: no web tells, drag badge | 🔄 in review |
-| 10+ | last.fm, Sentry, tag sources, 14–16, 18 | not started |
+| 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
+| 14 | Library totals in the footer | 🔄 in review |
+| 10+ | last.fm, Sentry, tag sources, 15, 16, 18 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -204,12 +205,16 @@ temp-and-rename so a crash cannot corrupt an mp3, with one undo step per edit.
 Phase 17 adds right-click menus on songs and playlists - play, get info, add to
 a playlist, remove, export, show in Explorer, rename, delete, edit filter - plus
 Ctrl+I, and dropping songs on the sidebar's empty space to start a playlist.
+Phase 13 strips the web tells - no hand cursor, no hover highlights, no
+overscroll bounce, the webview's own menu suppressed outside text fields - and
+phase 14 makes the footer tell the truth: "5 songs, 50 minutes, 214 MB" for
+whatever the view currently holds.
 Phase 9 adds JSON export of the library, a selection or a playlist against a
 [documented schema](docs/export-schema.md), and a window that reopens where it
 was left.
 
-**Test counts.** 215 Rust (171 unit, 38 integration against generated mp3s,
-6 perf guards) and 447 frontend at 97.4% lines. CI runs
+**Test counts.** 223 Rust (177 unit, 38 integration against generated mp3s,
+8 perf guards) and 456 frontend at 97.3% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -922,7 +927,30 @@ walkthrough on the checklist above. Cheap to test, easy to regress.
 *Placement:* deliberately after the features, not before — every phase adds
 chrome, and doing this once at the end is cheaper than policing it per PR.
 
-**14 — Library totals in the footer** `feat/14-totals`
+**14 — Library totals in the footer** `feat/14-totals` — 🔄 **in review**
+
+*Built as specified, with two details worth recording:*
+
+- `count_tracks` is now a thin wrapper over `library_stats` rather than a
+  second query, so the scrollbar and the footer cannot describe different
+  views. The store keeps both `stats` and `total`, the latter because the
+  virtualizer reads it on every render; a test asserts they agree.
+- `duration_ms` and `bytes` are `i64`, not the `u32` the count uses: a library
+  passes four billion milliseconds at about seven hundred hours, and four
+  billion bytes long before that. Pinned by a test that sums past both.
+- The footer shows size, the toolbar display does not - it has room for two
+  facts, not three. A zero size is omitted rather than rendered as "0 MB",
+  which beside 237 songs reads as a bug rather than as a fact.
+
+*The trap the plan called out was real:* `sum()` of no rows is NULL in SQLite,
+not 0, and without the `coalesce` an empty library does not return zeroes, it
+fails to decode. Three tests cover it - an empty library, a search that
+matched nothing, and the untagged fixture row whose duration is NULL.
+
+---
+
+*The original sketch follows.*
+
 The status bar and the toolbar display both promise "N songs, H hours" and
 currently always say zero for the time, because no query produces the sum.
 

@@ -9,6 +9,7 @@ import { useSelectionShortcuts } from "./useSelectionShortcuts";
 vi.mock("../../ipc", () => ({
   allTrackIds: vi.fn(),
   countTracks: vi.fn(async () => 0),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(async () => []),
   listPlaylists: vi.fn(async () => []),
   removeFromPlaylist: vi.fn(async () => 2),

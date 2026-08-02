@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track, TrackQuery } from "../../ipc";
-import { allTrackIds, countTracks, queryTracks } from "../../ipc";
+import { allTrackIds, libraryStats, queryTracks } from "../../ipc";
 import { PAGE_SIZE } from "./pageCache";
 import { SEARCH_DEBOUNCE_MS, useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
 }));
 
-const countTracksMock = vi.mocked(countTracks);
+const statsMock = vi.mocked(libraryStats);
+/** A `LibraryStats` with the count set; the footer's other totals are not what
+    these tests are about. */
+function stats(tracks: number) {
+  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000 };
+}
+
 const queryTracksMock = vi.mocked(queryTracks);
 const allTrackIdsMock = vi.mocked(allTrackIds);
 
@@ -61,11 +68,37 @@ beforeEach(() => {
     error: null,
     queryToken: 0,
   });
-  countTracksMock.mockResolvedValue(1000);
+  statsMock.mockResolvedValue(stats(1000));
   queryTracksMock.mockImplementation(async (query) => rowsFor(query));
 });
 
 describe("refresh", () => {
+  it("keeps the totals the footer needs, not just the count", async () => {
+    statsMock.mockResolvedValue({ tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 });
+
+    await useLibraryStore.getState().refresh();
+
+    // One call, not two: the count and the totals always change together, and
+    // a second round trip per query change would be waste.
+    expect(statsMock).toHaveBeenCalledTimes(1);
+    expect(useLibraryStore.getState().stats).toEqual({
+      tracks: 5,
+      durationMs: 3_000_000,
+      bytes: 214_000_000,
+    });
+  });
+
+  it("keeps total and stats.tracks saying the same thing", async () => {
+    statsMock.mockResolvedValue(stats(42));
+
+    await useLibraryStore.getState().refresh();
+
+    // `total` is what the virtualizer reads on every render; if the two ever
+    // drift, the scrollbar and the footer describe different views.
+    const state = useLibraryStore.getState();
+    expect(state.total).toBe(state.stats.tracks);
+  });
+
   it("loads the total and clears pages from the previous query", async () => {
     useLibraryStore.setState({ pages: new Map([[0, [track(0)]]]) });
 
@@ -76,7 +109,7 @@ describe("refresh", () => {
   });
 
   it("surfaces a backend failure instead of throwing", async () => {
-    countTracksMock.mockRejectedValue("db is locked");
+    statsMock.mockRejectedValue("db is locked");
 
     await useLibraryStore.getState().refresh();
 
@@ -88,7 +121,7 @@ describe("showPlaylist", () => {
   it("scopes the query to the playlist and opens it in its own order", async () => {
     await useLibraryStore.getState().showPlaylist(5);
 
-    expect(countTracksMock).toHaveBeenLastCalledWith(
+    expect(statsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ playlistId: 5, sortBy: "position", direction: "asc" }),
     );
   });
@@ -98,7 +131,7 @@ describe("showPlaylist", () => {
 
     await useLibraryStore.getState().showPlaylist(null);
 
-    expect(countTracksMock).toHaveBeenLastCalledWith(
+    expect(statsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ playlistId: null, sortBy: "artist" }),
     );
   });
@@ -115,17 +148,17 @@ describe("showPlaylist", () => {
     // A search typed against the library is rarely the one you want against a
     // playlist, and the selected ids may not even be in it.
     expect(useLibraryStore.getState().searchInput).toBe("");
-    expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: null }));
+    expect(statsMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: null }));
     expect(useLibraryStore.getState().selection.ids.size).toBe(0);
   });
 
   it("does not requery when the source did not change", async () => {
     await useLibraryStore.getState().showPlaylist(5);
-    countTracksMock.mockClear();
+    statsMock.mockClear();
 
     await useLibraryStore.getState().showPlaylist(5);
 
-    expect(countTracksMock).not.toHaveBeenCalled();
+    expect(statsMock).not.toHaveBeenCalled();
   });
 
   it("carries the playlist into every query the view makes", async () => {
@@ -161,7 +194,7 @@ describe("ensureRange", () => {
   });
 
   it("does nothing when the library is empty", async () => {
-    countTracksMock.mockResolvedValue(0);
+    statsMock.mockResolvedValue(stats(0));
     await useLibraryStore.getState().refresh();
 
     await useLibraryStore.getState().ensureRange(0, 50);
@@ -170,7 +203,7 @@ describe("ensureRange", () => {
   });
 
   it("never requests rows past the end of the library", async () => {
-    countTracksMock.mockResolvedValue(10);
+    statsMock.mockResolvedValue(stats(10));
     await useLibraryStore.getState().refresh();
 
     await useLibraryStore.getState().ensureRange(0, 500);
@@ -209,7 +242,7 @@ describe("query changes", () => {
   it("passes a blank search as null rather than an empty string", async () => {
     await search("   ");
 
-    expect(countTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: null }));
+    expect(statsMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: null }));
   });
 
   it("sends the search term and drops the selection", async () => {
@@ -217,9 +250,7 @@ describe("query changes", () => {
 
     await search("grizzly");
 
-    expect(countTracksMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ search: "grizzly" }),
-    );
+    expect(statsMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: "grizzly" }));
     expect(useLibraryStore.getState().selection.ids.size).toBe(0);
   });
 
@@ -262,7 +293,7 @@ describe("selection", () => {
   });
 
   it("asks the backend for ids on select-all, so it is not capped by the page size", async () => {
-    countTracksMock.mockResolvedValue(50_000);
+    statsMock.mockResolvedValue(stats(50_000));
     allTrackIdsMock.mockResolvedValue(Array.from({ length: 50_000 }, (_, i) => i));
     await useLibraryStore.getState().refresh();
 
@@ -305,7 +336,7 @@ describe("search debouncing", () => {
 
     expect(useLibraryStore.getState().searchInput).toBe("gri");
     expect(useLibraryStore.getState().search).toBe("");
-    expect(countTracksMock).not.toHaveBeenCalled();
+    expect(statsMock).not.toHaveBeenCalled();
   });
 
   it("issues one query for a burst of keystrokes", async () => {
@@ -315,41 +346,41 @@ describe("search debouncing", () => {
     }
     await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
 
-    expect(countTracksMock).toHaveBeenCalledOnce();
-    expect(countTracksMock).toHaveBeenCalledWith(expect.objectContaining({ search: "griz" }));
+    expect(statsMock).toHaveBeenCalledOnce();
+    expect(statsMock).toHaveBeenCalledWith(expect.objectContaining({ search: "griz" }));
   });
 
   it("runs the pending search at once on commit", async () => {
     useLibraryStore.getState().setSearch("griz");
     await useLibraryStore.getState().commitSearch();
 
-    expect(countTracksMock).toHaveBeenCalledOnce();
+    expect(statsMock).toHaveBeenCalledOnce();
 
     // The cancelled timer must not fire a second query afterwards.
     await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS * 2);
-    expect(countTracksMock).toHaveBeenCalledOnce();
+    expect(statsMock).toHaveBeenCalledOnce();
   });
 
   it("clears the box and the query together", async () => {
     useLibraryStore.getState().setSearch("griz");
     await useLibraryStore.getState().commitSearch();
-    countTracksMock.mockClear();
+    statsMock.mockClear();
 
     await useLibraryStore.getState().clearSearch();
 
     expect(useLibraryStore.getState().searchInput).toBe("");
     expect(useLibraryStore.getState().search).toBe("");
-    expect(countTracksMock).toHaveBeenCalledWith(expect.objectContaining({ search: null }));
+    expect(statsMock).toHaveBeenCalledWith(expect.objectContaining({ search: null }));
   });
 
   it("does not re-query when the committed term has not changed", async () => {
     useLibraryStore.getState().setSearch("griz");
     await useLibraryStore.getState().commitSearch();
-    countTracksMock.mockClear();
+    statsMock.mockClear();
 
     await useLibraryStore.getState().commitSearch();
 
-    expect(countTracksMock).not.toHaveBeenCalled();
+    expect(statsMock).not.toHaveBeenCalled();
   });
 });
 
@@ -398,18 +429,18 @@ describe("relevance ranking", () => {
 describe("stale responses", () => {
   it("drops a count that belongs to a superseded query", async () => {
     // The first search resolves only after the second has already been issued.
-    let releaseFirst: (value: number) => void = () => {};
-    countTracksMock.mockImplementationOnce(
+    let releaseFirst: (value: ReturnType<typeof stats>) => void = () => {};
+    statsMock.mockImplementationOnce(
       () =>
-        new Promise<number>((resolve) => {
+        new Promise((resolve) => {
           releaseFirst = resolve;
         }),
     );
-    countTracksMock.mockResolvedValueOnce(7);
+    statsMock.mockResolvedValueOnce(stats(7));
 
     const first = search("a");
     const second = search("ab");
-    releaseFirst(9999);
+    releaseFirst(stats(9999));
     await Promise.all([first, second]);
 
     expect(useLibraryStore.getState().total).toBe(7);

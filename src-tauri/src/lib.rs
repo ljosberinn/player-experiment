@@ -80,6 +80,7 @@ pub fn run() {
             commands::add_to_playlist,
             commands::remove_from_playlist,
             commands::move_in_playlist,
+            commands::library_stats,
             commands::export_library,
             commands::reveal_track,
             commands::save_window_geometry,
