@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
 import { revealTrack, type SortField } from "../../ipc";
 import { useEditorStore } from "../editor/store";
-import { dropIndexFor, hasTrackIds, readTrackIds, setTrackIds } from "../playlists/drag";
+import {
+  dropIndexFor,
+  hasTrackIds,
+  readTrackIds,
+  setDragImage,
+  setTrackIds,
+} from "../playlists/drag";
 import { usePlaylistsStore } from "../playlists/store";
 import type { ColumnDef } from "./columns";
 import { rowMenuItems } from "./rowMenu";
@@ -208,8 +214,14 @@ export function SongTable({
                   if (!wasSelected) {
                     clickRow(item.index, track.id, {});
                   }
-                  setTrackIds(event.dataTransfer, wasSelected ? [...selection.ids] : [track.id]);
+                  const dragged = wasSelected ? [...selection.ids] : [track.id];
+                  setTrackIds(event.dataTransfer, dragged);
                   event.dataTransfer.effectAllowed = "copyMove";
+                  // Torn down on the next frame: the badge has to be in the
+                  // document long enough to be rasterized, and gone before it
+                  // can be seen sitting off-screen.
+                  const cleanUp = setDragImage(event, dragged.length);
+                  requestAnimationFrame(cleanUp);
                 }}
                 onDragOver={(event) => {
                   if (!onReorder || !hasTrackIds(event.dataTransfer)) {

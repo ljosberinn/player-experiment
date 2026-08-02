@@ -42,6 +42,56 @@ body {
   background: var(--surface);
 }
 
+/* Native feel pass - the element-level half.
+   -------------------------------------------------------------------------
+   Up here beside the reset rather than at the end: these are bare element
+   selectors, and a component rule like `.modal-field input` declared earlier
+   would quietly win over them. See PLAN.md phase 13. */
+
+/* The window never scrolls or bounces as a document. Rubber-banding at the end
+   of the song list is the single most webby thing a desktop list can do. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Instant state changes, the way a native list view repaints. Anything that
+   genuinely needs motion has to ask for it by name rather than inherit it. */
+*,
+*::before,
+*::after {
+  transition: none;
+  animation: none;
+}
+
+/* Text fields are documents; everything else is chrome. `body` turns selection
+   off wholesale, so this is what gives it back where a caret belongs - along
+   with the text cursor, which the pointer sweep would otherwise have
+   flattened. */
+input,
+textarea {
+  user-select: text;
+  cursor: text;
+}
+
+input[type="range"],
+input[type="checkbox"],
+input[type="radio"] {
+  cursor: default;
+}
+
+/* Focus rings on keyboard focus only. A ring that appears on every click reads
+   as a web page; one that never appears is inaccessible. `:focus-visible` is
+   exactly that distinction, so it does the work rather than `outline: none`. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -81,7 +131,7 @@ body {
   color: var(--text);
   font-family: "Segoe MDL2 Assets", "Segoe Fluent Icons", sans-serif;
   font-size: 10px;
-  cursor: pointer;
+  cursor: default;
 }
 
 .window-buttons button:hover {
@@ -108,7 +158,7 @@ body {
   border-radius: 4px;
   background: var(--surface);
   color: var(--text);
-  cursor: pointer;
+  cursor: default;
   font-size: 10px;
 }
 
@@ -189,7 +239,7 @@ body {
   appearance: none;
   border-radius: 2px;
   background: var(--skeleton);
-  cursor: pointer;
+  cursor: default;
 }
 
 .status-track:disabled {
@@ -295,7 +345,7 @@ body {
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar-item[aria-current="page"] {
@@ -336,7 +386,7 @@ body {
   color: var(--muted);
   font: inherit;
   line-height: 1;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar-empty {
@@ -405,7 +455,7 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .tab:last-child {
@@ -436,7 +486,7 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .scanbar button:disabled {
@@ -511,7 +561,7 @@ body {
   font: inherit;
   font-weight: 600;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sort-arrow {
@@ -675,7 +725,7 @@ body {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .modal button.primary {
@@ -769,7 +819,7 @@ body {
   font: inherit;
   text-align: left;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
 }
 
 /* Hover and keyboard focus look the same on purpose: the menu tracks one
@@ -825,4 +875,32 @@ body {
 .sidebar-dropzone.drop-target {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* Native feel pass - the stateful half.
+   -------------------------------------------------------------------------
+   Down here because these have to out-specify the component rules above. */
+
+/* Selection survives the window losing focus, dimmed rather than cleared -
+   Explorer and Finder both do this, and clearing it loses the user's place the
+   moment they alt-tab to check something. */
+body:not(:focus-within) .song-row.selected {
+  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  color: var(--text);
+}
+
+body:not(:focus-within) .sidebar-row.current {
+  opacity: 0.75;
+}
+
+/* What the pointer carries during a row drag - a count, not a smear of table.
+   Positioned off-screen by the code that builds it; these are its looks. */
+.drag-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  white-space: nowrap;
 }

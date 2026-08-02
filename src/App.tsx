@@ -18,6 +18,7 @@ import { usePlayerStore } from "./features/player/store";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { exportLibrary } from "./ipc";
@@ -100,6 +101,7 @@ export function App() {
 
   usePlayerShortcuts();
   useSelectionShortcuts();
+  useNativeFeel();
   useWindowGeometry();
 
   useEffect(() => {

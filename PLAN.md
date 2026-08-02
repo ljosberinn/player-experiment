@@ -169,7 +169,7 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–9 are merged to `main`; phase 17 is in review. That completes the
+Phases 1–9 and 17 are merged to `main`; phase 13 is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
 of the later-added phases 13–18, which are independent of it.
 
@@ -184,8 +184,9 @@ of the later-added phases 13–18, which are independent of it.
 | 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
 | 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
 | 9 | Export & polish: JSON export, window geometry | ✅ merged (`b26feae`) |
-| 17 | Context menus, drop-to-create playlist | 🔄 in review |
-| 10+ | last.fm, Sentry, tag sources, 13–16, 18 | not started |
+| 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
+| 13 | Native feel: no web tells, drag badge | 🔄 in review |
+| 10+ | last.fm, Sentry, tag sources, 14–16, 18 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -208,7 +209,7 @@ Phase 9 adds JSON export of the library, a selection or a playlist against a
 was left.
 
 **Test counts.** 215 Rust (171 unit, 38 integration against generated mp3s,
-6 perf guards) and 430 frontend at 97.4% lines. CI runs
+6 perf guards) and 447 frontend at 97.4% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -847,7 +848,46 @@ UA header asserted present. One `#[ignore]`d live test per provider.
 *Note on scope:* third outbound network dependency, and like the other two it
 must be inert when unused — no request unless the user opens the lookup dialog.
 
-**13 — Native feel pass** `feat/13-native-feel`
+**13 — Native feel pass** `feat/13-native-feel` — 🔄 **in review**
+
+*Built. What shipped:*
+
+- **The webview's own context menu is gone** outside text fields —
+  `useNativeFeel`, one document-level listener rather than a handler per
+  element, so it covers the chrome, the empty space and anything added later.
+  Text inputs keep theirs: Cut/Copy/Paste and the Windows IME entries are real
+  functionality the app does not reimplement. A range or checkbox does not,
+  since there is nothing to paste into one. Registered on the document, so the
+  app's own menus have already run by the time it fires.
+- **The hand cursor is gone** — all ten `cursor: pointer` declarations became
+  `default`, with `cursor: text` given back to text fields, which the sweep
+  would otherwise have flattened.
+- **No transitions or animations**, `overscroll-behavior: none` so the window
+  never rubber-bands as a document, and `:focus-visible` for the focus ring so
+  it appears on keyboard focus but not on every click.
+- **Selection survives losing focus**, dimmed via `color-mix` rather than
+  cleared — alt-tabbing to check something should not lose the user's place.
+- **A drag badge** — "7 songs" under the pointer instead of the default
+  translucent screenshot of a full-width table row, which is unmistakably a
+  web drag. Built off-screen rather than hidden, because `display: none` and
+  `visibility: hidden` both make an element unrasterizable and the call would
+  silently do nothing.
+
+*The guard:* `App.css.test.ts` reads the stylesheet as text and asserts the
+absences — no hover background outside the two allowed selectors (window
+caption buttons, menu items), no `cursor: pointer`, no transition or
+animation, a `:focus-visible` outline, `overscroll-behavior`, and **that every
+colour variable defined in light mode is defined in dark mode too**. Absences
+are exactly what nobody notices coming back, and jsdom applies no stylesheet,
+so no component test can see any of this.
+
+Two things it cannot reach, left to the manual checklist: density and hit
+targets against Explorer/iTunes, and font smoothing on Windows.
+
+---
+
+*The original checklist follows.*
+
 A dedicated pass over the whole UI to stop it reading as a web page in a
 window. The tells are mostly things to *remove*:
 
