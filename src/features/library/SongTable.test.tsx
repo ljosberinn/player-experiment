@@ -482,9 +482,7 @@ describe("SongTable", () => {
       await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 1") });
 
       expect([...useLibraryStore.getState().selection.ids]).toEqual(before);
-      expect(
-        await screen.findByRole("menuitem", { name: /Get Info for 3 Songs/ }),
-      ).toBeInTheDocument();
+      expect(await screen.findByRole("menuitem", { name: /Edit 3 Songs/ })).toBeInTheDocument();
     });
 
     it("plays the row it was opened on", async () => {

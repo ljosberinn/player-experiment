@@ -9,6 +9,7 @@
   --muted: #6d7076;
   --surface: #ffffff;
   --skeleton: #e3e6ea;
+  --menu-border: #c4c4c8;
 
   color-scheme: light dark;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -28,6 +29,7 @@
     --muted: #9a9ca2;
     --surface: #191a1c;
     --skeleton: #303035;
+    --menu-border: #3d3d42;
   }
 }
 
@@ -271,6 +273,17 @@ input[type="radio"] {
   border-radius: 11px;
   background: var(--surface);
   color: var(--text);
+}
+
+/* Text fields are the one place a focus ring is redundant: the caret already
+   says where typing goes, and a ring around a rounded search field is the most
+   web-looking thing on the bar. The ring stays everywhere else - on a button or
+   a list it is the only focus indication there is. */
+.search:focus-visible,
+.modal input:focus-visible,
+.modal textarea:focus-visible,
+.sidebar-rename:focus-visible {
+  outline: none;
 }
 
 /* The native `type="search"` clear affordance is WebKit-only and unstyleable,
@@ -797,12 +810,12 @@ input[type="radio"] {
   z-index: 40;
   min-width: 180px;
   margin: 0;
-  padding: 4px 0;
+  padding: 4px;
   list-style: none;
   background: var(--surface);
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--menu-border);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
   outline: none;
 }
 
@@ -812,8 +825,11 @@ input[type="radio"] {
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  padding: 4px 12px;
+  padding: 5px 10px;
+  /* Inset and rounded, so the highlight reads as a menu row rather than as a
+     full-bleed band across the panel. */
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -835,10 +851,14 @@ input[type="radio"] {
   cursor: default;
 }
 
+/* An <hr> carries a default `border: 1px inset`, which drew a second, brighter
+   line and reserved space around it - the gap that made hovering the rows
+   either side look mis-spaced. The rule is the background, nothing else. */
 .context-separator {
   height: 1px;
-  margin: 4px 0;
-  background: var(--chrome-border);
+  margin: 4px 6px;
+  border: 0;
+  background: var(--menu-border);
 }
 
 .context-empty {
@@ -903,4 +923,16 @@ body:not(:focus-within) .sidebar-row.current {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 12px;
   white-space: nowrap;
+}
+
+/* A destructive confirmation is narrower than an editor - it asks one thing. */
+.modal.confirm {
+  max-width: 380px;
+}
+
+/* The one place a colour carries meaning rather than decoration. */
+.modal-actions .destructive {
+  border-color: #c0392b;
+  background: #c0392b;
+  color: #fff;
 }

@@ -1,3 +1,7 @@
+// biome-ignore-all lint/a11y/noStaticElementInteractions: the title bar is a
+// drag and double-click surface rather than a control. Both gestures are
+// window management, and the Minimize/Maximize/Close buttons sitting on the
+// bar are the keyboard route to the same things.
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ReactNode } from "react";
 
@@ -18,8 +22,22 @@ export function TitleBar({ children }: { children: ReactNode }) {
     void getCurrentWindow().startDragging();
   };
 
+  // Same guard as dragging: only the bar itself, never a control sitting on
+  // it - double-clicking the search box selects a word, it does not maximize.
+  const toggleMaximize = (event: React.MouseEvent) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    void getCurrentWindow().toggleMaximize();
+  };
+
   return (
-    <header className="titlebar" onPointerDown={startDragging} data-testid="titlebar">
+    <header
+      className="titlebar"
+      onPointerDown={startDragging}
+      onDoubleClick={toggleMaximize}
+      data-testid="titlebar"
+    >
       {children}
       <WindowButtons />
     </header>

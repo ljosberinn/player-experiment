@@ -171,7 +171,7 @@ repo.
 
 Phases 1–9 and 13, 14, 17 are merged to `main`. Nothing is in review. That completes the
 originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
-of the later-added phases 15, 16, 18–20, which are independent of it.
+of the later-added phases 15, 16, 18–21, which are independent of it.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -187,7 +187,7 @@ of the later-added phases 15, 16, 18–20, which are independent of it.
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
 | 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
 | 14 | Library totals in the footer | ✅ merged (`e079457`) |
-| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–20 | not started |
+| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–21 | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -493,11 +493,38 @@ and one was a phase that had not merged yet.
   `warning.code` later is allowed, with a comment; loosening it back to the
   default handler is not.
 - **`npm run tauri build` needing a manual PATH export was not a
-  misconfiguration.** The persisted user PATH has `.cargoin` first, the
+  misconfiguration.** The persisted user PATH has `.cargo\bin` first, the
   registry value is `ExpandString`, and a fresh `cmd` resolves cargo. The
   failing shells were started before rustup wrote that entry and never saw it;
   a process gets its environment at launch. Confirmed working by the user once
   the terminal was replaced. Nothing to change.
+### Fifth build (2026-08-02): fixed rather than planned
+
+Small enough to do rather than schedule:
+
+- **Right-clicking a playlist now opens it**, so the highlighted row is the
+  one the menu will act on. There is no other cue saying which playlist Delete
+  means.
+- **Deleting a playlist asks first.** A new `ConfirmDialog` reusing the
+  existing `.modal` chrome rather than the OS message box, which is a separate
+  ACL-gated plugin call that looks nothing like the window it interrupts.
+  **Cancel takes focus, not Delete**, so a reflex Enter destroys nothing, and
+  the body says the songs stay in the library - that is the actual fear.
+- **Play and Export are disabled on an empty playlist**, rather than offering
+  to play nothing or write an empty file.
+- **"Get Info" is now "Edit".** iTunes' name for it; not what it does.
+- **The search field lost its focus ring.** Scoped to text inputs only - a
+  caret already says where typing goes, and the ring stays on buttons and
+  lists where it is the sole focus indication.
+- **Double-clicking the title bar maximizes and restores**, using the same
+  target guard as dragging so double-clicking the search box still selects a
+  word.
+- **The context menu had no visible edge and mis-spaced separators.** Both had
+  the same root cause as the fix that introduced them: switching separators to
+  `<hr>` left the browser default `border: 1px inset` in place, which drew a
+  second brighter line and reserved space around it. `--menu-border` is a new
+  variable because `--chrome-border` is nearly `--surface` in dark mode, which
+  is why the panel had no edge at all.
 
 ### Known gaps carried forward
 
@@ -1255,7 +1282,7 @@ follow-up, and the phase is not done until they happen:
 The Export button is the one that stays put: it acts on the current view,
 which is a toolbar's job, not a specific row's.
 
-**18 — Tag autocompletion** `feat/18-tag-complete`
+**18 — Tag and filter autocompletion** `feat/18-tag-complete`
 Typing "Godspeed You! Black Emperor" correctly, by hand, for the fourth time
 is how libraries acquire three spellings of one band. The tag editor should
 suggest values already present elsewhere in the library.
@@ -1294,6 +1321,16 @@ Lookup is `WHERE field = ? AND value LIKE ? ESCAPE '\' COLLATE NOCASE
 ORDER BY uses DESC LIMIT 8`, reusing phase 7's `like_escape`. Prefix matches
 rank above interior ones. Query on the Rust side, debounced on the JS side —
 the same debounce phase 5 already has.
+
+*Also the smart playlist editor.* A filter rule's value field is the same
+problem wearing a different hat - "artist is ___" wants the same suggestions
+as the tag editor's Artist field, and typing a band name by hand into a
+filter is how a smart playlist ends up matching nothing. The rule's chosen
+`FilterField` picks which vocabulary to offer, and the fields with no shared
+vocabulary (track number, comment) offer none, exactly as in the editor. The
+`is`/`is not` operators want the full list; `contains` wants it too but
+matches loosely. Requested on the fifth build; the lookup is the same, so
+this is one phase, not two.
 
 *Interaction.* A combobox, not a hijack: the field stays free text, because
 a new artist has to be typeable. Suggestions appear below, Down/Up move
@@ -1366,6 +1403,43 @@ playlist" - that phase 3's plan entry claimed and phase 3 did not deliver.
 and falling back to the global set, and that a hidden column that is also the
 current sort does not leave the view sorted by something invisible - the case
 that will actually bite.
+
+---
+
+**21 — UI scale** `feat/21-scale`
+A slider in the status bar, **defaulting to 1.2x**, scaling the whole
+interface.
+
+That default is the finding, not the feature: the app was built at densities
+taken from iTunes 11 and Explorer, and on a modern display it reads too small.
+Shipping 1.2x as the default says the current sizing is wrong for real
+monitors, and the slider is what lets it be wrong in either direction without
+another round trip.
+
+- **One knob, applied at the root**: a CSS `zoom` (or a `--scale` variable
+  driving `font-size` on `:root` with rem-based sizing) on the app container.
+  `zoom` is the smaller change and now behaves consistently across engines;
+  the rem route is more correct and touches every declared px in `App.css`.
+  Worth deciding by trying `zoom` first and keeping it if the table stays
+  crisp.
+- **The virtualizer is the catch.** `ROW_HEIGHT` is a constant in
+  `SongTable.tsx` and TanStack Virtual measures in real pixels. Under `zoom`
+  the rendered row is `22 * scale` while the estimate stays 22, so the rows and
+  the scroll positions drift apart - which shows up as rows overlapping or a
+  scrollbar that lies. The scale has to reach `estimateSize`, whichever
+  approach is taken. **This is the whole risk of the phase**, and the reason
+  it is a phase rather than a one-line style.
+- **Persisted** in `settings`, alongside volume and window geometry, and
+  applied before first paint so it does not resize visibly on launch - the
+  same reason the window now starts hidden.
+- Range 0.8x to 2.0x in steps of 0.1, with the current value shown as a
+  number: a slider whose effect is a subtle size change is unreadable without
+  one.
+
+*Testing:* the scale reducer and its clamping; persistence round-trip; that
+`estimateSize` follows the scale, which is the assertion that would have
+caught the drift above; and a component test that the status bar reports the
+value it applied.
 
 ---
 
