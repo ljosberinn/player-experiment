@@ -405,9 +405,11 @@ and one was a phase that had not merged yet.
   only thing there is to do with it yet.
 - **"Export doesn't work"** — phase 9 had not merged. It offers a save dialog
   with a location; nothing to fix.
-- **"Export should not include artwork"** — it never did. Only `coverHash`
-  travels, and there is a test asserting the bytes do not. If the hash itself
-  is unwanted, that is a small change and worth asking about.
+- **"Export should not include artwork"** — the bytes never travelled, but
+  `coverHash` did, and I read the instruction as narrower than it was. It is
+  gone: no artwork field of any kind, and the test now asserts the *absence*
+  of the hash and of the string "cover" anywhere in the document. The schema
+  doc is updated to match. No version bump — schema 1 has not shipped.
 - **Context menus and drag-to-empty-space-to-create** were never built. See
   phase 17.
 
@@ -896,10 +898,26 @@ is NULL in SQLite, not 0, which is the classic bug here), a filtered view, and
 a library whose durations exceed `i32`. A perf guard, since this now runs on
 every query change.
 
-**15 — Drag and drop ingest** `feat/15-drop`
-Dropping files and folders onto the window should add them, which is how every
-music player has worked for twenty years and is currently impossible — the
-folder picker is the only route in.
+**15 — Ingest ergonomics** `feat/15-ingest` — ~~drag and drop~~ **cut, by decision**
+
+> **Settled (2026-08-02, the user's call):** *"while I explicitly asked for
+> folder drag/drop ingest, I later also said that it has to go if that's what
+> prevents us from having playlist drag and drop."*
+>
+> So **`dragDropEnabled` stays `false`** and the OS-file drop route is
+> abandoned — option 3 below. Playlist drag and drop is a daily gesture;
+> dropping a folder in is something you do when the library changes. The
+> daily one wins. This also removes the ordering constraint between this
+> phase and 17; neither now depends on the other.
+
+What remains of this phase is making the picker route good enough that the
+loss does not hurt: multi-select in the folder picker, an "Add Files…"
+companion to "Add Folder…", and the loose-file rule below. Sized in hours,
+not days.
+
+*Everything below this line is retained as the record of what was designed
+and why it was dropped, in case Tauri ever gains a runtime toggle for the
+flag — at which point option 1 becomes available and this comes back.*
 
 - **Onto the library**: accept a mixed drop of files and directories, add each
   directory as a watch folder, scan. Loose files that sit outside every watch
@@ -932,8 +950,10 @@ two cannot both be on. Options, none free:
   5. **Turn it on and replace in-app dragging** with the context-menu "Add to
      Playlist ▸" from phase 17, plus a keyboard route for reordering.
 
-Option 5 is the only one that keeps both capabilities, and it means phase 17
-lands *before* this. Worth settling before any of phase 15 is written.
+Option 5 was my recommendation and was **not** taken: it keeps both
+capabilities only by replacing a direct gesture with a menu, and the user
+chose to keep the gesture and lose the ingest route instead. **Option 3 is
+what ships.**
 - Visual affordance: the drop target highlights, and an invalid target (a
   drop of zero audio files) says so instead of silently swallowing it.
 

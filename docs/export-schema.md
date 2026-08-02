@@ -56,7 +56,6 @@ and meant to be scripted against.
 | `durationMs` | integer | |
 | `title`, `artist`, `album`, `albumArtist`, `genre`, `comment` | string or null | Null means the tag is absent. Blank tags are read as absent. |
 | `year`, `trackNo`, `discNo`, `bitrate`, `sampleRate` | integer or null | |
-| `coverHash` | string or null | Identifies artwork **without carrying it** — two tracks sharing a hash share the image. |
 | `addedAt` | integer | When the scan first saw the file. |
 | `playCount` | integer | |
 | `lastPlayedAt` | integer or null | |
@@ -101,8 +100,9 @@ shape is a group of rules:
 
 ## What is deliberately absent
 
-- **Cover art bytes.** They are large, binary, and already inside the audio
-  files. `coverHash` identifies them; it does not carry them.
+- **Artwork, in every form.** Not the bytes — large, binary, and already
+  inside the audio files — and not a hash identifying them either. An export
+  carries the library's text; the pictures stay in the files they came from.
 - **Credentials of any kind.** Settings are filtered through an **allowlist**,
   not a denylist, so a key added by a future feature is excluded by default
   rather than by someone remembering to exclude it. A last.fm session key or a

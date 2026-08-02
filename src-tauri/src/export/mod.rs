@@ -5,9 +5,11 @@
 //! spelled out, and it is assembled from the same query layer the UI uses so
 //! an export of "this playlist" contains exactly what the playlist showed.
 //!
-//! What it deliberately does **not** contain: cover art bytes (they are large,
-//! binary and already on disk inside the files), and any setting not on the
-//! allowlist in [`crate::db::settings`] - which is what keeps credentials out.
+//! What it deliberately does **not** contain: artwork, in any form - not the
+//! bytes, and not the hash that identifies them. An export is the library's
+//! text, and the images stay in the files where they already live. Also
+//! excluded: any setting not on the allowlist in [`crate::db::settings`],
+//! which is what keeps credentials out.
 //!
 //! The shape is documented for consumers in `docs/export-schema.md`. Changing
 //! anything here means changing that too.
@@ -75,9 +77,8 @@ pub struct Generator {
 
 /// A track as exported.
 ///
-/// Field names are camelCase and stable. `coverHash` identifies artwork
-/// without carrying it: two tracks sharing a hash share the image, and the
-/// bytes are in the files themselves.
+/// Field names are camelCase and stable. There is no artwork field of any
+/// kind - see the module docs.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportTrack {
@@ -95,7 +96,6 @@ pub struct ExportTrack {
     pub comment: Option<String>,
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
-    pub cover_hash: Option<String>,
     pub added_at: i64,
     pub play_count: i64,
     pub last_played_at: Option<i64>,
@@ -118,7 +118,6 @@ impl From<Track> for ExportTrack {
             comment: track.comment,
             bitrate: track.bitrate,
             sample_rate: track.sample_rate,
-            cover_hash: track.cover_hash,
             added_at: track.added_at,
             play_count: track.play_count,
             last_played_at: track.last_played_at,
@@ -450,14 +449,13 @@ mod tests {
             "\"albumArtist\"",
             "\"durationMs\"",
             "\"playCount\"",
-            "\"coverHash\"",
         ] {
             assert!(json.contains(field), "missing {field} from the export");
         }
     }
 
     #[test]
-    fn no_cover_bytes_travel_in_an_export() {
+    fn no_artwork_of_any_kind_travels_in_an_export() {
         let (_dir, db) = seeded();
         let conn = db.conn().unwrap();
         conn.execute(
@@ -470,8 +468,14 @@ mod tests {
 
         let json = to_json(&build(&conn, &ExportScope::Library, 0).unwrap()).unwrap();
 
-        assert!(json.contains("\"abc\""), "the hash identifies the artwork");
+        // Not the bytes, and not the hash either: an export carries the
+        // library's text and nothing that describes a picture.
         assert!(!json.contains("the-actual-image-bytes"));
+        assert!(
+            !json.contains("abc"),
+            "the cover hash leaked into the export"
+        );
+        assert!(!json.to_lowercase().contains("cover"));
     }
 
     #[test]
