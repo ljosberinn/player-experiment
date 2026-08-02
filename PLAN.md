@@ -1613,6 +1613,88 @@ checking → downloading → ready → failed). What cannot be tested in CI is t
 install itself - it replaces the running binary - so the first real update is
 verified by hand, once, exactly like the release workflow.
 
+**24 — Base UI primitives** `feat/24-base-ui`
+Replace the hand-rolled interaction layer with [Base UI](https://base-ui.com)
+(`@base-ui/react`), keeping every line of the app's visual identity. The
+library ships no CSS and prescribes no styling solution, so this is a
+behaviour swap rather than a restyle: `App.css` keeps its tokens, its density
+and its native-feel rules, and each Base UI part is handed the class that
+already exists. Setup is two declarations - `isolation: isolate` on the app
+root and `position: relative` on `body` - and no provider component.
+
+**Why, when phase 13 argued the other way.** The comments in `ContextMenu` and
+`ConfirmDialog` explain why each was built rather than borrowed, and every one
+of those reasons still holds: they are arguments against an *OS* menu and an
+*OS* message box, not against a headless primitive. What has not held is the
+cost. Submenu alignment, collision nudging, outside-click capture and focus
+restoration are all things this project has now debugged by hand, and neither
+modal has a focus trap or an inert background today.
+
+**The overlays, first and worth the most.**
+`src/components/ui/ContextMenu.tsx` becomes a thin adapter over
+`ContextMenu.Root`. The `MenuItem` union and the `{x, y}` `position` prop stay
+as the public API, so `SongTable.tsx`, `PlaylistSidebar.tsx` and `rowMenu.ts`
+are untouched: the pointer position feeds `Menu.Positioner`'s `anchor` as a
+virtual element, which is what makes the swap invisible from the outside. That
+deletes the measure-then-nudge effect, the resize and scroll close handlers,
+the capture-phase `mousedown` listener and the whole `step`/`choose` keyboard
+machine - roughly 150 of the file's 236 lines. Submenus become `SubmenuRoot`,
+and the `position: relative` trick on `.context-row` goes away with them.
+`ConfirmDialog` becomes `AlertDialog`, which is the role its own prose already
+claims; the tag and filter editors become `Dialog`; and `useDialogKeys` is
+deleted, because Escape is the library's and Enter-to-accept becomes a real
+`<form onSubmit>` - which is what that hook's `BUTTON`/`SELECT`/`TEXTAREA`
+exclusion list was approximating.
+
+**Then the chrome.** `TabBar` becomes `Tabs` and gains the arrow-key
+navigation a `role="tablist"` is supposed to have and currently does not. The
+volume control in `Transport.tsx` and the scrubber in `StatusDisplay.tsx`
+become `Slider`, retiring the `::-webkit-slider-thumb` rules for a real
+`Slider.Thumb`; the win there is less the styling than the commit semantics,
+since a scrubber wants its value on drag end and `onChange` fires throughout.
+`Toolbar` and `Separator` take the toolbar row and the menu rules.
+
+**Then the editors, last and least certain.** The three `<select>`s in
+`SmartPlaylistEditor.tsx` become `Select`, and the text inputs in both editors
+move to `Field`, whose label/control wiring replaces the `useId` pairing in
+`TagEditor`'s `TagField`. This is the part with the weakest case: Base UI's
+`Select` is a custom listbox, and a native `<select>` in a webview already
+opens a real OS popup, which is closer to native than any listbox can be. **If
+it reads worse at the densities from phase 21, stop here and keep the native
+controls** - the phase is still a win without this step.
+
+**What does not move.** The virtualized table stays TanStack. The custom title
+bar, its drag regions and the LCD status display stay bespoke: they are the
+layout, and no library ships them.
+
+**The stylesheet test changes on purpose.** `src/App.css.test.ts` asserts CSS
+facts this phase makes false - the `.context-row` / `.context-submenu`
+positioning pair disappears once Floating UI does the work, and
+`.context-item`'s entry in `HOVER_ALLOWED` is obsolete once the highlight
+moves to `[data-highlighted]`. Both are replaced rather than dropped, and the
+highlight assertion gets *stricter*, since with Base UI no selector needs a
+hover exception at all. The guards that carry phase 13 - no transitions, no
+pointer cursor, both themes for every variable, the fixed-height status
+display - all stay green untouched. The global `*{transition:none}` rule means
+Base UI popups unmount immediately rather than animating out, which is the
+wanted behaviour here.
+
+**Bundle and startup.** Tree-shaken per component, into an app that loads from
+disk. Not a cost worth trading behaviour for, but record the built bundle size
+before and after so the claim is a number rather than an assumption.
+
+*Testing:* the component tests are the specification and should move as little
+as possible. `ContextMenu.test.tsx` already queries `getByRole("menuitem")`
+and drives the arrow keys through `userEvent`, which is exactly what Base UI's
+roles and keyboard handling satisfy; expect to touch it only where it asserts
+internals - the `.active` class, and the container holding focus rather than
+the item. Base UI portals to `document.body`, so `chrome.test.tsx` and the
+editor tests keep working under jsdom through `screen` rather than container
+queries. Add the two tests the old code could not pass: focus stays trapped
+inside an open dialog, and Tab from the last item wraps to the first. The e2e
+smoke suite is the real proof for the positioning work, since jsdom reports
+every rect as zero.
+
 ---
 
 ## Verification

@@ -45,6 +45,8 @@ rodio = { version = "0.22", default-features = false, features = ["playback", "m
 tauri-plugin-wdio = { version = "1", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1", optional = true }
 tauri-plugin-dialog = "2.7.2"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"
 
 [dev-dependencies]
 tempfile = "3"
