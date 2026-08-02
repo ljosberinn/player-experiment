@@ -1406,40 +1406,71 @@ that will actually bite.
 
 ---
 
-**21 — UI scale** `feat/21-scale`
-A slider in the status bar, **defaulting to 1.2x**, scaling the whole
-interface.
+**21 — Density and zoom** `feat/21-scale`
 
-That default is the finding, not the feature: the app was built at densities
-taken from iTunes 11 and Explorer, and on a modern display it reads too small.
-Shipping 1.2x as the default says the current sizing is wrong for real
-monitors, and the slider is what lets it be wrong in either direction without
-another round trip.
+> **Revised (2026-08-02), at the user's direction:** *"consider increasing
+> size across the board so the new default remains 1.0. if there's a better
+> approach to increase scaling rather than literally scaling, please use
+> that."* Both points taken. The phase is now two separable pieces, and the
+> earlier sketch's CSS-`zoom`/`--scale` approach is dropped.
 
-- **One knob, applied at the root**: a CSS `zoom` (or a `--scale` variable
-  driving `font-size` on `:root` with rem-based sizing) on the app container.
-  `zoom` is the smaller change and now behaves consistently across engines;
-  the rem route is more correct and touches every declared px in `App.css`.
-  Worth deciding by trying `zoom` first and keeping it if the table stays
-  crisp.
-- **The virtualizer is the catch.** `ROW_HEIGHT` is a constant in
-  `SongTable.tsx` and TanStack Virtual measures in real pixels. Under `zoom`
-  the rendered row is `22 * scale` while the estimate stays 22, so the rows and
-  the scroll positions drift apart - which shows up as rows overlapping or a
-  scrollbar that lies. The scale has to reach `estimateSize`, whichever
-  approach is taken. **This is the whole risk of the phase**, and the reason
-  it is a phase rather than a one-line style.
-- **Persisted** in `settings`, alongside volume and window geometry, and
-  applied before first paint so it does not resize visibly on launch - the
-  same reason the window now starts hidden.
-- Range 0.8x to 2.0x in steps of 0.1, with the current value shown as a
-  number: a slider whose effect is a subtle size change is unreadable without
-  one.
+**21a — Rebase the density so 1.0 is right.**
 
-*Testing:* the scale reducer and its clamping; persistence round-trip; that
-`estimateSize` follows the scale, which is the assertion that would have
-caught the drift above; and a component test that the status bar reports the
-value it applied.
+A slider defaulting to 1.2x would have shipped an app that admits its own
+sizing is wrong and makes the user correct it on every install. The sizes
+themselves move instead:
+
+- Base `font-size` 12px, `ROW_HEIGHT` 22, and the control heights around them
+  were taken from iTunes 11 and Explorer, which were designed for displays of
+  their day. Multiply the type and spacing scale by ~1.2 and **round to whole
+  pixels** rather than carrying fractions - a 26px row is a row; a 26.4px row
+  is a blurry one on a 1x display.
+- `ROW_HEIGHT` is the number to get right first, because it is the one the
+  virtualizer measures and everything else in the table hangs off it.
+- The `App.css.test.ts` guard already asserts that light and dark define the
+  same variables; the density values are not variables today, and part of this
+  is making the ones that repeat (`--row-height`, control height, gutter) into
+  variables so a future pass is one edit rather than forty.
+
+**21b — Zoom, through the webview rather than through CSS.**
+
+`getCurrentWebview().setZoom(factor)` - confirmed present in
+`@tauri-apps/api`, gated behind `core:webview:allow-set-webview-zoom`, which
+the capability file and the guard's table both need a row for.
+
+This is the better approach the user asked for, and specifically it **removes
+the risk that made the earlier sketch a phase at all**: the webview scales the
+whole rendering, and CSS pixel coordinates are unchanged by it. `ROW_HEIGHT`
+stays 26 whatever the zoom, `getBoundingClientRect` keeps returning CSS
+pixels, and TanStack Virtual's `estimateSize` needs no knowledge of the
+setting. Under a CSS transform or `zoom` the rendered row and the estimate
+drift apart, which surfaces as overlapping rows and a scrollbar that lies.
+Text is also laid out at the target size rather than rasterized and stretched,
+so it stays crisp.
+
+- **Default 1.0**, range 0.8-2.0 in 0.1 steps, current value shown as a
+  number beside the slider.
+- **Persisted** in `settings` next to volume and window geometry, and applied
+  during startup **before the window is shown** - the window already starts
+  hidden for the geometry restore, so this costs nothing extra and avoids a
+  visible resize.
+- **Ctrl+plus / Ctrl+minus / Ctrl+0** should drive the same setting. Users try
+  them; if the app does not handle them the webview may act on its own and
+  leave the slider lying about the current value.
+- Where the slider lives is worth a look during the work: the status bar is
+  what was asked for, and it is also the app's quietest strip, which suits a
+  control touched once.
+
+*Testing:* the clamp and step arithmetic as a pure function; persistence
+round-trip; that startup applies the stored zoom before showing the window;
+that the keyboard shortcuts and the slider converge on one value rather than
+two; and a capability-guard row, so a missing `allow-set-webview-zoom` fails
+in CI rather than silently doing nothing - which is exactly how `dialog.save`,
+`setPosition` and `maximize` each shipped dead.
+
+*Sequencing:* 21a stands alone and is worth doing first - it is the fix for
+the actual complaint. 21b is the adjustable knob on top, and if 21a lands the
+density well it may be wanted less urgently than it looks now.
 
 ---
 
