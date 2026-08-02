@@ -274,6 +274,10 @@ Running the app against a real library surfaced three, all fixed in
 - **Column reorder/resize** is data-driven in `columns.ts` but has no UI.
 - **Nothing can be dragged into the app.** Adding music is a folder picker
   only. Scheduled as phase 15.
+- **A file that disappears is deleted from the library, not marked missing.**
+  An unplugged external drive therefore destroys playlist entries pointing at
+  it, and a rescan cannot restore them. Scheduled as phase 16, which is also
+  what makes a "missing" indicator possible.
 - **`main` is not protected server-side** — GitHub gates that behind Pro for
   private repos. The pre-push hook is advisory only.
 - **No audio is asserted end to end.** GitHub's Windows runners have no output
@@ -623,13 +627,69 @@ component tests cover the drop target's states. The OS-level drag itself is
 not scriptable in WebDriver, so an e2e test would assert the handler, not the
 gesture — worth skipping rather than faking.
 
-*Open question for phase 15:* a dropped **loose file** that lives outside every
-watch folder has nowhere to belong under the current model — the scanner walks
-watch folders and would drop the row on the next rescan. Options: add its
-parent directory as a watch folder (surprising for a file dropped from
-Downloads), or let `tracks` hold rows with no watch folder and teach the
-scanner to keep them. The second is more honest but touches the incremental
-scan's diffing. To settle before starting.
+*Settled — loose files are refused, with an explanation.* A dropped file that
+lives outside every watch folder has nowhere to belong: the scanner walks watch
+folders, so the row would silently vanish on the next rescan. Rather than
+quietly adopting its parent directory as a watch folder, or teaching the
+scanner to keep orphan rows, the drop is **prevented** and a modal says why —
+"*Player only tracks folders you have added. `X.mp3` is not inside one. Add its
+folder instead?*" — offering the folder as the action.
+
+A mixed drop is not all-or-nothing: whatever *is* inside a watch folder, or is
+a folder itself, is ingested, and the modal reports only what was skipped. The
+modal is the one exception to the app's "no dialogs for routine work" leaning,
+because silently dropping half a drag is worse than an interruption.
+
+**16 — Row status column** `feat/16-status`
+A first column in every view, narrow and unlabeled, showing what is true about
+each file:
+
+- **Currently playing** — an animated speaker (inline SVG, CSS-animated bars).
+- **Missing on disk** — a red exclamation mark.
+- Everything else — empty.
+
+*The hard part is not the icon, it is the state behind it.* The scanner
+currently **deletes** rows whose files have disappeared, so "missing" is not a
+state the library can be in. This phase changes that:
+
+- Migration 3 adds `tracks.missing_since INTEGER NULL`. A scan that no longer
+  finds a file **marks** it instead of deleting it; a file that reappears is
+  unmarked. Deletion moves to an explicit user action ("Remove missing tracks
+  from library"), which is the only place rows are destroyed.
+- That is a better model regardless of the icon: today an unplugged external
+  drive silently destroys every playlist entry that pointed at it, and a
+  rescan cannot bring them back because the rows are gone. Marking makes an
+  unplugged drive a temporary condition rather than data loss.
+- A second, cheaper signal comes free: `AudioSink::load` already fails on a
+  file that is not there, so a failed play marks that one track immediately
+  rather than waiting for a scan. The engine's "give up after five unreadable
+  files" rule then reads as "five missing files", which is the right message.
+- Nothing stats the filesystem during rendering. 50k `stat` calls to paint a
+  column is exactly the kind of thing this app exists to avoid.
+
+*UI details that are easy to get wrong:*
+
+- The column is **fixed**: first, non-reorderable, non-hideable, and not a
+  sort target. It carries no header text, so its `<th>` needs a
+  visually-hidden name ("Status") or screen readers announce an empty column.
+- An icon-only cell is not a label. Each state carries visually-hidden text —
+  "Playing", "File missing" — and the missing state gets a `title` with the
+  path, since "why is this red" is the immediate question.
+- **Red alone must not be the signal**: an exclamation glyph carries the
+  meaning for anyone who cannot distinguish the colour.
+- The speaker animation honours `prefers-reduced-motion` by falling back to a
+  static speaker. It is also the deliberate exception to phase 13's
+  no-animation rule: this animation *is* the state, not decoration.
+
+*Testing:* migration up and down a version, a scan that marks and then unmarks
+a file that returns, playlist entries surviving a disappearance, a failed load
+marking its track, and the component tests covering all three cell states plus
+the accessible names. The perf guard gains a check that the marking scan is no
+more expensive than the deleting one was.
+
+*Note on ordering:* this wants to land after phase 6 (playlists), because
+"playlist entries survive a missing file" is most of the argument for it and
+cannot be tested before playlists exist.
 
 ---
 
