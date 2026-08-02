@@ -169,8 +169,7 @@ repo.
 
 ## Status — 2026-08-02
 
-Phases 1–4 are merged to `main`; phase 5 (search) is in review. Next up is
-**phase 6 (playlists)**.
+Phases 1–5 are merged to `main`. Next up is **phase 6 (playlists)**.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -178,7 +177,7 @@ Phases 1–4 are merged to `main`; phase 5 (search) is in review. Next up is
 | 2 | Library core: schema, scan, queries | ✅ merged (`571b5c7`) |
 | 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
 | 4 | Playback: engine, transport, play counts | ✅ merged (`eb24e87`) |
-| 5 | Search: debounce, relevance ranking | 🔄 in review (`feat/05-search`) |
+| 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
 | 6+ | Playlists onwards | not started |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
@@ -237,6 +236,25 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   first search can no longer overwrite the results of a later one — a race the
   paged loader had from the start and that debouncing only made likelier.
 
+### Defects found on the first real build (2026-08-02)
+
+Running the app against a real library surfaced three, all fixed in
+`fix/table-refresh`:
+
+- **The table sat on placeholder rows after any query change that left the row
+  count alone.** `SongTable`'s fetch effect keyed on the visible range and the
+  total; a re-sort changes neither, yet `refresh` had already dropped every
+  cached page. Clearing a search back to the same count did the same thing. It
+  dated from phase 3 and was mostly invisible until search made query changes
+  frequent. The effect now also keys on `queryToken`, which is exactly "the
+  query changed". Two tests pin it, and both fail without the fix.
+- **A superseded count cleared `loading`**, reporting a query as finished while
+  its replacement was still running.
+- **The window caption buttons stopped short of the title bar's edges**,
+  leaving a dead strip that swallowed clicks aimed at the corner — the bar's
+  vertical padding sits outside its grid items, so `align-self: stretch` only
+  filled the content box.
+
 ### Known gaps carried forward
 
 - **e2e runs against a decorated window.** `decorations: false` stops the
@@ -250,9 +268,12 @@ frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
   imports a symbol from the 2.4.0 it pins, which 2.4.0 does not export — the
   package cannot be imported as published. Drop the override once upstream
   repins.
-- **Footer totals are counts only.** Duration and size need a library-wide
-  aggregate query that does not exist yet.
+- **Footer totals are counts only** — the duration reads "0 minutes" however
+  large the library is, because `formatLibrarySummary` is called with a
+  hard-coded zero. Scheduled as phase 14.
 - **Column reorder/resize** is data-driven in `columns.ts` but has no UI.
+- **Nothing can be dragged into the app.** Adding music is a folder picker
+  only. Scheduled as phase 15.
 - **`main` is not protected server-side** — GitHub gates that behind Pro for
   private repos. The pre-push hook is advisory only.
 - **No audio is asserted end to end.** GitHub's Windows runners have no output
@@ -528,7 +549,10 @@ window. The tells are mostly things to *remove*:
   pointer. Hover states are a web affordance for "this is a link"; a desktop
   list communicates through selection and focus instead. Buttons keep a
   pressed state, and genuinely clickable chrome (sort headers, sidebar items)
-  keeps focus rings — those are accessibility, not decoration.
+  keeps focus rings — those are accessibility, not decoration. **The window
+  caption buttons are the deliberate exception**: minimize/maximize/close
+  highlight on hover in every Windows title bar, and dropping that would read
+  as broken rather than as native.
 - **No transitions or animations** on hover/selection/expansion. State changes
   are instant, the way a native list view changes.
 - **Selection, not hover, is the highlight.** Selected rows stay tinted when
@@ -551,6 +575,61 @@ walkthrough on the checklist above. Cheap to test, easy to regress.
 
 *Placement:* deliberately after the features, not before — every phase adds
 chrome, and doing this once at the end is cheaper than policing it per PR.
+
+**14 — Library totals in the footer** `feat/14-totals`
+The status bar and the toolbar display both promise "N songs, H hours" and
+currently always say zero for the time, because no query produces the sum.
+
+- New command `library_stats(query)` returning `{ tracks, duration_ms, bytes }`
+  for the *current* view, so it reflects a search or a playlist rather than
+  always the whole library. `tracks.size` is already stored by the scanner, so
+  this is one `SELECT count(*), sum(duration_ms), sum(size)`.
+- Folded into the existing count call rather than added alongside it: the two
+  always change together, and a second round trip per query change would be
+  waste. `count_tracks` becomes `library_stats` and the store keeps the whole
+  struct.
+- The footer then reads "5 songs, 50 minutes, 214 MB", and `formatBytes` —
+  written in phase 3 and unused since — finally has a caller.
+
+*Testing:* aggregates over a seeded library incl. an empty one (sum of no rows
+is NULL in SQLite, not 0, which is the classic bug here), a filtered view, and
+a library whose durations exceed `i32`. A perf guard, since this now runs on
+every query change.
+
+**15 — Drag and drop ingest** `feat/15-drop`
+Dropping files and folders onto the window should add them, which is how every
+music player has worked for twenty years and is currently impossible — the
+folder picker is the only route in.
+
+- **Onto the library**: accept a mixed drop of files and directories, add each
+  directory as a watch folder, scan. Loose files that sit outside every watch
+  folder need a decision (see open question below).
+- **Onto a static playlist** (phase 6): ingest into the library first, then
+  append the resulting track ids to that playlist, in drop order.
+- **Onto a smart playlist** (phase 7): ingest into the library only. The
+  playlist's membership is its filter, so the dropped tracks appear there if
+  and only if they match — silently doing anything else would be a lie about
+  what a smart playlist is. The UI should say so rather than appear to no-op:
+  the drop target reports "added to Library; N of M match this playlist".
+- Tauri v2 exposes this through `onDragDropEvent` on the window (paths only,
+  never file contents), so the whole thing is a path list handed to the
+  existing scan pipeline. Drag *out* of the app is not in scope.
+- Visual affordance: the drop target highlights, and an invalid target (a
+  drop of zero audio files) says so instead of silently swallowing it.
+
+*Testing:* the path-classifying step (files vs directories vs neither) is pure
+and unit-testable; the ingest path already has integration coverage; the
+component tests cover the drop target's states. The OS-level drag itself is
+not scriptable in WebDriver, so an e2e test would assert the handler, not the
+gesture — worth skipping rather than faking.
+
+*Open question for phase 15:* a dropped **loose file** that lives outside every
+watch folder has nowhere to belong under the current model — the scanner walks
+watch folders and would drop the row on the next rescan. Options: add its
+parent directory as a watch folder (surprising for a file dropped from
+Downloads), or let `tracks` hold rows with no watch folder and teach the
+scanner to keep them. The second is more honest but touches the incremental
+scan's diffing. To settle before starting.
 
 ---
 

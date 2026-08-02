@@ -275,4 +275,38 @@ describe("SongTable", () => {
     expect(playing).toHaveLength(1);
     expect(playing[0]).toHaveTextContent("Track 4");
   });
+
+  it("refetches after a re-sort, even though the row count has not changed", async () => {
+    // Regression: the fetch effect keyed only on the visible range and the
+    // total, both unchanged by a sort. Every cached page had been dropped, so
+    // the table sat on placeholder rows until something else moved.
+    await renderTable();
+    queryTracksMock.mockClear();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Name/ }));
+
+    await waitFor(() => {
+      expect(queryTracksMock).toHaveBeenCalledWith(expect.objectContaining({ sortBy: "title" }));
+    });
+    await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+  });
+
+  it("refetches when a search resolves to the same row count", async () => {
+    // The other half of the same regression: searching and clearing back to an
+    // identical total left the view stuck on placeholders.
+    const { container } = render(<SongTable columns={columns} />);
+    await useLibraryStore.getState().refresh();
+    await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+
+    useLibraryStore.getState().setSearch("track");
+    await useLibraryStore.getState().commitSearch();
+    await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+
+    await useLibraryStore.getState().clearSearch();
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".song-row.placeholder")).toHaveLength(0);
+    });
+  });
 });
