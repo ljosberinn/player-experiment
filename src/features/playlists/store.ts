@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   addToPlaylist,
+  allTrackIds,
   createPlaylist,
   createSmartPlaylist,
   deletePlaylist,
@@ -14,6 +15,7 @@ import {
   setPlaylistFilter,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
+import { usePlayerStore } from "../player/store";
 import { emptyFilter } from "../smart/filterTree";
 
 /**
@@ -23,6 +25,9 @@ import { emptyFilter } from "../smart/filterTree";
  * becomes furniture. Dismissing it by hand is also possible.
  */
 export const NOTICE_MS = 4000;
+
+/** The name a brand new playlist gets, the way every music player does it. */
+export const NEW_PLAYLIST_NAME = "New Playlist";
 
 interface PlaylistsState {
   playlists: Playlist[];
@@ -48,6 +53,8 @@ interface PlaylistsState {
 
   /** Creates a playlist and puts its new row straight into rename. */
   create: (name: string) => Promise<void>;
+  /** Creates a playlist already holding `trackIds`, then renames it. */
+  createFrom: (trackIds: number[]) => Promise<void>;
   startRename: (playlistId: number) => void;
   endRename: () => void;
   /** Opens the filter editor, on an existing smart playlist or a new one. */
@@ -64,6 +71,8 @@ interface PlaylistsState {
   removeTracks: (playlistId: number, trackIds: number[]) => Promise<void>;
   /** Reorders within the playlist currently on screen. */
   moveTracks: (playlistId: number, trackIds: number[], targetIndex: number) => Promise<void>;
+  /** Opens a playlist and starts playing it from the top. */
+  playPlaylist: (playlistId: number) => Promise<void>;
   dismissNotice: () => void;
 }
 
@@ -99,6 +108,26 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       // about to drag into it. Instead the new row goes straight into rename,
       // which is the only thing there is to do with it yet.
       set({ renaming: playlist.id });
+    } catch (cause) {
+      set({ error: String(cause) });
+    }
+  },
+
+  createFrom: async (trackIds) => {
+    if (trackIds.length === 0) {
+      return;
+    }
+    try {
+      const playlist = await createPlaylist(NEW_PLAYLIST_NAME);
+      const added = await addToPlaylist(playlist.id, trackIds);
+      await get().load();
+      // The songs land before the rename starts, so what is being named is a
+      // playlist that already holds something - and if the rename is abandoned
+      // the drop is still not lost.
+      set({
+        renaming: playlist.id,
+        notice: `Added ${plural(added, "song")} to a new playlist.`,
+      });
     } catch (cause) {
       set({ error: String(cause) });
     }
@@ -232,6 +261,30 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     try {
       await moveInPlaylist(playlistId, trackIds, targetIndex);
       await useLibraryStore.getState().refresh();
+    } catch (cause) {
+      set({ error: String(cause) });
+    }
+  },
+
+  playPlaylist: async (playlistId) => {
+    try {
+      // The ids are fetched for this playlist directly rather than read off
+      // the current view: the view is switched in the same breath, and reading
+      // it here would race that and play whatever was on screen before.
+      const ids = await allTrackIds({
+        search: null,
+        playlistId,
+        sortBy: "position",
+        direction: "asc",
+        offset: 0,
+        limit: 0,
+      });
+      await useLibraryStore.getState().showPlaylist(playlistId);
+      if (ids.length === 0) {
+        set({ notice: `${nameOf(get().playlists, playlistId)} is empty.` });
+        return;
+      }
+      await usePlayerStore.getState().play(ids, 0);
     } catch (cause) {
       set({ error: String(cause) });
     }

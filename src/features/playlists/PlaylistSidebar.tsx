@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
+import type { Playlist } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { hasTrackIds, readTrackIds } from "./drag";
-import { usePlaylistsStore } from "./store";
+import { NEW_PLAYLIST_NAME, usePlaylistsStore } from "./store";
 
-/** The name a brand new playlist gets, the way every music player does it. */
-const NEW_PLAYLIST_NAME = "New Playlist";
+/**
+ * Stands in for "the new playlist a drop would create" in `dropTargetId`.
+ *
+ * Negative because every real playlist id is positive, so it can never collide
+ * with one.
+ */
+const NEW_PLAYLIST_TARGET = -1;
 
 /**
  * The Playlists section of the source list.
@@ -12,10 +19,20 @@ const NEW_PLAYLIST_NAME = "New Playlist";
  * Owns its own behaviour rather than being data handed to `Sidebar`: each item
  * is a drop target for a multi-selection, renames in place, and deletes.
  */
-export function PlaylistSidebar() {
+export function PlaylistSidebar({
+  onExport,
+}: {
+  /**
+   * Export a playlist. Lives with the caller because it opens a save dialog,
+   * which is the shell's business rather than the sidebar's.
+   */
+  onExport?: ((playlist: Playlist) => void) | undefined;
+} = {}) {
   const playlists = usePlaylistsStore((s) => s.playlists);
   const load = usePlaylistsStore((s) => s.load);
   const createPlaylist = usePlaylistsStore((s) => s.create);
+  const createFrom = usePlaylistsStore((s) => s.createFrom);
+  const playPlaylist = usePlaylistsStore((s) => s.playPlaylist);
   const renamePlaylist = usePlaylistsStore((s) => s.rename);
   const removePlaylist = usePlaylistsStore((s) => s.remove);
   const addTracks = usePlaylistsStore((s) => s.addTracks);
@@ -26,6 +43,8 @@ export function PlaylistSidebar() {
 
   /** Which playlist the pointer is currently over with a valid drag. */
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+  /** The open right-click menu, and which playlist it acts on. */
+  const [menu, setMenu] = useState<{ at: MenuPosition; playlist: Playlist } | null>(null);
   // Renaming lives in the store because creating a playlist starts one, and
   // that can happen from outside this component.
   const renamingId = usePlaylistsStore((s) => s.renaming);
@@ -100,6 +119,10 @@ export function PlaylistSidebar() {
                 setDropTargetId(null);
                 void addTracks(playlist.id, readTrackIds(event.dataTransfer));
               }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ at: { x: event.clientX, y: event.clientY }, playlist });
+              }}
             >
               {renamingId === playlist.id ? (
                 <RenameField
@@ -113,69 +136,73 @@ export function PlaylistSidebar() {
                   onCancel={endRename}
                 />
               ) : (
-                <>
-                  <button
-                    type="button"
-                    className="sidebar-item"
-                    // Named for the destination, not its size: the count
-                    // changes every time a track is added, and a navigation
-                    // item whose announced name keeps changing is worse to
-                    // use than one that stays put. It stays visible.
-                    aria-label={playlist.name}
-                    aria-current={playlist.id === selectedId ? "page" : undefined}
-                    onClick={() => void showPlaylist(playlist.id)}
-                    onDoubleClick={() => startRename(playlist.id)}
-                  >
-                    <span className="sidebar-icon" aria-hidden="true">
-                      {playlist.kind === "smart" ? "⚙" : "≡"}
-                    </span>
-                    <span className="sidebar-label">{playlist.name}</span>
-                    <span className="sidebar-count">{playlist.trackCount}</span>
-                  </button>
-                  {/* Shown only on the open playlist rather than on hover: an
-                      always-present row of delete buttons is a hazard, and a
-                      hover-only control is a web affordance. Double-click also
-                      renames, but an invisible gesture is not an affordance -
-                      these are how you find out the actions exist. */}
-                  {playlist.id === selectedId && playlist.kind === "smart" ? (
-                    <button
-                      type="button"
-                      className="sidebar-action"
-                      title="Edit filter"
-                      aria-label={`Edit filter for ${playlist.name}`}
-                      onClick={() => void editSmart(playlist.id)}
-                    >
-                      ⚙
-                    </button>
-                  ) : null}
-                  {playlist.id === selectedId ? (
-                    <button
-                      type="button"
-                      className="sidebar-action"
-                      title="Rename"
-                      aria-label={`Rename playlist ${playlist.name}`}
-                      onClick={() => startRename(playlist.id)}
-                    >
-                      ✎
-                    </button>
-                  ) : null}
-                  {playlist.id === selectedId ? (
-                    <button
-                      type="button"
-                      className="sidebar-action"
-                      title="Delete"
-                      aria-label={`Delete playlist ${playlist.name}`}
-                      onClick={() => void removePlaylist(playlist.id)}
-                    >
-                      ✕
-                    </button>
-                  ) : null}
-                </>
+                <button
+                  type="button"
+                  className="sidebar-item"
+                  // Named for the destination, not its size: the count
+                  // changes every time a track is added, and a navigation
+                  // item whose announced name keeps changing is worse to
+                  // use than one that stays put. It stays visible.
+                  aria-label={playlist.name}
+                  aria-current={playlist.id === selectedId ? "page" : undefined}
+                  onClick={() => void showPlaylist(playlist.id)}
+                  onDoubleClick={() => startRename(playlist.id)}
+                >
+                  <span className="sidebar-icon" aria-hidden="true">
+                    {playlist.kind === "smart" ? "⚙" : "≡"}
+                  </span>
+                  <span className="sidebar-label">{playlist.name}</span>
+                  <span className="sidebar-count">{playlist.trackCount}</span>
+                </button>
               )}
             </li>
           ))}
         </ul>
       )}
+
+      {/* Dropping onto the empty space below the list starts a new playlist
+          holding what was dropped. The drop lands first, so the rename that
+          follows is over something real rather than an empty row. */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target, not a control - the keyboard route to the same result is the + button above and the row menu's Add to Playlist. */}
+      <div
+        className={`sidebar-dropzone${dropTargetId === NEW_PLAYLIST_TARGET ? " drop-target" : ""}`}
+        data-testid="playlist-dropzone"
+        onDragOver={(event) => {
+          if (!hasTrackIds(event.dataTransfer)) {
+            return;
+          }
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setDropTargetId(NEW_PLAYLIST_TARGET);
+        }}
+        onDragLeave={() => setDropTargetId((id) => (id === NEW_PLAYLIST_TARGET ? null : id))}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDropTargetId(null);
+          void createFrom(readTrackIds(event.dataTransfer));
+        }}
+      >
+        {playlists.length === 0 ? null : "Drop songs here for a new playlist"}
+      </div>
+
+      {menu ? (
+        <ContextMenu
+          position={menu.at}
+          label={`${menu.playlist.name} actions`}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: "Play", onSelect: () => void playPlaylist(menu.playlist.id) },
+            { kind: "separator" },
+            ...(menu.playlist.kind === "smart"
+              ? [{ label: "Edit Filter…", onSelect: () => void editSmart(menu.playlist.id) }]
+              : []),
+            { label: "Rename", onSelect: () => startRename(menu.playlist.id) },
+            { label: "Delete", onSelect: () => void removePlaylist(menu.playlist.id) },
+            { kind: "separator" },
+            { label: "Export…", onSelect: () => onExport?.(menu.playlist) },
+          ]}
+        />
+      ) : null}
     </div>
   );
 }

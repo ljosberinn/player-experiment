@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useEditorStore } from "../editor/store";
 import { isTypingTarget } from "../player/shortcuts";
 import { usePlaylistsStore } from "../playlists/store";
 import { useLibraryStore } from "./store";
@@ -27,6 +28,18 @@ export function useSelectionShortcuts(): void {
         // truncated at whatever happened to be scrolled into view would be a
         // trap for the bulk operations that follow it.
         void useLibraryStore.getState().selectAll();
+        return;
+      }
+
+      // Get Info's keyboard route. It used to be a toolbar button; that moved
+      // to the row's right-click menu, and a menu is not a substitute for a
+      // shortcut, so the shortcut had to exist before the button could go.
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "i") {
+        const ids = [...useLibraryStore.getState().selection.ids];
+        if (ids.length > 0) {
+          event.preventDefault();
+          void useEditorStore.getState().open(ids);
+        }
         return;
       }
 

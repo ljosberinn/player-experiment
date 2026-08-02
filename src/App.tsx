@@ -8,7 +8,7 @@ import { TitleBar } from "./components/ui/TitleBar";
 import { Transport } from "./components/ui/Transport";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
-import { exportChoice } from "./features/export/scope";
+import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { columnsFor, DEFAULT_COLUMN_IDS } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
 import { SongTable } from "./features/library/SongTable";
@@ -68,7 +68,6 @@ export function App() {
   const canUndoTags = useEditorStore((s) => s.canUndo);
   const tagNotice = useEditorStore((s) => s.notice);
   const tagError = useEditorStore((s) => s.error);
-  const openEditor = useEditorStore((s) => s.open);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
   const undoTags = useEditorStore((s) => s.undo);
@@ -123,17 +122,23 @@ export function App() {
     void refreshUndo();
   }, [refreshUndo]);
 
-  /** Writes the current view to a JSON file the user names. */
-  const runExport = async () => {
+  /**
+   * Writes `choice` to a JSON file the user names.
+   *
+   * Takes what to export rather than reading it off the view, because the row
+   * and playlist menus export the thing that was right-clicked, which is not
+   * always the thing the toolbar would have exported.
+   */
+  const runExport = async (choice: ExportChoice) => {
     try {
       const path = await save({
-        defaultPath: exportTarget.fileName,
+        defaultPath: choice.fileName,
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (path === null) {
         return;
       }
-      const count = await exportLibrary(path, exportTarget.scope);
+      const count = await exportLibrary(path, choice.scope);
       setExportNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
     } catch (cause) {
       setExportNotice(`Export failed: ${String(cause)}`);
@@ -220,24 +225,21 @@ export function App() {
           selectedId={playlistId === null ? "music" : ""}
           onSelect={() => void showPlaylist(null)}
         >
-          <PlaylistSidebar />
+          <PlaylistSidebar onExport={(playlist) => void runExport(exportChoice([], playlist))} />
         </Sidebar>
 
         <main className="content">
           <div className="content-header">
             <TabBar active={tab} onChange={setTab} />
             <div className="scanbar">
-              <button
-                type="button"
-                disabled={selection.ids.size === 0}
-                onClick={() => void openEditor([...selection.ids])}
-              >
-                Get Info
-              </button>
+              {/* Get Info is no longer a button here: it lives on the row's
+                  right-click menu, where a per-song action belongs, and on
+                  Ctrl+I. Undo stays - it acts on the last edit, not on a
+                  selection, so no row menu is the right home for it. */}
               <button type="button" disabled={!canUndoTags} onClick={() => void undoTags()}>
                 Undo Tag Edit
               </button>
-              <button type="button" onClick={() => void runExport()}>
+              <button type="button" onClick={() => void runExport(exportTarget)}>
                 {exportTarget.label}
               </button>
             </div>
@@ -292,6 +294,7 @@ export function App() {
                   ? (trackIds) => void removeTracks(playlistId, trackIds)
                   : undefined
               }
+              onExport={(trackIds) => void runExport(exportChoice(trackIds, null))}
               nowPlayingId={nowPlaying?.id ?? null}
             />
           )}

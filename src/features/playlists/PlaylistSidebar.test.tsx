@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addToPlaylist,
+  createPlaylist,
   deletePlaylist,
   listPlaylists,
   type Playlist,
@@ -166,19 +167,20 @@ describe("PlaylistSidebar", () => {
     expect(renamePlaylist).not.toHaveBeenCalled();
   });
 
-  it("offers a visible rename control on the open playlist", async () => {
+  it("renames from the right-click menu", async () => {
     vi.mocked(renamePlaylist).mockResolvedValue(undefined);
     render(<PlaylistSidebar />);
     const user = userEvent.setup();
 
-    // Double-click renames too, but an invisible gesture is not an affordance:
-    // this is how the user finds out the action exists at all.
-    expect(
-      screen.queryByRole("button", { name: "Rename playlist Evening" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(await screen.findByRole("button", { name: "Evening" }));
-    await user.click(await screen.findByRole("button", { name: "Rename playlist Evening" }));
+    // Double-click renames too, but an invisible gesture is not an affordance.
+    // The stopgap ✎ button that used to say so is gone: right-click is where a
+    // desktop user looks for this, and it works on any playlist rather than
+    // only the one that happens to be open.
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
     const field = screen.getByRole("textbox", { name: "Rename playlist Evening" });
     await user.clear(field);
@@ -199,18 +201,85 @@ describe("PlaylistSidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers deletion only on the playlist that is open", async () => {
+  it("deletes from the right-click menu", async () => {
     vi.mocked(deletePlaylist).mockResolvedValue(undefined);
     render(<PlaylistSidebar />);
     const user = userEvent.setup();
 
-    expect(
-      screen.queryByRole("button", { name: "Delete playlist Evening" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(await screen.findByRole("button", { name: "Evening" }));
-    await user.click(await screen.findByRole("button", { name: "Delete playlist Evening" }));
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
     expect(deletePlaylist).toHaveBeenCalledWith(1);
+  });
+
+  it("names the menu after the playlist it will act on", async () => {
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    // Right-clicking does not select, so the menu is the only thing saying
+    // which playlist Delete is about to remove.
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Focus" }),
+    });
+
+    expect(await screen.findByRole("menu", { name: "Focus actions" })).toBeInTheDocument();
+  });
+
+  it("offers Edit Filter on a smart playlist only", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      playlist(1, "Evening", 4),
+      { id: 3, name: "Recent", kind: "smart", trackCount: 7, createdAt: 0 },
+    ]);
+    render(<PlaylistSidebar />);
+    const user = userEvent.setup();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: await screen.findByRole("button", { name: "Evening" }),
+    });
+    expect(screen.queryByRole("menuitem", { name: "Edit Filter…" })).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "Recent" }),
+    });
+
+    // A static playlist has no filter to edit, so the entry is absent rather
+    // than present and greyed - there is nothing there to enable.
+    expect(await screen.findByRole("menuitem", { name: "Edit Filter…" })).toBeInTheDocument();
+  });
+
+  it("starts a playlist from songs dropped on the empty space below the list", async () => {
+    vi.mocked(createPlaylist).mockResolvedValue(playlist(9, "New Playlist"));
+    vi.mocked(addToPlaylist).mockResolvedValue(2);
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    fireEvent.drop(screen.getByTestId("playlist-dropzone"), {
+      dataTransfer: trackDrag([10, 11]),
+    });
+
+    await waitFor(() => expect(addToPlaylist).toHaveBeenCalledWith(9, [10, 11]));
+    // The songs land first, so the rename that follows is over a playlist that
+    // already holds something.
+    expect(createPlaylist).toHaveBeenCalledWith("New Playlist");
+    await waitFor(() => expect(usePlaylistsStore.getState().renaming).toBe(9));
+  });
+
+  it("ignores an empty drop on the new-playlist zone", async () => {
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    fireEvent.drop(screen.getByTestId("playlist-dropzone"), {
+      dataTransfer: { types: [], getData: () => "" },
+    });
+
+    // A drag that carried nothing should not leave an empty playlist behind.
+    expect(createPlaylist).not.toHaveBeenCalled();
   });
 });
