@@ -1,0 +1,6 @@
+# ts-rs writes generated TypeScript bindings here. Cargo discovers this file by
+# walking up from the working directory, so it applies both to `cargo` run at
+# the repo root and to `tauri dev` run inside src-tauri/.
+# `npm run bindings` regenerates them; CI fails if the checked-in output drifts.
+[env]
+TS_RS_EXPORT_DIR = { value = "src/ipc/bindings", relative = true }
