@@ -29,6 +29,11 @@ jobs:
         run: npm run lint
       - name: Unit & component tests
         run: npm run test:coverage
+      # Runs here as well as inside `tauri build`, because a warning in the
+      # e2e job's nine-minute log is a warning nobody reads. Warnings are
+      # errors; see the onwarn handler in vite.config.ts.
+      - name: Production build
+        run: npm run build
 
   rust:
     name: rust

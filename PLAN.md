@@ -483,6 +483,22 @@ and one was a phase that had not merged yet.
   entry claimed resizable, reorderable and toggleable columns and was ticked
   as merged, which is how this went unnoticed. Now phase 20.
 
+### Decisions from the fourth build (2026-08-02)
+
+- **Build warnings fail CI.** `vite.config.ts` turns every rollup warning into
+  a thrown error, and the frontend job runs `npm run build` rather than
+  leaving the production build to happen only inside the e2e job's
+  nine-minute log. Verified by reintroducing the dynamic-import warning and
+  watching the build exit 1, not by trusting the config. Silencing a specific
+  `warning.code` later is allowed, with a comment; loosening it back to the
+  default handler is not.
+- **`npm run tauri build` needing a manual PATH export was not a
+  misconfiguration.** The persisted user PATH has `.cargoin` first, the
+  registry value is `ExpandString`, and a fresh `cmd` resolves cargo. The
+  failing shells were started before rustup wrote that entry and never saw it;
+  a process gets its environment at launch. Confirmed working by the user once
+  the terminal was replaced. Nothing to change.
+
 ### Known gaps carried forward
 
 - **e2e runs against a decorated window.** `decorations: false` stops the
@@ -1217,6 +1233,12 @@ target, so it needs one store test and one component test.
 actually gets solved. The Rename/Delete buttons added as a fix are a stopgap —
 they are only on the open playlist, and a row of glyphs in a sidebar is not
 where those actions belong long-term.
+
+*Settled (2026-08-02): **no delete-from-disk**.* The row menu offers "Remove
+from Playlist" only inside a static playlist, where there is a membership row
+to remove. In the library the same entry could only mean deleting the file;
+the user was asked directly and said no. Not a gap, a decision - do not add it
+back with a confirmation dialog and call it an improvement.
 
 *Confirmed by the third build (2026-08-02):* the user asked for exactly this —
 "move actions to where they are commonly found… then the buttons to do so
