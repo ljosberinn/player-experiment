@@ -605,6 +605,31 @@ Installers are published from CI, versioned from the commit history.
   is proven, but whether `release-please-action` picks up this config and
   whether the bundle paths are right are things only the first run answers.
 
+### e2e wall time (2026-08-03)
+
+The smoke suite took **328s** for six assertion-only tests. It was not the
+build and not the cache - the debug build is 61s and `rust-cache` restores in
+27s. Every WebDriver command was stalling for exactly five seconds.
+
+- **`@wdio/tauri-service` runs `ensureActiveWindowFocus` in a `beforeCommand`
+  hook**, so the cost is paid *per command*, not per test. That helper reads
+  the window states through `window.__TAURI__.core.invoke`, spin-waiting for it
+  in 50ms steps and giving up after 5s. The real work underneath was 5ms - the
+  `findElement` for the sidebar returned in `30.788` -> `30.793`.
+- **`window.__TAURI__` only exists when `app.withGlobalTauri` is true.** This
+  app imports `@tauri-apps/api` as ES modules, so the global was never there
+  and the probe could only ever time out. Each `toBeExisting()` cost 10s
+  because it issues `findElement` *then* `findElements`, stalling on both.
+- **Set in the wdio overlay only**, next to `decorations` and the `wdio`
+  capability, so a shipped build still does not expose the API globally. The
+  e2e binary drifting further from the released one is the price; it was
+  already a debug build with decorations and a WebDriver server inside it.
+- **The failure was silent by design** - a `WARN` the suite continued past,
+  with everything still green. Worth remembering that a passing suite can be
+  hiding a broken assumption; only the wall clock showed it.
+- `captureFrontendLogs` reads the same global and returns early without it, so
+  console forwarding had never actually worked either.
+
 ### Known gaps carried forward
 
 - **e2e runs against a decorated window.** `decorations: false` stops the

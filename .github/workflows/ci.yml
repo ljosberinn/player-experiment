@@ -88,7 +88,8 @@ jobs:
       # server inside the app, so no tauri-driver or msedgedriver is needed.
       # The instrumentation is behind the `wdio` cargo feature and its
       # capability comes from a --config overlay, so a normal build ships
-      # neither.
+      # neither. That overlay also sets `withGlobalTauri`, which the service
+      # needs on every command - see PLAN.md, "e2e wall time".
       - name: Build app (debug, e2e-instrumented)
         run: npm run tauri -- build --debug --no-bundle --features wdio --config src-tauri/tauri.wdio.conf.json
       - name: Run WebDriver smoke suite
