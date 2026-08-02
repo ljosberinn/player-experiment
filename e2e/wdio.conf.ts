@@ -36,15 +36,16 @@ export const config: WebdriverIO.Config = {
       );
     }
 
-    // `cargo install tauri-driver` puts the binary on PATH; the Edge driver
-    // location differs between a GitHub runner and a dev machine.
-    const nativeDriver =
-      process.env.MSEDGEDRIVER ?? "C:\\SeleniumWebDrivers\\EdgeDriver\\msedgedriver.exe";
-    if (!existsSync(nativeDriver)) {
-      throw new Error(`msedgedriver not found at ${nativeDriver} - set MSEDGEDRIVER to its path`);
+    // `cargo install tauri-driver` puts the binary on PATH. CI puts a
+    // version-matched msedgedriver on PATH too (see the workflow), which
+    // tauri-driver picks up by itself; MSEDGEDRIVER only overrides that.
+    const nativeDriver = process.env.MSEDGEDRIVER;
+    if (nativeDriver && !existsSync(nativeDriver)) {
+      throw new Error(`MSEDGEDRIVER points at ${nativeDriver}, which does not exist`);
     }
+    const args = nativeDriver ? ["--native-driver", nativeDriver] : [];
 
-    tauriDriver = spawn("tauri-driver", ["--native-driver", nativeDriver], {
+    tauriDriver = spawn("tauri-driver", args, {
       stdio: [null, process.stdout, process.stderr],
       shell: true,
     });

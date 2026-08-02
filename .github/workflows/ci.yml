@@ -11,6 +11,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  TAURI_DRIVER_VERSION: "2.0.6"
 
 jobs:
   frontend:
@@ -41,6 +42,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: rust-tests
       - name: Format
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Clippy
@@ -76,24 +78,42 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: e2e-build
+          # `cargo install` builds in its own temp dir, so its dependency
+          # sources are not part of the workspace cache without this.
+          cache-all-crates: true
       - run: npm ci
+      # rust-cache deliberately leaves ~/.cargo/bin alone, so the tauri-driver
+      # build repeats on every run unless it is cached separately. Pinned so
+      # the cache key changes only on a deliberate upgrade.
+      - name: Cache tauri-driver
+        id: tauri-driver-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver.exe
+          key: tauri-driver-${{ runner.os }}-${{ env.TAURI_DRIVER_VERSION }}
       - name: Install tauri-driver
-        run: cargo install tauri-driver --locked
-      # The runner's preinstalled msedgedriver is pinned to the Edge browser
-      # version, which drifts from the evergreen WebView2 runtime the app
-      # actually embeds. A mismatch surfaces as "DevToolsActivePort file
-      # doesn't exist", so fetch the driver matching the installed runtime.
-      - name: Install version-matched Edge WebDriver
-        shell: pwsh
+        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked --version ${{ env.TAURI_DRIVER_VERSION }}
+      # The runner's preinstalled msedgedriver tracks the Edge browser version,
+      # which drifts from the evergreen WebView2 runtime the app embeds; the
+      # mismatch surfaces as "DevToolsActivePort file doesn't exist".
+      # msedgedriver-tool is the tool Tauri's own WebDriver CI uses: it fetches
+      # the matching driver into the working directory, which then goes on PATH
+      # so tauri-driver discovers it without a --native-driver override.
+      - name: Cache msedgedriver-tool
+        id: msedgedriver-tool-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/msedgedriver-tool.exe
+          key: msedgedriver-tool-${{ runner.os }}-v1
+      - name: Install msedgedriver-tool
+        if: steps.msedgedriver-tool-cache.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/chippers/msedgedriver-tool
+      - name: Fetch matching Edge WebDriver
         run: |
-          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
-          $version = (Get-ItemProperty $key).pv
-          Write-Host "WebView2 runtime: $version"
-          $dest = Join-Path $env:RUNNER_TEMP 'edgedriver'
-          Invoke-WebRequest "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" `
-            -OutFile "$env:RUNNER_TEMP\edgedriver.zip" -UseBasicParsing
-          Expand-Archive "$env:RUNNER_TEMP\edgedriver.zip" -DestinationPath $dest -Force
-          "MSEDGEDRIVER=$dest\msedgedriver.exe" | Out-File $env:GITHUB_ENV -Append
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          $PWD.Path >> $env:GITHUB_PATH
       - name: Build app (debug)
         run: npm run tauri -- build --debug --no-bundle
       - name: Run WebDriver smoke suite
