@@ -16,7 +16,6 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "updater:default",
-    "process:allow-restart",
     "core:webview:allow-set-webview-zoom",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister"

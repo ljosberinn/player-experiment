@@ -1,24 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { UpdaterPorts } from "./store";
+import type { UpdateHandle, UpdaterPorts } from "./store";
 import { useUpdaterStore } from "./store";
 
 function ports(over: Partial<UpdaterPorts> = {}): UpdaterPorts {
   return {
     check: vi.fn(async () => null),
-    relaunch: vi.fn(async () => {}),
     ...over,
   };
 }
 
 /** An update the backend says is available. */
-function available(version = "0.3.0", downloadAndInstall = vi.fn(async () => {})) {
-  return { version, downloadAndInstall };
+function available(version = "0.3.0", over: Partial<UpdateHandle> = {}) {
+  return {
+    version,
+    download: vi.fn(async () => {}),
+    install: vi.fn(async () => {}),
+    ...over,
+  };
 }
 
 const initial = useUpdaterStore.getState();
 
 beforeEach(() => {
-  useUpdaterStore.setState({ ...initial, status: "idle", version: null, error: null });
+  useUpdaterStore.setState({
+    ...initial,
+    status: "idle",
+    version: null,
+    error: null,
+    update: null,
+  });
 });
 
 describe("the updater", () => {
@@ -40,8 +50,19 @@ describe("the updater", () => {
 
     // Downloading needs no decision, and asking first only means the user
     // waits after saying yes.
-    expect(update.downloadAndInstall).toHaveBeenCalled();
+    expect(update.download).toHaveBeenCalled();
     expect(useUpdaterStore.getState()).toMatchObject({ status: "ready", version: "0.3.0" });
+  });
+
+  it("never installs on its own", async () => {
+    const update = available("0.3.0");
+
+    await useUpdaterStore.getState().check(ports({ check: vi.fn(async () => update) }));
+
+    // The whole point of the phase. Installing hands off to the NSIS installer
+    // and exits the process, so a check that installed would end the app - and
+    // whatever was playing - without anybody asking for it.
+    expect(update.install).not.toHaveBeenCalled();
   });
 
   it("stays quiet when the check fails", async () => {
@@ -57,6 +78,21 @@ describe("the updater", () => {
     // state is kept so a later tick can retry.
     expect(useUpdaterStore.getState().status).toBe("failed");
     expect(useUpdaterStore.getState().version).toBeNull();
+  });
+
+  it("stays quiet when the download fails half way", async () => {
+    const update = available("0.3.0", {
+      download: vi.fn(async () => {
+        throw new Error("connection reset");
+      }),
+    });
+
+    await useUpdaterStore.getState().check(ports({ check: vi.fn(async () => update) }));
+
+    // A partial download must not leave an "install" button pointing at
+    // nothing, and it is still not news worth interrupting anyone over.
+    expect(useUpdaterStore.getState().status).toBe("failed");
+    expect(useUpdaterStore.getState().update).toBeNull();
   });
 
   it("retries after a failure but not while one is in flight", async () => {
@@ -83,35 +119,47 @@ describe("the updater", () => {
     expect(useUpdaterStore.getState().status).toBe("ready");
   });
 
-  it("restarts into the new version when asked", async () => {
-    const relaunch = vi.fn(async () => {});
-    useUpdaterStore.setState({ status: "ready", version: "0.3.0" });
+  it("installs the update it downloaded when asked", async () => {
+    const update = available("0.3.0");
+    useUpdaterStore.setState({ status: "ready", version: "0.3.0", update });
 
-    await useUpdaterStore.getState().install(ports({ relaunch }));
+    await useUpdaterStore.getState().install();
 
-    expect(relaunch).toHaveBeenCalled();
+    expect(update.install).toHaveBeenCalled();
     expect(useUpdaterStore.getState().status).toBe("installing");
   });
 
   it("installs nothing that is not ready", async () => {
-    const relaunch = vi.fn(async () => {});
-    useUpdaterStore.setState({ status: "downloading" });
+    const update = available("0.3.0");
+    useUpdaterStore.setState({ status: "downloading", update });
 
-    await useUpdaterStore.getState().install(ports({ relaunch }));
+    await useUpdaterStore.getState().install();
 
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(update.install).not.toHaveBeenCalled();
   });
 
-  it("stays offerable when the restart fails", async () => {
-    const relaunch = vi.fn(async () => {
-      throw new Error("denied");
-    });
-    useUpdaterStore.setState({ status: "ready", version: "0.3.0" });
+  it("installs nothing when there is no download to install", async () => {
+    // `ready` without a handle should be unreachable, but the button is driven
+    // by the status alone, so it must not throw its way through the click.
+    useUpdaterStore.setState({ status: "ready", version: "0.3.0", update: null });
 
-    await useUpdaterStore.getState().install(ports({ relaunch }));
-
-    // The download is still on disk and will be applied on the next manual
-    // start, so the offer must not disappear.
+    await expect(useUpdaterStore.getState().install()).resolves.toBeUndefined();
     expect(useUpdaterStore.getState().status).toBe("ready");
+  });
+
+  it("stays offerable when the install fails", async () => {
+    const update = available("0.3.0", {
+      install: vi.fn(async () => {
+        throw new Error("denied");
+      }),
+    });
+    useUpdaterStore.setState({ status: "ready", version: "0.3.0", update });
+
+    await useUpdaterStore.getState().install();
+
+    // Returning at all means it failed - a successful install never comes
+    // back. The download is still held, so the offer stays up.
+    expect(useUpdaterStore.getState().status).toBe("ready");
+    expect(useUpdaterStore.getState().error).toContain("denied");
   });
 });

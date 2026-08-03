@@ -7,18 +7,18 @@ export const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /**
  * The real Tauri updater, behind the store's port interface.
  *
- * Imported lazily inside the calls so the plugin is only touched when a check
+ * Imported lazily inside the call so the plugin is only touched when a check
  * actually runs - in a test or a plain browser there is no Tauri to talk to,
  * and reaching for it at module load would break the import graph.
+ *
+ * The `Update` the plugin returns already has `download` and `install` as
+ * separate methods, so it satisfies `UpdateHandle` as it stands; the point of
+ * the port is that a test can hand back something that does neither.
  */
 export const tauriUpdater: UpdaterPorts = {
   check: async () => {
     const { check } = await import("@tauri-apps/plugin-updater");
     return await check();
-  },
-  relaunch: async () => {
-    const { relaunch } = await import("@tauri-apps/plugin-process");
-    await relaunch();
   },
 };
 

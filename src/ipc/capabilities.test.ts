@@ -35,6 +35,10 @@ const REQUIRED: ReadonlyArray<{ call: RegExp; permission: string }> = [
   { call: /\bunregister\s*\(/, permission: "global-shortcut:allow-unregister" },
   { call: /await register\s*\(/, permission: "global-shortcut:allow-register" },
   { call: /\.setZoom\s*\(/, permission: "core:webview:allow-set-webview-zoom" },
+  // Matched on the import rather than the call: the updater's methods are
+  // `check`, `download` and `install`, all words this codebase uses for its
+  // own things, so a call-shaped pattern would match everywhere or nowhere.
+  { call: /@tauri-apps\/plugin-updater/, permission: "updater:default" },
 ];
 
 /** Vitest runs from the repo root, and the capability file is addressed from there. */
