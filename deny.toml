@@ -22,7 +22,8 @@ ignore = [
 
 [licenses]
 version = 2
-# This crate is a private, unpublished application and carries no license field.
+# The crate is MIT (see LICENSE) and never published to crates.io. `private`
+# stays on so an unpublished workspace member is not required to restate it.
 private = { ignore = true }
 allow = [
   "MIT",
@@ -33,6 +34,13 @@ allow = [
   "ISC",
   "Zlib",
   "Unicode-3.0",
+  # File-level copyleft, and the only entry here that asks anything of us.
+  # Reaches the binary through symphonia - the mp3 decoder, so not optional -
+  # and through cssparser/selectors under Tauri's webview layer. Combining it
+  # with MIT code is explicitly permitted (MPL-2.0 section 3.3); what it
+  # requires is that recipients be told where to get the source of the
+  # MPL-covered files, which THIRD-PARTY-NOTICES.md does. Keep it that way if
+  # this list ever grows an MPL crate we actually patch.
   "MPL-2.0",
   "CC0-1.0",
   "BSL-1.0",

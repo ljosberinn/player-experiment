@@ -41,7 +41,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "resources": [
+      "../LICENSE",
+      "../THIRD-PARTY-NOTICES.md"
+    ],
+    "licenseFile": "../LICENSE"
   },
   "plugins": {
     "updater": {

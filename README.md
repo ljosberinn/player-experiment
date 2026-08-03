@@ -101,3 +101,20 @@ The substitute is a `pre-push` hook in `.githooks/` that refuses pushes to
 cannot stop a push from a clone that skipped `npm install`, and `--no-verify`
 bypasses it. To get real enforcement, make the repo public or move it to a paid
 plan, then apply a ruleset requiring the four checks.
+
+## Licence
+
+Player is [MIT licensed](LICENSE).
+
+Its dependencies are not all as permissive, and one of them asks something of
+anyone who ships a build: **symphonia**, the mp3 decoder, is MPL-2.0, as are
+`cssparser` and `selectors` under Tauri's webview layer. MPL-2.0 permits
+combining those files with MIT code (section 3.3), but requires that recipients
+be told where to get their source. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+does that, and reproduces the licence text of all 331 packages that reach a
+build.
+
+That file is generated - run `npm run notices` after changing a dependency, and
+CI fails if it is out of date. Both it and `LICENSE` are bundled as installer
+resources, so a released build carries its own notices rather than pointing at
+a repository the person running it may never see.
