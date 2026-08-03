@@ -74,6 +74,8 @@ interface PlaylistsState {
   /** Opens a playlist and starts playing it from the top. */
   playPlaylist: (playlistId: number) => Promise<void>;
   dismissNotice: () => void;
+  /** Clears the last error. The shell shows one at a time and dismisses it. */
+  dismissError: () => void;
 }
 
 function nameOf(playlists: Playlist[], playlistId: number): string {
@@ -293,4 +295,5 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   },
 
   dismissNotice: () => set({ notice: null }),
+  dismissError: () => set({ error: null }),
 }));

@@ -1,8 +1,9 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { Toolbar } from "@base-ui/react/toolbar";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
+import { ErrorPopover } from "./components/ui/ErrorPopover";
 import { Sidebar } from "./components/ui/Sidebar";
 import { StatusDisplay } from "./components/ui/StatusDisplay";
 import { TabBar } from "./components/ui/TabBar";
@@ -40,6 +41,8 @@ const SIDEBAR_SECTIONS = [
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
+  /** What the error popover points at: the box that says what is playing. */
+  const statusRef = useRef<HTMLDivElement>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const zoomFactor = useZoomStore((s) => s.factor);
   const stepZoom = useZoomStore((s) => s.step);
@@ -100,6 +103,27 @@ export function App() {
   const editing = usePlaylistsStore((s) => s.editing);
   const closeEditor = usePlaylistsStore((s) => s.closeEditor);
   const saveSmart = usePlaylistsStore((s) => s.saveSmart);
+
+  const dismissLibraryError = useLibraryStore((s) => s.dismissError);
+  const dismissPlayerError = usePlayerStore((s) => s.dismissError);
+  const dismissPlaylistError = usePlaylistsStore((s) => s.dismissError);
+  const dismissTagError = useEditorStore((s) => s.dismissError);
+
+  /**
+   * The one error on screen, whichever part of the app it came from.
+   *
+   * Four stores can be unhappy at once and there is one place to say so, so the
+   * order is the order they are noticed in - and dismissing clears all four
+   * rather than uncovering the next one, which would read as the message
+   * refusing to go away.
+   */
+  const problem = error ?? playerError ?? playlistError ?? tagError ?? null;
+  const dismissProblem = () => {
+    dismissLibraryError();
+    dismissPlayerError();
+    dismissPlaylistError();
+    dismissTagError();
+  };
 
   useEffect(() => {
     // The layout first: it can move the sort off a hidden column, and doing
@@ -243,6 +267,7 @@ export function App() {
           onVolumeChange={(value) => void setVolume(value)}
         />
         <StatusDisplay
+          ref={statusRef}
           track={nowPlaying}
           positionMs={positionMs}
           summary={formatLibrarySummary(stats.tracks, stats.durationMs)}
@@ -330,12 +355,6 @@ export function App() {
             </Toolbar.Root>
             <ScanBar />
           </div>
-
-          {error || playerError || playlistError || tagError ? (
-            <p className="content-error" role="alert">
-              {error ?? playerError ?? playlistError ?? tagError}
-            </p>
-          ) : null}
 
           {notice || tagNotice || toolbarNotice ? (
             <p className="content-notice" role="status">
@@ -472,6 +491,12 @@ export function App() {
           }}
         />
       ) : null}
+
+      {/* Anchored to the status display rather than stacked above the table.
+          As a paragraph it pushed the rows down as it appeared, shifting the
+          whole view under the pointer, and it sat nowhere near the thing it
+          was about. */}
+      <ErrorPopover message={problem} anchor={statusRef} onDismiss={dismissProblem} />
 
       {confirmRemoveMissing ? (
         <ConfirmDialog

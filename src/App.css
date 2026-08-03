@@ -569,10 +569,45 @@ input[type="radio"] {
 }
 
 .scan-error,
+/* ---------- errors ---------- */
+
+/* Still inline, and correctly so: this is the tag editor's own validation
+   message, which belongs beside the field it is about and inside the dialog
+   that owns it. The popover below is for errors that arrive unasked. */
 .content-error {
-  /* Was a literal, which meant the one red in the app that the theme-parity
-     guard could not see - and it read as brown against the dark surface. */
   color: var(--danger);
+}
+
+/* Anchored to the status display rather than stacked above the table: as a
+   paragraph in the flow it pushed every row down as it appeared, moving the
+   view out from under the pointer, and it sat nowhere near what it described. */
+.error-positioner {
+  z-index: 40;
+}
+
+.error-popup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 7px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.error-dismiss {
+  padding: 0 5px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
 }
 
 .content-notice {

@@ -1,4 +1,5 @@
 import { Slider } from "@base-ui/react/slider";
+import type React from "react";
 import type { Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { formatDuration } from "../../lib/format";
@@ -14,15 +15,22 @@ export function StatusDisplay({
   positionMs = 0,
   summary,
   onSeek,
+  ref,
 }: {
   track: Track | null;
   positionMs?: number;
   summary: string;
   onSeek?: (positionMs: number) => void;
+  /**
+   * Forwarded so an error popover can point at this box, which is where the
+   * app says what is playing and therefore where a playback error belongs.
+   * A plain prop rather than `forwardRef`, which React 19 made unnecessary.
+   */
+  ref?: React.Ref<HTMLDivElement>;
 }) {
   if (!track) {
     return (
-      <div className="status-display" data-testid="status-display">
+      <div className="status-display" data-testid="status-display" ref={ref}>
         <span className="status-summary">{summary}</span>
       </div>
     );
@@ -33,7 +41,7 @@ export function StatusDisplay({
   const remaining = Math.max(0, duration - elapsed);
 
   return (
-    <div className="status-display" data-testid="status-display">
+    <div className="status-display" data-testid="status-display" ref={ref}>
       {track.cover_hash ? (
         <img className="status-cover" src={coverUrl(track.cover_hash)} alt="" />
       ) : (

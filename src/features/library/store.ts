@@ -123,6 +123,8 @@ interface LibraryState {
    * marks, hides or reorders. Resolves to how many went.
    */
   removeMissing: () => Promise<number>;
+  /** Clears the last error. The shell shows one at a time and dismisses it. */
+  dismissError: () => void;
   /** Reloads the open tab's groups under `refresh`'s token. Internal. */
   loadGroups: (token: number) => Promise<void>;
   /** Switches the view to a playlist, or back to the whole library. */
@@ -201,6 +203,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   loading: false,
   error: null,
   queryToken: 0,
+
+  dismissError: () => set({ error: null }),
 
   refresh: async () => {
     const token = get().queryToken + 1;
