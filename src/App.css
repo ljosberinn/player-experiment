@@ -993,3 +993,112 @@ body:not(:focus-within) .sidebar-row.current {
   border-color: var(--chrome-border);
   color: var(--muted);
 }
+
+/* ---------- browse views (albums, artists, genres) ---------- */
+
+.browse-body {
+  padding: 10px 12px;
+}
+
+/* The virtualizer sets the height inline; these only need to be a positioning
+   context for the absolutely positioned rows inside them. */
+.browse-grid,
+.browse-list {
+  position: relative;
+  width: 100%;
+}
+
+.browse-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: start;
+}
+
+/* Buttons, so a group is reachable from the keyboard, stripped back to the
+   tile they look like. No hover background - selection and focus carry the
+   state here, as everywhere else in the app. */
+.browse-tile,
+.browse-item {
+  display: flex;
+  background: none;
+  border: none;
+  padding: 4px;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.browse-tile {
+  flex-direction: column;
+  width: 140px;
+  gap: 2px;
+}
+
+.browse-item {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+.browse-cover {
+  display: block;
+  width: 132px;
+  height: 132px;
+  background: var(--skeleton);
+  overflow: hidden;
+}
+
+.browse-cover img {
+  width: 100%;
+  height: 100%;
+  /* Covers are square in practice but not guaranteed; cropping keeps the grid
+     aligned where letterboxing would leave ragged rows. */
+  object-fit: cover;
+  display: block;
+}
+
+.browse-cover-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.browse-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.browse-item .browse-title {
+  flex: 1;
+}
+
+.browse-subtitle,
+.browse-meta {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* The way back out of a drill-in, above the table. */
+.browse-back {
+  align-self: start;
+  background: none;
+  border: none;
+  padding: 6px 12px 0;
+  margin: 0;
+  color: var(--muted);
+  font: inherit;
+}

@@ -71,6 +71,7 @@ pub fn run() {
             commands::scan_library,
             commands::query_tracks,
             commands::count_tracks,
+            commands::browse_groups,
             commands::all_track_ids,
             commands::list_playlists,
             commands::create_playlist,

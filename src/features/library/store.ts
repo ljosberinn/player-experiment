@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import {
   allTrackIds,
+  type BrowseFilter,
+  type BrowseGroup,
+  type BrowseKind,
+  browseGroups,
   type LibraryStats,
   libraryStats,
   queryTracks,
@@ -29,6 +33,14 @@ import { applyClick, type ClickModifiers, emptySelection, type Selection } from 
  */
 export const SEARCH_DEBOUNCE_MS = 200;
 
+/**
+ * Which of the four views is open.
+ *
+ * Songs is the table; the other three are [`BrowseKind`], so the tab id is the
+ * grouping rather than something that has to be mapped onto one.
+ */
+export type ViewTab = "songs" | BrowseKind;
+
 interface LibraryState {
   /** Total rows matching the current query; drives the scrollbar. */
   total: number;
@@ -48,6 +60,18 @@ interface LibraryState {
   search: string;
   /** The playlist being shown, or null for the whole library. */
   playlistId: number | null;
+  /** Which tab is open. Songs is the table; the rest are browse views. */
+  tab: ViewTab;
+  /**
+   * The group that has been drilled into, or null while browsing the list.
+   *
+   * Also what decides which of the two the content area shows: a browse tab
+   * with a filter set is the songs table, scoped.
+   */
+  browse: BrowseFilter | null;
+  /** The albums, artists or genres of the open browse tab. */
+  groups: BrowseGroup[];
+  groupsLoading: boolean;
   sortBy: SortField;
   direction: SortDirection;
   /**
@@ -71,8 +95,16 @@ interface LibraryState {
 
   /** Reloads the count and drops cached pages; call after any query change. */
   refresh: () => Promise<void>;
+  /** Reloads the open tab's groups under `refresh`'s token. Internal. */
+  loadGroups: (token: number) => Promise<void>;
   /** Switches the view to a playlist, or back to the whole library. */
   showPlaylist: (playlistId: number | null) => Promise<void>;
+  /** Opens one of the four tabs, dropping any drill-in the last one had. */
+  showTab: (tab: ViewTab) => Promise<void>;
+  /** Drills into one album, artist or genre from the open browse tab. */
+  openGroup: (group: BrowseGroup) => Promise<void>;
+  /** Returns from a drill-in to the group list. */
+  closeGroup: () => Promise<void>;
   ensureRange: (startIndex: number, endIndex: number) => Promise<void>;
   rowAt: (rowIndex: number) => Track | null;
   /** Types into the search box; the query itself is debounced. */
@@ -89,11 +121,12 @@ interface LibraryState {
 }
 
 function queryFor(
-  state: Pick<LibraryState, "search" | "playlistId" | "sortBy" | "direction">,
+  state: Pick<LibraryState, "search" | "playlistId" | "browse" | "sortBy" | "direction">,
 ): TrackQuery {
   return {
     search: state.search.trim() === "" ? null : state.search,
     playlistId: state.playlistId,
+    browse: state.browse,
     sortBy: state.sortBy,
     direction: state.direction,
     offset: 0,
@@ -116,6 +149,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   searchInput: "",
   search: "",
   playlistId: null,
+  tab: "songs",
+  browse: null,
+  groups: [],
+  groupsLoading: false,
   sortBy: "artist",
   direction: "asc",
   sortBeforeSearch: null,
@@ -152,6 +189,40 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       }
       set({ error: String(cause), loading: false });
     }
+    await get().loadGroups(token);
+  },
+
+  /**
+   * Reloads the open tab's group list.
+   *
+   * Shares `refresh`'s token rather than carrying its own, because the two
+   * describe the same view: a search that narrows the rows narrows the albums,
+   * and a stale group list arriving late would be as wrong as a stale page.
+   */
+  loadGroups: async (token) => {
+    const { tab } = get();
+    if (tab === "songs") {
+      // Not merely skipped - cleared, so returning to a browse tab cannot show
+      // the previous tab's groups for the moment before the query lands.
+      set({ groups: [], groupsLoading: false });
+      return;
+    }
+
+    set({ groupsLoading: true });
+    try {
+      // Deliberately not the drill-in query: the list of albums must not be
+      // filtered by the album already open, or there would be no way back.
+      const groups = await browseGroups({ ...queryFor(get()), browse: null }, tab);
+      if (get().queryToken !== token) {
+        return;
+      }
+      set({ groups, groupsLoading: false });
+    } catch (cause) {
+      if (get().queryToken !== token) {
+        return;
+      }
+      set({ error: String(cause), groupsLoading: false });
+    }
   },
 
   showPlaylist: async (playlistId) => {
@@ -171,7 +242,51 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       direction: "asc",
       sortBeforeSearch: null,
       selection: emptySelection,
+      // A playlist's albums are not the library's, and the album that was open
+      // is unlikely to be in it. Both are rebuilt by the refresh below.
+      browse: null,
+      groups: [],
     });
+    await get().refresh();
+  },
+
+  showTab: async (tab) => {
+    if (get().tab === tab) {
+      return;
+    }
+    // The search survives a tab change, unlike a playlist change: "everything
+    // matching «bear»" is a question you might want answered as songs and then
+    // as albums, and re-typing it to switch view would be the annoying part.
+    set({
+      tab,
+      browse: null,
+      groups: [],
+      selection: emptySelection,
+    });
+    await get().refresh();
+  },
+
+  openGroup: async (group) => {
+    const { tab } = get();
+    if (tab === "songs") {
+      return;
+    }
+    set({
+      browse: { kind: tab, key: group.key, secondary: group.secondary },
+      selection: emptySelection,
+      // An album reads in its own order rather than the library's default of
+      // artist, which inside one album says nothing.
+      sortBy: tab === "albums" ? "trackNo" : "artist",
+      direction: "asc",
+    });
+    await get().refresh();
+  },
+
+  closeGroup: async () => {
+    if (get().browse === null) {
+      return;
+    }
+    set({ browse: null, selection: emptySelection, sortBy: "artist" });
     await get().refresh();
   },
 

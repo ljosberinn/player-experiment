@@ -222,6 +222,10 @@ fn all_tracks(conn: &Connection, playlist_id: Option<i64>) -> AppResult<Vec<Expo
                 offset,
                 limit: query::MAX_LIMIT,
                 search: None,
+                // An export covers the whole library or the whole playlist.
+                // Narrowing it to whatever album happened to be open would make
+                // the file silently partial.
+                browse: None,
             },
         )?;
         let count = page.len() as u32;

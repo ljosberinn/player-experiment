@@ -61,6 +61,18 @@ describe("application shell", () => {
     await expect(status).toHaveText(/songs?$|^No songs$/);
   });
 
+  it("switches to a browse tab, which was dead chrome until phase 19", async () => {
+    // Albums/Artists/Genres rendered `disabled` from phase 3 onward. An empty
+    // library has no albums, so what this proves is that the tab is live and
+    // the view behind it renders - not what it renders.
+    await browser.$("//button[text()='Albums']").click();
+    await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Albums");
+    await expect(browser.$(".empty-state")).toBeExisting();
+
+    await browser.$("//button[text()='Songs']").click();
+    await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Songs");
+  });
+
   it("offers the controls that drive a scan", async () => {
     await expect(browser.$("//button[text()='Add Folder…']")).toBeExisting();
     await expect(browser.$("//button[text()='Rescan']")).toBeExisting();

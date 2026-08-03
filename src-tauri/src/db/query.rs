@@ -6,7 +6,30 @@
 use rusqlite::{Connection, Row};
 
 use crate::error::AppResult;
-use crate::model::{LibraryStats, PlaylistKind, SortField, Track, TrackQuery};
+use crate::model::{
+    BrowseGroup, BrowseKind, LibraryStats, PlaylistKind, SortField, Track, TrackQuery,
+};
+
+/// The artist a track is filed under.
+///
+/// `album_artist` first so a compilation stays one album instead of shattering
+/// into one per track, falling back to `artist`. `nullif` folds empty strings
+/// into NULL: a tag written as `""` is untagged, and without this it would be
+/// its own group sorting above everything.
+const GROUP_ARTIST: &str = "coalesce(nullif(tracks.album_artist, ''), nullif(tracks.artist, ''))";
+const GROUP_ALBUM: &str = "nullif(tracks.album, '')";
+const GROUP_GENRE: &str = "nullif(tracks.genre, '')";
+
+impl BrowseKind {
+    /// The expression a group is keyed by.
+    fn key_sql(self) -> &'static str {
+        match self {
+            Self::Albums => GROUP_ALBUM,
+            Self::Artists => GROUP_ARTIST,
+            Self::Genres => GROUP_GENRE,
+        }
+    }
+}
 
 /// Table-qualified: `tracks_fts` carries columns of the same names, so an
 /// unqualified list is ambiguous the moment a search joins it in.
@@ -113,6 +136,22 @@ fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
                 conditions.push(compiled.sql);
                 params.extend(compiled.params);
             }
+        }
+    }
+
+    if let Some(browse) = &query.browse {
+        // `IS ?` rather than `= ?`: a bound NULL never equals anything in SQL,
+        // so `=` would silently return no rows for the untagged group instead
+        // of selecting it. `IS` compares NULLs as equal, which is what an
+        // absent tag needs here.
+        conditions.push(format!("{} IS ?", browse.kind.key_sql()));
+        params.push(Box::new(browse.key.clone()));
+
+        // Only albums are keyed by two columns; for the other two the artist
+        // is the key itself and constraining it again would be a no-op at best.
+        if browse.kind == BrowseKind::Albums {
+            conditions.push(format!("{GROUP_ARTIST} IS ?"));
+            params.push(Box::new(browse.secondary.clone()));
         }
     }
 
@@ -253,6 +292,70 @@ pub fn all_track_ids(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<i64
     Ok(ids)
 }
 
+/// The albums, artists or genres inside `query`'s scope.
+///
+/// Runs through the same [`scope`] the songs table uses, so an open playlist or
+/// a running search narrows this list exactly as it narrows the rows - without
+/// a second notion of what the current view contains.
+///
+/// Unpaged, deliberately. Ten thousand tracks is a few hundred albums, and a
+/// browse view that loaded a page at a time would need a count query and a
+/// window cache to render a grid that fits in memory many times over. The
+/// frontend still virtualizes the rendering.
+pub fn browse_groups(
+    conn: &Connection,
+    query: &TrackQuery,
+    kind: BrowseKind,
+) -> AppResult<Vec<BrowseGroup>> {
+    // A browse filter restricts the songs table, not the list of groups: a
+    // query still carrying the album the user drilled into would return that
+    // one album. `kind` is a parameter for the same reason - which grouping to
+    // show is a property of the open tab, not of a drill-in that may not exist.
+    let scope = scope(
+        conn,
+        &TrackQuery {
+            browse: None,
+            ..query.clone()
+        },
+    )?;
+
+    let key = kind.key_sql();
+
+    // Albums carry their artist so the grid can label them and so the drill-in
+    // can filter by both. The other two have no second key.
+    let secondary = if kind == BrowseKind::Albums {
+        GROUP_ARTIST
+    } else {
+        "NULL"
+    };
+
+    // `min(year)` rather than any year: a remaster tagged a year later should
+    // not move an album to the wrong end of a chronological sort.
+    let sql = format!(
+        "SELECT {key}, {secondary}, count(*), coalesce(sum(tracks.duration_ms), 0), \
+         min(tracks.cover_hash), min(tracks.year) {} \
+         GROUP BY {key}, {secondary} \
+         ORDER BY {key} IS NULL, {key} COLLATE NOCASE ASC, {secondary} COLLATE NOCASE ASC",
+        scope.from_where
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let groups = stmt
+        .query_map(rusqlite::params_from_iter(scope.params.iter()), |row| {
+            Ok(BrowseGroup {
+                key: row.get(0)?,
+                secondary: row.get(1)?,
+                track_count: row.get::<_, i64>(2)? as u32,
+                duration_ms: row.get(3)?,
+                cover_hash: row.get(4)?,
+                year: row.get(5)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(groups)
+}
+
 /// Cover bytes for the custom protocol handler.
 pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, Vec<u8>)>> {
     let mut stmt = conn.prepare("SELECT mime, bytes FROM covers WHERE hash = ?1")?;
@@ -264,7 +367,7 @@ pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, V
 mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::model::SortDirection;
+    use crate::model::{BrowseFilter, SortDirection};
 
     fn seeded() -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
@@ -1052,6 +1155,391 @@ mod tests {
         assert_eq!(
             count_tracks(&conn, &query).unwrap(),
             library_stats(&conn, &query).unwrap().tracks
+        );
+    }
+
+    /// A library with the shapes that break naive grouping: a compilation
+    /// whose per-track artists differ, an album split across two discs, an
+    /// album name reused by a different artist, and an untagged file.
+    fn browsable() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+
+        // `tracks.cover_hash` is a foreign key, so the art has to exist before
+        // a track can point at it.
+        for hash in ["ca", "cb"] {
+            conn.execute(
+                "INSERT INTO covers (hash, mime, bytes) VALUES (?1, 'image/jpeg', x'00')",
+                [hash],
+            )
+            .unwrap();
+        }
+
+        // (path, title, artist, album_artist, album, genre, disc, year, cover)
+        let rows = [
+            // A compilation: three artists, one album_artist holding it together.
+            (
+                "/b/1.mp3",
+                "One",
+                "Alice",
+                Some("Various Artists"),
+                "Comp",
+                "Pop",
+                1,
+                2001,
+                Some("ca"),
+            ),
+            (
+                "/b/2.mp3",
+                "Two",
+                "Bob",
+                Some("Various Artists"),
+                "Comp",
+                "Pop",
+                1,
+                2001,
+                Some("ca"),
+            ),
+            (
+                "/b/3.mp3",
+                "Three",
+                "Carol",
+                Some("Various Artists"),
+                "Comp",
+                "Rock",
+                1,
+                2001,
+                None,
+            ),
+            // One album, two discs - still one album.
+            (
+                "/b/4.mp3",
+                "D1",
+                "Dio",
+                Some("Dio"),
+                "Double",
+                "Rock",
+                1,
+                1985,
+                Some("cb"),
+            ),
+            (
+                "/b/5.mp3",
+                "D2",
+                "Dio",
+                Some("Dio"),
+                "Double",
+                "Rock",
+                2,
+                1985,
+                Some("cb"),
+            ),
+            // Same album title, different artist: two groups, not one.
+            (
+                "/b/6.mp3",
+                "Greatest",
+                "Eve",
+                Some("Eve"),
+                "Double",
+                "Jazz",
+                1,
+                1990,
+                None,
+            ),
+            // No album_artist at all - falls back to artist.
+            (
+                "/b/7.mp3", "Solo", "Frank", None, "Alone", "Jazz", 1, 1995, None,
+            ),
+        ];
+        for (path, title, artist, album_artist, album, genre, disc, year, cover) in rows {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album_artist,
+                                     album, genre, disc_no, year, cover_hash, added_at)
+                 VALUES (?1, 1, 1, 1000, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)",
+                rusqlite::params![
+                    path,
+                    title,
+                    artist,
+                    album_artist,
+                    album,
+                    genre,
+                    disc,
+                    year,
+                    cover
+                ],
+            )
+            .unwrap();
+        }
+        // Untagged, and an empty-string album which must not become its own group.
+        conn.execute(
+            "INSERT INTO tracks (path, mtime, size, added_at) VALUES ('/b/8.mp3', 1, 1, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tracks (path, mtime, size, album, artist, added_at)
+             VALUES ('/b/9.mp3', 1, 1, '', '', 0)",
+            [],
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    fn browse(db: &Db, kind: BrowseKind) -> Vec<BrowseGroup> {
+        let conn = db.conn().unwrap();
+        browse_groups(&conn, &TrackQuery::default(), kind).unwrap()
+    }
+
+    fn keys(groups: &[BrowseGroup]) -> Vec<Option<&str>> {
+        groups.iter().map(|g| g.key.as_deref()).collect()
+    }
+
+    #[test]
+    fn a_compilation_is_one_album_not_one_per_artist() {
+        let (_dir, db) = browsable();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        let comp = albums
+            .iter()
+            .find(|g| g.key.as_deref() == Some("Comp"))
+            .expect("the compilation should be one group");
+        assert_eq!(comp.track_count, 3);
+        assert_eq!(comp.secondary.as_deref(), Some("Various Artists"));
+    }
+
+    #[test]
+    fn an_album_spanning_two_discs_is_one_album() {
+        let (_dir, db) = browsable();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        let doubles: Vec<_> = albums
+            .iter()
+            .filter(|g| g.key.as_deref() == Some("Double"))
+            .collect();
+
+        // Two groups because two different artists use the title, and the
+        // two-disc one holds both its discs.
+        assert_eq!(
+            doubles.len(),
+            2,
+            "same title by different artists must not merge"
+        );
+        let dio = doubles
+            .iter()
+            .find(|g| g.secondary.as_deref() == Some("Dio"))
+            .unwrap();
+        assert_eq!(dio.track_count, 2, "both discs belong to one album");
+    }
+
+    #[test]
+    fn an_absent_album_artist_falls_back_to_the_artist() {
+        let (_dir, db) = browsable();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        let alone = albums
+            .iter()
+            .find(|g| g.key.as_deref() == Some("Alone"))
+            .unwrap();
+        assert_eq!(alone.secondary.as_deref(), Some("Frank"));
+    }
+
+    #[test]
+    fn untagged_files_group_together_and_sort_last() {
+        let (_dir, db) = browsable();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        assert_eq!(
+            albums.last().unwrap().key,
+            None,
+            "the untagged group belongs at the end, not the top"
+        );
+        // The genuinely untagged row and the empty-string one are the same
+        // group: `''` is an absent tag, not an album named nothing.
+        assert_eq!(albums.last().unwrap().track_count, 2);
+        assert_eq!(
+            keys(&albums).iter().filter(|k| k.is_none()).count(),
+            1,
+            "there must be exactly one untagged group"
+        );
+    }
+
+    #[test]
+    fn totals_and_covers_come_from_the_group() {
+        let (_dir, db) = browsable();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        let comp = albums
+            .iter()
+            .find(|g| g.key.as_deref() == Some("Comp"))
+            .unwrap();
+        assert_eq!(comp.duration_ms, 3000);
+        assert_eq!(comp.year, Some(2001));
+        // One track of the three has no cover; the album still has one.
+        assert_eq!(comp.cover_hash.as_deref(), Some("ca"));
+    }
+
+    #[test]
+    fn artists_and_genres_group_on_their_own_columns() {
+        let (_dir, db) = browsable();
+
+        let artists = browse(&db, BrowseKind::Artists);
+        assert_eq!(
+            keys(&artists),
+            [
+                Some("Dio"),
+                Some("Eve"),
+                Some("Frank"),
+                Some("Various Artists"),
+                None
+            ],
+        );
+        assert!(
+            artists.iter().all(|g| g.secondary.is_none()),
+            "only albums have a second key"
+        );
+
+        let genres = browse(&db, BrowseKind::Genres);
+        assert_eq!(
+            keys(&genres),
+            [Some("Jazz"), Some("Pop"), Some("Rock"), None],
+        );
+    }
+
+    #[test]
+    fn a_search_narrows_the_browse_list_the_way_it_narrows_rows() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+
+        let albums = browse_groups(
+            &conn,
+            &TrackQuery {
+                search: Some("Dio".to_owned()),
+                ..Default::default()
+            },
+            BrowseKind::Albums,
+        )
+        .unwrap();
+
+        assert_eq!(keys(&albums), [Some("Double")]);
+        assert_eq!(albums[0].track_count, 2);
+    }
+
+    #[test]
+    fn drilling_into_an_album_shows_exactly_its_tracks() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+
+        let query = TrackQuery {
+            browse: Some(BrowseFilter {
+                kind: BrowseKind::Albums,
+                key: Some("Double".to_owned()),
+                secondary: Some("Dio".to_owned()),
+            }),
+            sort_by: SortField::Path,
+            limit: 100,
+            ..Default::default()
+        };
+
+        // Not the Eve album of the same name.
+        assert_eq!(
+            paths(query_tracks(&conn, &query).unwrap()),
+            ["/b/4.mp3", "/b/5.mp3"]
+        );
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
+    }
+
+    #[test]
+    fn drilling_into_the_untagged_group_selects_it_rather_than_everything() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+
+        // The case `= ?` would get wrong: a bound NULL equals nothing, so this
+        // would come back empty, and a dropped clause would return the library.
+        let query = TrackQuery {
+            browse: Some(BrowseFilter {
+                kind: BrowseKind::Albums,
+                key: None,
+                secondary: None,
+            }),
+            sort_by: SortField::Path,
+            limit: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            paths(query_tracks(&conn, &query).unwrap()),
+            ["/b/8.mp3", "/b/9.mp3"]
+        );
+    }
+
+    #[test]
+    fn the_group_list_ignores_a_drill_in_that_is_already_open() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+
+        // Otherwise opening an album would collapse the album list to that one
+        // album, and there would be no way back.
+        let groups = browse_groups(
+            &conn,
+            &TrackQuery {
+                browse: Some(BrowseFilter {
+                    kind: BrowseKind::Albums,
+                    key: Some("Comp".to_owned()),
+                    secondary: Some("Various Artists".to_owned()),
+                }),
+                ..Default::default()
+            },
+            BrowseKind::Albums,
+        )
+        .unwrap();
+
+        assert!(groups.len() > 1, "the album list must not filter itself");
+    }
+
+    #[test]
+    fn browsing_inside_a_playlist_covers_only_its_members() {
+        let (_dir, db, playlist_id) = with_playlist();
+        let conn = db.conn().unwrap();
+
+        let groups = browse_groups(
+            &conn,
+            &TrackQuery {
+                playlist_id: Some(playlist_id),
+                ..Default::default()
+            },
+            BrowseKind::Albums,
+        )
+        .unwrap();
+
+        let total: u32 = groups.iter().map(|g| g.track_count).sum();
+        assert_eq!(
+            total, 3,
+            "the playlist has three tracks, so its albums hold three"
+        );
+    }
+
+    #[test]
+    fn a_browse_filter_composes_with_a_search_rather_than_replacing_it() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+
+        let query = TrackQuery {
+            browse: Some(BrowseFilter {
+                kind: BrowseKind::Genres,
+                key: Some("Rock".to_owned()),
+                secondary: None,
+            }),
+            search: Some("Dio".to_owned()),
+            sort_by: SortField::Path,
+            limit: 100,
+            ..Default::default()
+        };
+
+        // Rock holds three tracks; only the two Dio ones also match the search.
+        assert_eq!(
+            paths(query_tracks(&conn, &query).unwrap()),
+            ["/b/4.mp3", "/b/5.mp3"]
         );
     }
 

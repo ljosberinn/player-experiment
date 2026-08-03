@@ -226,11 +226,27 @@ describe("StatusDisplay", () => {
 });
 
 describe("TabBar", () => {
-  it("marks the active tab and disables the unimplemented ones", () => {
-    render(<TabBar active="songs" onChange={() => {}} />);
+  it("marks the active tab", () => {
+    render(<TabBar active="albums" onChange={() => {}} />);
 
-    expect(screen.getByRole("tab", { name: "Songs" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Albums" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Albums" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Songs" })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("offers all four views, none of them disabled", async () => {
+    // They were disabled with a "Not implemented yet" tooltip from phase 3
+    // until phase 19; three quarters of the primary navigation being dead is
+    // the kind of thing a test should notice coming back.
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<TabBar active="songs" onChange={onChange} />);
+
+    for (const name of ["Songs", "Albums", "Artists", "Genres"]) {
+      expect(screen.getByRole("tab", { name })).toBeEnabled();
+    }
+
+    await user.click(screen.getByRole("tab", { name: "Genres" }));
+    expect(onChange).toHaveBeenCalledWith("genres");
   });
 });
 

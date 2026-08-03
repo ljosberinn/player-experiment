@@ -274,6 +274,8 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       const ids = await allTrackIds({
         search: null,
         playlistId,
+        // The whole playlist, not whatever album the browse tab had open.
+        browse: null,
         sortBy: "position",
         direction: "asc",
         offset: 0,
