@@ -108,11 +108,15 @@ describe("column configuration", () => {
   it("applies a stored width and leaves the rest on their defaults", () => {
     const resolved = resolveColumns(config(["title", "artist"], { title: 400 }));
 
+    // The default is read from ALL_COLUMNS rather than written out: this
+    // asserts that an untouched column *follows* the default, and hardcoding
+    // the number makes it fail whenever the density is rebased, which says
+    // nothing about the behaviour.
+    const artistDefault = ALL_COLUMNS.find((c) => c.id === "artist")?.width;
+
     expect(resolved.map((c) => [c.id, c.width])).toEqual([
       ["title", 400],
-      // Untouched, so it still follows ALL_COLUMNS rather than being frozen at
-      // whatever it was when the config was written.
-      ["artist", 180],
+      ["artist", artistDefault],
     ]);
   });
 

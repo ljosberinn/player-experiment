@@ -34,6 +34,7 @@ const REQUIRED: ReadonlyArray<{ call: RegExp; permission: string }> = [
   // `unregister(` and each row would report the other's callers.
   { call: /\bunregister\s*\(/, permission: "global-shortcut:allow-unregister" },
   { call: /await register\s*\(/, permission: "global-shortcut:allow-register" },
+  { call: /\.setZoom\s*\(/, permission: "core:webview:allow-set-webview-zoom" },
 ];
 
 /** Vitest runs from the repo root, and the capability file is addressed from there. */

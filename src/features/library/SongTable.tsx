@@ -18,7 +18,7 @@ import { rowMenuItems } from "./rowMenu";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
 
-const ROW_HEIGHT = 22;
+const ROW_HEIGHT = 26;
 /** Rows rendered beyond the viewport, so a fast flick shows content not gaps. */
 const OVERSCAN = 12;
 

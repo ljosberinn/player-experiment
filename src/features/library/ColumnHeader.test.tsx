@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ColumnHeader } from "./ColumnHeader";
 import { DRAG_THRESHOLD_PX } from "./columnDrag";
-import { resolveColumns } from "./columns";
+import { ALL_COLUMNS, resolveColumns } from "./columns";
 import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -111,10 +111,16 @@ describe("resizing a column", () => {
     fireEvent.pointerMove(grip, { clientX: 180, pointerId: 1 });
     fireEvent.pointerUp(grip, { clientX: 180, pointerId: 1 });
 
+    // The expected width is the column's own default plus the 80px the
+    // pointer travelled, rather than a literal: the point is that the drag
+    // distance is added to where the column started, which a hardcoded number
+    // stops testing the moment the density is rebased.
+    const started = ALL_COLUMNS.find((c) => c.id === "title")?.width ?? 0;
+
     // Once, not once per pixel: a store write per move would persist a hundred
     // layouts across one drag.
     expect(resizeColumn).toHaveBeenCalledTimes(1);
-    expect(resizeColumn).toHaveBeenCalledWith("title", 360);
+    expect(resizeColumn).toHaveBeenCalledWith("title", started + 80);
   });
 
   it("does not start a reorder as well", () => {

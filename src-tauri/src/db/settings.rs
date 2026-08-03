@@ -11,6 +11,8 @@ pub const VOLUME: &str = "player.volume";
 pub const WINDOW_GEOMETRY: &str = "window.geometry";
 /// The library view's column layout; a playlist's own lives on its row.
 pub const COLUMNS: &str = "library.columns";
+/// Webview zoom factor, applied before the window is shown.
+pub const ZOOM: &str = "window.zoom";
 
 /// Settings a library export is allowed to carry.
 ///
@@ -20,7 +22,7 @@ pub const COLUMNS: &str = "library.columns";
 /// list a new credential key on a denylist leaks it; forgetting to list a new
 /// preference here merely omits it from an export, which nobody loses sleep
 /// over. Every future secret is excluded by default rather than by memory.
-const EXPORTABLE: &[&str] = &[VOLUME, WINDOW_GEOMETRY];
+const EXPORTABLE: &[&str] = &[VOLUME, WINDOW_GEOMETRY, ZOOM];
 
 pub fn is_exportable(key: &str) -> bool {
     EXPORTABLE.contains(&key)

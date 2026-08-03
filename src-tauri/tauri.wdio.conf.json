@@ -6,10 +6,10 @@
       {
         "label": "main",
         "title": "Player",
-        "width": 1180,
-        "height": 720,
-        "minWidth": 860,
-        "minHeight": 520,
+        "width": 1416,
+        "height": 864,
+        "minWidth": 1032,
+        "minHeight": 624,
         "resizable": true,
         "decorations": true
       }

@@ -110,13 +110,25 @@ describe("the stylesheet", () => {
     // selector - the media prelude is not part of any selector it returns.
     const roots = all.filter((rule) => rule.selector === ":root");
     const [light, dark] = roots;
-    const names = (body: string) => [...body.matchAll(/(--[\w-]+):/g)].map((m) => m[1]).sort();
+
+    // Colours only, matched on the value rather than the name. Phase 21a added
+    // density variables (`--row-height` and friends) which have no dark
+    // variant and should not have one - requiring a duplicate would mean
+    // stating the same measurement twice and letting the two drift.
+    const colours = (body: string) =>
+      [...body.matchAll(/(--[\w-]+):\s*([^;]+)/g)]
+        .filter(([, , value]) => /^(#|rgb|hsl|color-mix)/.test((value ?? "").trim()))
+        .map(([, name]) => name)
+        .sort();
 
     expect(roots).toHaveLength(2);
+    // Guards the guard: a value regex that matched nothing would compare two
+    // empty lists and pass whatever the themes actually say.
+    expect(colours(light?.body ?? "").length).toBeGreaterThan(5);
 
-    // A variable defined only in light mode is a light-mode colour burned into
+    // A colour defined only in light mode is a light-mode colour burned into
     // the dark theme, which is how dark modes end up with one unreadable panel.
-    expect(names(dark?.body ?? "")).toEqual(names(light?.body ?? ""));
+    expect(colours(dark?.body ?? "")).toEqual(colours(light?.body ?? ""));
   });
 
   it("gives the status display a fixed height, not a growing one", () => {

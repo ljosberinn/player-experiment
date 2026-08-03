@@ -22,6 +22,9 @@ import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
+import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
+import { formatZoom, MAX_ZOOM, MIN_ZOOM, ZOOM_STEP } from "./features/shell/zoom";
+import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { tauriUpdater, useUpdater } from "./features/updater/useUpdater";
@@ -35,6 +38,8 @@ const SIDEBAR_SECTIONS = [
 export function App() {
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const zoomFactor = useZoomStore((s) => s.factor);
+  const setZoom = useZoomStore((s) => s.set);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
   const installUpdate = useUpdaterStore((s) => s.install);
@@ -119,6 +124,7 @@ export function App() {
   // The window-scoped bindings above stay as they are; this adds the four
   // media keys that have to work while the app is behind something else.
   useGlobalMediaKeys();
+  useZoomShortcuts();
   useSelectionShortcuts();
   useNativeFeel();
   useUpdater();
@@ -349,6 +355,21 @@ export function App() {
         <span className="statusbar-summary">
           {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
         </span>
+        {/* The status bar is the app's quietest strip, which suits a control
+            touched once and then left alone. */}
+        <label className="statusbar-zoom">
+          Scale
+          <input
+            type="range"
+            min={MIN_ZOOM}
+            max={MAX_ZOOM}
+            step={ZOOM_STEP}
+            value={zoomFactor}
+            onChange={(event) => void setZoom(Number(event.target.value))}
+          />
+          <span className="statusbar-zoom-value">{formatZoom(zoomFactor)}</span>
+        </label>
+
         {/* Only `ready` says anything. Checking and downloading happen quietly,
             and a failed check usually means the machine is offline, which is
             not news. */}
