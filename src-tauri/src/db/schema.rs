@@ -151,6 +151,15 @@ CREATE INDEX idx_tracks_missing ON tracks(missing_since) WHERE missing_since IS 
     //
     // The NOCASE index is what the lookup actually uses: suggestions match
     // case-insensitively, because someone typing "godspeed" wants the band.
+    //
+    // The table is backfilled here rather than left empty for the next scan to
+    // fill. An existing library is exactly the case autocompletion is *for* -
+    // it is the one with a vocabulary worth suggesting - and leaving it empty
+    // would mean the feature silently does nothing on every machine that
+    // already has a library, until someone happens to rescan. These are the
+    // same five aggregates `tag_values::rebuild` runs, spelled out because a
+    // migration is SQL and must not depend on Rust that can be refactored
+    // later.
     r#"
 CREATE TABLE tag_values (
     field TEXT    NOT NULL,
@@ -160,5 +169,30 @@ CREATE TABLE tag_values (
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_tag_values_lookup ON tag_values(field, value COLLATE NOCASE);
+
+INSERT INTO tag_values (field, value, uses)
+    SELECT 'artist', CAST(artist AS TEXT), count(*) FROM tracks
+    WHERE artist IS NOT NULL AND trim(CAST(artist AS TEXT)) <> ''
+    GROUP BY CAST(artist AS TEXT);
+
+INSERT INTO tag_values (field, value, uses)
+    SELECT 'album_artist', CAST(album_artist AS TEXT), count(*) FROM tracks
+    WHERE album_artist IS NOT NULL AND trim(CAST(album_artist AS TEXT)) <> ''
+    GROUP BY CAST(album_artist AS TEXT);
+
+INSERT INTO tag_values (field, value, uses)
+    SELECT 'album', CAST(album AS TEXT), count(*) FROM tracks
+    WHERE album IS NOT NULL AND trim(CAST(album AS TEXT)) <> ''
+    GROUP BY CAST(album AS TEXT);
+
+INSERT INTO tag_values (field, value, uses)
+    SELECT 'genre', CAST(genre AS TEXT), count(*) FROM tracks
+    WHERE genre IS NOT NULL AND trim(CAST(genre AS TEXT)) <> ''
+    GROUP BY CAST(genre AS TEXT);
+
+INSERT INTO tag_values (field, value, uses)
+    SELECT 'year', CAST(year AS TEXT), count(*) FROM tracks
+    WHERE year IS NOT NULL AND trim(CAST(year AS TEXT)) <> ''
+    GROUP BY CAST(year AS TEXT);
 "#,
 ];

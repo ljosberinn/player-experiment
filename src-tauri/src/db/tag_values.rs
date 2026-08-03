@@ -331,6 +331,40 @@ mod tests {
     }
 
     #[test]
+    fn an_existing_library_has_a_vocabulary_the_moment_it_migrates() {
+        // The case autocompletion is *for* is the library that already has a
+        // vocabulary, and that library was scanned before this table existed.
+        // Migration 5 therefore backfills; leaving it to the next scan would
+        // mean the feature quietly does nothing until someone happens to
+        // rescan, which is indistinguishable from it being broken.
+        let mut conn = Connection::open_in_memory().expect("in-memory database");
+        // Stop one migration short of the vocabulary, so the tracks below are
+        // written by a build that has never heard of `tag_values`.
+        for (index, sql) in crate::db::schema::MIGRATIONS.iter().enumerate().take(4) {
+            conn.execute_batch(sql).expect("migration applies");
+            conn.pragma_update(None, "user_version", (index + 1) as i64)
+                .expect("version recorded");
+        }
+        add(&conn, "Mogwai", "Rock Action", "Post-Rock", Some(2001));
+        add(&conn, "Mogwai", "Happy Songs", "Post-Rock", Some(2003));
+
+        migrate(&mut conn).expect("the rest of the migrations apply");
+
+        assert_eq!(
+            suggest(&conn, TagValueField::Artist, "mog", 8).expect("suggest"),
+            vec!["Mogwai".to_owned()]
+        );
+        let uses: i64 = conn
+            .query_row(
+                "SELECT uses FROM tag_values WHERE field = 'artist' AND value = 'Mogwai'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("the value is there");
+        assert_eq!(uses, 2, "the backfill has to count, not just list");
+    }
+
+    #[test]
     fn a_rebuild_replaces_rather_than_accumulates() {
         let conn = db();
         add(&conn, "Mogwai", "Rock Action", "Post-Rock", None);

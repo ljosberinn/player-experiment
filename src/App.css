@@ -10,6 +10,12 @@
   --surface: #ffffff;
   --skeleton: #e3e6ea;
   --menu-border: #c4c4c8;
+  /* Fields need their own border, not the chrome divider's. `--chrome-border`
+     is tuned to separate two panels of chrome; on a field's own `--surface` it
+     has almost no contrast, and in dark mode it had none at all - #1a1a1c on
+     #191a1c is a ratio of about 1.02:1, so the input was invisible and a
+     select was recognisable only by its arrow. */
+  --field-border: #8e8e93;
   --danger: #c0392b;
 
   /* The one density value that repeats. Not a colour, so it sits outside the
@@ -40,6 +46,7 @@
     --surface: #191a1c;
     --skeleton: #303035;
     --menu-border: #3d3d42;
+    --field-border: #6d6e75;
     /* Lighter than the light theme's: #c0392b on a near-black surface is dark
        enough to read as brown rather than as a warning. */
     --danger: #ff7a6e;
@@ -899,11 +906,29 @@ th.status {
 .modal select {
   height: var(--control-height);
   padding: 0 5px;
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--field-border);
   border-radius: 3px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
+}
+
+/* A select has to look like one before it is opened. Without this it reads as
+   a label with an arrow beside it, which is what a filter row full of them
+   looked like. */
+.modal select {
+  padding-right: 4px;
+}
+
+/* Which field is active, without waiting for the caret to blink. `:focus`
+   rather than `:focus-visible` here on purpose: these are text fields and
+   selects inside a dialog, where clicking one *is* the act of choosing where
+   to type, so the highlight is wanted for the pointer too. */
+.modal input:focus,
+.modal select:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: -1px;
 }
 
 .modal-summary {
