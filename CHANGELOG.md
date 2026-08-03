@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.0](https://github.com/ljosberinn/player-experiment/compare/v0.2.0...v0.3.0) (2026-08-03)
+
+
+### Features
+
+* **library:** a missing file is marked, not deleted ([#35](https://github.com/ljosberinn/player-experiment/issues/35)) ([248f9cb](https://github.com/ljosberinn/player-experiment/commit/248f9cb39500d5596edc46c3d647be9d59397c1a))
+* **library:** browse by album, artist and genre ([#27](https://github.com/ljosberinn/player-experiment/issues/27)) ([96eaa86](https://github.com/ljosberinn/player-experiment/commit/96eaa86762bbaa5b8de6fc641157a34ef38cef97))
+* **library:** customizable, per-view columns ([#30](https://github.com/ljosberinn/player-experiment/issues/30)) ([b045a04](https://github.com/ljosberinn/player-experiment/commit/b045a04186d5cfcbf9b9f8fe2509c225fe69e69d))
+* **player:** media keys that work without window focus ([#32](https://github.com/ljosberinn/player-experiment/issues/32)) ([b712991](https://github.com/ljosberinn/player-experiment/commit/b7129912ed3a316b797b27b515720788b5297fde))
+* **ui:** rebase the density, and a webview zoom control ([#33](https://github.com/ljosberinn/player-experiment/issues/33)) ([1dea09f](https://github.com/ljosberinn/player-experiment/commit/1dea09fe33a2f1ec1365b441b5908248a82aef6f))
+
+
+### Bug Fixes
+
+* **updater:** download quietly, install only when asked ([#34](https://github.com/ljosberinn/player-experiment/issues/34)) ([973911d](https://github.com/ljosberinn/player-experiment/commit/973911dece186a8bd6a82b69941b77548ce5447b))
+
+
+### Refactoring
+
+* **ui:** Base UI for the menus, dialogs and chrome ([#36](https://github.com/ljosberinn/player-experiment/issues/36)) ([29c6711](https://github.com/ljosberinn/player-experiment/commit/29c6711feb19cc4c9a53e4f373d625784758133f))
+
+
+### Documentation
+
+* rescope phase 24 after the Base UI spike ([#31](https://github.com/ljosberinn/player-experiment/issues/31)) ([eee336c](https://github.com/ljosberinn/player-experiment/commit/eee336c11ccf3d3b5ae315218e89b42cde8b28f1))
+
 ## [0.2.0](https://github.com/ljosberinn/player-experiment/compare/v0.1.0...v0.2.0) (2026-08-02)
 
 
