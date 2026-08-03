@@ -31,6 +31,7 @@ function track(id: number): Track {
     added_at: 0,
     play_count: 0,
     last_played_at: null,
+    missing_since: null,
   };
 }
 

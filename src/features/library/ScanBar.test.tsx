@@ -31,7 +31,13 @@ beforeEach(async () => {
     emitProgress = handler;
     return unlisten;
   });
-  scanLibraryMock.mockResolvedValue({ added: 0, updated: 0, removed: 0, unchanged: 0 });
+  scanLibraryMock.mockResolvedValue({
+    added: 0,
+    updated: 0,
+    missing: 0,
+    returned: 0,
+    unchanged: 0,
+  });
   const { open } = await import("@tauri-apps/plugin-dialog");
   vi.mocked(open).mockResolvedValue(null);
 });
@@ -47,7 +53,7 @@ describe("ScanBar", () => {
         total: 5000,
         added: 1200,
         updated: 0,
-        removed: 0,
+        missing: 0,
         done: false,
       });
     });
@@ -62,7 +68,7 @@ describe("ScanBar", () => {
     await waitFor(() => expect(emitProgress).toBeDefined());
 
     act(() => {
-      emitProgress?.({ scanned: 10, total: 10, added: 10, updated: 0, removed: 0, done: true });
+      emitProgress?.({ scanned: 10, total: 10, added: 10, updated: 0, missing: 0, done: true });
     });
 
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
@@ -82,7 +88,7 @@ describe("ScanBar", () => {
     scanLibraryMock.mockImplementation(
       () =>
         new Promise((resolve) => {
-          finish = () => resolve({ added: 0, updated: 0, removed: 0, unchanged: 0 });
+          finish = () => resolve({ added: 0, updated: 0, missing: 0, returned: 0, unchanged: 0 });
         }),
     );
     render(<ScanBar />);

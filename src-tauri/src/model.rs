@@ -52,6 +52,10 @@ pub struct Track {
     pub play_count: i64,
     #[ts(type = "number | null")]
     pub last_played_at: Option<i64>,
+    /// When a scan, or a failed play, first could not find the file. Null for
+    /// every track that is where it should be, which is nearly all of them.
+    #[ts(type = "number | null")]
+    pub missing_since: Option<i64>,
 }
 
 /// Columns a query may sort by.
@@ -554,7 +558,8 @@ pub struct ScanProgress {
     pub total: u32,
     pub added: u32,
     pub updated: u32,
-    pub removed: u32,
+    /// Files that have gone from disk. Marked, not deleted - see migration 4.
+    pub missing: u32,
     pub done: bool,
 }
 
@@ -572,6 +577,10 @@ pub struct LibraryStats {
     pub duration_ms: i64,
     #[ts(type = "number")]
     pub bytes: i64,
+    /// How many of `tracks` are marked missing. Drives whether the library
+    /// offers to clear them out at all; in a healthy library it is zero and
+    /// nothing about missing files appears anywhere.
+    pub missing: u32,
 }
 
 /// What a completed scan changed.
@@ -581,6 +590,9 @@ pub struct LibraryStats {
 pub struct ScanSummary {
     pub added: u32,
     pub updated: u32,
-    pub removed: u32,
+    /// Newly gone from disk, and marked as such rather than deleted.
+    pub missing: u32,
+    /// Marked files that turned up again, and are no longer marked.
+    pub returned: u32,
     pub unchanged: u32,
 }

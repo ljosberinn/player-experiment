@@ -150,6 +150,13 @@ mod tests {
             })
             .unwrap();
 
+        // A successful load reports the track that opened before it reports
+        // the new state, so this is the second event through the channel.
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(5)).unwrap().0,
+            Event::Loaded(1)
+        );
+
         let (event, state) = rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert_eq!(event, Event::StateChanged);
         assert_eq!(state.status, PlaybackStatus::Playing);

@@ -58,7 +58,7 @@ fn ingests_a_library_and_reads_it_back() {
 
     assert_eq!(summary.added, 5, "five mp3s, ignoring the jpg and txt");
     assert_eq!(summary.updated, 0);
-    assert_eq!(summary.removed, 0);
+    assert_eq!(summary.missing, 0);
 
     let conn = h.db.conn().unwrap();
     let tracks = all_tracks(&conn);
@@ -157,7 +157,7 @@ fn a_second_scan_finds_nothing_to_do() {
 
     assert_eq!(summary.added, 0);
     assert_eq!(summary.updated, 0);
-    assert_eq!(summary.removed, 0);
+    assert_eq!(summary.missing, 0);
     assert_eq!(
         summary.unchanged, 5,
         "unchanged files must not be re-parsed"
@@ -207,11 +207,13 @@ fn rescan_picks_up_additions_edits_and_deletions() {
 
     assert_eq!(summary.added, 1);
     assert_eq!(summary.updated, 1);
-    assert_eq!(summary.removed, 1);
+    assert_eq!(summary.missing, 1);
 
     let conn = h.db.conn().unwrap();
     let after = all_tracks(&conn);
-    assert_eq!(after.len(), 5);
+    // Six, not five: the deleted file's row is marked, not dropped. Losing it
+    // would take every playlist entry pointing at it, beyond recovery.
+    assert_eq!(after.len(), 6);
 
     let retagged = after
         .iter()
@@ -227,7 +229,115 @@ fn rescan_picks_up_additions_edits_and_deletions() {
         "re-tagging a file must not look like re-adding it"
     );
 
-    assert!(!after.iter().any(|t| t.path.ends_with("untagged.mp3")));
+    let gone = after
+        .iter()
+        .find(|t| t.path.ends_with("untagged.mp3"))
+        .expect("the deleted file keeps its row");
+    assert!(gone.missing_since.is_some(), "and is marked as gone");
+}
+
+#[test]
+fn a_file_that_comes_back_is_unmarked() {
+    // The unplugged-drive case, which is the whole argument for marking.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let path = h.music.join("Grizzly Bear/Shields/01 Sleeping Ute.mp3");
+    let bytes = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(scan_now(&h.db).missing, 1);
+
+    std::fs::write(&path, &bytes).unwrap();
+    let summary = scan_now(&h.db);
+
+    assert_eq!(summary.returned, 1);
+    assert_eq!(summary.added, 0, "it is the same row, not a new one");
+    let conn = h.db.conn().unwrap();
+    let back = all_tracks(&conn)
+        .into_iter()
+        .find(|t| t.path.ends_with("01 Sleeping Ute.mp3"))
+        .expect("Sleeping Ute");
+    assert!(back.missing_since.is_none());
+}
+
+#[test]
+fn a_rescan_does_not_move_the_moment_a_file_went_missing() {
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
+    assert_eq!(scan_now(&h.db).missing, 1);
+    let first = missing_since(&h.db, "01 Maki.mp3");
+
+    // Still gone, so still marked - but the timestamp says when it went, not
+    // when it was last looked for, and a second scan reports nothing new.
+    let again = scan_now(&h.db);
+
+    assert_eq!(again.missing, 0, "already-marked files are not news");
+    assert_eq!(missing_since(&h.db, "01 Maki.mp3"), first);
+}
+
+#[test]
+fn playing_a_marked_file_that_opens_clears_the_mark() {
+    // The other way a mark goes away, and the one that needs no scan: the
+    // player reports every successful load, and a file that opens is a file
+    // that is there. Reported from a real build - a drive came back, the song
+    // played, and the row kept its exclamation mark until the next rescan.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    let id = all_tracks(&conn)
+        .into_iter()
+        .find(|t| t.path.ends_with("01 Maki.mp3"))
+        .expect("Maki")
+        .id;
+
+    scan::mark_missing(&conn, id).unwrap();
+    assert!(missing_since(&h.db, "01 Maki.mp3").is_some());
+
+    // True: something changed, which is what tells the view to reload.
+    assert!(scan::clear_missing(&conn, id).unwrap());
+    assert!(missing_since(&h.db, "01 Maki.mp3").is_none());
+
+    // False the second time, and on every ordinary track. The player emits a
+    // load event per song; reloading the whole view each time would be waste.
+    assert!(!scan::clear_missing(&conn, id).unwrap());
+}
+
+#[test]
+fn removing_missing_tracks_is_the_only_thing_that_deletes_rows() {
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    assert_eq!(all_tracks(&conn).len(), 5, "still there, just marked");
+
+    assert_eq!(scan::remove_missing(&conn).unwrap(), 1);
+
+    let left = all_tracks(&conn);
+    assert_eq!(left.len(), 4);
+    assert!(!left.iter().any(|t| t.path.ends_with("01 Maki.mp3")));
+    // And it stays gone on the next scan rather than coming back as an
+    // addition - the file is not on disk either.
+    assert_eq!(scan_now(&h.db).added, 0);
+}
+
+/// When the named track was first noticed missing.
+fn missing_since(db: &Db, suffix: &str) -> Option<i64> {
+    let conn = db.conn().unwrap();
+    all_tracks(&conn)
+        .into_iter()
+        .find(|t| t.path.ends_with(suffix))
+        .expect("track")
+        .missing_since
 }
 
 #[test]
@@ -244,6 +354,14 @@ fn deleting_a_track_leaves_no_orphan_in_the_search_index() {
         search: Some("Sleeping".to_owned()),
         ..Default::default()
     };
+    // A marked track is still in the library, so it is still findable - the
+    // row and its index entry stay in step.
+    assert_eq!(query::count_tracks(&conn, &query).unwrap(), 1);
+
+    // It is the deletion that has to leave the index clean, and deletion is
+    // now only ever this.
+    scan::remove_missing(&conn).unwrap();
+
     assert_eq!(query::count_tracks(&conn, &query).unwrap(), 0);
 }
 

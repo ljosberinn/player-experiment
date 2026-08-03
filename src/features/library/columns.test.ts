@@ -36,6 +36,7 @@ function track(overrides: Partial<Track> = {}): Track {
     added_at: 0,
     play_count: 7,
     last_played_at: null,
+    missing_since: null,
     ...overrides,
   };
 }

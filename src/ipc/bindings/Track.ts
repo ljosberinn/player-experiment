@@ -12,4 +12,9 @@
  * unix seconds, play counts) is far inside the 2^53 range where that is
  * lossless, so `bigint` would describe a value the frontend never receives.
  */
-export type Track = { id: number, path: string, duration_ms: number, title: string | null, artist: string | null, album: string | null, album_artist: string | null, genre: string | null, year: number | null, track_no: number | null, disc_no: number | null, comment: string | null, bitrate: number | null, sample_rate: number | null, cover_hash: string | null, added_at: number, play_count: number, last_played_at: number | null, };
+export type Track = { id: number, path: string, duration_ms: number, title: string | null, artist: string | null, album: string | null, album_artist: string | null, genre: string | null, year: number | null, track_no: number | null, disc_no: number | null, comment: string | null, bitrate: number | null, sample_rate: number | null, cover_hash: string | null, added_at: number, play_count: number, last_played_at: number | null, 
+/**
+ * When a scan, or a failed play, first could not find the file. Null for
+ * every track that is where it should be, which is nearly all of them.
+ */
+missing_since: number | null, };

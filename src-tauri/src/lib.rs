@@ -69,6 +69,7 @@ pub fn run() {
             commands::add_watch_folder,
             commands::list_watch_folders,
             commands::scan_library,
+            commands::remove_missing_tracks,
             commands::query_tracks,
             commands::count_tracks,
             commands::browse_groups,
@@ -153,6 +154,28 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
         }
         Event::Error(message) => {
             let _ = app.emit("player://error", message);
+        }
+        Event::LoadFailed(track_id) => {
+            // Marked here rather than waiting for the next scan: the file is
+            // demonstrably not playable now, and the row's status column is
+            // where the user will look for why.
+            if let Ok(conn) = db.conn() {
+                let _ = scan::mark_missing(&conn, *track_id);
+            }
+        }
+        Event::Loaded(track_id) => {
+            // The mirror: a file that opens is a file that is there, so a mark
+            // left over from an unplugged drive is stale the moment it plays.
+            //
+            // The event is emitted on every load and the mark is almost never
+            // there, so the view is only told when something actually changed -
+            // a refresh per track change would drop every cached page for
+            // nothing.
+            if let Ok(conn) = db.conn() {
+                if scan::clear_missing(&conn, *track_id).unwrap_or(false) {
+                    let _ = app.emit("library://changed", ());
+                }
+            }
         }
     })
 }

@@ -3,4 +3,12 @@
 /**
  * What a completed scan changed.
  */
-export type ScanSummary = { added: number, updated: number, removed: number, unchanged: number, };
+export type ScanSummary = { added: number, updated: number, 
+/**
+ * Newly gone from disk, and marked as such rather than deleted.
+ */
+missing: number, 
+/**
+ * Marked files that turned up again, and are no longer marked.
+ */
+returned: number, unchanged: number, };

@@ -488,7 +488,7 @@ fn a_rescan_after_an_edit_finds_nothing_to_do() {
         "the edit should have kept the row current"
     );
     assert_eq!(summary.added, 0);
-    assert_eq!(summary.removed, 0);
+    assert_eq!(summary.missing, 0);
 }
 
 #[test]

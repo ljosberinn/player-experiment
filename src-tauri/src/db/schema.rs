@@ -115,4 +115,24 @@ CREATE TABLE tag_undo (
 
 CREATE INDEX idx_tag_undo_batch ON tag_undo(batch_id);
 "#,
+    // 4 - a file that is gone is marked, not deleted
+    //
+    // Until now a scan deleted the rows of files it could not find, which made
+    // an unplugged external drive indistinguishable from a deliberate deletion
+    // and took every playlist entry pointing at those files with it - beyond
+    // recovery, since a later rescan re-adds the file as a new row with a new
+    // id. Marking makes that a temporary condition instead.
+    //
+    // Null means present. The value is when it was first noticed missing, not
+    // when it was last seen: a rescan that still cannot find the file leaves
+    // the timestamp alone.
+    //
+    // The index is partial, so it costs one entry per missing file rather than
+    // one per track - the "are any missing" question is asked on every stats
+    // refresh, and in a healthy library the answer is none.
+    r#"
+ALTER TABLE tracks ADD COLUMN missing_since INTEGER;
+
+CREATE INDEX idx_tracks_missing ON tracks(missing_since) WHERE missing_since IS NOT NULL;
+"#,
 ];

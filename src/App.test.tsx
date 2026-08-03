@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -20,12 +20,14 @@ import {
   listPlaylists,
   loadWindowGeometry,
   moveInPlaylist,
+  onLibraryChanged,
   type Playlist,
   playerPlay,
   playerSnapshot,
   playerToggle,
   queryTracks,
   removeFromPlaylist,
+  removeMissingTracks,
   scanLibrary,
   tracksByIds,
   undoTagEdit,
@@ -35,12 +37,13 @@ import {
 vi.mock("./ipc", () => ({
   countTracks: vi.fn(),
   getAppInfo: vi.fn(async () => ({ name: "player", version: "0.4.2" })),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   addWatchFolder: vi.fn(),
   scanLibrary: vi.fn(),
   onScanProgress: vi.fn(async () => () => {}),
+  onLibraryChanged: vi.fn(async () => () => {}),
   coverUrl: vi.fn((hash: string) => `cover-url:${hash}`),
   onPlayerState: vi.fn(async () => () => {}),
   onPlayerPosition: vi.fn(async () => () => {}),
@@ -69,6 +72,7 @@ vi.mock("./ipc", () => ({
   deletePlaylist: vi.fn(),
   addToPlaylist: vi.fn(),
   removeFromPlaylist: vi.fn(),
+  removeMissingTracks: vi.fn(async () => 0),
   moveInPlaylist: vi.fn(),
   browseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
@@ -103,7 +107,7 @@ const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
     these tests are about. */
 function stats(tracks: number) {
-  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000 };
+  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000, missing: 0 };
 }
 
 const queryTracksMock = vi.mocked(queryTracks);
@@ -139,7 +143,13 @@ beforeEach(async () => {
   vi.mocked(canUndoTagEdit).mockResolvedValue(false);
   statsMock.mockResolvedValue(stats(0));
   queryTracksMock.mockResolvedValue([]);
-  scanLibraryMock.mockResolvedValue({ added: 0, updated: 0, removed: 0, unchanged: 0 });
+  scanLibraryMock.mockResolvedValue({
+    added: 0,
+    updated: 0,
+    missing: 0,
+    returned: 0,
+    unchanged: 0,
+  });
   vi.mocked(playerSnapshot).mockResolvedValue({
     status: "stopped",
     track: null,
@@ -176,7 +186,12 @@ describe("App", () => {
   });
 
   it("puts real totals in the footer, not a zero", async () => {
-    statsMock.mockResolvedValue({ tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 });
+    statsMock.mockResolvedValue({
+      tracks: 5,
+      durationMs: 3_000_000,
+      bytes: 214_000_000,
+      missing: 0,
+    });
 
     render(<App />);
 
@@ -186,7 +201,12 @@ describe("App", () => {
   });
 
   it("leaves the size off the toolbar display, which has less room", async () => {
-    statsMock.mockResolvedValue({ tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 });
+    statsMock.mockResolvedValue({
+      tracks: 5,
+      durationMs: 3_000_000,
+      bytes: 214_000_000,
+      missing: 0,
+    });
 
     render(<App />);
     await screen.findByText("5 songs, 50 minutes, 214 MB");
@@ -195,12 +215,17 @@ describe("App", () => {
   });
 
   it("totals what is on screen rather than the whole library", async () => {
-    statsMock.mockResolvedValue({ tracks: 200, durationMs: 36_000_000, bytes: 1_000_000_000 });
+    statsMock.mockResolvedValue({
+      tracks: 200,
+      durationMs: 36_000_000,
+      bytes: 1_000_000_000,
+      missing: 0,
+    });
     render(<App />);
     await screen.findAllByText(/200 songs/);
     const user = userEvent.setup();
 
-    statsMock.mockResolvedValue({ tracks: 2, durationMs: 600_000, bytes: 9_000_000 });
+    statsMock.mockResolvedValue({ tracks: 2, durationMs: 600_000, bytes: 9_000_000, missing: 0 });
     await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki");
 
     // A search showing two songs while the footer claims the library's total
@@ -396,6 +421,7 @@ describe("App playback", () => {
       added_at: 0,
       play_count: 0,
       last_played_at: null,
+      missing_since: null,
     };
   }
 
@@ -735,6 +761,80 @@ describe("the zoom stepper", () => {
     // the button says so rather than silently doing nothing.
     expect(await screen.findByText("80%")).toBeInTheDocument();
     expect(out).toBeDisabled();
+  });
+});
+
+describe("removing missing songs", () => {
+  it("offers nothing while every file is where it should be", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    // Which is the state of a healthy library, so a permanent button would be
+    // one more thing to read past on every launch.
+    expect(screen.queryByRole("button", { name: /Missing/ })).not.toBeInTheDocument();
+  });
+
+  it("asks before destroying anything, and says what it costs", async () => {
+    const user = userEvent.setup();
+    statsMock.mockResolvedValue({ ...stats(5), missing: 2 });
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Remove 2 Missing" }));
+
+    // The one action in the app that deletes library rows, and the one thing
+    // someone needs to know before confirming is that an unplugged drive is
+    // not a reason to.
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/2 songs cannot be found/);
+    expect(dialog).toHaveTextContent(/out of every playlist/);
+    expect(dialog).toHaveTextContent(/plug it back in and rescan/);
+  });
+
+  it("removes nothing when the question is declined", async () => {
+    const user = userEvent.setup();
+    statsMock.mockResolvedValue({ ...stats(5), missing: 2 });
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Remove 2 Missing" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(removeMissingTracks).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("stops offering the removal once the backend says a file came back", async () => {
+    // Playing a track whose file has returned clears its mark in the backend,
+    // which emits `library://changed`. The view has no other way to find out:
+    // the row would keep its marker and the toolbar would keep offering to
+    // remove a song that is no longer missing.
+    let announce: (() => void) | undefined;
+    vi.mocked(onLibraryChanged).mockImplementation(async (handler) => {
+      announce = handler;
+      return () => {};
+    });
+    statsMock.mockResolvedValue({ ...stats(5), missing: 1 });
+    render(<App />);
+    await screen.findByRole("button", { name: "Remove 1 Missing" });
+
+    statsMock.mockResolvedValue({ ...stats(5), missing: 0 });
+    act(() => announce?.());
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Missing/ })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("removes them on confirmation and reports how many went", async () => {
+    const user = userEvent.setup();
+    statsMock.mockResolvedValue({ ...stats(5), missing: 2 });
+    vi.mocked(removeMissingTracks).mockResolvedValue(2);
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Remove 2 Missing" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(removeMissingTracks).toHaveBeenCalled();
+    expect(await screen.findByText("Removed 2 missing songs.")).toBeInTheDocument();
   });
 });
 

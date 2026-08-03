@@ -11,7 +11,7 @@ import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(async () => []),
   // Reached through the row menu, via the playlists and editor stores.
@@ -26,7 +26,7 @@ const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
     these tests are about. */
 function stats(tracks: number) {
-  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000 };
+  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000, missing: 0 };
 }
 
 const queryTracksMock = vi.mocked(queryTracks);
@@ -51,6 +51,7 @@ function track(id: number): Track {
     added_at: 0,
     play_count: 0,
     last_played_at: null,
+    missing_since: null,
   };
 }
 
@@ -144,7 +145,10 @@ describe("SongTable", () => {
     await renderTable();
 
     const headers = screen.getAllByRole("columnheader");
+    // "Status" first: the fixed, unlabelled column still needs a stated name,
+    // or screen readers announce an empty header for every row in the table.
     expect(headers.map((h) => h.textContent?.replace(/[▲▼]/g, ""))).toEqual([
+      "Status",
       "Name",
       "Time",
       "Artist",
@@ -154,6 +158,25 @@ describe("SongTable", () => {
       "aria-sort",
       "ascending",
     );
+  });
+
+  it("marks the playing row and the rows whose files are gone", async () => {
+    // Through the table rather than the cell alone: the status column is not
+    // in `columns`, so nothing else would catch it being dropped from the row.
+    queryTracksMock.mockImplementation(async (query: TrackQuery) =>
+      Array.from({ length: query.limit }, (_, i) => {
+        const id = query.offset + i;
+        return id === 3 ? { ...track(id), missing_since: 1_700_000_000 } : track(id);
+      }),
+    );
+    await useLibraryStore.getState().refresh();
+    render(<SongTable columns={columns} nowPlayingId={1} />);
+    await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+
+    expect(screen.getByText("Playing")).toBeInTheDocument();
+    expect(screen.getByText("File missing")).toBeInTheDocument();
+    // One of each, in a window of rows that are otherwise unremarkable.
+    expect(screen.getAllByText("Playing")).toHaveLength(1);
   });
 
   it("renders only a window of rows, not the whole library", async () => {

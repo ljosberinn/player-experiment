@@ -10,7 +10,7 @@ vi.mock("../../ipc", () => ({
   undoTagEdit: vi.fn(),
   canUndoTagEdit: vi.fn(),
   countTracks: vi.fn(async () => 0),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(async () => []),
   allTrackIds: vi.fn(async () => []),
 }));
@@ -35,6 +35,7 @@ function track(id: number): Track {
     added_at: 0,
     play_count: 0,
     last_played_at: null,
+    missing_since: null,
   };
 }
 
