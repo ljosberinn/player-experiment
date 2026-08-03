@@ -813,10 +813,12 @@ th.status {
 
 /* ---------- smart playlist editor ---------- */
 
+/* Only the dim layer. It used to centre the dialog as its flex child, which
+   stopped being true in phase 24: Base UI renders the backdrop and the popup
+   as siblings inside the portal, so a modal that relies on its parent for
+   position lands in normal flow at the end of the body - below the footer,
+   which is exactly where it went. */
 .modal-backdrop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   position: fixed;
   inset: 0;
   z-index: 10;
@@ -824,6 +826,12 @@ th.status {
 }
 
 .modal {
+  /* Positions itself, and must: nothing above it in the tree does. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 11;
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -228,6 +228,29 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("positions every portalled overlay itself", () => {
+    // The bug this exists for: `.modal` was centred by being a flex child of
+    // `.modal-backdrop`. Base UI renders the two as siblings in a portal, so
+    // the dialog fell into normal flow at the end of the body and drew below
+    // the footer. Nothing could have caught it in a component test - jsdom
+    // applies no stylesheet - and the app still passed 630 of them.
+    //
+    // Anything the app portals to the body has to carry its own position.
+    for (const selector of [".modal", ".modal-backdrop", ".context-positioner"]) {
+      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+
+      expect(rule, `${selector} should exist`).toBeDefined();
+      expect(rule?.body, `${selector} must position itself`).toMatch(/position:\s*fixed|z-index:/);
+    }
+
+    // And the dialog has to sit above its own backdrop, not merely somewhere.
+    const modal = all.find((one) => one.selector.trim().endsWith(".modal"));
+    const backdrop = all.find((one) => one.selector.trim().endsWith(".modal-backdrop"));
+    const layer = (body: string | undefined) => Number(/z-index:\s*(\d+)/.exec(body ?? "")?.[1]);
+
+    expect(layer(modal?.body)).toBeGreaterThan(layer(backdrop?.body));
+  });
+
   it("highlights menu items from state rather than from :hover", () => {
     // Stricter than before, and able to be: the pointer and the keyboard both
     // set `data-highlighted`, so the menu no longer needs the hover exception
