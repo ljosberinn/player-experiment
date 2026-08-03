@@ -1,4 +1,4 @@
-import type { TagEdit, Track } from "../../ipc";
+import type { TagEdit, TagValueField, Track } from "../../ipc";
 
 /**
  * The editable tag fields, and how a value shared across a selection is
@@ -25,16 +25,25 @@ export interface FieldDef {
   /** The `Track` property this field reads, which is snake_case over IPC. */
   read: (track: Track) => string | number | null;
   numeric?: boolean;
+  /**
+   * Which vocabulary of existing values to suggest, if any.
+   *
+   * Only the fields where two songs genuinely ought to agree. Title, comment,
+   * track number and disc number are per-song by nature: a dropdown of other
+   * songs' comments is noise at best and a way to paste the wrong data at
+   * worst, so those carry no vocabulary and get no listbox at all.
+   */
+  suggest?: TagValueField;
 }
 
 export const FIELDS: FieldDef[] = [
   { id: "title", label: "Name", read: (t) => t.title },
-  { id: "artist", label: "Artist", read: (t) => t.artist },
-  { id: "album", label: "Album", read: (t) => t.album },
-  { id: "albumArtist", label: "Album Artist", read: (t) => t.album_artist },
-  { id: "genre", label: "Genre", read: (t) => t.genre },
+  { id: "artist", label: "Artist", read: (t) => t.artist, suggest: "artist" },
+  { id: "album", label: "Album", read: (t) => t.album, suggest: "album" },
+  { id: "albumArtist", label: "Album Artist", read: (t) => t.album_artist, suggest: "albumArtist" },
+  { id: "genre", label: "Genre", read: (t) => t.genre, suggest: "genre" },
   { id: "comment", label: "Comment", read: (t) => t.comment },
-  { id: "year", label: "Year", read: (t) => t.year, numeric: true },
+  { id: "year", label: "Year", read: (t) => t.year, numeric: true, suggest: "year" },
   { id: "trackNo", label: "Track Number", read: (t) => t.track_no, numeric: true },
   { id: "discNo", label: "Disc Number", read: (t) => t.disc_no, numeric: true },
 ];

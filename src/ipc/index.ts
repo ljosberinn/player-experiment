@@ -24,6 +24,7 @@ import type { ScanSummary } from "./bindings/ScanSummary";
 import type { SortDirection } from "./bindings/SortDirection";
 import type { SortField } from "./bindings/SortField";
 import type { TagEdit } from "./bindings/TagEdit";
+import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
 import type { Track } from "./bindings/Track";
 import type { TrackQuery } from "./bindings/TrackQuery";
@@ -53,6 +54,7 @@ export type {
   SortDirection,
   SortField,
   TagEdit,
+  TagValueField,
   TagWriteSummary,
   Track,
   TrackQuery,
@@ -195,6 +197,16 @@ export function undoTagEdit(): Promise<TagWriteSummary> {
 
 export function canUndoTagEdit(): Promise<boolean> {
   return invoke<boolean>("can_undo_tag_edit");
+}
+
+/**
+ * Values already in the library for `field`, best match first.
+ *
+ * Matched in SQLite rather than here: the alternative is shipping every
+ * distinct artist in a 50k-track library over IPC on the chance someone types.
+ */
+export function suggestTagValues(field: TagValueField, query: string): Promise<string[]> {
+  return invoke<string[]>("suggest_tag_values", { field, query });
 }
 
 export function listPlaylists(): Promise<Playlist[]> {

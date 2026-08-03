@@ -8,12 +8,12 @@ use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
 
 use crate::audio::{Command, Player};
-use crate::db::{playback, playlists, query, settings, Db};
+use crate::db::{playback, playlists, query, settings, tag_values, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, FilterGroup, LibraryStats, PlayerSnapshot, Playlist,
-    ScanSummary, TagEdit, TagWriteSummary, Track, TrackQuery,
+    ScanSummary, TagEdit, TagValueField, TagWriteSummary, Track, TrackQuery,
 };
 use crate::{scan, tags};
 
@@ -236,6 +236,21 @@ pub fn undo_tag_edit(db: State<'_, Db>) -> AppResult<TagWriteSummary> {
 pub fn can_undo_tag_edit(db: State<'_, Db>) -> AppResult<bool> {
     let conn = db.conn()?;
     tags::write::can_undo(&conn)
+}
+
+/// Values already in the library for `field`, best match first.
+///
+/// The query is matched here rather than in the frontend because the answer
+/// lives in SQLite and the alternative is shipping every distinct artist in a
+/// 50k-track library over IPC on the chance that someone types.
+#[tauri::command]
+pub fn suggest_tag_values(
+    db: State<'_, Db>,
+    field: TagValueField,
+    query: String,
+) -> AppResult<Vec<String>> {
+    let conn = db.conn()?;
+    tag_values::suggest(&conn, field, &query, tag_values::SUGGESTION_LIMIT)
 }
 
 /// Writes an export to `path`, returning how many tracks it holds.

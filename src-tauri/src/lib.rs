@@ -97,6 +97,7 @@ pub fn run() {
             commands::write_tags,
             commands::undo_tag_edit,
             commands::can_undo_tag_edit,
+            commands::suggest_tag_values,
             commands::player_play,
             commands::player_toggle,
             commands::player_pause,

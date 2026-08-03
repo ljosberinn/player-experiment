@@ -1346,3 +1346,46 @@ body:not(:focus-within) .sidebar-row.current {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* Suggestions under a tag or filter field.
+   Below the menu (40) and the dialogs it opens inside, because it belongs to a
+   field within one of them and has to sit over the dialog's own surface. */
+.suggest-positioner {
+  z-index: 60;
+  outline: none;
+}
+
+.suggest-popup {
+  /* Matched to the field it hangs off rather than a fixed width: a wider
+     Artist box gets a wider list, and the values line up under what was
+     typed. */
+  width: var(--anchor-width);
+  min-width: 180px;
+  max-height: var(--available-height, 40vh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  outline: none;
+}
+
+.suggest-item {
+  padding: 5px 10px;
+  border-radius: 4px;
+  color: var(--text);
+  /* Long band names are the reason this list exists, so they wrap rather than
+     being clipped to something that no longer distinguishes two spellings. */
+  overflow-wrap: anywhere;
+  cursor: default;
+}
+
+/* The same one selector the menu uses: Base UI marks the active item the same
+   way whether the pointer or the keyboard is driving. */
+.suggest-item[data-highlighted] {
+  background: var(--accent);
+  color: #fff;
+}

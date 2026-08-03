@@ -1,9 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import type { FilterGroup } from "../../ipc";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type FilterGroup, suggestTagValues } from "../../ipc";
 import { emptyFilter } from "./filterTree";
 import { SmartPlaylistEditor } from "./SmartPlaylistEditor";
+
+// The value field suggests what the library already holds; these tests are
+// about the tree, so it holds nothing.
+vi.mock("../../ipc", () => ({ suggestTagValues: vi.fn(async () => []) }));
 
 function open(filter: FilterGroup = emptyFilter, name = "Recent") {
   const onSave = vi.fn();
@@ -41,7 +45,7 @@ describe("SmartPlaylistEditor", () => {
     const { onSave, user } = open();
 
     await user.click(screen.getByRole("button", { name: "+ Rule" }));
-    await user.type(screen.getByRole("textbox", { name: "Value for condition 1" }), "Grizzly Bear");
+    await user.type(screen.getByLabelText("Value for condition 1"), "Grizzly Bear");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(onSave).toHaveBeenCalledWith("Recent", artistIs("Grizzly Bear"));
@@ -180,7 +184,7 @@ describe("SmartPlaylistEditor", () => {
   it("saves on Enter and closes on Escape", async () => {
     const { onSave, onCancel, user } = open(artistIs("Guitar"));
 
-    await user.type(screen.getByRole("textbox", { name: "Value for condition 1" }), "{Enter}");
+    await user.type(screen.getByLabelText("Value for condition 1"), "{Enter}");
     expect(onSave).toHaveBeenCalledOnce();
 
     await user.type(screen.getByRole("textbox", { name: "Name" }), "{Escape}");
@@ -210,5 +214,51 @@ describe("SmartPlaylistEditor", () => {
     open();
 
     expect(screen.getByRole("dialog", { name: "New Smart Playlist" })).toBeInTheDocument();
+  });
+});
+
+describe("the vocabulary a rule offers", () => {
+  const suggest = vi.mocked(suggestTagValues);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    suggest.mockResolvedValue([]);
+  });
+
+  it("offers the artists already in the library", async () => {
+    suggest.mockResolvedValue(["Godspeed You! Black Emperor"]);
+    const { user } = open();
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByLabelText("Value for condition 1"), "god");
+
+    // Typing a band name by hand into a filter is how a smart playlist ends up
+    // matching nothing at all.
+    expect(
+      await screen.findByRole("option", { name: "Godspeed You! Black Emperor" }),
+    ).toBeVisible();
+    expect(suggest).toHaveBeenCalledWith("artist", "god");
+  });
+
+  it("switches vocabulary when the rule's field changes", async () => {
+    const { user } = open();
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.selectOptions(screen.getByLabelText("Field for condition 1"), "genre");
+    await user.type(screen.getByLabelText("Value for condition 1"), "shoe");
+
+    await waitFor(() => expect(suggest).toHaveBeenCalledWith("genre", "shoe"));
+  });
+
+  it("offers none for a field where two songs need not agree", async () => {
+    const { user } = open();
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.selectOptions(screen.getByLabelText("Field for condition 1"), "comment");
+    await user.type(screen.getByLabelText("Value for condition 1"), "anything");
+
+    // A dropdown of other songs' comments is a way to paste the wrong data.
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(suggest).not.toHaveBeenCalled();
   });
 });

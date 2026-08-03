@@ -1,10 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
+import { suggestTagValues } from "../../ipc";
 import { TagEditor } from "./TagEditor";
 
-vi.mock("../../ipc", () => ({ coverUrl: (hash: string) => `cover-url:${hash}` }));
+vi.mock("../../ipc", () => ({
+  coverUrl: (hash: string) => `cover-url:${hash}`,
+  suggestTagValues: vi.fn(async () => []),
+}));
 
 function track(overrides: Partial<Track> = {}): Track {
   return {
@@ -47,8 +51,8 @@ describe("TagEditor", () => {
   it("shows one track's values", () => {
     open([track()]);
 
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Maki");
-    expect(screen.getByRole("textbox", { name: "Year" })).toHaveValue("2012");
+    expect(screen.getByLabelText("Name")).toHaveValue("Maki");
+    expect(screen.getByLabelText("Year")).toHaveValue("2012");
     expect(screen.getByRole("dialog", { name: "Get Info" })).toBeInTheDocument();
   });
 
@@ -61,17 +65,17 @@ describe("TagEditor", () => {
   it("leaves a field the selection disagrees on empty, and says it is mixed", () => {
     open([track(), track({ id: 2, artist: "Grizzly Bear" })]);
 
-    const artist = screen.getByRole("textbox", { name: "Artist" });
+    const artist = screen.getByLabelText("Artist");
     expect(artist).toHaveValue("");
     expect(artist).toHaveAttribute("placeholder", "Mixed");
     // A field they do agree on still shows the shared value.
-    expect(screen.getByRole("textbox", { name: "Album" })).toHaveValue("Tokyo");
+    expect(screen.getByLabelText("Album")).toHaveValue("Tokyo");
   });
 
   it("writes only what was touched", async () => {
     const { onSave, user } = open([track(), track({ id: 2, artist: "Grizzly Bear" })]);
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "!");
+    await user.type(screen.getByLabelText("Genre"), "!");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     const edit = savedEdit(onSave);
@@ -85,7 +89,7 @@ describe("TagEditor", () => {
   it("sends an emptied field as a clear, not as untouched", async () => {
     const { onSave, user } = open([track()]);
 
-    await user.clear(screen.getByRole("textbox", { name: "Genre" }));
+    await user.clear(screen.getByLabelText("Genre"));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(savedEdit(onSave).genre).toBe("");
@@ -95,7 +99,7 @@ describe("TagEditor", () => {
     const { user } = open([track()]);
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "x");
+    await user.type(screen.getByLabelText("Genre"), "x");
 
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
@@ -103,8 +107,8 @@ describe("TagEditor", () => {
   it("refuses a number it can see is wrong, before the round trip", async () => {
     const { user } = open([track()]);
 
-    await user.clear(screen.getByRole("textbox", { name: "Year" }));
-    await user.type(screen.getByRole("textbox", { name: "Year" }), "twenty");
+    await user.clear(screen.getByLabelText("Year"));
+    await user.type(screen.getByLabelText("Year"), "twenty");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Year must be a number");
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -113,10 +117,10 @@ describe("TagEditor", () => {
   it("marks the fields a save will write", async () => {
     const { user } = open([track()]);
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "x");
+    await user.type(screen.getByLabelText("Genre"), "x");
 
-    expect(screen.getByRole("textbox", { name: "Genre" })).toHaveClass("touched");
-    expect(screen.getByRole("textbox", { name: "Album" })).not.toHaveClass("touched");
+    expect(screen.getByLabelText("Genre")).toHaveClass("touched");
+    expect(screen.getByLabelText("Album")).not.toHaveClass("touched");
   });
 
   it("attaches artwork the picker returned", async () => {
@@ -174,7 +178,7 @@ describe("TagEditor", () => {
   it("saves on Enter from a field", async () => {
     const { onSave, user } = open([track()]);
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "Dream Pop{Enter}");
+    await user.type(screen.getByLabelText("Genre"), "Dream Pop{Enter}");
 
     expect(onSave).toHaveBeenCalledOnce();
   });
@@ -182,7 +186,7 @@ describe("TagEditor", () => {
   it("does not save on Enter when there is nothing to save", async () => {
     const { onSave, user } = open([track()]);
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "{Enter}");
+    await user.type(screen.getByLabelText("Genre"), "{Enter}");
 
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -190,8 +194,8 @@ describe("TagEditor", () => {
   it("does not save on Enter when a field is invalid", async () => {
     const { onSave, user } = open([track()]);
 
-    await user.clear(screen.getByRole("textbox", { name: "Year" }));
-    await user.type(screen.getByRole("textbox", { name: "Year" }), "twenty{Enter}");
+    await user.clear(screen.getByLabelText("Year"));
+    await user.type(screen.getByLabelText("Year"), "twenty{Enter}");
 
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -199,7 +203,7 @@ describe("TagEditor", () => {
   it("closes on Escape", async () => {
     const { onSave, onCancel, user } = open([track()]);
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "x{Escape}");
+    await user.type(screen.getByLabelText("Genre"), "x{Escape}");
 
     expect(onCancel).toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
@@ -219,7 +223,7 @@ describe("TagEditor", () => {
   it("discards everything on cancel", async () => {
     const { onSave, onCancel, user } = open([track()]);
 
-    await user.type(screen.getByRole("textbox", { name: "Genre" }), "x");
+    await user.type(screen.getByLabelText("Genre"), "x");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onCancel).toHaveBeenCalled();
@@ -270,5 +274,63 @@ describe("TagEditor", () => {
       expect(document.activeElement).not.toBe(document.body);
       expect(screen.getByRole("button", { name: "Save" })).not.toHaveFocus();
     });
+  });
+});
+
+describe("the suggestion list phase 18 brought with it", () => {
+  const suggest = vi.mocked(suggestTagValues);
+
+  it("offers artists the library already holds", async () => {
+    suggest.mockResolvedValue(["Grizzly Bear"]);
+    const { user } = open([track()]);
+
+    await user.clear(screen.getByLabelText("Artist"));
+    await user.type(screen.getByLabelText("Artist"), "griz");
+
+    expect(await screen.findByRole("option", { name: "Grizzly Bear" })).toBeVisible();
+  });
+
+  it("closes the list on Escape without cancelling the whole edit", async () => {
+    suggest.mockResolvedValue(["Grizzly Bear"]);
+    const { onCancel, user } = open([track()]);
+
+    await user.clear(screen.getByLabelText("Artist"));
+    await user.type(screen.getByLabelText("Artist"), "griz");
+    await screen.findByRole("option", { name: "Grizzly Bear" });
+    await user.keyboard("{Escape}");
+
+    // Losing a half-finished bulk edit because you dismissed a dropdown is a
+    // surprising amount to lose for one keystroke.
+    await waitFor(() =>
+      expect(screen.queryByRole("option", { name: "Grizzly Bear" })).not.toBeInTheDocument(),
+    );
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Get Info" })).toBeInTheDocument();
+
+    // A second Escape, with no list left to close, cancels as it always did.
+    await user.keyboard("{Escape}");
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("counts a picked suggestion as a change, so it writes", async () => {
+    suggest.mockResolvedValue(["Grizzly Bear"]);
+    const { onSave, user } = open([track({ artist: "Grizly Bear" })]);
+
+    await user.clear(screen.getByLabelText("Artist"));
+    await user.type(screen.getByLabelText("Artist"), "griz");
+    await user.click(await screen.findByRole("option", { name: "Grizzly Bear" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(savedEdit(onSave).artist).toBe("Grizzly Bear");
+  });
+
+  it("gives a per-song field no list at all", async () => {
+    const { user } = open([track()]);
+
+    await user.type(screen.getByLabelText("Comment"), "burned from vinyl");
+
+    // Title, Comment, Track Number and Disc Number are per-song by nature.
+    expect(screen.getByLabelText("Comment")).toHaveRole("textbox");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 });

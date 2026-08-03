@@ -135,4 +135,30 @@ ALTER TABLE tracks ADD COLUMN missing_since INTEGER;
 
 CREATE INDEX idx_tracks_missing ON tracks(missing_since) WHERE missing_since IS NOT NULL;
 "#,
+    // 5 - the vocabulary a library already uses
+    //
+    // Autocompletion needs the distinct values of a handful of fields, ranked
+    // by how many tracks carry each one. `SELECT DISTINCT artist FROM tracks`
+    // over 50k rows on every keystroke is not viable, so the answer gets its
+    // own table.
+    //
+    // `uses` is what makes the suggestions useful rather than merely present:
+    // the spelling on 400 tracks outranks the typo made once, and a value that
+    // falls to zero tracks is dropped, so a corrected typo stops being offered.
+    //
+    // WITHOUT ROWID because the primary key *is* the row - there is no payload
+    // beyond `uses`, so a separate rowid would be pure overhead.
+    //
+    // The NOCASE index is what the lookup actually uses: suggestions match
+    // case-insensitively, because someone typing "godspeed" wants the band.
+    r#"
+CREATE TABLE tag_values (
+    field TEXT    NOT NULL,
+    value TEXT    NOT NULL,
+    uses  INTEGER NOT NULL,
+    PRIMARY KEY (field, value)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_tag_values_lookup ON tag_values(field, value COLLATE NOCASE);
+"#,
 ];
