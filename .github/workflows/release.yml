@@ -30,7 +30,10 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      # v5's only breaking change is the Node 24 runtime, which is the point:
+      # v4 targets Node 20, which GitHub is deprecating and currently
+      # force-runs on 24 with a warning on every release run.
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: release-please-config.json

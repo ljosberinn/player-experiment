@@ -605,6 +605,19 @@ Installers are published from CI, versioned from the commit history.
   is proven, but whether `release-please-action` picks up this config and
   whether the bundle paths are right are things only the first run answers.
 
+### release-please on Node 24 (2026-08-03)
+
+`release-please-action@v4` targets Node 20, which GitHub is deprecating and
+currently force-runs on 24 with a warning on every release run. v5 exists for
+exactly that: its only breaking change *is* the runtime bump.
+
+- **Verified rather than assumed compatible.** The outputs this workflow gates
+  on - `release_created` and `tag_name` - are not declared in `action.yml`;
+  they are set at runtime from JS. Diffing that region of `src/index.ts`
+  between v4.4.1 and v5.0.0 shows it byte-identical, so the `if:` condition on
+  the installers job keeps behaving as it does today.
+- release-please itself goes 17.3.0 -> 17.6.0 in the same bump.
+
 ### Browsing by album, artist and genre (2026-08-03)
 
 Phase 19. The three dead tabs are live, and the shape of it is one query plus
