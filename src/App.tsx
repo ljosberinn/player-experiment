@@ -27,7 +27,7 @@ import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
 import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
-import { tauriUpdater, useUpdater } from "./features/updater/useUpdater";
+import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, exportLibrary, getAppInfo } from "./ipc";
 import { formatLibrarySummary } from "./lib/format";
 
@@ -391,16 +391,20 @@ export function App() {
 
         {/* Only `ready` says anything. Checking and downloading happen quietly,
             and a failed check usually means the machine is offline, which is
-            not news. */}
+            not news.
+
+            It is also the only way an update is ever applied: installing ends
+            the process and starts the installer, so a player that did it on a
+            timer would stop mid-song. Pressing this is the consent. */}
         {updateStatus === "ready" || updateStatus === "installing" ? (
           <button
             type="button"
             className="statusbar-update"
             disabled={updateStatus === "installing"}
-            onClick={() => void installUpdate(tauriUpdater)}
+            onClick={() => void installUpdate()}
           >
             {updateStatus === "installing"
-              ? "Restarting…"
+              ? "Installing…"
               : `${updateVersion} ready — restart to install`}
           </button>
         ) : appInfo ? (

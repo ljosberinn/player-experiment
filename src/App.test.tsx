@@ -6,6 +6,7 @@ import { useEditorStore } from "./features/editor/store";
 import { useLibraryStore } from "./features/library/store";
 import { TRACK_IDS_MIME } from "./features/playlists/drag";
 import { usePlaylistsStore } from "./features/playlists/store";
+import { useUpdaterStore } from "./features/updater/store";
 import {
   addToPlaylist,
   addWatchFolder,
@@ -93,6 +94,10 @@ vi.mock("@tauri-apps/api/window", () => ({
   availableMonitors: vi.fn(async () => []),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
+// Without this the launch check reaches the real plugin, fails against a Tauri
+// that is not there, and lands the store in `failed` at an unpredictable
+// moment - which would overwrite whatever state a test had just set.
+vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) }));
 
 const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
@@ -125,7 +130,12 @@ beforeEach(async () => {
     renaming: null,
   });
   useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
+  useUpdaterStore.setState({ status: "idle", version: null, error: null, update: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
+  // Restated rather than left to the factory: `clearAllMocks` clears calls but
+  // keeps implementations, so the one test that makes this reject was leaking
+  // a versionless footer into every test declared after it.
+  vi.mocked(getAppInfo).mockResolvedValue({ name: "player", version: "0.4.2" });
   vi.mocked(canUndoTagEdit).mockResolvedValue(false);
   statsMock.mockResolvedValue(stats(0));
   queryTracksMock.mockResolvedValue([]);
@@ -725,5 +735,47 @@ describe("the zoom stepper", () => {
     // the button says so rather than silently doing nothing.
     expect(await screen.findByText("80%")).toBeInTheDocument();
     expect(out).toBeDisabled();
+  });
+});
+
+describe("the update notice", () => {
+  it("shows the version rather than an update while there is none", async () => {
+    render(<App />);
+
+    // The state the app is in essentially always. Nothing about updates
+    // belongs on screen until there is one.
+    expect(await screen.findByText("v0.4.2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /restart to install/ })).not.toBeInTheDocument();
+  });
+
+  it("says nothing while checking or downloading", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    useUpdaterStore.setState({ status: "downloading", version: "0.5.0" });
+
+    // A download the user did not ask for and cannot act on is not news; the
+    // footer keeps showing the version it is running.
+    expect(await screen.findByText("v0.4.2")).toBeInTheDocument();
+    expect(screen.queryByText(/0\.5\.0/)).not.toBeInTheDocument();
+  });
+
+  it("offers the restart once a download is ready, and installs on the click", async () => {
+    const user = userEvent.setup();
+    const install = vi.fn(async () => {});
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    useUpdaterStore.setState({
+      status: "ready",
+      version: "0.5.0",
+      update: { version: "0.5.0", download: vi.fn(async () => {}), install },
+    });
+
+    await user.click(await screen.findByRole("button", { name: /0\.5\.0 ready/ }));
+
+    // The click is the consent: installing exits the process and hands off to
+    // the installer, which is not something to do to a running player unasked.
+    expect(install).toHaveBeenCalled();
   });
 });
