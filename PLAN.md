@@ -618,6 +618,44 @@ exactly that: its only breaking change *is* the runtime bump.
   the installers job keeps behaving as it does today.
 - release-please itself goes 17.3.0 -> 17.6.0 in the same bump.
 
+### Media keys without focus (2026-08-03)
+
+Phase 22, and the answer to *"pressing the play/pause keyboard hotkey without
+app focus doesnt trigger it"*. The window-scoped bindings are untouched; this
+is a second, narrower path for the four keys whose entire purpose is to work
+while the app is behind something else.
+
+- **The plugin grants nothing by default.** `tauri-plugin-global-shortcut`
+  ships an empty `default` permission set on purpose - its authors treat a
+  global shortcut as dangerous enough to be opted into one key at a time - so
+  `global-shortcut:default` would have looked like a grant and been none.
+  `allow-register` and `allow-unregister` are listed explicitly.
+- **The capability guard caught itself being useless.** The two new rows were
+  written with a Python here-doc, which turned a backslash-b into a literal backspace;
+  the regex became a backspace followed by `register`, matched nothing, and the test passed
+  vacuously. Found by deleting each permission and checking the guard went red
+  - which it did not. Both rows now fail without their permission, verified one
+  at a time.
+- **`unregister` is listed before `register`, which is anchored on `await `.**
+  The names overlap, so a bare `/register\(/` also matches every
+  `unregister(` and each row would report the other's callers.
+- **Not Space, and not the arrows.** A global shortcut is exclusive: the OS
+  routes it to whoever claimed it and nobody else, so registering Space
+  system-wide would break the space bar in every other application on the
+  machine. A test asserts the list never grows into them.
+- **Registered one key at a time.** The plugin's array form is all-or-nothing,
+  so one key held by another player would cost the other three.
+- **A failed registration is not an error.** Another media player holding
+  `MediaPlayPause` is not a fault condition and not worth a banner; the app
+  carries on without that key and releases only what it actually claimed -
+  releasing a key it never held could take it from whoever does.
+- **Unregistering also covers unmount-during-registration**, which would
+  otherwise leave keys held by a window that has gone.
+- **The one thing not proven here.** Whether the OS delivers a key while the
+  window is unfocused cannot be tested in CI or jsdom. The registration list,
+  the mapping, the failure path and the lifecycle are covered; the delivery
+  needs a real build, like Show in Explorer before it.
+
 ### Column customization (2026-08-03)
 
 Phase 20, and the other half of what phase 3's entry claimed and phase 3 did
@@ -1689,7 +1727,7 @@ in CI rather than silently doing nothing - which is exactly how `dialog.save`,
 the actual complaint. 21b is the adjustable knob on top, and if 21a lands the
 density well it may be wanted less urgently than it looks now.
 
-**22 — Media keys that work without focus** `feat/22-global-keys`
+**22 — Media keys that work without focus** `feat/22-global-keys` - in review
 Play/pause already answers `MediaPlayPause` and the transport keys, but only
 while the window has focus - `shortcutFor` is wired to a `keydown` listener on
 `window`, and a background app receives no key events at all. That is a

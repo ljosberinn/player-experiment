@@ -25,6 +25,15 @@ const REQUIRED: ReadonlyArray<{ call: RegExp; permission: string }> = [
   { call: /\.toggleMaximize\s*\(/, permission: "core:window:allow-toggle-maximize" },
   { call: /\.close\s*\(/, permission: "core:window:allow-close" },
   { call: /\.startDragging\s*\(/, permission: "core:window:allow-start-dragging" },
+  // The plugin's own `default` set is deliberately empty - it grants nothing,
+  // because the authors consider a global shortcut dangerous enough to be
+  // opted into one at a time. So `global-shortcut:default` would look like a
+  // grant and be none, which is exactly the failure this table exists for.
+  // `unregister` is listed first, and `register` is anchored on `await `: the
+  // two names overlap, so a bare /register\(/ also matches every
+  // `unregister(` and each row would report the other's callers.
+  { call: /\bunregister\s*\(/, permission: "global-shortcut:allow-unregister" },
+  { call: /await register\s*\(/, permission: "global-shortcut:allow-register" },
 ];
 
 /** Vitest runs from the repo root, and the capability file is addressed from there. */

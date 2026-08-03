@@ -16,6 +16,7 @@ import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { usePlayerStore } from "./features/player/store";
+import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
@@ -115,6 +116,9 @@ export function App() {
   }, [connect]);
 
   usePlayerShortcuts();
+  // The window-scoped bindings above stay as they are; this adds the four
+  // media keys that have to work while the app is behind something else.
+  useGlobalMediaKeys();
   useSelectionShortcuts();
   useNativeFeel();
   useUpdater();
