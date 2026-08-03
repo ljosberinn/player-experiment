@@ -311,9 +311,15 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
     let elapsed = start.elapsed().as_millis();
 
     assert_eq!(summary.missing, ROWS as u32);
+    // Deliberately loose, and looser than it first shipped: 400ms passed on
+    // this machine and took 675ms on the CI runner, which is the slower and
+    // therefore the honest reference. What this catches is the shape being
+    // wrong - a transaction per row, or an UPDATE that cannot use the primary
+    // key - which costs tens of seconds here, not a few hundred milliseconds.
+    // It is also the rarest write in the app: the whole library at once.
     assert!(
-        elapsed <= 400,
-        "marking {ROWS} rows missing took {elapsed}ms, budget is 400ms - a per-row \
+        elapsed <= 2_000,
+        "marking {ROWS} rows missing took {elapsed}ms, budget is 2000ms - a per-row \
          transaction, or an UPDATE that cannot use the primary key, is the usual cause"
     );
 
@@ -325,7 +331,8 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
 
     assert_eq!(again.missing, 0);
     assert!(
-        elapsed <= 200,
-        "a rescan over {ROWS} already-marked rows took {elapsed}ms, budget is 200ms"
+        elapsed <= 1_000,
+        "a rescan over {ROWS} already-marked rows took {elapsed}ms, budget is 1000ms - \
+         it reads every row and writes none, so it must stay well under the first scan"
     );
 }
