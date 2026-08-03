@@ -1,3 +1,4 @@
+import { Slider } from "@base-ui/react/slider";
 /**
  * Transport controls and volume.
  *
@@ -36,15 +37,25 @@ export function Transport({
         &#9654;&#9654;
       </button>
 
-      <input
+      {/* `onValueChange`, unlike the scrubber's `onValueCommitted`: volume is
+          meant to be heard as it moves, and setting it is a cheap write to the
+          sink rather than a seek. */}
+      <Slider.Root
         className="volume"
-        type="range"
         min={0}
         max={100}
         value={Math.round(volume * 100)}
-        aria-label="Volume"
-        onChange={(event) => onVolumeChange(Number(event.currentTarget.value) / 100)}
-      />
+        onValueChange={(value) =>
+          onVolumeChange((typeof value === "number" ? value : (value[0] ?? 0)) / 100)
+        }
+      >
+        <Slider.Control className="volume-control">
+          <Slider.Track className="volume-rail">
+            <Slider.Indicator className="volume-fill" />
+            <Slider.Thumb className="volume-thumb" aria-label="Volume" />
+          </Slider.Track>
+        </Slider.Control>
+      </Slider.Root>
     </div>
   );
 }

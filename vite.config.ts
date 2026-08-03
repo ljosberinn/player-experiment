@@ -25,6 +25,16 @@ export default defineConfig({
        * loosen this back to the default handler.
        */
       onwarn(warning) {
+        // The one accepted exception, added with Base UI in phase 24: a
+        // circular import *inside a dependency*. Base UI's popup store and its
+        // Floating UI root context import each other, which is that library's
+        // internal structure and nothing this project can act on - and rollup
+        // resolves it. Our own code is still held to the rule: the check is on
+        // where the cycle is, not on the code alone.
+        const insideDependency = (warning.ids ?? []).every((id) => id.includes("node_modules"));
+        if (warning.code === "CIRCULAR_DEPENDENCY" && insideDependency) {
+          return;
+        }
         throw new Error(
           `Build warning (${warning.code ?? "unknown"}): ${warning.message}
 ` + "Warnings fail the build on purpose - see vite.config.ts.",

@@ -249,6 +249,41 @@ describe("TabBar", () => {
     await user.click(screen.getByRole("tab", { name: "Genres" }));
     expect(onChange).toHaveBeenCalledWith("genres");
   });
+
+  it("moves between tabs with the arrow keys, and selects on Enter", async () => {
+    // The markup said `role="tablist"` from phase 3 and behaved like four
+    // buttons: Tab stopped on each, and the arrows did nothing. Phase 24 is
+    // where the role stopped being a claim.
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<TabBar active="songs" onChange={onChange} />);
+
+    screen.getByRole("tab", { name: "Songs" }).focus();
+    await user.keyboard("{ArrowRight}");
+
+    // Focus moves; selection does not follow it. That is the right default
+    // here rather than a detail: selecting a tab re-runs the library query, so
+    // arrowing across all four would otherwise fire four of them.
+    expect(screen.getByRole("tab", { name: "Albums" })).toHaveFocus();
+    expect(onChange).not.toHaveBeenCalled();
+
+    await user.keyboard("{Enter}");
+    expect(onChange).toHaveBeenCalledWith("albums");
+  });
+
+  it("holds one tab stop for the group, not one per tab", async () => {
+    const user = userEvent.setup();
+    render(<TabBar active="albums" onChange={vi.fn()} />);
+
+    await user.tab();
+
+    // Tabbing into a tablist lands on the selected tab and tabbing again
+    // leaves the group - which is what stops a four-tab bar costing four
+    // keystrokes to walk past.
+    expect(screen.getByRole("tab", { name: "Albums" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("tab", { name: "Artists" })).not.toHaveFocus();
+  });
 });
 
 describe("Sidebar", () => {

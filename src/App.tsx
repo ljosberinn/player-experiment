@@ -1,6 +1,7 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import "./App.css";
+import { Toolbar } from "@base-ui/react/toolbar";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { Sidebar } from "./components/ui/Sidebar";
 import { StatusDisplay } from "./components/ui/StatusDisplay";
@@ -293,27 +294,40 @@ export function App() {
         <main className="content">
           <div className="content-header">
             <TabBar active={tab} onChange={(next) => void showTab(next)} />
-            <div className="scanbar">
+            {/* A real toolbar: one tab stop for the group, arrows between the
+                buttons inside it. It was a div of buttons, so tabbing past the
+                library actions cost a keystroke each. */}
+            <Toolbar.Root className="scanbar" aria-label="Library actions">
               {/* Get Info is no longer a button here: it lives on the row's
                   right-click menu, where a per-song action belongs, and on
                   Ctrl+I. Undo stays - it acts on the last edit, not on a
                   selection, so no row menu is the right home for it. */}
-              <button type="button" disabled={!canUndoTags} onClick={() => void undoTags()}>
+              <Toolbar.Button
+                render={<button type="button" />}
+                disabled={!canUndoTags}
+                onClick={() => void undoTags()}
+              >
                 Undo Tag Edit
-              </button>
-              <button type="button" onClick={() => void runExport(exportTarget)}>
+              </Toolbar.Button>
+              <Toolbar.Button
+                render={<button type="button" />}
+                onClick={() => void runExport(exportTarget)}
+              >
                 {exportTarget.label}
-              </button>
+              </Toolbar.Button>
               {/* Only when there is something to clear, which in a library
                   whose drives are all plugged in is never. A permanent button
                   for a condition that rarely holds is one more thing to read
                   past on every launch. */}
               {stats.missing > 0 ? (
-                <button type="button" onClick={() => setConfirmRemoveMissing(true)}>
+                <Toolbar.Button
+                  render={<button type="button" />}
+                  onClick={() => setConfirmRemoveMissing(true)}
+                >
                   Remove {stats.missing} Missing
-                </button>
+                </Toolbar.Button>
               ) : null}
-            </div>
+            </Toolbar.Root>
             <ScanBar />
           </div>
 
