@@ -110,13 +110,42 @@ describe("the stylesheet", () => {
     // selector - the media prelude is not part of any selector it returns.
     const roots = all.filter((rule) => rule.selector === ":root");
     const [light, dark] = roots;
-    const names = (body: string) => [...body.matchAll(/(--[\w-]+):/g)].map((m) => m[1]).sort();
+
+    // Colours only, matched on the value rather than the name. Phase 21a added
+    // density variables (`--row-height` and friends) which have no dark
+    // variant and should not have one - requiring a duplicate would mean
+    // stating the same measurement twice and letting the two drift.
+    const colours = (body: string) =>
+      [...body.matchAll(/(--[\w-]+):\s*([^;]+)/g)]
+        .filter(([, , value]) => /^(#|rgb|hsl|color-mix)/.test((value ?? "").trim()))
+        .map(([, name]) => name)
+        .sort();
 
     expect(roots).toHaveLength(2);
+    // Guards the guard: a value regex that matched nothing would compare two
+    // empty lists and pass whatever the themes actually say.
+    expect(colours(light?.body ?? "").length).toBeGreaterThan(5);
 
-    // A variable defined only in light mode is a light-mode colour burned into
+    // A colour defined only in light mode is a light-mode colour burned into
     // the dark theme, which is how dark modes end up with one unreadable panel.
-    expect(names(dark?.body ?? "")).toEqual(names(light?.body ?? ""));
+    expect(colours(dark?.body ?? "")).toEqual(colours(light?.body ?? ""));
+  });
+
+  it("keeps every status bar child on one row", () => {
+    // The bar is a three-column grid. Auto-placement only moves forward, so a
+    // child assigned to an earlier column than the one before it in the DOM
+    // starts a second row instead - which is exactly how the version and the
+    // zoom stepper ended up below the summary. Stating the row on each makes
+    // the layout independent of DOM order.
+    const placed = all.filter((rule) => /\.statusbar-[\w-]+$/.test(rule.selector.trim()));
+    const withColumn = placed.filter((rule) => /grid-column:/.test(rule.body));
+
+    // Guards the guard: a selector regex that matched nothing would iterate an
+    // empty list and pass however the bar is actually laid out.
+    expect(withColumn.length).toBeGreaterThan(2);
+    for (const rule of withColumn) {
+      expect(rule.body, `${rule.selector} sets a column but no row`).toMatch(/grid-row:\s*1/);
+    }
   });
 
   it("gives the status display a fixed height, not a growing one", () => {

@@ -12,9 +12,9 @@ import { useLibraryStore } from "./store";
  * has rendered anything, and a grid whose rows resize as covers load would
  * reflow under the scroll position.
  */
-const TILE_WIDTH = 148;
-const TILE_HEIGHT = 196;
-const LIST_ROW_HEIGHT = 34;
+const TILE_WIDTH = 178;
+const TILE_HEIGHT = 235;
+const LIST_ROW_HEIGHT = 41;
 const OVERSCAN = 6;
 
 /**

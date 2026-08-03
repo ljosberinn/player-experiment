@@ -14,34 +14,34 @@ export interface ColumnDef {
  * construction - a column can't exist that the backend cannot order by.
  */
 export const ALL_COLUMNS: ColumnDef[] = [
-  { id: "title", label: "Name", width: 280, render: (t) => t.title ?? fileName(t.path) },
+  { id: "title", label: "Name", width: 336, render: (t) => t.title ?? fileName(t.path) },
   {
     id: "durationMs",
     label: "Time",
-    width: 64,
+    width: 77,
     align: "right",
     render: (t) => formatDuration(t.duration_ms),
   },
-  { id: "artist", label: "Artist", width: 180, render: (t) => t.artist ?? "" },
-  { id: "album", label: "Album", width: 180, render: (t) => t.album ?? "" },
-  { id: "genre", label: "Genre", width: 130, render: (t) => t.genre ?? "" },
-  { id: "year", label: "Year", width: 60, align: "right", render: (t) => t.year?.toString() ?? "" },
+  { id: "artist", label: "Artist", width: 216, render: (t) => t.artist ?? "" },
+  { id: "album", label: "Album", width: 216, render: (t) => t.album ?? "" },
+  { id: "genre", label: "Genre", width: 156, render: (t) => t.genre ?? "" },
+  { id: "year", label: "Year", width: 72, align: "right", render: (t) => t.year?.toString() ?? "" },
   {
     id: "trackNo",
     label: "#",
-    width: 44,
+    width: 53,
     align: "right",
     render: (t) => t.track_no?.toString() ?? "",
   },
-  { id: "albumArtist", label: "Album Artist", width: 180, render: (t) => t.album_artist ?? "" },
+  { id: "albumArtist", label: "Album Artist", width: 216, render: (t) => t.album_artist ?? "" },
   {
     id: "playCount",
     label: "Plays",
-    width: 60,
+    width: 72,
     align: "right",
     render: (t) => t.play_count.toString(),
   },
-  { id: "path", label: "Location", width: 320, render: (t) => t.path },
+  { id: "path", label: "Location", width: 384, render: (t) => t.path },
 ];
 
 export const DEFAULT_COLUMN_IDS: SortField[] = ["title", "durationMs", "artist", "album", "genre"];
@@ -64,7 +64,7 @@ function fileName(path: string): string {
  * Not zero: a column dragged to nothing is indistinguishable from one that was
  * hidden, except that there is no way to grab it again.
  */
-export const MIN_COLUMN_WIDTH = 40;
+export const MIN_COLUMN_WIDTH = 48;
 
 /**
  * Which columns a view shows, in what order, at what widths.

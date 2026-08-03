@@ -135,6 +135,15 @@ export function saveColumnConfig(playlistId: number | null, configJson: string):
   return invoke<void>("save_column_config", { playlistId, configJson });
 }
 
+/** The stored webview zoom factor, or null if it has never been set. */
+export function loadZoom(): Promise<string | null> {
+  return invoke<string | null>("load_zoom");
+}
+
+export function saveZoom(factor: string): Promise<void> {
+  return invoke<void>("save_zoom", { factor });
+}
+
 /** Writes an export to `path`, resolving to how many tracks it holds. */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });

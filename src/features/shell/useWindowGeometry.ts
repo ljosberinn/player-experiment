@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { loadWindowGeometry, saveWindowGeometry } from "../../ipc";
 import { debounce } from "../../lib/debounce";
 import { isOnScreen, parse, serialize } from "./geometry";
+import { useZoomStore } from "./zoomStore";
 
 /**
  * How long a drag or resize has to settle before it is written.
@@ -74,6 +75,16 @@ export function useWindowGeometry(): void {
         }
       } catch {
         // Leave the window where the OS put it.
+      }
+
+      // Zoom is applied here rather than in its own effect because it has to
+      // happen before the window is shown: applying it afterwards means the
+      // user watches the whole app resize itself on every launch. The window
+      // is already hidden for the geometry restore, so this costs nothing.
+      try {
+        await useZoomStore.getState().load();
+      } catch {
+        // A failed zoom restore must not stop the window appearing.
       }
 
       // The window starts hidden (`"visible": false` in tauri.conf.json) so

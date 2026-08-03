@@ -69,6 +69,11 @@ vi.mock("./ipc", () => ({
   addToPlaylist: vi.fn(),
   removeFromPlaylist: vi.fn(),
   moveInPlaylist: vi.fn(),
+  browseGroups: vi.fn(async () => []),
+  loadColumnConfig: vi.fn(async () => null),
+  saveColumnConfig: vi.fn(async () => undefined),
+  loadZoom: vi.fn(async () => null),
+  saveZoom: vi.fn(async () => undefined),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
@@ -690,5 +695,35 @@ describe("App playback", () => {
     await waitFor(() => expect(display).toHaveTextContent("Track 1"));
     expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("30000");
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  });
+});
+
+describe("the zoom stepper", () => {
+  it("steps out and in from the status bar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(await screen.findByText("90%")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(await screen.findByText("100%")).toBeInTheDocument();
+  });
+
+  it("stops at the ends rather than letting the value run past them", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    const out = screen.getByRole("button", { name: "Zoom out" });
+    for (let i = 0; i < 3; i++) {
+      await user.click(out);
+    }
+
+    // 1.0 down to the 0.8 floor is two steps; a third must not move it, and
+    // the button says so rather than silently doing nothing.
+    expect(await screen.findByText("80%")).toBeInTheDocument();
+    expect(out).toBeDisabled();
   });
 });

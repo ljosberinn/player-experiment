@@ -618,6 +618,78 @@ exactly that: its only breaking change *is* the runtime bump.
   the installers job keeps behaving as it does today.
 - release-please itself goes 17.3.0 -> 17.6.0 in the same bump.
 
+### Density rebase and webview zoom (2026-08-03)
+
+Phase 21, both halves.
+
+**21a.** The type and spacing scale is multiplied by 1.2 and rounded to whole
+pixels - base font 12px to 14px, row height 22 to 26 - so the default is right
+and the slider is an adjustment rather than a correction. Applied by script
+across the density-bearing properties only: borders, radii and shadows are
+untouched, because a 1.2px hairline is a blurry hairline and a scaled radius
+reads as a different shape rather than a bigger one.
+
+- **The caption buttons are deliberately excluded.** They mirror the OS
+  cluster rather than the app's content, and 44px-wide buttons were already
+  rejected once as oversized; scaling 34x30 would have put them back at 41x36.
+- **The virtualizer constants moved with the CSS.** `ROW_HEIGHT`, the browse
+  tile and list metrics and the default column widths rebased together. A CSS
+  row that grew while the estimate did not is what makes rows overlap and the
+  scrollbar lie.
+- **The scripted pass missed twelve declarations** that follow a comment rather
+  than a `;` or `{` - including `.status-display`'s fixed height, which would
+  have left the box too short for the text it now holds and reopened the layout
+  shift phase 14 closed. Found by diffing against the committed file for
+  density properties that had not changed.
+- **Only `--control-height` became a variable.** `--row-height` and
+  `--gutter` were added and then removed: nothing referenced them. Row height
+  in particular belongs in `SongTable.tsx`, where the virtualizer reads it - a
+  CSS copy would be a second number to keep in step.
+- **The theme-parity guard now compares colours by value**, not every `--`
+  name, since density variables have no dark variant and should not be forced
+  to invent one. Verified by deleting a dark colour and watching it fail.
+
+**21b.** `getCurrentWebview().setZoom()`, default 1.0, range 0.8-2.0.
+
+- **Webview zoom, not CSS.** CSS pixel coordinates are unchanged by it, so
+  `ROW_HEIGHT` stays 26 at any zoom and the virtualizer needs no knowledge of
+  the setting. Text is laid out at the target size rather than stretched.
+- **Applied before the window is shown**, inside the geometry restore that
+  already owns that moment. Afterwards would mean watching the app resize
+  itself on every launch.
+- **Ctrl+plus / minus / 0 go through the same store as the slider**, so the two
+  cannot disagree. Left unhandled, the webview may act on them itself and the
+  slider would report a zoom that is no longer true. `=` counts as plus, which
+  is how it arrives on most layouts.
+- **Rounded to one decimal on every path.** 0.1 is not representable in binary,
+  so stepping up from 0.8 lands on 0.9999999999999999 - the label would read
+  100% while the value was not 1.
+- **A rejected zoom is not persisted**, or the next launch would restore a
+  setting that never applied.
+- Capability `core:webview:allow-set-webview-zoom`, with a guard row proven to
+  fail without it.
+
+**Revised after the user's review (2026-08-03).** *"the new default for 100 is
+good!"* - 21a is confirmed, so the rebased density stands. Two changes to the
+control itself:
+
+- **Moved to the bottom-left corner**, into column 1 of the status bar's grid,
+  which was empty: the summary is centred in column 2 and the version ends
+  column 3.
+- **Two buttons instead of a slider**, with the value between them. The steps
+  are 0.1 apart over a narrow range, which suits clicking better than dragging,
+  and the buttons are the same gesture as the Ctrl+plus / Ctrl+minus that
+  already worked. Each end disables its button rather than silently refusing.
+- **That move broke the footer**, reported immediately: the version and the
+  stepper dropped to a second line. Grid auto-placement only moves *forward*,
+  so a child explicitly assigned to column 1 after one sitting in column 2
+  cannot go back and starts a new row instead. Fixed by putting the stepper
+  first in the DOM as well as leftmost on screen, and by pinning every status
+  bar child to `grid-row: 1` so the layout no longer depends on DOM order.
+  `App.css.test.ts` gained a guard for it - any `.statusbar-*` rule that sets
+  a column must also state its row - verified by removing one and watching it
+  name the offending selector.
+
 ### Media keys without focus (2026-08-03)
 
 Phase 22, and the answer to *"pressing the play/pause keyboard hotkey without
@@ -1661,7 +1733,7 @@ that will actually bite.
 
 ---
 
-**21 — Density and zoom** `feat/21-scale`
+**21 — Density and zoom** `feat/21-scale` - ✅ **confirmed by the user**
 
 > **Revised (2026-08-02), at the user's direction:** *"consider increasing
 > size across the board so the new default remains 1.0. if there's a better

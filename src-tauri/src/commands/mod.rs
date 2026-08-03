@@ -289,6 +289,23 @@ pub fn save_column_config(
     }
 }
 
+/// The stored webview zoom factor, or null if never set.
+///
+/// Kept beside the window geometry rather than with the column layout: it is
+/// a property of the window, and like geometry it has to be applied before
+/// the window is shown or the user watches the app resize itself.
+#[tauri::command]
+pub fn load_zoom(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::ZOOM)
+}
+
+#[tauri::command]
+pub fn save_zoom(db: State<'_, Db>, factor: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::ZOOM, &factor)
+}
+
 #[tauri::command]
 pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {
     let conn = db.conn()?;
