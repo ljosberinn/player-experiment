@@ -23,7 +23,7 @@ import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
-import { formatZoom, MAX_ZOOM, MIN_ZOOM, ZOOM_STEP } from "./features/shell/zoom";
+import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
 import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
@@ -39,7 +39,7 @@ export function App() {
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const zoomFactor = useZoomStore((s) => s.factor);
-  const setZoom = useZoomStore((s) => s.set);
+  const stepZoom = useZoomStore((s) => s.step);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
   const installUpdate = useUpdaterStore((s) => s.install);
@@ -352,23 +352,42 @@ export function App() {
       </div>
 
       <footer className="statusbar">
+        {/* First in the DOM as well as leftmost on screen. Grid auto-placement
+            only moves forward, so an item explicitly assigned to column 1
+            after one sitting in column 2 cannot go back and starts a new row -
+            which put the version and this control on a second line. */}
+        {/* Bottom-left, in the strip's quietest corner: a control touched once
+            and then left alone. Two buttons rather than a slider - the steps
+            are 0.1 apart over a narrow range, which is a worse fit for dragging
+            than for clicking, and the two buttons are the same gesture as the
+            Ctrl+plus / Ctrl+minus that already work. */}
+        <span className="statusbar-zoom">
+          <button
+            type="button"
+            aria-label="Zoom out"
+            disabled={zoomFactor <= MIN_ZOOM}
+            onClick={() => void stepZoom(-1)}
+          >
+            −
+          </button>
+          {/* aria-live so a screen reader hears the new value; the buttons
+              themselves keep their own labels rather than announcing it. */}
+          <span className="statusbar-zoom-value" aria-live="polite">
+            {formatZoom(zoomFactor)}
+          </span>
+          <button
+            type="button"
+            aria-label="Zoom in"
+            disabled={zoomFactor >= MAX_ZOOM}
+            onClick={() => void stepZoom(1)}
+          >
+            +
+          </button>
+        </span>
+
         <span className="statusbar-summary">
           {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
         </span>
-        {/* The status bar is the app's quietest strip, which suits a control
-            touched once and then left alone. */}
-        <label className="statusbar-zoom">
-          Scale
-          <input
-            type="range"
-            min={MIN_ZOOM}
-            max={MAX_ZOOM}
-            step={ZOOM_STEP}
-            value={zoomFactor}
-            onChange={(event) => void setZoom(Number(event.target.value))}
-          />
-          <span className="statusbar-zoom-value">{formatZoom(zoomFactor)}</span>
-        </label>
 
         {/* Only `ready` says anything. Checking and downloading happen quietly,
             and a failed check usually means the machine is offline, which is

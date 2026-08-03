@@ -833,12 +833,18 @@ input[type="radio"] {
   text-align: center;
 }
 
+/* Every child is pinned to row 1. Grid auto-placement only moves forward, so
+   an item assigned to an earlier column than the one before it starts a new
+   row instead - which is what put the version and the zoom stepper on a second
+   line. Stating the row makes the layout independent of DOM order. */
 .statusbar-summary {
   grid-column: 2;
+  grid-row: 1;
 }
 
 .statusbar-version {
   grid-column: 3;
+  grid-row: 1;
   justify-self: end;
   font-variant-numeric: tabular-nums;
 }
@@ -991,6 +997,7 @@ body:not(:focus-within) .sidebar-row.current {
    second thing to read. It is the only part of updating the user ever sees. */
 .statusbar-update {
   grid-column: 3;
+  grid-row: 1;
   justify-self: end;
   padding: 1px 10px;
   border: 1px solid var(--accent);
@@ -1143,24 +1150,40 @@ body:not(:focus-within) .sidebar-row.current {
   opacity: 0.5;
 }
 
-/* ---------- scale slider ---------- */
+/* ---------- zoom stepper ---------- */
 
+/* Column 1 of the status bar's three, which was empty: the summary is
+   centred in column 2 and the version sits at the end of column 3. */
 .statusbar-zoom {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 2px;
+}
+
+.statusbar-zoom button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--chrome-border);
+  border-radius: 2px;
+  background: transparent;
   color: var(--muted);
+  font: inherit;
+  line-height: 1;
 }
 
-.statusbar-zoom input[type="range"] {
-  width: 96px;
+.statusbar-zoom button:disabled {
+  opacity: 0.4;
 }
 
-/* Fixed width so the summary beside it does not shift as the number goes
-   from 80% to 100% - the same reasoning as the status display's fixed
-   height, one strip down. */
+/* Fixed width and tabular figures so the buttons either side do not shift as
+   the number goes from 80% to 100% - the same reasoning as the status
+   display's fixed height, one strip up. */
 .statusbar-zoom-value {
-  min-width: 34px;
-  text-align: right;
+  min-width: 38px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }

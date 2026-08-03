@@ -131,6 +131,23 @@ describe("the stylesheet", () => {
     expect(colours(dark?.body ?? "")).toEqual(colours(light?.body ?? ""));
   });
 
+  it("keeps every status bar child on one row", () => {
+    // The bar is a three-column grid. Auto-placement only moves forward, so a
+    // child assigned to an earlier column than the one before it in the DOM
+    // starts a second row instead - which is exactly how the version and the
+    // zoom stepper ended up below the summary. Stating the row on each makes
+    // the layout independent of DOM order.
+    const placed = all.filter((rule) => /\.statusbar-[\w-]+$/.test(rule.selector.trim()));
+    const withColumn = placed.filter((rule) => /grid-column:/.test(rule.body));
+
+    // Guards the guard: a selector regex that matched nothing would iterate an
+    // empty list and pass however the bar is actually laid out.
+    expect(withColumn.length).toBeGreaterThan(2);
+    for (const rule of withColumn) {
+      expect(rule.body, `${rule.selector} sets a column but no row`).toMatch(/grid-row:\s*1/);
+    }
+  });
+
   it("gives the status display a fixed height, not a growing one", () => {
     // `selector` carries any comment that preceded the rule, so this matches
     // the tail rather than the whole string.

@@ -669,6 +669,27 @@ reads as a different shape rather than a bigger one.
 - Capability `core:webview:allow-set-webview-zoom`, with a guard row proven to
   fail without it.
 
+**Revised after the user's review (2026-08-03).** *"the new default for 100 is
+good!"* - 21a is confirmed, so the rebased density stands. Two changes to the
+control itself:
+
+- **Moved to the bottom-left corner**, into column 1 of the status bar's grid,
+  which was empty: the summary is centred in column 2 and the version ends
+  column 3.
+- **Two buttons instead of a slider**, with the value between them. The steps
+  are 0.1 apart over a narrow range, which suits clicking better than dragging,
+  and the buttons are the same gesture as the Ctrl+plus / Ctrl+minus that
+  already worked. Each end disables its button rather than silently refusing.
+- **That move broke the footer**, reported immediately: the version and the
+  stepper dropped to a second line. Grid auto-placement only moves *forward*,
+  so a child explicitly assigned to column 1 after one sitting in column 2
+  cannot go back and starts a new row instead. Fixed by putting the stepper
+  first in the DOM as well as leftmost on screen, and by pinning every status
+  bar child to `grid-row: 1` so the layout no longer depends on DOM order.
+  `App.css.test.ts` gained a guard for it - any `.statusbar-*` rule that sets
+  a column must also state its row - verified by removing one and watching it
+  name the offending selector.
+
 ### Media keys without focus (2026-08-03)
 
 Phase 22, and the answer to *"pressing the play/pause keyboard hotkey without
@@ -1712,7 +1733,7 @@ that will actually bite.
 
 ---
 
-**21 — Density and zoom** `feat/21-scale` - in review
+**21 — Density and zoom** `feat/21-scale` - ✅ **confirmed by the user**
 
 > **Revised (2026-08-02), at the user's direction:** *"consider increasing
 > size across the board so the new default remains 1.0. if there's a better
