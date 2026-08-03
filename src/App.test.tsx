@@ -877,7 +877,22 @@ describe("the error popover", () => {
     expect(search).toHaveFocus();
   });
 
-  it("goes away when dismissed, and clears the error behind it", async () => {
+  it("names itself, so the message is not the only thing said", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    act(() => {
+      usePlayerStore.setState({ error: "C:/music/gone.mp3 could not be opened" });
+    });
+
+    // The message alone is often a path and a reason with no subject, and does
+    // not say on its own that the app is reporting a fault.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Something went wrong");
+    expect(alert).toHaveTextContent("could not be opened");
+  });
+
+  it("goes away when clicked away from, and clears the error behind it", async () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
@@ -886,7 +901,9 @@ describe("the error popover", () => {
     });
     await screen.findByRole("alert");
 
-    await user.click(screen.getByRole("button", { name: "Dismiss error" }));
+    // No close button: clicking anywhere else already dismisses it, and a
+    // control nothing can tab to is one the mouse could do without.
+    await user.click(document.body);
 
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     // Cleared at the source, not merely hidden: a popover that hides a live

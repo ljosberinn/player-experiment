@@ -11,8 +11,10 @@ import type React from "react";
  *
  * It does **not** take focus. An error arrives unasked - usually mid-scroll or
  * mid-selection - and a notice that grabs the caret to tell you something is a
- * notice that interrupts what you were doing. Escape and the close button
- * dismiss it; it needs no focus for either.
+ * notice that interrupts what you were doing. Clicking anywhere else dismisses
+ * it, as does Escape, and it needs no focus for either - which is also why it
+ * carries no close button: a control nothing can tab to is one the mouse could
+ * already do without.
  */
 export function ErrorPopover({
   message,
@@ -46,13 +48,15 @@ export function ErrorPopover({
               when something reaches it - which nothing will, since it never
               takes focus. */}
           <Popover.Popup className="error-popup" role="alert" initialFocus={false}>
-            <span className="error-text">{message}</span>
-            <Popover.Close
-              className="error-dismiss"
-              render={<button type="button" aria-label="Dismiss error" />}
-            >
-              ✕
-            </Popover.Close>
+            {/* A heading, because the message alone is often a path and a
+                reason with no subject: "C:/music/gone.mp3 could not be opened"
+                does not say, on its own, that the app is reporting a fault
+                rather than telling you something routine. */}
+            {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
+            <Popover.Title className="error-title" render={<h2 />}>
+              Something went wrong
+            </Popover.Title>
+            <Popover.Description className="error-text">{message}</Popover.Description>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

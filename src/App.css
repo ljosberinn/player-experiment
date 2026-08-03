@@ -587,27 +587,28 @@ input[type="radio"] {
 
 .error-popup {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 3px;
   max-width: 480px;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--danger);
   border-radius: 5px;
   background: var(--surface);
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
 }
 
-.error-text {
+/* The heading carries the colour and the message stays in the body text:
+   a whole panel of red is harder to read than a red line above one. */
+.error-title {
+  margin: 0;
   color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.error-dismiss {
-  padding: 0 5px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--muted);
-  cursor: default;
+.error-text {
+  /* Paths are long and have no spaces to wrap at. */
+  overflow-wrap: anywhere;
 }
 
 .content-notice {
