@@ -150,7 +150,7 @@ describe("TagEditor", () => {
   });
 
   it("shows the artwork when the whole selection shares it", () => {
-    const { container } = render(
+    render(
       <TagEditor
         tracks={[track({ cover_hash: "abc" }), track({ id: 2, cover_hash: "abc" })]}
         onSave={vi.fn()}
@@ -159,7 +159,10 @@ describe("TagEditor", () => {
       />,
     );
 
-    expect(container.querySelector(".status-cover")).toHaveAttribute("src", "cover-url:abc");
+    // Off `document` rather than the render container: the dialog is portalled
+    // to the body now. The cover is decorative (`alt=""`), so it has no role to
+    // query it by.
+    expect(document.querySelector(".status-cover")).toHaveAttribute("src", "cover-url:abc");
   });
 
   it("says artwork differs across a mixed selection", () => {
@@ -221,5 +224,53 @@ describe("TagEditor", () => {
 
     expect(onCancel).toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  describe("the focus trap phase 24 brought with it", () => {
+    it("never lets Tab reach the page behind it", async () => {
+      // The hand-rolled dialog had no trap at all: Tab walked straight out of
+      // it into the table behind, which stayed fully interactive.
+      //
+      // Asserted against a real element outside rather than by checking
+      // containment, because Base UI's own focus guards sit in the portal
+      // beside the popup and are legitimately focused in passing.
+      const user = userEvent.setup();
+      render(
+        <>
+          <button type="button">behind the dialog</button>
+          <TagEditor
+            tracks={[track()]}
+            onSave={vi.fn()}
+            onCancel={vi.fn()}
+            onPickCover={vi.fn(async () => null)}
+          />
+        </>,
+      );
+      // Not `getByRole`: the modal takes the rest of the page out of the
+      // accessibility tree, so the button is unreachable by role - which is
+      // half of what is being asserted here.
+      const outside = document.querySelector("button");
+      expect(outside).toHaveTextContent("behind the dialog");
+      expect(screen.queryByRole("button", { name: "behind the dialog" })).not.toBeInTheDocument();
+
+      screen.getByRole("textbox", { name: "Name" }).focus();
+      for (let i = 0; i < 40; i++) {
+        await user.tab();
+        expect(outside).not.toHaveFocus();
+      }
+    });
+
+    it("comes back round rather than falling out of the bottom", async () => {
+      const { user } = open([track()]);
+
+      // Save is the last control in the dialog.
+      screen.getByRole("button", { name: "Save" }).focus();
+      await user.tab();
+
+      // Wherever it lands, it is not on the body - which is where focus goes
+      // when a dialog lets it walk off the end.
+      expect(document.activeElement).not.toBe(document.body);
+      expect(screen.getByRole("button", { name: "Save" })).not.toHaveFocus();
+    });
   });
 });

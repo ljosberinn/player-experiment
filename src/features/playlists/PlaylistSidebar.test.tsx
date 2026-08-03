@@ -276,7 +276,13 @@ describe("PlaylistSidebar", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
     // A reflex Enter on an unexpected dialog must not destroy anything.
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    //
+    // Awaited rather than asserted outright: the menu returns focus to its
+    // trigger as it unmounts, which lands after the dialog has taken focus, so
+    // the dialog claims it again on the next frame. Without that the sidebar
+    // row would be focused behind an open dialog and Enter would reopen the
+    // very menu that asked the question.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus());
   });
 
   it("acts on the playlist that was right-clicked without opening it", async () => {

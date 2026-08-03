@@ -1,5 +1,5 @@
+import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
-import { useDialogKeys } from "../../components/ui/useDialogKeys";
 import type { FilterField, FilterGroup, FilterOp, FilterRule, FilterValue } from "../../ipc";
 import {
   addNode,
@@ -38,64 +38,67 @@ export function SmartPlaylistEditor({
 }) {
   const [draft, setDraft] = useState(filter);
   const [draftName, setDraftName] = useState(name);
-  const headingId = useId();
   const nameId = useId();
   const canSave = draftName.trim() !== "";
-  const onKeyDown = useDialogKeys({
-    onAccept: () => onSave(draftName.trim(), draft),
-    onCancel,
-    canAccept: canSave,
-  });
 
   return (
-    <div className="modal-backdrop">
-      {/* A div with role="dialog" rather than <dialog>: the native element only
-          gets its backdrop and focus trap from showModal(), which means an
-          effect, and jsdom does not implement it at all. */}
-      {/* The key handler is a dialog-level shortcut, not a control:
-          everything focusable inside stays reachable and operable on
-          its own, and Enter/Escape are what a dialog owes the user. */}
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={headingId}
-        onKeyDown={onKeyDown}
-      >
-        <h2 id={headingId}>{title}</h2>
+    // As with the tag editor: open on render, Escape is the library's, and
+    // Enter-to-save is a real submit rather than a key handler that has to
+    // guess which elements to leave alone. That matters more here - the tree
+    // is full of selects and buttons, which is precisely the list
+    // `useDialogKeys` was maintaining by hand.
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onCancel();
+        }
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Backdrop className="modal-backdrop" />
+        <Dialog.Popup
+          className="modal"
+          render={
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (canSave) {
+                  onSave(draftName.trim(), draft);
+                }
+              }}
+            />
+          }
+        >
+          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
+          <Dialog.Title render={<h2 />}>{title}</Dialog.Title>
 
-        <label className="modal-field" htmlFor={nameId}>
-          Name
-          <input
-            id={nameId}
-            value={draftName}
-            onChange={(event) => setDraftName(event.currentTarget.value)}
-          />
-        </label>
+          <label className="modal-field" htmlFor={nameId}>
+            Name
+            <input
+              id={nameId}
+              value={draftName}
+              onChange={(event) => setDraftName(event.currentTarget.value)}
+            />
+          </label>
 
-        <GroupEditor group={draft} path={[]} root onChange={setDraft} />
+          <GroupEditor group={draft} path={[]} root onChange={setDraft} />
 
-        <p className="modal-summary">
-          {countRules(draft) === 0
-            ? "No conditions yet — this playlist will hold your whole library."
-            : `${countRules(draft)} condition${countRules(draft) === 1 ? "" : "s"}.`}
-        </p>
+          <p className="modal-summary">
+            {countRules(draft) === 0
+              ? "No conditions yet — this playlist will hold your whole library."
+              : `${countRules(draft)} condition${countRules(draft) === 1 ? "" : "s"}.`}
+          </p>
 
-        <div className="modal-actions">
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={!canSave}
-            onClick={() => onSave(draftName.trim(), draft)}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
+          <div className="modal-actions">
+            <Dialog.Close render={<button type="button" />}>Cancel</Dialog.Close>
+            <button type="submit" className="primary" disabled={!canSave}>
+              Save
+            </button>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

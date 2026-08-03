@@ -91,7 +91,8 @@ export function ContextMenu({
 
 function renderItem(item: MenuItem, index: number) {
   if (item.kind === "separator") {
-    // biome-ignore lint/suspicious/noArrayIndexKey: a menu's items are a fixed list built at open time, never reordered.
+    // Keyed by index: a menu's items are a fixed list built at open time and
+    // never reordered, and a separator has nothing else to key on.
     return <Base.Separator key={`sep-${index}`} className="context-separator" />;
   }
 
