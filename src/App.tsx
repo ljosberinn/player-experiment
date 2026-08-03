@@ -5,19 +5,20 @@ import { Toolbar } from "@base-ui/react/toolbar";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
 import { Sidebar } from "./components/ui/Sidebar";
-import { StatusDisplay } from "./components/ui/StatusDisplay";
 import { TabBar } from "./components/ui/TabBar";
 import { TitleBar } from "./components/ui/TitleBar";
-import { Transport } from "./components/ui/Transport";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { BrowseView } from "./features/library/BrowseView";
 import { resolveColumns } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
+import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
+import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
+import { PlayerTransport } from "./features/player/PlayerTransport";
 import { usePlayerStore } from "./features/player/store";
 import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
@@ -61,28 +62,19 @@ export function App() {
   const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const showPlaylist = useLibraryStore((s) => s.showPlaylist);
-  const searchInput = useLibraryStore((s) => s.searchInput);
   const search = useLibraryStore((s) => s.search);
-  const setSearch = useLibraryStore((s) => s.setSearch);
-  const commitSearch = useLibraryStore((s) => s.commitSearch);
+  // The field itself lives in `SearchBox`; this is for the empty-state's way
+  // out of a search that found nothing. An action, so it never changes.
   const clearSearch = useLibraryStore((s) => s.clearSearch);
   const refresh = useLibraryStore((s) => s.refresh);
   const removeMissing = useLibraryStore((s) => s.removeMissing);
   const error = useLibraryStore((s) => s.error);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
-  const status = usePlayerStore((s) => s.status);
   const nowPlaying = usePlayerStore((s) => s.track);
-  const positionMs = usePlayerStore((s) => s.positionMs);
-  const volume = usePlayerStore((s) => s.volume);
   const playerError = usePlayerStore((s) => s.error);
   const connect = usePlayerStore((s) => s.connect);
   const play = usePlayerStore((s) => s.play);
-  const toggle = usePlayerStore((s) => s.toggle);
-  const next = usePlayerStore((s) => s.next);
-  const previous = usePlayerStore((s) => s.previous);
-  const seek = usePlayerStore((s) => s.seek);
-  const setVolume = usePlayerStore((s) => s.setVolume);
 
   const playlists = usePlaylistsStore((s) => s.playlists);
   const notice = usePlaylistsStore((s) => s.notice);
@@ -253,58 +245,18 @@ export function App() {
   // persist: inside a static playlist, showing it in its own order. Sorted by
   // a column the arrangement is derived and a drop would have nowhere to go.
   const reorderable = editable && sortBy === "position";
-  const searchScope = playlistId === null ? "Search Library" : `Search ${currentPlaylistName}`;
 
   return (
     <div className="app">
       <TitleBar>
-        <Transport
-          playing={status === "playing"}
-          volume={volume}
-          onPrevious={() => void previous()}
-          onPlayPause={() => void toggle()}
-          onNext={() => void next()}
-          onVolumeChange={(value) => void setVolume(value)}
-        />
-        <StatusDisplay
-          ref={statusRef}
-          track={nowPlaying}
-          positionMs={positionMs}
-          summary={formatLibrarySummary(stats.tracks, stats.durationMs)}
-          onSeek={(value) => void seek(value)}
-        />
-        {/* The search is scoped to the current view, so it says which one. */}
-        <div className="search-box">
-          <input
-            className="search"
-            type="search"
-            placeholder={searchScope}
-            aria-label={searchScope}
-            value={searchInput}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              // Enter runs the pending search rather than waiting out the
-              // debounce; Escape clears, the way every search field does.
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void commitSearch();
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                void clearSearch();
-              }
-            }}
-          />
-          {searchInput === "" ? null : (
-            <button
-              type="button"
-              className="search-clear"
-              aria-label="Clear search"
-              onClick={() => void clearSearch()}
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        <PlayerTransport />
+        {/* Both of these subscribe to their own store values rather than
+            taking them as props. They are the two things that change on a
+            schedule of their own - the playhead four times a second, the
+            search field on every keystroke - and read from here they
+            re-rendered the whole app, song table included. */}
+        <NowPlayingStatus ref={statusRef} />
+        <SearchBox />
       </TitleBar>
 
       <div className="body">
