@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -20,6 +20,7 @@ import {
   listPlaylists,
   loadWindowGeometry,
   moveInPlaylist,
+  onLibraryChanged,
   type Playlist,
   playerPlay,
   playerSnapshot,
@@ -42,6 +43,7 @@ vi.mock("./ipc", () => ({
   addWatchFolder: vi.fn(),
   scanLibrary: vi.fn(),
   onScanProgress: vi.fn(async () => () => {}),
+  onLibraryChanged: vi.fn(async () => () => {}),
   coverUrl: vi.fn((hash: string) => `cover-url:${hash}`),
   onPlayerState: vi.fn(async () => () => {}),
   onPlayerPosition: vi.fn(async () => () => {}),
@@ -798,6 +800,28 @@ describe("removing missing songs", () => {
 
     expect(removeMissingTracks).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("stops offering the removal once the backend says a file came back", async () => {
+    // Playing a track whose file has returned clears its mark in the backend,
+    // which emits `library://changed`. The view has no other way to find out:
+    // the row would keep its marker and the toolbar would keep offering to
+    // remove a song that is no longer missing.
+    let announce: (() => void) | undefined;
+    vi.mocked(onLibraryChanged).mockImplementation(async (handler) => {
+      announce = handler;
+      return () => {};
+    });
+    statsMock.mockResolvedValue({ ...stats(5), missing: 1 });
+    render(<App />);
+    await screen.findByRole("button", { name: "Remove 1 Missing" });
+
+    statsMock.mockResolvedValue({ ...stats(5), missing: 0 });
+    act(() => announce?.());
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Missing/ })).not.toBeInTheDocument(),
+    );
   });
 
   it("removes them on confirmation and reports how many went", async () => {

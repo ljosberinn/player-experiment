@@ -182,6 +182,19 @@ pub fn mark_missing(conn: &Connection, id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// Clears one track's mark, for the player: a file that opens is there.
+///
+/// Resolves to whether anything changed, which is nearly always false - the
+/// caller only needs to react on the rare occasion that a file has come back,
+/// and reloading the view on every track change would be waste.
+pub fn clear_missing(conn: &Connection, id: i64) -> AppResult<bool> {
+    let changed = conn.execute(
+        "UPDATE tracks SET missing_since = NULL WHERE id = ?1 AND missing_since IS NOT NULL",
+        [id],
+    )?;
+    Ok(changed > 0)
+}
+
 /// Deletes every track currently marked missing, returning how many went.
 ///
 /// The only place library rows are destroyed. Playlist entries follow through

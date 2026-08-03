@@ -255,6 +255,18 @@ export function onScanProgress(handler: (progress: ScanProgress) => void): Promi
 }
 
 /**
+ * Something changed the library behind the view's back.
+ *
+ * Emitted sparingly and only when a row really changed - today, when playing a
+ * track clears a missing mark left over from an unplugged drive. The player
+ * reports every load, so a handler that ran on all of them would drop every
+ * cached page once per song.
+ */
+export function onLibraryChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("library://changed", () => handler());
+}
+
+/**
  * Replaces the play queue with `trackIds` and starts at `index`.
  *
  * Ids rather than rows: the backend resolves paths and durations itself, so a

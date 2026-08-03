@@ -29,7 +29,7 @@ import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import { type AppInfo, exportLibrary, getAppInfo } from "./ipc";
+import { type AppInfo, exportLibrary, getAppInfo, onLibraryChanged } from "./ipc";
 import { formatLibrarySummary } from "./lib/format";
 
 const SIDEBAR_SECTIONS = [
@@ -152,6 +152,26 @@ export function App() {
   useEffect(() => {
     void refreshUndo();
   }, [refreshUndo]);
+
+  useEffect(() => {
+    // Playing a track whose file has come back clears its missing mark, and
+    // the view has no other way to find out: the row still shows the marker
+    // and the toolbar still offers to remove it. The backend only emits this
+    // when a row actually changed, so the reload is rare rather than per song.
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void onLibraryChanged(() => void refresh()).then((off) => {
+      if (cancelled) {
+        off();
+      } else {
+        stop = off;
+      }
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [refresh]);
 
   useEffect(() => {
     // Read once from the backend rather than baked in at build time: the Rust

@@ -280,6 +280,35 @@ fn a_rescan_does_not_move_the_moment_a_file_went_missing() {
 }
 
 #[test]
+fn playing_a_marked_file_that_opens_clears_the_mark() {
+    // The other way a mark goes away, and the one that needs no scan: the
+    // player reports every successful load, and a file that opens is a file
+    // that is there. Reported from a real build - a drive came back, the song
+    // played, and the row kept its exclamation mark until the next rescan.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    let id = all_tracks(&conn)
+        .into_iter()
+        .find(|t| t.path.ends_with("01 Maki.mp3"))
+        .expect("Maki")
+        .id;
+
+    scan::mark_missing(&conn, id).unwrap();
+    assert!(missing_since(&h.db, "01 Maki.mp3").is_some());
+
+    // True: something changed, which is what tells the view to reload.
+    assert!(scan::clear_missing(&conn, id).unwrap());
+    assert!(missing_since(&h.db, "01 Maki.mp3").is_none());
+
+    // False the second time, and on every ordinary track. The player emits a
+    // load event per song; reloading the whole view each time would be waste.
+    assert!(!scan::clear_missing(&conn, id).unwrap());
+}
+
+#[test]
 fn removing_missing_tracks_is_the_only_thing_that_deletes_rows() {
     let h = harness();
     fixture::library(&h.music);

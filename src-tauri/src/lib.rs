@@ -163,6 +163,20 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
                 let _ = scan::mark_missing(&conn, *track_id);
             }
         }
+        Event::Loaded(track_id) => {
+            // The mirror: a file that opens is a file that is there, so a mark
+            // left over from an unplugged drive is stale the moment it plays.
+            //
+            // The event is emitted on every load and the mark is almost never
+            // there, so the view is only told when something actually changed -
+            // a refresh per track change would drop every cached page for
+            // nothing.
+            if let Ok(conn) = db.conn() {
+                if scan::clear_missing(&conn, *track_id).unwrap_or(false) {
+                    let _ = app.emit("library://changed", ());
+                }
+            }
+        }
     })
 }
 

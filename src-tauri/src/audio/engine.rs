@@ -64,6 +64,10 @@ pub enum Event {
     /// marks it missing - a failed play is a cheaper signal than a scan, and
     /// arrives at the moment the user finds out anyway.
     LoadFailed(i64),
+    /// This track opened. The mirror of `LoadFailed`: a file that plays is a
+    /// file that is there, so any mark on it is stale and the owner clears it
+    /// without waiting for a scan.
+    Loaded(i64),
 }
 
 /// The engine's view of itself. The thread turns this into a
@@ -252,6 +256,7 @@ impl<S: AudioSink> Engine<S> {
                     self.status = PlaybackStatus::Playing;
                     self.counted = false;
                     self.last_position_ms = 0;
+                    events.push(Event::Loaded(entry.track_id));
                     events.push(Event::StateChanged);
                     return events;
                 }
@@ -374,7 +379,9 @@ mod tests {
             index: 1,
         });
 
-        assert_eq!(events, vec![Event::StateChanged]);
+        // `Loaded` first: the file opened, which is what clears a stale
+        // missing mark, and only then is there a new state to report.
+        assert_eq!(events, vec![Event::Loaded(2), Event::StateChanged]);
         let state = engine.state();
         assert_eq!(state.status, PlaybackStatus::Playing);
         assert_eq!(state.track_id, Some(2));
