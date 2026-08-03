@@ -12,8 +12,8 @@ use crate::db::{playback, playlists, query, settings, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::model::{
-    AppInfo, FilterGroup, LibraryStats, PlayerSnapshot, Playlist, ScanSummary, TagEdit,
-    TagWriteSummary, Track, TrackQuery,
+    AppInfo, BrowseGroup, BrowseKind, FilterGroup, LibraryStats, PlayerSnapshot, Playlist,
+    ScanSummary, TagEdit, TagWriteSummary, Track, TrackQuery,
 };
 use crate::{scan, tags};
 
@@ -84,6 +84,21 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
 pub fn library_stats(db: State<'_, Db>, query: TrackQuery) -> AppResult<LibraryStats> {
     let conn = db.conn()?;
     query::library_stats(&conn, &query)
+}
+
+/// The albums, artists or genres inside the current view.
+///
+/// Takes the same `query` the songs table uses so a search or an open playlist
+/// narrows both alike, and `kind` separately because which grouping to show is
+/// a property of the open tab rather than of the query.
+#[tauri::command]
+pub fn browse_groups(
+    db: State<'_, Db>,
+    query: TrackQuery,
+    kind: BrowseKind,
+) -> AppResult<Vec<BrowseGroup>> {
+    let conn = db.conn()?;
+    query::browse_groups(&conn, &query, kind)
 }
 
 /// Ids of every track matching `query`, for "select all".

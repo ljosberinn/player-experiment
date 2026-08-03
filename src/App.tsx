@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import { Sidebar } from "./components/ui/Sidebar";
 import { StatusDisplay } from "./components/ui/StatusDisplay";
-import { TabBar, type ViewTab } from "./components/ui/TabBar";
+import { TabBar } from "./components/ui/TabBar";
 import { TitleBar } from "./components/ui/TitleBar";
 import { Transport } from "./components/ui/Transport";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
+import { BrowseView } from "./features/library/BrowseView";
 import { columnsFor, DEFAULT_COLUMN_IDS } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
 import { SongTable } from "./features/library/SongTable";
@@ -31,7 +32,6 @@ const SIDEBAR_SECTIONS = [
 ];
 
 export function App() {
-  const [tab, setTab] = useState<ViewTab>("songs");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const updateStatus = useUpdaterStore((s) => s.status);
@@ -41,6 +41,10 @@ export function App() {
   const total = useLibraryStore((s) => s.total);
   const stats = useLibraryStore((s) => s.stats);
   const playlistId = useLibraryStore((s) => s.playlistId);
+  const tab = useLibraryStore((s) => s.tab);
+  const showTab = useLibraryStore((s) => s.showTab);
+  const browse = useLibraryStore((s) => s.browse);
+  const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const showPlaylist = useLibraryStore((s) => s.showPlaylist);
   const searchInput = useLibraryStore((s) => s.searchInput);
@@ -249,7 +253,7 @@ export function App() {
 
         <main className="content">
           <div className="content-header">
-            <TabBar active={tab} onChange={setTab} />
+            <TabBar active={tab} onChange={(next) => void showTab(next)} />
             <div className="scanbar">
               {/* Get Info is no longer a button here: it lives on the row's
                   right-click menu, where a per-song action belongs, and on
@@ -277,7 +281,18 @@ export function App() {
             </p>
           ) : null}
 
-          {total === 0 && playlistId !== null && search === "" ? (
+          {browse !== null ? (
+            // The way back out of a drill-in. A breadcrumb rather than the tab
+            // itself: clicking Albums again while inside an album should be a
+            // no-op, not a hidden back button.
+            <button type="button" className="browse-back" onClick={() => void closeGroup()}>
+              ‹ All {tab}
+            </button>
+          ) : null}
+
+          {tab !== "songs" && browse === null ? (
+            <BrowseView kind={tab} />
+          ) : total === 0 && playlistId !== null && search === "" ? (
             // An empty playlist is neither an empty library nor a search that
             // found nothing, and both of those give unhelpful advice here.
             <p className="empty-state">

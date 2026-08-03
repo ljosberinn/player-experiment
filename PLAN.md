@@ -605,6 +605,41 @@ Installers are published from CI, versioned from the commit history.
   is proven, but whether `release-please-action` picks up this config and
   whether the bundle paths are right are things only the first run answers.
 
+### Browsing by album, artist and genre (2026-08-03)
+
+Phase 19. The three dead tabs are live, and the shape of it is one query plus
+one condition rather than a second table.
+
+- **`browse_groups` runs through the same `scope()` the songs table uses**, so
+  a search or an open playlist narrows the album list exactly as it narrows the
+  rows - without a second notion of what the current view contains. That reuse
+  is the whole reason this is small.
+- **Drilling in is `TrackQuery.browse`**, not a view of its own, so paging,
+  sorting, select-all, the play queue and export keep working inside an album
+  with no second code path.
+- **`IS ?` rather than `= ?`.** A bound NULL equals nothing in SQL, so `=`
+  would return an empty view for the untagged group; dropping the clause
+  instead would return the whole library while looking like it worked. Both
+  failure modes are silent, so both have tests.
+- **Grouped on `coalesce(nullif(album_artist,''), nullif(artist,''))`** so a
+  compilation stays one album rather than shattering per track, and a tag
+  written as `""` is absent rather than its own group sorting above everything.
+  Albums are keyed by title *and* artist: two artists with an eponymous album
+  are two albums.
+- **"Unknown Album" is a frontend label, not a stored value**, so an album
+  genuinely named that stays distinguishable from an untagged one.
+- **The group list deliberately ignores an open drill-in.** Otherwise opening
+  an album collapses the album list to that album and there is no way back -
+  which is why it has its own test.
+- **Unpaged, virtualized anyway.** Ten thousand tracks is a few hundred albums;
+  a window cache and a count query to render that would be machinery for
+  nothing. A perf guard covers all three groupings, since this is the one query
+  in the app with no `LIMIT` behind it.
+- **The React key is two keys joined by U+001F.** With a space, album "A" by
+  "B C" and album "A B" by "C" collide and React reuses one tile for the other.
+- **The e2e suite now switches tabs**, because "three of four tabs do nothing"
+  is exactly the class of defect a smoke test should have been catching.
+
 ### release-please vs the formatter (2026-08-03)
 
 The first release PR failed `biome check`, and would have failed on every
@@ -1476,10 +1511,11 @@ before the dialog, and that the non-suggested fields have no combobox at all.
 
 ---
 
-**19 — Browse by album, artist and genre** `feat/19-browse`
-The Songs / Albums / Artists / Genres tabs are rendered `disabled` with a
-"Not implemented yet" tooltip. They have been since phase 3, and they are the
-last piece of the reference layout that is chrome rather than function.
+**19 — Browse by album, artist and genre** `feat/19-browse` — 🔄 **in review**
+The Songs / Albums / Artists / Genres tabs were rendered `disabled` with a
+"Not implemented yet" tooltip from phase 3 until this one - three quarters of
+the primary navigation being dead chrome, and the last piece of the reference
+layout that was decoration rather than function.
 
 - **A grouped query, not a new store.** Albums are
   `SELECT album, album_artist, count(*), sum(duration_ms), min(cover_hash),

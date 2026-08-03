@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Track, TrackQuery } from "../../ipc";
-import { allTrackIds, libraryStats, queryTracks } from "../../ipc";
+import type { BrowseGroup, Track, TrackQuery } from "../../ipc";
+import { allTrackIds, browseGroups, libraryStats, queryTracks } from "../../ipc";
 import { PAGE_SIZE } from "./pageCache";
 import { SEARCH_DEBOUNCE_MS, useLibraryStore } from "./store";
 
@@ -9,6 +9,7 @@ vi.mock("../../ipc", () => ({
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
+  browseGroups: vi.fn(async () => []),
 }));
 
 const statsMock = vi.mocked(libraryStats);
@@ -20,6 +21,19 @@ function stats(tracks: number) {
 
 const queryTracksMock = vi.mocked(queryTracks);
 const allTrackIdsMock = vi.mocked(allTrackIds);
+const browseGroupsMock = vi.mocked(browseGroups);
+
+function browseGroup(over: Partial<BrowseGroup> = {}): BrowseGroup {
+  return {
+    key: "Shields",
+    secondary: "Grizzly Bear",
+    trackCount: 10,
+    durationMs: 1000,
+    coverHash: null,
+    year: 2012,
+    ...over,
+  };
+}
 
 function track(id: number): Track {
   return {
@@ -64,11 +78,16 @@ beforeEach(() => {
     direction: "asc",
     sortBeforeSearch: null,
     playlistId: null,
+    tab: "songs",
+    browse: null,
+    groups: [],
+    groupsLoading: false,
     selection: { ids: new Set(), anchorIndex: null },
     error: null,
     queryToken: 0,
   });
   statsMock.mockResolvedValue(stats(1000));
+  browseGroupsMock.mockResolvedValue([]);
   queryTracksMock.mockImplementation(async (query) => rowsFor(query));
 });
 
@@ -463,5 +482,155 @@ describe("stale responses", () => {
     await pending;
 
     expect(useLibraryStore.getState().pages.size).toBe(0);
+  });
+});
+
+describe("browse tabs", () => {
+  it("loads the open tab's groups and leaves songs alone", async () => {
+    browseGroupsMock.mockResolvedValue([browseGroup()]);
+
+    await useLibraryStore.getState().showTab("albums");
+
+    expect(browseGroupsMock).toHaveBeenCalledTimes(1);
+    expect(browseGroupsMock.mock.calls[0]?.[1]).toBe("albums");
+    expect(useLibraryStore.getState().groups).toHaveLength(1);
+  });
+
+  it("asks for no groups at all on the songs tab", async () => {
+    await useLibraryStore.getState().refresh();
+
+    expect(browseGroupsMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the previous tab's groups rather than showing them under the new one", async () => {
+    browseGroupsMock.mockResolvedValue([browseGroup()]);
+    await useLibraryStore.getState().showTab("albums");
+
+    // Slow enough that the stale groups would be visible if they were kept.
+    browseGroupsMock.mockImplementation(() => new Promise(() => []));
+    const pending = useLibraryStore.getState().showTab("artists");
+
+    expect(useLibraryStore.getState().groups).toEqual([]);
+    void pending;
+  });
+
+  it("narrows the group list by the search, the way it narrows rows", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    browseGroupsMock.mockClear();
+
+    useLibraryStore.setState({ search: "bear" });
+    await useLibraryStore.getState().refresh();
+
+    expect(browseGroupsMock.mock.calls[0]?.[0].search).toBe("bear");
+  });
+
+  it("keeps the search across a tab change", async () => {
+    useLibraryStore.setState({ search: "bear", searchInput: "bear" });
+
+    await useLibraryStore.getState().showTab("albums");
+
+    // Asking the same question of a different view is the point of the tabs;
+    // re-typing it to switch would be the annoying part.
+    expect(useLibraryStore.getState().search).toBe("bear");
+  });
+
+  it("does not let an open drill-in filter the list it came from", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    browseGroupsMock.mockClear();
+
+    await useLibraryStore.getState().refresh();
+
+    // Otherwise opening an album collapses the album list to that one album,
+    // and there is no way back.
+    expect(browseGroupsMock.mock.calls[0]?.[0].browse).toBeNull();
+  });
+
+  it("scopes the songs query to the group that was opened", async () => {
+    await useLibraryStore.getState().showTab("albums");
+
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    expect(useLibraryStore.getState().browse).toEqual({
+      kind: "albums",
+      key: "Shields",
+      secondary: "Grizzly Bear",
+    });
+    expect(statsMock.mock.calls.at(-1)?.[0].browse).toEqual({
+      kind: "albums",
+      key: "Shields",
+      secondary: "Grizzly Bear",
+    });
+  });
+
+  it("carries a null key through rather than dropping the filter", async () => {
+    await useLibraryStore.getState().showTab("albums");
+
+    await useLibraryStore.getState().openGroup(browseGroup({ key: null, secondary: null }));
+
+    // A dropped filter would show the whole library as though it were the
+    // untagged group, which is the failure that looks like success.
+    expect(useLibraryStore.getState().browse).toEqual({
+      kind: "albums",
+      key: null,
+      secondary: null,
+    });
+  });
+
+  it("opens an album in track order, not the library's artist order", async () => {
+    await useLibraryStore.getState().showTab("albums");
+
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+  });
+
+  it("returns to the group list without changing tab", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    await useLibraryStore.getState().closeGroup();
+
+    expect(useLibraryStore.getState().browse).toBeNull();
+    expect(useLibraryStore.getState().tab).toBe("albums");
+  });
+
+  it("drops the drill-in when the playlist changes", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    await useLibraryStore.getState().showPlaylist(7);
+
+    // That album is unlikely to be in the playlist, and a stale filter would
+    // show an empty view for no visible reason.
+    expect(useLibraryStore.getState().browse).toBeNull();
+  });
+
+  it("drops a group list that a newer query has already superseded", async () => {
+    useLibraryStore.setState({ tab: "albums" });
+    // Resolvers are captured per call rather than relying on which refresh
+    // reaches the mock first - that ordering is a microtask detail, and a test
+    // that depends on it deadlocks instead of failing.
+    const resolvers: ((groups: BrowseGroup[]) => void)[] = [];
+    browseGroupsMock.mockImplementation(
+      () =>
+        new Promise<BrowseGroup[]>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    const stale = useLibraryStore.getState().refresh();
+    await vi.waitFor(() => expect(resolvers).toHaveLength(1));
+
+    const fresh = useLibraryStore.getState().refresh();
+    await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+
+    // The newer query answers first, then the one it superseded.
+    resolvers[1]?.([browseGroup({ key: "Newer" })]);
+    await fresh;
+    resolvers[0]?.([browseGroup({ key: "Stale" })]);
+    await stale;
+
+    expect(useLibraryStore.getState().groups.map((g) => g.key)).toEqual(["Newer"]);
   });
 });

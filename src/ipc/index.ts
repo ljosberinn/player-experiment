@@ -1,6 +1,9 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "./bindings/AppInfo";
+import type { BrowseFilter } from "./bindings/BrowseFilter";
+import type { BrowseGroup } from "./bindings/BrowseGroup";
+import type { BrowseKind } from "./bindings/BrowseKind";
 import type { Combinator } from "./bindings/Combinator";
 import type { CoverEdit } from "./bindings/CoverEdit";
 import type { ExportScope } from "./bindings/ExportScope";
@@ -27,6 +30,9 @@ import type { TrackQuery } from "./bindings/TrackQuery";
 
 export type {
   AppInfo,
+  BrowseFilter,
+  BrowseGroup,
+  BrowseKind,
   Combinator,
   CoverEdit,
   ExportScope,
@@ -89,6 +95,19 @@ export function countTracks(query: TrackQuery): Promise<number> {
  */
 export function libraryStats(query: TrackQuery): Promise<LibraryStats> {
   return invoke<LibraryStats>("library_stats", { query });
+}
+
+/**
+ * The albums, artists or genres inside a view.
+ *
+ * Takes the same query the songs table uses, so a search or an open playlist
+ * narrows this list exactly as it narrows the rows. `kind` is separate because
+ * which grouping to show belongs to the open tab, not to the query.
+ *
+ * Unpaged: a library of tens of thousands of tracks is a few hundred albums.
+ */
+export function browseGroups(query: TrackQuery, kind: BrowseKind): Promise<BrowseGroup[]> {
+  return invoke<BrowseGroup[]>("browse_groups", { query, kind });
 }
 
 /**
@@ -279,6 +298,7 @@ export function coverUrl(hash: string): string {
 export const defaultTrackQuery: TrackQuery = {
   search: null,
   playlistId: null,
+  browse: null,
   sortBy: "artist",
   direction: "asc",
   offset: 0,

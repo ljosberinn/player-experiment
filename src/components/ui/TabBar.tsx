@@ -1,17 +1,20 @@
+import type { ViewTab } from "../../features/library/store";
+
 /**
  * The capsule segmented control under the toolbar.
  *
- * Only Songs is implemented; the rest are declared so the chrome matches the
- * reference layout and later phases have somewhere to land.
+ * The type is imported rather than declared here because which tab is open is
+ * store state now, not this component's: switching tabs re-runs the query, so
+ * the store has to own it.
  */
-export type ViewTab = "songs" | "albums" | "artists" | "genres";
-
-const TABS: { id: ViewTab; label: string; enabled: boolean }[] = [
-  { id: "songs", label: "Songs", enabled: true },
-  { id: "albums", label: "Albums", enabled: false },
-  { id: "artists", label: "Artists", enabled: false },
-  { id: "genres", label: "Genres", enabled: false },
+const TABS: { id: ViewTab; label: string }[] = [
+  { id: "songs", label: "Songs" },
+  { id: "albums", label: "Albums" },
+  { id: "artists", label: "Artists" },
+  { id: "genres", label: "Genres" },
 ];
+
+export type { ViewTab };
 
 export function TabBar({
   active,
@@ -28,8 +31,6 @@ export function TabBar({
           type="button"
           role="tab"
           aria-selected={tab.id === active}
-          disabled={!tab.enabled}
-          title={tab.enabled ? undefined : "Not implemented yet"}
           className="tab"
           onClick={() => onChange(tab.id)}
         >

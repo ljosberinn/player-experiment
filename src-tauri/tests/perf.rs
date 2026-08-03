@@ -9,7 +9,7 @@
 use std::time::Instant;
 
 use player_lib::db::{query, Db};
-use player_lib::model::{SortDirection, SortField, TrackQuery};
+use player_lib::model::{BrowseFilter, BrowseKind, SortDirection, SortField, TrackQuery};
 
 const ROWS: usize = 10_000;
 
@@ -226,5 +226,53 @@ fn totalling_a_filtered_view_stays_cheap() {
 
     assert_under("filtered totals", 60, || {
         assert!(query::library_stats(&conn, &q).unwrap().tracks > 0);
+    });
+}
+
+#[test]
+fn browsing_stays_cheap_on_every_grouping() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery::default();
+
+    // The one query in the app with no LIMIT behind it: a GROUP BY reads every
+    // row in scope rather than a window. That is inherent - a list of albums is
+    // a fact about the whole library - so the budget is looser than a page's.
+    // What it catches is the shape going wrong: a correlated subquery per
+    // group, or grouping in Rust after fetching every row.
+    // Albums are keyed by (album, artist), and the fixture cycles those at 800
+    // and 250, so it produces lcm(800, 250) = 4000 pairs rather than 800 - each
+    // album title is reused by many artists. No real library looks like that;
+    // it just makes this a harder case than the one it stands in for.
+    for (kind, expected) in [
+        (BrowseKind::Albums, 4000),
+        (BrowseKind::Artists, 250),
+        (BrowseKind::Genres, 20),
+    ] {
+        assert_under(&format!("browse {kind:?}"), 120, || {
+            let groups = query::browse_groups(&conn, &q, kind).unwrap();
+            assert_eq!(groups.len(), expected);
+        });
+    }
+}
+
+#[test]
+fn drilling_into_a_group_is_as_cheap_as_any_other_page() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery {
+        browse: Some(BrowseFilter {
+            kind: BrowseKind::Artists,
+            key: Some("Artist042".to_owned()),
+            secondary: None,
+        }),
+        limit: 100,
+        ..Default::default()
+    };
+
+    // A drill-in is the ordinary paged query with one more condition, so it
+    // must stay in the page budget rather than drifting toward the group one.
+    assert_under("album drill-in", 60, || {
+        assert_eq!(query::query_tracks(&conn, &q).unwrap().len(), 40);
     });
 }

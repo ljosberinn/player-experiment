@@ -134,6 +134,57 @@ impl SortDirection {
     }
 }
 
+/// Which grouping the browse views present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum BrowseKind {
+    Albums,
+    Artists,
+    Genres,
+}
+
+/// One row of a browse view: an album, an artist or a genre.
+///
+/// `key` is `None` for untagged files rather than an empty string, so "no
+/// album" is one group instead of colliding with a real album literally named
+/// "Unknown Album". The frontend supplies the label; the database says only
+/// that the tag is absent.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BrowseGroup {
+    pub key: Option<String>,
+    /// Albums only: the artist the album is filed under. `None` everywhere
+    /// else, and also for an album whose artist tags are all empty.
+    pub secondary: Option<String>,
+    pub track_count: u32,
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    /// Any one cover from the group - they are per-album in practice, and
+    /// `covers.hash` already dedupes the bytes behind them.
+    pub cover_hash: Option<String>,
+    #[ts(type = "number | null")]
+    pub year: Option<i64>,
+}
+
+/// Restricts the songs table to one browse group.
+///
+/// Carried on [`TrackQuery`] rather than being a query of its own: drilling
+/// into an album is the existing view with one more condition, so paging,
+/// searching, sorting, select-all and the play queue keep working unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BrowseFilter {
+    pub kind: BrowseKind,
+    /// `None` matches the untagged group - `IS NULL`, not "no filter".
+    pub key: Option<String>,
+    /// Applied only when `kind` is `Albums`, where `None` likewise means the
+    /// album whose artist is untagged.
+    pub secondary: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -147,6 +198,11 @@ pub struct TrackQuery {
     /// inside a playlist without a second code path.
     #[ts(type = "number | null")]
     pub playlist_id: Option<i64>,
+    /// Restricts the query to one album, artist or genre.
+    ///
+    /// Composes with everything else rather than replacing it: an album opened
+    /// while a search is running shows that album's matching tracks.
+    pub browse: Option<BrowseFilter>,
     pub sort_by: SortField,
     pub direction: SortDirection,
     pub offset: u32,
@@ -158,6 +214,7 @@ impl Default for TrackQuery {
         Self {
             search: None,
             playlist_id: None,
+            browse: None,
             sort_by: SortField::Artist,
             direction: SortDirection::Asc,
             offset: 0,
