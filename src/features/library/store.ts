@@ -7,13 +7,25 @@ import {
   browseGroups,
   type LibraryStats,
   libraryStats,
+  loadColumnConfig,
   queryTracks,
   type SortDirection,
   type SortField,
+  saveColumnConfig,
   type Track,
   type TrackQuery,
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
+import {
+  type ColumnConfig,
+  DEFAULT_COLUMN_CONFIG,
+  moveColumn,
+  parseColumnConfig,
+  resizeColumn,
+  serializeColumnConfig,
+  toggleColumn,
+  visibleSort,
+} from "./columns";
 import {
   evictFarPages,
   missingPages,
@@ -72,6 +84,14 @@ interface LibraryState {
   /** The albums, artists or genres of the open browse tab. */
   groups: BrowseGroup[];
   groupsLoading: boolean;
+  /**
+   * Which columns this view shows, in what order, at what widths.
+   *
+   * Per view rather than global: `playlists.columns_json` has been in the
+   * schema since phase 2, and a playlist of podcasts wants different columns
+   * from the library.
+   */
+  columns: ColumnConfig;
   sortBy: SortField;
   direction: SortDirection;
   /**
@@ -99,6 +119,18 @@ interface LibraryState {
   loadGroups: (token: number) => Promise<void>;
   /** Switches the view to a playlist, or back to the whole library. */
   showPlaylist: (playlistId: number | null) => Promise<void>;
+  /** Shows or hides one column, and persists the result for this view. */
+  toggleColumn: (id: SortField) => Promise<void>;
+  /** Reorders a column by dragging its header. */
+  moveColumn: (id: SortField, toIndex: number) => Promise<void>;
+  /** Resizes a column by dragging its divider. */
+  resizeColumn: (id: SortField, width: number) => Promise<void>;
+  /** Puts the columns back to the defaults for this view. */
+  resetColumns: () => Promise<void>;
+  /** Reads the stored layout for the current view. Internal. */
+  loadColumns: () => Promise<void>;
+  /** Stores a column change and re-queries if it moved the sort. Internal. */
+  applyColumns: (config: ColumnConfig) => Promise<void>;
   /** Opens one of the four tabs, dropping any drill-in the last one had. */
   showTab: (tab: ViewTab) => Promise<void>;
   /** Drills into one album, artist or genre from the open browse tab. */
@@ -153,6 +185,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   browse: null,
   groups: [],
   groupsLoading: false,
+  columns: DEFAULT_COLUMN_CONFIG,
   sortBy: "artist",
   direction: "asc",
   sortBeforeSearch: null,
@@ -247,7 +280,71 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       browse: null,
       groups: [],
     });
+    // The layout belongs to the view, so it is reloaded rather than carried:
+    // a playlist may have its own, and it may move the sort.
+    await get().loadColumns();
     await get().refresh();
+  },
+
+  loadColumns: async () => {
+    const { playlistId } = get();
+    try {
+      const stored = await loadColumnConfig(playlistId);
+      // A playlist that has never been configured inherits the library's
+      // layout rather than opening bare - any layout beats no columns.
+      const config =
+        stored === null && playlistId !== null
+          ? parseColumnConfig(await loadColumnConfig(null))
+          : parseColumnConfig(stored);
+      // The view may have changed while this was in flight.
+      if (get().playlistId !== playlistId) {
+        return;
+      }
+      set({ columns: config, sortBy: visibleSort(config, get().sortBy) });
+    } catch {
+      // A layout that will not load is not worth an error banner over the
+      // table; the defaults are a working table.
+      set({ columns: DEFAULT_COLUMN_CONFIG });
+    }
+  },
+
+  /**
+   * Applies a column change, persists it, and re-queries only if it moved the
+   * sort - which hiding the sorted column does.
+   */
+  applyColumns: async (config) => {
+    const previousSort = get().sortBy;
+    const sortBy = visibleSort(config, previousSort);
+    set({ columns: config, sortBy });
+
+    const { playlistId } = get();
+    try {
+      await saveColumnConfig(playlistId, serializeColumnConfig(config));
+    } catch (cause) {
+      // Worth saying: the layout is on screen, so silence would look like it
+      // saved and it would be gone next launch.
+      set({ error: String(cause) });
+    }
+
+    if (sortBy !== previousSort) {
+      await get().refresh();
+    }
+  },
+
+  toggleColumn: async (id) => {
+    await get().applyColumns(toggleColumn(get().columns, id));
+  },
+
+  moveColumn: async (id, toIndex) => {
+    await get().applyColumns(moveColumn(get().columns, id, toIndex));
+  },
+
+  resizeColumn: async (id, width) => {
+    await get().applyColumns(resizeColumn(get().columns, id, width));
+  },
+
+  resetColumns: async () => {
+    await get().applyColumns(DEFAULT_COLUMN_CONFIG);
   },
 
   showTab: async (tab) => {

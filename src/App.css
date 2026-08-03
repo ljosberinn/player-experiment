@@ -1102,3 +1102,31 @@ body:not(:focus-within) .sidebar-row.current {
   color: var(--muted);
   font: inherit;
 }
+
+/* ---------- column resizing and reordering ---------- */
+
+/* The `th` is the positioning context for its own divider grip. */
+.song-table th {
+  position: relative;
+}
+
+/* A grip straddling the column edge. Wider than it looks, because a 1px
+   target is a 1px target; the border it sits on is drawn by the th. */
+.column-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  /* Above the header button, or the button swallows the press that starts
+     a resize and the column sorts instead. */
+  z-index: 1;
+}
+
+/* The column being dragged, so it is clear which one will land. Opacity
+   rather than a background: this reads the same in both themes and does not
+   need a variable of its own. */
+.song-table th[data-dragging="true"] {
+  opacity: 0.5;
+}

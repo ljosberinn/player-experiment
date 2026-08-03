@@ -86,6 +86,8 @@ pub fn run() {
             commands::library_stats,
             commands::export_library,
             commands::reveal_track,
+            commands::load_column_config,
+            commands::save_column_config,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,

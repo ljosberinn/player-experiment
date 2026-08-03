@@ -120,6 +120,21 @@ export function allTrackIds(query: TrackQuery): Promise<number[]> {
   return invoke<number[]>("all_track_ids", { query });
 }
 
+/**
+ * The stored column layout for a view, or null if it has never been set.
+ *
+ * The payload is opaque to the backend - which columns exist and how a width
+ * is stored is decided here, and mirroring that into Rust would be two
+ * definitions to keep in step for nothing.
+ */
+export function loadColumnConfig(playlistId: number | null): Promise<string | null> {
+  return invoke<string | null>("load_column_config", { playlistId });
+}
+
+export function saveColumnConfig(playlistId: number | null, configJson: string): Promise<void> {
+  return invoke<void>("save_column_config", { playlistId, configJson });
+}
+
 /** Writes an export to `path`, resolving to how many tracks it holds. */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });

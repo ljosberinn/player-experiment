@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowseGroup, Track, TrackQuery } from "../../ipc";
-import { allTrackIds, browseGroups, libraryStats, queryTracks } from "../../ipc";
+import {
+  allTrackIds,
+  browseGroups,
+  libraryStats,
+  loadColumnConfig,
+  queryTracks,
+  saveColumnConfig,
+} from "../../ipc";
+import { DEFAULT_COLUMN_CONFIG } from "./columns";
 import { PAGE_SIZE } from "./pageCache";
 import { SEARCH_DEBOUNCE_MS, useLibraryStore } from "./store";
 
@@ -10,6 +18,8 @@ vi.mock("../../ipc", () => ({
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   browseGroups: vi.fn(async () => []),
+  loadColumnConfig: vi.fn(async () => null),
+  saveColumnConfig: vi.fn(async () => undefined),
 }));
 
 const statsMock = vi.mocked(libraryStats);
@@ -22,6 +32,8 @@ function stats(tracks: number) {
 const queryTracksMock = vi.mocked(queryTracks);
 const allTrackIdsMock = vi.mocked(allTrackIds);
 const browseGroupsMock = vi.mocked(browseGroups);
+const loadColumnConfigMock = vi.mocked(loadColumnConfig);
+const saveColumnConfigMock = vi.mocked(saveColumnConfig);
 
 function browseGroup(over: Partial<BrowseGroup> = {}): BrowseGroup {
   return {
@@ -82,12 +94,15 @@ beforeEach(() => {
     browse: null,
     groups: [],
     groupsLoading: false,
+    columns: DEFAULT_COLUMN_CONFIG,
     selection: { ids: new Set(), anchorIndex: null },
     error: null,
     queryToken: 0,
   });
   statsMock.mockResolvedValue(stats(1000));
   browseGroupsMock.mockResolvedValue([]);
+  loadColumnConfigMock.mockResolvedValue(null);
+  saveColumnConfigMock.mockResolvedValue(undefined);
   queryTracksMock.mockImplementation(async (query) => rowsFor(query));
 });
 
@@ -632,5 +647,112 @@ describe("browse tabs", () => {
     await stale;
 
     expect(useLibraryStore.getState().groups.map((g) => g.key)).toEqual(["Newer"]);
+  });
+});
+
+describe("column layout", () => {
+  it("persists a change against the view it was made in", async () => {
+    useLibraryStore.setState({ playlistId: 7 });
+
+    await useLibraryStore.getState().toggleColumn("year");
+
+    expect(saveColumnConfigMock).toHaveBeenCalledWith(7, expect.stringContaining("year"));
+  });
+
+  it("reads a playlist's own layout when it has one", async () => {
+    loadColumnConfigMock.mockResolvedValue('{"ids":["path"]}');
+    useLibraryStore.setState({ playlistId: 7 });
+
+    await useLibraryStore.getState().loadColumns();
+
+    expect(useLibraryStore.getState().columns.ids).toEqual(["path"]);
+  });
+
+  it("inherits the library's layout for a playlist that has none", async () => {
+    // Falling back to the defaults instead would ignore a layout the user has
+    // already chosen once; starting bare would be worse still.
+    loadColumnConfigMock.mockImplementation(async (playlistId) =>
+      playlistId === null ? '{"ids":["album","year"]}' : null,
+    );
+    useLibraryStore.setState({ playlistId: 7 });
+
+    await useLibraryStore.getState().loadColumns();
+
+    expect(useLibraryStore.getState().columns.ids).toEqual(["album", "year"]);
+  });
+
+  it("reloads the layout when the view changes", async () => {
+    loadColumnConfigMock.mockResolvedValue('{"ids":["genre"]}');
+
+    await useLibraryStore.getState().showPlaylist(3);
+
+    expect(loadColumnConfigMock).toHaveBeenCalledWith(3);
+    expect(useLibraryStore.getState().columns.ids).toEqual(["genre"]);
+  });
+
+  it("falls back to a working table when the stored layout will not load", async () => {
+    loadColumnConfigMock.mockRejectedValue(new Error("database is locked"));
+
+    await useLibraryStore.getState().loadColumns();
+
+    expect(useLibraryStore.getState().columns).toEqual(DEFAULT_COLUMN_CONFIG);
+    // Not worth an error banner over the table: the defaults are usable.
+    expect(useLibraryStore.getState().error).toBeNull();
+  });
+
+  it("reports a layout that could not be saved", async () => {
+    saveColumnConfigMock.mockRejectedValue(new Error("disk full"));
+
+    await useLibraryStore.getState().toggleColumn("year");
+
+    // Silence would look like it saved, and it would be gone next launch.
+    expect(useLibraryStore.getState().error).toContain("disk full");
+  });
+
+  it("moves the sort off a column it just hid, and re-queries", async () => {
+    useLibraryStore.setState({
+      columns: { ids: ["title", "artist"], widths: {} },
+      sortBy: "artist",
+    });
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().toggleColumn("artist");
+
+    // A view sorted by an invisible column looks unsorted, and there is no
+    // header left to click to fix it.
+    expect(useLibraryStore.getState().sortBy).toBe("title");
+    expect(statsMock).toHaveBeenCalled();
+  });
+
+  it("does not re-query for a change that leaves the sort alone", async () => {
+    useLibraryStore.setState({
+      columns: { ids: ["title", "artist"], widths: {} },
+      sortBy: "title",
+    });
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().resizeColumn("title", 300);
+
+    // Dragging a divider is not a query change; refetching every page mid-drag
+    // would be a lot of work to show the same rows.
+    expect(statsMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sort when a hidden column is shown again", async () => {
+    useLibraryStore.setState({ columns: { ids: ["title"], widths: {} }, sortBy: "title" });
+
+    await useLibraryStore.getState().toggleColumn("year");
+
+    expect(useLibraryStore.getState().sortBy).toBe("title");
+    expect(useLibraryStore.getState().columns.ids).toEqual(["title", "year"]);
+  });
+
+  it("puts the defaults back", async () => {
+    useLibraryStore.setState({ columns: { ids: ["path"], widths: { path: 900 } } });
+
+    await useLibraryStore.getState().resetColumns();
+
+    expect(useLibraryStore.getState().columns).toEqual(DEFAULT_COLUMN_CONFIG);
+    expect(saveColumnConfigMock).toHaveBeenCalled();
   });
 });

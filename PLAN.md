@@ -618,6 +618,45 @@ exactly that: its only breaking change *is* the runtime bump.
   the installers job keeps behaving as it does today.
 - release-please itself goes 17.3.0 -> 17.6.0 in the same bump.
 
+### Column customization (2026-08-03)
+
+Phase 20, and the other half of what phase 3's entry claimed and phase 3 did
+not deliver. Reported twice: *"it's currently not possible to customize the
+columns shown"* and *"it's currently not possible to reorder them, but sorting
+does work"*.
+
+- **Click sorts, drag reorders, separated by four pixels.** They share one
+  pointer press, so a mode would be the alternative and a mode is worse. Below
+  the threshold it is a click; above it, the following `click` is swallowed,
+  because `pointerup` fires first and every reorder would otherwise also sort
+  by whatever it was dropped on.
+- **Dropping is measured against header midpoints**, and the dragged column is
+  excluded from the count - including its own width means a wide column never
+  lands where the pointer is.
+- **Resizing commits once, on release.** Live width is local state; a store
+  write per pointer move would persist a hundred layouts across one drag.
+- **Hiding the last column is refused**, in the reducer and greyed in the menu.
+  An empty table has no headers, so no header menu, so no way back.
+- **Hiding the sorted column moves the sort** to the first visible one and
+  re-queries. A view sorted by something invisible looks unsorted and has no
+  header left to click. `relevance` and `position` are exempt - they are
+  properties of the query and have no header either way.
+- **Per view.** `playlists.columns_json` has been in the schema since phase 2
+  and had never been written. A playlist with no layout of its own inherits the
+  library's rather than opening bare, so `None` has to stay distinguishable
+  from "configured to show nothing".
+- **The stored layout is opaque to Rust.** Which columns exist is a frontend
+  fact; mirroring `ColumnConfig` into the backend would be two definitions to
+  keep in step for nothing. `parseColumnConfig` therefore assumes nothing:
+  unknown ids are dropped, duplicates collapsed, unusable widths ignored, and
+  anything unparseable falls back to a working table.
+- **Not added to the settings export allowlist.** A column layout is local
+  chrome, and the allowlist is built so that omission is the safe direction.
+- **jsdom has no `PointerEvent`**, so `fireEvent.pointerMove(el, {clientX})`
+  delivered `null` and every pointer-driven component looked broken while being
+  correct in a browser. A `MouseEvent` subclass in the test setup fixes it for
+  anything built later.
+
 ### Browsing by album, artist and genre (2026-08-03)
 
 Phase 19. The three dead tabs are live, and the shape of it is one query plus
@@ -1553,7 +1592,7 @@ untagged file and an album spanning two discs; a perf guard, since this is a
 `GROUP BY` over the whole library rather than a paged read; component tests
 for the drill-in and for the empty state of each tab.
 
-**20 — Column customization** `feat/20-columns`
+**20 — Column customization** `feat/20-columns` — 🔄 **in review**
 Two of the original requirements - "adjustable column display" and "per
 playlist" - that phase 3's plan entry claimed and phase 3 did not deliver.
 
