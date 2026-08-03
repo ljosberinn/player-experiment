@@ -227,14 +227,17 @@ describe("TagEditor", () => {
   });
 
   describe("the focus trap phase 24 brought with it", () => {
-    it("never lets Tab reach the page behind it", async () => {
+    it("takes the page behind it out of reach", () => {
       // The hand-rolled dialog had no trap at all: Tab walked straight out of
       // it into the table behind, which stayed fully interactive.
       //
-      // Asserted against a real element outside rather than by checking
-      // containment, because Base UI's own focus guards sit in the portal
-      // beside the popup and are legitimately focused in passing.
-      const user = userEvent.setup();
+      // What is asserted is the *mechanism*, not the tabbing. An earlier
+      // version of this test pressed Tab forty times and checked focus never
+      // escaped; it passed here and failed on CI, because user-event walks its
+      // own computed tab order and does not honour the inert marking, so
+      // whether the trap yanks focus back in time is a race in jsdom. The
+      // marking itself is deterministic, and the e2e suite is where real
+      // tabbing is real.
       render(
         <>
           <button type="button">behind the dialog</button>
@@ -246,18 +249,13 @@ describe("TagEditor", () => {
           />
         </>,
       );
-      // Not `getByRole`: the modal takes the rest of the page out of the
-      // accessibility tree, so the button is unreachable by role - which is
-      // half of what is being asserted here.
+
+      // Not `getByRole`: being out of the accessibility tree is the point.
       const outside = document.querySelector("button");
       expect(outside).toHaveTextContent("behind the dialog");
       expect(screen.queryByRole("button", { name: "behind the dialog" })).not.toBeInTheDocument();
-
-      screen.getByRole("textbox", { name: "Name" }).focus();
-      for (let i = 0; i < 40; i++) {
-        await user.tab();
-        expect(outside).not.toHaveFocus();
-      }
+      expect(outside?.closest("[data-base-ui-inert]")).not.toBeNull();
+      expect(outside?.closest('[aria-hidden="true"]')).not.toBeNull();
     });
 
     it("comes back round rather than falling out of the bottom", async () => {
