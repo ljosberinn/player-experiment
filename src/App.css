@@ -198,6 +198,53 @@ input[type="radio"] {
   margin-left: 7px;
 }
 
+/* ---------- sliders ---------- */
+
+/* Both sliders are the same three parts - a rail, a filled indicator and a
+   thumb - so the shape is shared and only the sizes differ. `::-webkit-slider-
+   thumb` is gone with the range inputs: a real element can be styled in one
+   place instead of once per engine pseudo-element. */
+.volume-control,
+.status-track-control {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 14px;
+  cursor: default;
+}
+
+.volume-rail,
+.status-track-rail {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--skeleton);
+}
+
+.volume-fill,
+.status-track-fill {
+  position: absolute;
+  inset-block: 0;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.volume-thumb,
+.status-track-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* A disabled scrubber is the idle state, not an error: nothing is playing, so
+   there is nothing to seek through. */
+.status-track[data-disabled] .status-track-rail,
+.status-track[data-disabled] .status-track-thumb {
+  opacity: 0.5;
+}
+
 /* ---------- status display ---------- */
 
 .status-display {
@@ -263,28 +310,7 @@ input[type="radio"] {
    the native chrome is replaced by a flat track and a small knob. */
 .status-track {
   flex: 1;
-  height: 5px;
   min-width: 72px;
-  margin: 0;
-  padding: 0;
-  appearance: none;
-  border-radius: 2px;
-  background: var(--skeleton);
-  cursor: default;
-}
-
-.status-track:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.status-track::-webkit-slider-thumb {
-  appearance: none;
-  width: 11px;
-  height: 11px;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent);
 }
 
 .search-box {
@@ -543,10 +569,46 @@ input[type="radio"] {
 }
 
 .scan-error,
+/* ---------- errors ---------- */
+
+/* Still inline, and correctly so: this is the tag editor's own validation
+   message, which belongs beside the field it is about and inside the dialog
+   that owns it. The popover below is for errors that arrive unasked. */
 .content-error {
-  /* Was a literal, which meant the one red in the app that the theme-parity
-     guard could not see - and it read as brown against the dark surface. */
   color: var(--danger);
+}
+
+/* Anchored to the status display rather than stacked above the table: as a
+   paragraph in the flow it pushed every row down as it appeared, moving the
+   view out from under the pointer, and it sat nowhere near what it described. */
+.error-positioner {
+  z-index: 40;
+}
+
+.error-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 480px;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+
+/* The heading carries the colour and the message stays in the body text:
+   a whole panel of red is harder to read than a red line above one. */
+.error-title {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.error-text {
+  /* Paths are long and have no spaces to wrap at. */
+  overflow-wrap: anywhere;
 }
 
 .content-notice {
@@ -787,10 +849,12 @@ th.status {
 
 /* ---------- smart playlist editor ---------- */
 
+/* Only the dim layer. It used to centre the dialog as its flex child, which
+   stopped being true in phase 24: Base UI renders the backdrop and the popup
+   as siblings inside the portal, so a modal that relies on its parent for
+   position lands in normal flow at the end of the body - below the footer,
+   which is exactly where it went. */
 .modal-backdrop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   position: fixed;
   inset: 0;
   z-index: 10;
@@ -798,6 +862,12 @@ th.status {
 }
 
 .modal {
+  /* Positions itself, and must: nothing above it in the tree does. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 11;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -945,10 +1015,18 @@ th.status {
    Positioned at the pointer in viewport coordinates, so they are fixed rather
    than absolute - an absolute menu inside the scrolling table would travel
    with the rows it is describing. */
-.context-menu {
-  position: fixed;
+/* Floating UI owns the coordinates now; this is what it positions. Everything
+   about *where* a menu goes - the fixed placement, the measure-then-nudge, the
+   submenu offset - moved out of the app in phase 24. */
+.context-positioner {
   z-index: 40;
+  outline: none;
+}
+
+.context-menu {
   min-width: 216px;
+  max-height: var(--available-height, 60vh);
+  overflow-y: auto;
   margin: 0;
   padding: 5px;
   list-style: none;
@@ -980,13 +1058,15 @@ th.status {
 
 /* Hover and keyboard focus look the same on purpose: the menu tracks one
    active item whichever way it is being driven. */
-.context-item:hover:not(:disabled),
-.context-item.active:not(:disabled) {
+/* One selector where there were two, and no hover exception left to grant:
+   Base UI sets `data-highlighted` for both the pointer and the keyboard, so
+   the highlight follows whichever is driving without the CSS knowing which. */
+.context-item[data-highlighted] {
   background: var(--accent);
   color: #fff;
 }
 
-.context-item:disabled {
+.context-item[data-disabled] {
   color: var(--muted);
   cursor: default;
 }
@@ -1007,22 +1087,10 @@ th.status {
   white-space: nowrap;
 }
 
-/* The positioning context for a submenu. Without this the submenu's `absolute`
-   resolves against the menu panel - which is the `fixed` ancestor - and pins
-   itself to the top of the panel instead of to the row that opened it. */
-.context-row {
-  position: relative;
-}
-
-/* Submenus hang off their parent item rather than the menu, so they line up
-   with the row that opened them. */
-.context-submenu {
-  position: absolute;
-  top: -5px;
-  left: 100%;
-  max-height: 60vh;
-  overflow-y: auto;
-}
+/* `.context-row`'s positioning context and `.context-submenu`'s offsets are
+   gone with phase 24: a submenu is its own portalled popup that Floating UI
+   anchors to the item that opened it, so there is nothing left here to line up
+   by hand - and nothing left to get wrong when the menu is near an edge. */
 
 .context-arrow {
   color: inherit;

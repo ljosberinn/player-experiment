@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
+import { ContextMenu } from "../../components/ui/ContextMenu";
 import { revealTrack } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import {
@@ -94,12 +94,15 @@ export function SongTable({
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Where a reorder drop would land, as an index into the current order. */
   const [dropIndex, setDropIndex] = useState<number | null>(null);
-  /** The open row menu: where it is, and what it acts on. */
-  const [menu, setMenu] = useState<{
-    at: MenuPosition;
-    trackIds: number[];
-    rowIndex: number;
-  } | null>(null);
+  /**
+   * What the open row menu acts on.
+   *
+   * No longer where it is: Base UI's trigger derives the position from the
+   * event it owns. What stays is the part that was never about positioning -
+   * which rows the menu applies to, decided on the right-click before the menu
+   * opens.
+   */
+  const [menu, setMenu] = useState<{ trackIds: number[]; rowIndex: number } | null>(null);
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -131,9 +134,39 @@ export function SongTable({
           />
         </thead>
 
-        <tbody
-          style={{ height: virtualizer.getTotalSize() }}
-          onDragLeave={() => setDropIndex(null)}
+        {/* The whole row area is the trigger, so the menu opens where the
+            pointer is without anybody carrying coordinates around. Which rows
+            it acts on is still decided per row, below, before it opens. */}
+        <ContextMenu
+          label="Song actions"
+          render={
+            <tbody
+              style={{ height: virtualizer.getTotalSize() }}
+              onDragLeave={() => setDropIndex(null)}
+            />
+          }
+          onOpenChange={(open) => {
+            if (!open) {
+              setMenu(null);
+            }
+          }}
+          items={
+            menu === null
+              ? []
+              : rowMenuItems({
+                  count: menu.trackIds.length,
+                  playlists,
+                  openPlaylist: playlists.find((one) => one.id === playlistId) ?? null,
+                  onPlay: () => onActivate?.(menu.rowIndex),
+                  onGetInfo: () => void openEditor(menu.trackIds),
+                  onAddTo: (id) => void addTracks(id, menu.trackIds),
+                  onRemove: () => onRemove?.(menu.trackIds),
+                  onExport: () => onExport?.(menu.trackIds),
+                  // One id: the menu disables this entry unless exactly one row
+                  // is selected, so there is no question of which file to show.
+                  onReveal: () => void revealTrack(menu.trackIds[0] as number),
+                })
+          }
         >
           {items.map((item) => {
             const track = rowAt(item.index);
@@ -167,11 +200,14 @@ export function SongTable({
                 style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
                 onClick={select}
                 onDoubleClick={() => onActivate?.(item.index)}
-                onContextMenu={(event) => {
+                onContextMenu={() => {
+                  // No preventDefault and no stopPropagation: the trigger on
+                  // <tbody> needs this event to reach it, and suppressing the
+                  // webview's own menu is its job now.
                   if (!track) {
+                    setMenu(null);
                     return;
                   }
-                  event.preventDefault();
                   // Right-clicking outside the selection acts on the row under
                   // the pointer, the way every file manager does - otherwise
                   // the menu would silently apply to rows scrolled off screen.
@@ -180,7 +216,6 @@ export function SongTable({
                     clickRow(item.index, track.id, {});
                   }
                   setMenu({
-                    at: { x: event.clientX, y: event.clientY },
                     trackIds: inSelection ? [...selection.ids] : [track.id],
                     rowIndex: item.index,
                   });
@@ -258,29 +293,8 @@ export function SongTable({
               </tr>
             );
           })}
-        </tbody>
+        </ContextMenu>
       </table>
-
-      {menu ? (
-        <ContextMenu
-          position={menu.at}
-          label="Song actions"
-          onClose={() => setMenu(null)}
-          items={rowMenuItems({
-            count: menu.trackIds.length,
-            playlists,
-            openPlaylist: playlists.find((one) => one.id === playlistId) ?? null,
-            onPlay: () => onActivate?.(menu.rowIndex),
-            onGetInfo: () => void openEditor(menu.trackIds),
-            onAddTo: (id) => void addTracks(id, menu.trackIds),
-            onRemove: () => onRemove?.(menu.trackIds),
-            onExport: () => onExport?.(menu.trackIds),
-            // One id: the menu disables this entry unless exactly one row is
-            // selected, so there is no question of which file to show.
-            onReveal: () => void revealTrack(menu.trackIds[0] as number),
-          })}
-        />
-      ) : null}
     </div>
   );
 }

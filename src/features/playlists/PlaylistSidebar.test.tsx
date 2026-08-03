@@ -276,10 +276,16 @@ describe("PlaylistSidebar", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
     // A reflex Enter on an unexpected dialog must not destroy anything.
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    //
+    // Awaited rather than asserted outright: the menu returns focus to its
+    // trigger as it unmounts, which lands after the dialog has taken focus, so
+    // the dialog claims it again on the next frame. Without that the sidebar
+    // row would be focused behind an open dialog and Enter would reopen the
+    // very menu that asked the question.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus());
   });
 
-  it("opens the playlist that was right-clicked", async () => {
+  it("acts on the playlist that was right-clicked without opening it", async () => {
     render(<PlaylistSidebar />);
     const user = userEvent.setup();
 
@@ -288,9 +294,12 @@ describe("PlaylistSidebar", () => {
       target: await screen.findByRole("button", { name: "Focus" }),
     });
 
-    // The row the menu belongs to is then the highlighted one, so there is no
-    // guessing which playlist Delete is about to remove.
-    expect(useLibraryStore.getState().playlistId).toBe(2);
+    // This used to select the playlist first, so the highlight said which one
+    // Delete was about to remove. With each row its own menu trigger there is
+    // no question to answer - and no reason to change what the table is
+    // showing because somebody right-clicked something in the sidebar.
+    expect(useLibraryStore.getState().playlistId).toBeNull();
+    expect(await screen.findByRole("menu", { name: "Focus actions" })).toBeInTheDocument();
   });
 
   it("offers neither Play nor Export on an empty playlist", async () => {
@@ -304,9 +313,16 @@ describe("PlaylistSidebar", () => {
     });
 
     // Disabled rather than absent: the actions exist, this playlist just has
-    // nothing for them to act on yet.
-    expect(await screen.findByRole("menuitem", { name: "Play" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "Export…" })).toBeDisabled();
+    // nothing for them to act on yet. `aria-disabled` because a menu item is a
+    // div with a role rather than a <button disabled>.
+    expect(await screen.findByRole("menuitem", { name: "Play" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Export…" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("names the menu after the playlist it will act on", async () => {

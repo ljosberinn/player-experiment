@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { FilterGroup } from "../../ipc";
@@ -189,6 +189,12 @@ describe("SmartPlaylistEditor", () => {
 
   it("leaves Enter on a select and a button alone", async () => {
     const { onSave, user } = open();
+
+    // The dialog claims initial focus asynchronously, so a `.focus()` issued
+    // before that lands is taken straight back - and Enter then arrives at the
+    // Name field, where implicit submission is exactly right and exactly not
+    // what this test is about.
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Name" })).toHaveFocus());
 
     screen.getByRole("combobox", { name: "Match rules" }).focus();
     await user.keyboard("{Enter}");

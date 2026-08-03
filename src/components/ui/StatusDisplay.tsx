@@ -1,3 +1,5 @@
+import { Slider } from "@base-ui/react/slider";
+import type React from "react";
 import type { Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { formatDuration } from "../../lib/format";
@@ -13,15 +15,22 @@ export function StatusDisplay({
   positionMs = 0,
   summary,
   onSeek,
+  ref,
 }: {
   track: Track | null;
   positionMs?: number;
   summary: string;
   onSeek?: (positionMs: number) => void;
+  /**
+   * Forwarded so an error popover can point at this box, which is where the
+   * app says what is playing and therefore where a playback error belongs.
+   * A plain prop rather than `forwardRef`, which React 19 made unnecessary.
+   */
+  ref?: React.Ref<HTMLDivElement>;
 }) {
   if (!track) {
     return (
-      <div className="status-display" data-testid="status-display">
+      <div className="status-display" data-testid="status-display" ref={ref}>
         <span className="status-summary">{summary}</span>
       </div>
     );
@@ -32,7 +41,7 @@ export function StatusDisplay({
   const remaining = Math.max(0, duration - elapsed);
 
   return (
-    <div className="status-display" data-testid="status-display">
+    <div className="status-display" data-testid="status-display" ref={ref}>
       {track.cover_hash ? (
         <img className="status-cover" src={coverUrl(track.cover_hash)} alt="" />
       ) : (
@@ -46,20 +55,31 @@ export function StatusDisplay({
         </div>
         <div className="status-scrubber">
           <span className="status-time">{formatDuration(elapsed)}</span>
-          {/* A range input rather than a styled div: it is draggable, keyboard
-              operable and announced as a slider without any extra work. */}
-          <input
+          {/* `onValueCommitted`, not `onValueChange`, is the whole reason this
+              stopped being a range input. A scrubber wants its value when the
+              drag ends; `onChange` fires throughout, so dragging across a
+              five-minute song used to send a seek per pixel - each one a real
+              seek in the decoder, on the audio thread. */}
+          <Slider.Root
             className="status-track"
-            type="range"
             min={0}
             max={Math.max(duration, 1)}
             step={1000}
             value={elapsed}
-            aria-label="Seek"
-            aria-valuetext={formatDuration(elapsed)}
             disabled={!onSeek || duration <= 0}
-            onChange={(event) => onSeek?.(Number(event.currentTarget.value))}
-          />
+            onValueCommitted={(value) => onSeek?.(typeof value === "number" ? value : elapsed)}
+          >
+            <Slider.Control className="status-track-control">
+              <Slider.Track className="status-track-rail">
+                <Slider.Indicator className="status-track-fill" />
+                <Slider.Thumb
+                  className="status-track-thumb"
+                  aria-label="Seek"
+                  aria-valuetext={formatDuration(elapsed)}
+                />
+              </Slider.Track>
+            </Slider.Control>
+          </Slider.Root>
           <span className="status-time">-{formatDuration(remaining)}</span>
         </div>
       </div>

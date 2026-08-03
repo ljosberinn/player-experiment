@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { ContextMenu as Base } from "@base-ui/react/context-menu";
+import type React from "react";
 
 /**
  * One entry in a context menu.
  *
  * `submenu` and `onSelect` are alternatives: an item either does something or
  * opens a list of things that do.
+ *
+ * Unchanged by the move to Base UI, deliberately: this union is the vocabulary
+ * every call site builds menus in, and `rowMenu.ts` knows nothing about how a
+ * menu opens.
  */
 export type MenuItem =
   | { kind: "separator" }
@@ -17,220 +22,113 @@ export type MenuItem =
       submenu?: MenuItem[] | undefined;
     };
 
-export type MenuPosition = { x: number; y: number };
-
-/** Distance kept from the viewport edge when a menu would overflow it. */
-const MARGIN = 8;
-
-function isActionable(item: MenuItem): item is Extract<MenuItem, { kind?: "item" }> {
-  return item.kind !== "separator" && !item.disabled;
-}
-
 /**
- * A context menu positioned at the pointer.
+ * A context menu over the region it applies to.
  *
- * Built rather than borrowed: a native OS menu through Tauri cannot cheaply
- * render a live list of playlists, and the app suppresses the webview's own
- * menu. It is a real menu, not a styled list - arrow keys move, Enter picks,
- * Escape closes, and focus returns where it came from.
+ * The hand-rolled version this replaced was a real menu, and the arguments for
+ * building it still hold - they were arguments against an *OS* menu, which
+ * cannot cheaply render a live list of playlists. They were never arguments
+ * against a headless primitive. What did not hold was the cost: collision
+ * nudging, outside-click capture, focus restoration and submenu alignment were
+ * all debugged by hand here, and Floating UI does them.
+ *
+ * The region is the trigger rather than a captured pointer position. A spike on
+ * 2026-08-03 built the position-based adapter first and found that Base UI
+ * routes a menu's arrow keys through its trigger, so a menu rendered `open` at
+ * a point has no keyboard support at all - six of thirteen tests failed against
+ * an adapter that otherwise worked. `ContextMenu.Trigger` owns the
+ * `contextmenu` event and derives the position itself, which is why call sites
+ * hand over the element instead of the coordinates.
  */
 export function ContextMenu({
   items,
-  position,
-  onClose,
   label = "Context menu",
+  render,
+  children,
+  onContextMenu,
+  onOpenChange,
 }: {
   items: MenuItem[];
-  position: MenuPosition;
-  onClose: () => void;
   label?: string;
+  /**
+   * What the trigger renders as - a `<tbody>`, a row, a header.
+   *
+   * The menu wraps the thing it describes rather than sitting beside it, so
+   * there is never a question of which row was hit.
+   */
+  render: React.ReactElement<Record<string, unknown>>;
+  children?: React.ReactNode;
+  /**
+   * Runs before the menu opens, on the same event.
+   *
+   * Which rows a menu acts on is still the call site's decision - right-clicking
+   * outside the selection acts on the row under the pointer - and that has to be
+   * settled before the items are built.
+   */
+  onContextMenu?: React.MouseEventHandler<HTMLElement>;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(() => items.findIndex(isActionable));
-  /** Which item's submenu is open, if any. */
-  const [openSub, setOpenSub] = useState<number | null>(null);
-  const [placed, setPlaced] = useState<MenuPosition>(position);
+  return (
+    <Base.Root onOpenChange={onOpenChange}>
+      <Base.Trigger render={render} onContextMenu={onContextMenu}>
+        {children}
+      </Base.Trigger>
+      {/* No items, no popup. The alternative is an empty box: right-clicking a
+          row whose page has not arrived has nothing to offer, and the trigger
+          region covers those rows too. */}
+      {items.length === 0 ? null : (
+        <Base.Portal>
+          <Base.Positioner className="context-positioner">
+            <Base.Popup className="context-menu" aria-label={label}>
+              {items.map(renderItem)}
+            </Base.Popup>
+          </Base.Positioner>
+        </Base.Portal>
+      )}
+    </Base.Root>
+  );
+}
 
-  // Measure, then nudge back inside the viewport. Done after layout rather
-  // than by guessing a height, because the playlist submenu makes the menu's
-  // size depend on the library.
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) {
-      return;
-    }
-    const { width, height } = element.getBoundingClientRect();
-    setPlaced({
-      x: Math.max(MARGIN, Math.min(position.x, window.innerWidth - width - MARGIN)),
-      y: Math.max(MARGIN, Math.min(position.y, window.innerHeight - height - MARGIN)),
-    });
-  }, [position]);
+function renderItem(item: MenuItem, index: number) {
+  if (item.kind === "separator") {
+    // Keyed by index: a menu's items are a fixed list built at open time and
+    // never reordered, and a separator has nothing else to key on.
+    return <Base.Separator key={`sep-${index}`} className="context-separator" />;
+  }
 
-  useEffect(() => {
-    ref.current?.focus();
-  }, []);
-
-  // A menu that survives the thing it acts on moving is worse than one that
-  // closes: scrolling the table under an open menu would leave it pointing at
-  // a different row.
-  useEffect(() => {
-    const close = () => onClose();
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [onClose]);
-
-  useEffect(() => {
-    const onPointerDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    // Capture, so a click outside closes the menu before it reaches whatever
-    // it landed on - clicking a row should not also select it.
-    window.addEventListener("mousedown", onPointerDown, true);
-    return () => window.removeEventListener("mousedown", onPointerDown, true);
-  }, [onClose]);
-
-  const step = (from: number, delta: number): number => {
-    for (let i = 1; i <= items.length; i++) {
-      const next = (from + delta * i + items.length * items.length) % items.length;
-      if (isActionable(items[next] as MenuItem)) {
-        return next;
-      }
-    }
-    return from;
-  };
-
-  const choose = (index: number) => {
-    const item = items[index];
-    if (!item || !isActionable(item)) {
-      return;
-    }
-    if (item.submenu) {
-      setOpenSub(index);
-      return;
-    }
-    item.onSelect?.();
-    onClose();
-  };
+  if (item.submenu) {
+    return (
+      <Base.SubmenuRoot key={item.label}>
+        <Base.SubmenuTrigger className="context-item has-submenu" disabled={item.disabled}>
+          {item.label}
+          <span className="context-arrow" aria-hidden="true">
+            ▸
+          </span>
+        </Base.SubmenuTrigger>
+        <Base.Portal>
+          <Base.Positioner className="context-positioner">
+            <Base.Popup className="context-menu" aria-label={item.label}>
+              {item.submenu.length === 0 ? (
+                // A submenu that renders nothing looks broken; this explains it.
+                <div className="context-empty">No playlists yet</div>
+              ) : (
+                item.submenu.map(renderItem)
+              )}
+            </Base.Popup>
+          </Base.Positioner>
+        </Base.Portal>
+      </Base.SubmenuRoot>
+    );
+  }
 
   return (
-    // A div rather than a ul: `role="menu"` carries the semantics, and putting
-    // an interactive role on a list element is the kind of mismatch a screen
-    // reader has to guess its way through.
-    <div
-      ref={ref}
-      className="context-menu"
-      role="menu"
-      aria-label={label}
-      tabIndex={-1}
-      style={{ left: placed.x, top: placed.y }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          if (openSub !== null) {
-            setOpenSub(null);
-          } else {
-            onClose();
-          }
-        } else if (event.key === "ArrowDown") {
-          event.preventDefault();
-          setActive((index) => step(index, 1));
-        } else if (event.key === "ArrowUp") {
-          event.preventDefault();
-          setActive((index) => step(index, -1));
-        } else if (event.key === "ArrowRight") {
-          const item = items[active];
-          if (item && isActionable(item) && item.submenu) {
-            event.preventDefault();
-            setOpenSub(active);
-          }
-        } else if (event.key === "ArrowLeft" && openSub !== null) {
-          event.preventDefault();
-          setOpenSub(null);
-        } else if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          choose(active);
-        } else if (event.key === "Home") {
-          event.preventDefault();
-          setActive(items.findIndex(isActionable));
-        } else if (event.key === "End") {
-          event.preventDefault();
-          setActive(step(0, -1));
-        }
-      }}
+    <Base.Item
+      key={item.label}
+      className="context-item"
+      disabled={item.disabled}
+      onClick={() => item.onSelect?.()}
     >
-      {items.map((item, index) => {
-        if (item.kind === "separator") {
-          // An <hr> is already a separator to a screen reader, so it needs no
-          // role - and no aria-valuenow, which an explicit one would require.
-          // biome-ignore lint/suspicious/noArrayIndexKey: a menu's items are a fixed list built at open time, never reordered.
-          return <hr key={`sep-${index}`} className="context-separator" />;
-        }
-        return (
-          <div key={item.label} className="context-row" role="none">
-            <button
-              type="button"
-              role="menuitem"
-              className={[
-                "context-item",
-                index === active ? "active" : "",
-                item.submenu ? "has-submenu" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              disabled={item.disabled}
-              aria-haspopup={item.submenu ? "menu" : undefined}
-              aria-expanded={item.submenu ? openSub === index : undefined}
-              tabIndex={-1}
-              onMouseEnter={() => {
-                setActive(index);
-                setOpenSub(item.submenu ? index : null);
-              }}
-              onClick={() => choose(index)}
-            >
-              {item.label}
-              {item.submenu ? (
-                <span className="context-arrow" aria-hidden="true">
-                  ▸
-                </span>
-              ) : null}
-            </button>
-            {item.submenu && openSub === index ? (
-              <div className="context-menu context-submenu" role="menu" aria-label={item.label}>
-                {item.submenu.length === 0 ? (
-                  <div className="context-empty">No playlists yet</div>
-                ) : (
-                  item.submenu.map((sub) =>
-                    sub.kind === "separator" ? null : (
-                      <div key={sub.label} role="none">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="context-item"
-                          disabled={sub.disabled}
-                          tabIndex={-1}
-                          onClick={() => {
-                            sub.onSelect?.();
-                            onClose();
-                          }}
-                        >
-                          {sub.label}
-                        </button>
-                      </div>
-                    ),
-                  )
-                )}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
+      {item.label}
+    </Base.Item>
   );
 }

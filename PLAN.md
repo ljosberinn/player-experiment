@@ -1964,7 +1964,84 @@ while `ready` shows the offer and the click installs. The install itself cannot
 be tested anywhere - it replaces the running binary - so the first real update
 is verified by hand, once, exactly like the release workflow was.
 
-**24 — Base UI primitives** `feat/24-base-ui`
+**24 — Base UI primitives** `feat/24-base-ui` — 🔄 **in review**
+
+*Built, in the order this entry sets out. What shipped, and where it differed:*
+
+- **The overlays.** `ContextMenu` is `ContextMenu.Root/Trigger` with the region
+  as the trigger, exactly as the rescope demanded. `ConfirmDialog` is
+  `AlertDialog`; both editors are `Dialog`; `useDialogKeys` is deleted.
+  Deleted with them: the measure-then-nudge effect, the resize and scroll close
+  handlers, the capture-phase `mousedown` listener, the `step`/`choose`
+  keyboard machine, the `createPortal` out of `<thead>`, and `.context-row` /
+  `.context-submenu`.
+- **The chrome.** `TabBar` is `Tabs`, both sliders are `Slider`, the library
+  actions are a `Toolbar`.
+- **The editors: not done, by the stop clause below.** See the end of this
+  entry.
+
+*Three behaviour changes a user could notice, none of them regressions:*
+
+1. **Arrow keys land on disabled menu items** instead of stepping over them.
+   Base UI hard-codes `disabledIndices` to empty
+   (`menu/root/MenuRoot.js`), which is the ARIA menu recommendation: an entry
+   the keyboard cannot reach is one a keyboard user never learns exists.
+   Activating one still does nothing and leaves the menu open, which is what
+   the test now pins.
+2. **Right-clicking a playlist no longer selects it.** That existed so the
+   highlight said which playlist Delete meant; a per-row trigger answers the
+   question without changing what the table is showing.
+3. **Tabs activate on Enter, not on arrow.** Base UI's default, and the right
+   one here rather than a detail: selecting a tab re-runs the library query, so
+   arrowing across all four would otherwise fire four of them.
+
+*Things that only came up in the doing:*
+
+- **The scrubber's real win was `onValueCommitted`.** Not the styling: a range
+  input's `onChange` fires throughout a drag, so dragging across a five-minute
+  song sent a seek per pixel, each one a real seek in the decoder on the audio
+  thread. Volume keeps `onValueChange`, because it is meant to be heard as it
+  moves.
+- **`ConfirmDialog` re-claims focus on the next frame.** Every route into it
+  runs through a context menu, and a menu returns focus to its trigger as it
+  unmounts - *after* the dialog has taken focus. Without this the sidebar row
+  ends up focused behind an open dialog, and Enter reopens the menu that asked
+  the question.
+- **`vite.config.ts` gained its first accepted warning.** Base UI's popup store
+  and its Floating UI root context import each other; rollup resolves it and
+  this project cannot act on it. The exception is scoped to cycles whose every
+  module is inside `node_modules`, so our own code is still held to the rule.
+- **Two tests the old code could not pass**, as promised: Tab never reaches the
+  page behind an open dialog, and tabbing off the last control comes back round
+  rather than falling out. The first asserts against a real element outside the
+  dialog, which is also unreachable *by role* - the modal takes the rest of the
+  page out of the accessibility tree.
+- **The stylesheet guards changed as predicted.** `.context-row` /
+  `.context-submenu` are asserted *absent* now, and the highlight assertion got
+  stricter: `.context-item` is out of `HOVER_ALLOWED` entirely, because
+  `data-highlighted` covers the pointer and the keyboard alike and a `:hover`
+  rule would now light up two rows at once.
+
+**Bundle.** 464.85 kB raw / 149.98 kB gzipped, against the 291.63 kB / 90.54 kB
+baseline recorded after phase 20: **+173 kB raw, +59 kB gzipped**. Larger than
+"tree-shaken per component" implies. For an app that loads from local disk it
+buys a focus trap, an inert background, real collision handling and a tablist
+that works, which is the trade this phase was for - but the number is bigger
+than the entry assumed, and it is the number rather than the assumption.
+
+**Why the editors stopped here.** This entry's own instruction: *"If it reads
+worse at the densities from phase 21, stop here and keep the native controls -
+the phase is still a win without this step."* The three `<select>`s stay
+native, because a native select in a webview opens a real OS popup, which is
+closer to native than any listbox can be - and phase 13's whole argument is
+that this app should not look like a web page wearing a desktop costume.
+`Field` was skipped with them: it would replace a `useId` pairing that works
+and is tested, changing nothing a user can see while adding to the number
+above. Both are a judgement call rather than a technical block, and worth
+revisiting if the native selects ever look wrong beside the Base UI menus.
+
+*The original entry follows.*
+
 Replace the hand-rolled interaction layer with [Base UI](https://base-ui.com)
 (`@base-ui/react`), keeping every line of the app's visual identity. The
 library ships no CSS and prescribes no styling solution, so this is a

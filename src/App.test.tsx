@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useEditorStore } from "./features/editor/store";
 import { useLibraryStore } from "./features/library/store";
+import { usePlayerStore } from "./features/player/store";
 import { TRACK_IDS_MIME } from "./features/playlists/drag";
 import { usePlaylistsStore } from "./features/playlists/store";
 import { useUpdaterStore } from "./features/updater/store";
@@ -835,6 +836,94 @@ describe("removing missing songs", () => {
 
     expect(removeMissingTracks).toHaveBeenCalled();
     expect(await screen.findByText("Removed 2 missing songs.")).toBeInTheDocument();
+  });
+});
+
+describe("the error popover", () => {
+  it("says nothing while nothing is wrong", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a playback error without moving the table", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    act(() => {
+      usePlayerStore.setState({ error: "C:/music/gone.mp3 could not be opened" });
+    });
+
+    // In the popover, which is portalled, rather than in the content area -
+    // as a paragraph in the flow it pushed every row down as it appeared.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("could not be opened");
+    expect(document.querySelector(".content .error-popup")).toBeNull();
+  });
+
+  it("does not take focus from whatever the user was doing", async () => {
+    render(<App />);
+    const search = await screen.findByRole("searchbox", { name: "Search Library" });
+    search.focus();
+
+    act(() => {
+      usePlayerStore.setState({ error: "that file will not open" });
+    });
+    await screen.findByRole("alert");
+
+    // An error arrives unasked, usually mid-scroll or mid-typing. One that
+    // grabs the caret to tell you something interrupts what you were doing.
+    expect(search).toHaveFocus();
+  });
+
+  it("names itself, so the message is not the only thing said", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    act(() => {
+      usePlayerStore.setState({ error: "C:/music/gone.mp3 could not be opened" });
+    });
+
+    // The message alone is often a path and a reason with no subject, and does
+    // not say on its own that the app is reporting a fault.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Something went wrong");
+    expect(alert).toHaveTextContent("could not be opened");
+  });
+
+  it("goes away when clicked away from, and clears the error behind it", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+    act(() => {
+      usePlayerStore.setState({ error: "that file will not open" });
+    });
+    await screen.findByRole("alert");
+
+    // No close button: clicking anywhere else already dismisses it, and a
+    // control nothing can tab to is one the mouse could do without.
+    await user.click(document.body);
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    // Cleared at the source, not merely hidden: a popover that hides a live
+    // error would never show that error again.
+    expect(usePlayerStore.getState().error).toBeNull();
+  });
+
+  it("shows one message when several parts of the app are unhappy", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    act(() => {
+      useLibraryStore.setState({ error: "the library is locked" });
+      usePlayerStore.setState({ error: "that file will not open" });
+    });
+
+    // There is one place to say so, so dismissing has to clear all of them -
+    // uncovering the next would read as the message refusing to go away.
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(1);
   });
 });
 

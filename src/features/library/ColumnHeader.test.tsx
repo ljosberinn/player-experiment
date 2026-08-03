@@ -177,7 +177,14 @@ describe("the column menu", () => {
 
     // Disabled rather than failing silently when picked - an empty table has
     // no headers, so no menu, so no way back.
-    expect(screen.getByRole("menuitem", { name: /✓\s*Name/ })).toBeDisabled();
+    //
+    // `aria-disabled`, not `toBeDisabled`: a menu item is a div with a role,
+    // not a <button disabled>, and jest-dom's matcher only reads the native
+    // attribute. This is the one screen readers announce anyway.
+    expect(screen.getByRole("menuitem", { name: /✓\s*Name/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("offers a way back to the defaults", async () => {
