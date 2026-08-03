@@ -258,6 +258,37 @@ pub fn reveal_track(db: State<'_, Db>, track_id: i64) -> AppResult<()> {
 }
 
 /// Remembers where the window is, so the next launch opens there.
+/// The column layout for a view: a playlist's own, or the library's.
+///
+/// Returns the JSON the frontend wrote, uninterpreted. `None` means the view
+/// has never been configured, which the caller resolves to the global layout -
+/// a playlist that starts bare rather than inheriting would be a worse default
+/// than any layout.
+#[tauri::command]
+pub fn load_column_config(
+    db: State<'_, Db>,
+    playlist_id: Option<i64>,
+) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    match playlist_id {
+        Some(id) => playlists::columns(&conn, id),
+        None => settings::get(&conn, settings::COLUMNS),
+    }
+}
+
+#[tauri::command]
+pub fn save_column_config(
+    db: State<'_, Db>,
+    playlist_id: Option<i64>,
+    config_json: String,
+) -> AppResult<()> {
+    let conn = db.conn()?;
+    match playlist_id {
+        Some(id) => playlists::set_columns(&conn, id, &config_json),
+        None => settings::set(&conn, settings::COLUMNS, &config_json),
+    }
+}
+
 #[tauri::command]
 pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {
     let conn = db.conn()?;

@@ -10,7 +10,7 @@ import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { BrowseView } from "./features/library/BrowseView";
-import { columnsFor, DEFAULT_COLUMN_IDS } from "./features/library/columns";
+import { resolveColumns } from "./features/library/columns";
 import { ScanBar } from "./features/library/ScanBar";
 import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore } from "./features/library/store";
@@ -44,6 +44,8 @@ export function App() {
   const tab = useLibraryStore((s) => s.tab);
   const showTab = useLibraryStore((s) => s.showTab);
   const browse = useLibraryStore((s) => s.browse);
+  const columnConfig = useLibraryStore((s) => s.columns);
+  const loadColumns = useLibraryStore((s) => s.loadColumns);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const showPlaylist = useLibraryStore((s) => s.showPlaylist);
@@ -90,8 +92,10 @@ export function App() {
   const saveSmart = usePlaylistsStore((s) => s.saveSmart);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    // The layout first: it can move the sort off a hidden column, and doing
+    // that after the first query would mean querying twice on every launch.
+    void loadColumns().then(() => refresh());
+  }, [loadColumns, refresh]);
 
   useEffect(() => {
     // `connect` resolves to its own teardown, which may land after unmount.
@@ -178,7 +182,9 @@ export function App() {
     }
   };
 
-  const columns = columnsFor(DEFAULT_COLUMN_IDS);
+  // Resolved from the store rather than fixed, so a hidden column, a reorder
+  // or a drag-resize reaches the table - and so a playlist can have its own.
+  const columns = resolveColumns(columnConfig);
   const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
   const exportTarget = exportChoice([...selection.ids], currentPlaylist);
   const currentPlaylistName = currentPlaylist?.name ?? "This playlist";

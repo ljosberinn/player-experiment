@@ -170,6 +170,33 @@ pub fn filter(conn: &Connection, id: i64) -> AppResult<Option<FilterGroup>> {
         .and_then(|json| serde_json::from_str(&json).ok()))
 }
 
+/// The playlist's stored column layout, as opaque JSON.
+///
+/// Opaque on purpose: which columns exist and how a width is stored is a
+/// frontend concern, and mirroring `ColumnConfig` into Rust would mean two
+/// definitions to keep in step for no gain. Nothing here reads inside it.
+///
+/// `None` means "never configured", which the frontend resolves to the global
+/// layout rather than to a bare table.
+pub fn columns(conn: &Connection, id: i64) -> AppResult<Option<String>> {
+    let stored: Option<Option<String>> = conn
+        .query_row(
+            "SELECT columns_json FROM playlists WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(stored.flatten())
+}
+
+pub fn set_columns(conn: &Connection, id: i64, columns_json: &str) -> AppResult<()> {
+    conn.execute(
+        "UPDATE playlists SET columns_json = ?2 WHERE id = ?1",
+        rusqlite::params![id, columns_json],
+    )?;
+    Ok(())
+}
+
 fn to_json(filter: &FilterGroup) -> AppResult<String> {
     serde_json::to_string(filter)
         .map_err(|e| AppError::Internal(format!("could not store that filter: {e}")))
@@ -781,5 +808,51 @@ mod tests {
     fn allocating_reports_a_gap_with_no_room_rather_than_colliding() {
         assert!(allocate(Some(5), Some(6), 1).is_none());
         assert!(allocate(Some(5), Some(7), 1).is_some());
+    }
+
+    #[test]
+    fn a_new_playlist_has_no_column_layout_of_its_own() {
+        let (_dir, conn, playlist_id) = with_playlist();
+
+        // Not an empty layout - absent, so the caller can tell "never
+        // configured" from "configured to show nothing" and inherit the
+        // library's columns instead of opening bare.
+        assert_eq!(columns(&conn, playlist_id).unwrap(), None);
+    }
+
+    #[test]
+    fn a_playlist_keeps_its_own_column_layout() {
+        let (_dir, conn, playlist_id) = with_playlist();
+        let other = create(&conn, "Other", 0).unwrap();
+
+        set_columns(&conn, playlist_id, r#"{"ids":["title"]}"#).unwrap();
+
+        assert_eq!(
+            columns(&conn, playlist_id).unwrap().as_deref(),
+            Some(r#"{"ids":["title"]}"#)
+        );
+        // Per playlist, not per app: configuring one must not configure the rest.
+        assert_eq!(columns(&conn, other.id).unwrap(), None);
+    }
+
+    #[test]
+    fn a_column_layout_is_stored_verbatim_rather_than_interpreted() {
+        let (_dir, conn, playlist_id) = with_playlist();
+
+        // Which columns exist is a frontend concern; this layer only carries
+        // the string, so it must not validate or rewrite it.
+        set_columns(&conn, playlist_id, "not json at all").unwrap();
+
+        assert_eq!(
+            columns(&conn, playlist_id).unwrap().as_deref(),
+            Some("not json at all")
+        );
+    }
+
+    #[test]
+    fn the_layout_of_a_playlist_that_is_gone_reads_as_absent() {
+        let (_dir, conn) = seeded();
+
+        assert_eq!(columns(&conn, 404).unwrap(), None);
     }
 }

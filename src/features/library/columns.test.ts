@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
-import type { Track } from "../../ipc";
-import { ALL_COLUMNS, columnsFor, DEFAULT_COLUMN_IDS } from "./columns";
+import type { SortField, Track } from "../../ipc";
+import {
+  ALL_COLUMNS,
+  type ColumnConfig,
+  columnsFor,
+  DEFAULT_COLUMN_CONFIG,
+  DEFAULT_COLUMN_IDS,
+  MIN_COLUMN_WIDTH,
+  moveColumn,
+  parseColumnConfig,
+  resizeColumn,
+  resolveColumns,
+  serializeColumnConfig,
+  toggleColumn,
+  visibleSort,
+} from "./columns";
 
 function track(overrides: Partial<Track> = {}): Track {
   return {
@@ -82,5 +96,121 @@ describe("column rendering", () => {
     // set is non-empty so the constraint cannot be quietly dropped.
     expect(ALL_COLUMNS.length).toBeGreaterThan(0);
     expect(new Set(ALL_COLUMNS.map((c) => c.id)).size).toBe(ALL_COLUMNS.length);
+  });
+});
+
+describe("column configuration", () => {
+  const config = (ids: SortField[], widths: ColumnConfig["widths"] = {}): ColumnConfig => ({
+    ids,
+    widths,
+  });
+
+  it("applies a stored width and leaves the rest on their defaults", () => {
+    const resolved = resolveColumns(config(["title", "artist"], { title: 400 }));
+
+    expect(resolved.map((c) => [c.id, c.width])).toEqual([
+      ["title", 400],
+      // Untouched, so it still follows ALL_COLUMNS rather than being frozen at
+      // whatever it was when the config was written.
+      ["artist", 180],
+    ]);
+  });
+
+  it("hides and shows a column, appending what it cannot place", () => {
+    const hidden = toggleColumn(config(["title", "artist", "album"]), "artist");
+    expect(hidden.ids).toEqual(["title", "album"]);
+
+    const shown = toggleColumn(hidden, "artist");
+    expect(shown.ids).toEqual(["title", "album", "artist"]);
+  });
+
+  it("refuses to hide the last column", () => {
+    const only = config(["title"]);
+
+    // An empty table has no headers, so no header menu, so no way back.
+    expect(toggleColumn(only, "title")).toEqual(only);
+  });
+
+  it("moves a column, counting the target after removal", () => {
+    const start = config(["title", "artist", "album", "genre"]);
+
+    expect(moveColumn(start, "title", 2).ids).toEqual(["artist", "album", "title", "genre"]);
+    expect(moveColumn(start, "genre", 0).ids).toEqual(["genre", "title", "artist", "album"]);
+  });
+
+  it("clamps a move past either end rather than dropping the column", () => {
+    const start = config(["title", "artist"]);
+
+    expect(moveColumn(start, "title", 99).ids).toEqual(["artist", "title"]);
+    expect(moveColumn(start, "artist", -5).ids).toEqual(["artist", "title"]);
+  });
+
+  it("ignores a move of a column that is not shown", () => {
+    const start = config(["title", "artist"]);
+
+    expect(moveColumn(start, "path", 0)).toEqual(start);
+  });
+
+  it("keeps a resized column grabbable", () => {
+    const resized = resizeColumn(config(["title"]), "title", 4);
+
+    // Zero-width is indistinguishable from hidden, except there is no way to
+    // get hold of it again.
+    expect(resized.widths.title).toBe(MIN_COLUMN_WIDTH);
+  });
+
+  it("rounds a dragged width rather than storing a fraction", () => {
+    expect(resizeColumn(config(["title"]), "title", 220.6).widths.title).toBe(221);
+  });
+
+  it("falls back when the sorted column is hidden", () => {
+    // Otherwise the view is sorted by something invisible, and there is no
+    // header left to click to change it.
+    expect(visibleSort(config(["artist", "album"]), "genre")).toBe("artist");
+    expect(visibleSort(config(["artist", "album"]), "album")).toBe("album");
+  });
+
+  it("leaves query-level sorts alone, since they have no column either way", () => {
+    expect(visibleSort(config(["artist"]), "relevance")).toBe("relevance");
+    expect(visibleSort(config(["artist"]), "position")).toBe("position");
+  });
+
+  it("round-trips through storage", () => {
+    const original = config(["album", "title"], { album: 200 });
+
+    expect(parseColumnConfig(serializeColumnConfig(original))).toEqual(original);
+  });
+
+  it("treats an absent config as the defaults", () => {
+    expect(parseColumnConfig(null)).toEqual(DEFAULT_COLUMN_CONFIG);
+  });
+
+  it("survives anything a previous version might have written", () => {
+    // Each of these has to produce a usable table rather than an empty one.
+    for (const stored of ["", "null", "[]", "{}", '{"ids":"title"}', '{"ids":[]}', "not json"]) {
+      expect(parseColumnConfig(stored)).toEqual(DEFAULT_COLUMN_CONFIG);
+    }
+  });
+
+  it("drops column ids it no longer knows about", () => {
+    // A column removed in a later version must not render as a blank.
+    const parsed = parseColumnConfig('{"ids":["title","fictional","artist"]}');
+
+    expect(parsed.ids).toEqual(["title", "artist"]);
+  });
+
+  it("drops duplicate ids, which would render one column twice", () => {
+    expect(parseColumnConfig('{"ids":["title","title","artist"]}').ids).toEqual([
+      "title",
+      "artist",
+    ]);
+  });
+
+  it("ignores widths that are not usable numbers", () => {
+    const parsed = parseColumnConfig(
+      '{"ids":["title","artist"],"widths":{"title":"wide","artist":null,"album":9e999}}',
+    );
+
+    expect(parsed.widths).toEqual({});
   });
 });

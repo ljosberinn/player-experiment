@@ -9,6 +9,8 @@ use crate::error::AppResult;
 
 pub const VOLUME: &str = "player.volume";
 pub const WINDOW_GEOMETRY: &str = "window.geometry";
+/// The library view's column layout; a playlist's own lives on its row.
+pub const COLUMNS: &str = "library.columns";
 
 /// Settings a library export is allowed to carry.
 ///

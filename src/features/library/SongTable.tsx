@@ -2,7 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
-import { revealTrack, type SortField } from "../../ipc";
+import { revealTrack } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import {
   dropIndexFor,
@@ -12,6 +12,7 @@ import {
   setTrackIds,
 } from "../playlists/drag";
 import { usePlaylistsStore } from "../playlists/store";
+import { ColumnHeader } from "./ColumnHeader";
 import type { ColumnDef } from "./columns";
 import { rowMenuItems } from "./rowMenu";
 import { isSelected } from "./selection";
@@ -121,31 +122,12 @@ export function SongTable({
     <div className="song-body" ref={scrollRef} data-testid="song-scroll">
       <table className="song-table" aria-rowcount={total}>
         <thead>
-          <tr>
-            {columns.map((column) => (
-              <th
-                key={column.id}
-                scope="col"
-                style={{ width: column.width }}
-                aria-sort={
-                  sortBy === column.id ? (direction === "asc" ? "ascending" : "descending") : "none"
-                }
-              >
-                <button
-                  type="button"
-                  className="song-header-cell"
-                  onClick={() => void toggleSort(column.id as SortField)}
-                >
-                  {column.label}
-                  {sortBy === column.id ? (
-                    <span className="sort-arrow" aria-hidden="true">
-                      {direction === "asc" ? "▲" : "▼"}
-                    </span>
-                  ) : null}
-                </button>
-              </th>
-            ))}
-          </tr>
+          <ColumnHeader
+            columns={columns}
+            sortBy={sortBy}
+            direction={direction}
+            onSort={(id) => void toggleSort(id)}
+          />
         </thead>
 
         <tbody
