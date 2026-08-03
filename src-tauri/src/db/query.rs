@@ -38,7 +38,7 @@ pub(crate) const COLUMNS: &str =
                        tracks.album, tracks.album_artist, tracks.genre, tracks.year, \
                        tracks.track_no, tracks.disc_no, tracks.comment, tracks.bitrate, \
                        tracks.sample_rate, tracks.cover_hash, tracks.added_at, \
-                       tracks.play_count, tracks.last_played_at";
+                       tracks.play_count, tracks.last_played_at, tracks.missing_since";
 
 /// Upper bound on a single page, so a bad `limit` cannot ask for the whole
 /// library and blow up the IPC payload.
@@ -64,6 +64,7 @@ pub(crate) fn row_to_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         added_at: row.get(15)?,
         play_count: row.get(16)?,
         last_played_at: row.get(17)?,
+        missing_since: row.get(18)?,
     })
 }
 
@@ -227,8 +228,12 @@ pub fn library_stats(conn: &Connection, query: &TrackQuery) -> AppResult<Library
     let scope = scope(conn, query)?;
     // `sum()` of no rows is NULL in SQLite, not 0 - `coalesce` is what stops an
     // empty library, or a search that matched nothing, from failing to decode.
+    // The missing count rides along for the same reason: it is asked for
+    // exactly when the totals are, and `count(...)` over a filtered expression
+    // is free next to a scan that is already happening.
     let sql = format!(
-        "SELECT count(*), coalesce(sum(tracks.duration_ms), 0), coalesce(sum(tracks.size), 0) {}",
+        "SELECT count(*), coalesce(sum(tracks.duration_ms), 0), coalesce(sum(tracks.size), 0), \
+         count(tracks.missing_since) {}",
         scope.from_where
     );
 
@@ -240,6 +245,7 @@ pub fn library_stats(conn: &Connection, query: &TrackQuery) -> AppResult<Library
                 tracks: row.get::<_, i64>(0)? as u32,
                 duration_ms: row.get(1)?,
                 bytes: row.get(2)?,
+                missing: row.get::<_, i64>(3)? as u32,
             })
         },
     )?;

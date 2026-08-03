@@ -69,6 +69,7 @@ pub fn run() {
             commands::add_watch_folder,
             commands::list_watch_folders,
             commands::scan_library,
+            commands::remove_missing_tracks,
             commands::query_tracks,
             commands::count_tracks,
             commands::browse_groups,
@@ -153,6 +154,14 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
         }
         Event::Error(message) => {
             let _ = app.emit("player://error", message);
+        }
+        Event::LoadFailed(track_id) => {
+            // Marked here rather than waiting for the next scan: the file is
+            // demonstrably not playable now, and the row's status column is
+            // where the user will look for why.
+            if let Ok(conn) = db.conn() {
+                let _ = scan::mark_missing(&conn, *track_id);
+            }
         }
     })
 }

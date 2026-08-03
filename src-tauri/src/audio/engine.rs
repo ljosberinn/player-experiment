@@ -60,6 +60,10 @@ pub enum Event {
     Played(i64),
     /// Non-fatal: playback carried on or stopped cleanly, and the user is told.
     Error(String),
+    /// This track would not open, so the file is gone or unreadable. The owner
+    /// marks it missing - a failed play is a cheaper signal than a scan, and
+    /// arrives at the moment the user finds out anyway.
+    LoadFailed(i64),
 }
 
 /// The engine's view of itself. The thread turns this into a
@@ -252,6 +256,7 @@ impl<S: AudioSink> Engine<S> {
                     return events;
                 }
                 Err(message) => {
+                    events.push(Event::LoadFailed(entry.track_id));
                     events.push(Event::Error(message));
                     failures += 1;
                     if failures >= MAX_CONSECUTIVE_LOAD_FAILURES {
@@ -644,5 +649,27 @@ mod tests {
 
         assert_eq!(engine.sink.loads.len(), MAX_CONSECUTIVE_LOAD_FAILURES);
         assert_eq!(engine.state().status, PlaybackStatus::Stopped);
+    }
+
+    #[test]
+    fn a_file_that_will_not_open_is_named_so_it_can_be_marked_missing() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        engine.sink.fail_load = true;
+
+        let events = engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 1000), entry(8, 1000)],
+            index: 0,
+        });
+
+        // The error message is for the user; the id is what lets the library
+        // mark the row, which is why both are emitted rather than one string.
+        let failed: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                Event::LoadFailed(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(failed, [7, 8], "each file it tried, in the order it tried");
     }
 }

@@ -7,4 +7,10 @@
  * thousands of tracks passes four billion milliseconds at about seven hundred
  * hours, and four billion bytes long before that.
  */
-export type LibraryStats = { tracks: number, durationMs: number, bytes: number, };
+export type LibraryStats = { tracks: number, durationMs: number, bytes: number, 
+/**
+ * How many of `tracks` are marked missing. Drives whether the library
+ * offers to clear them out at all; in a healthy library it is zero and
+ * nothing about missing files appears anywhere.
+ */
+missing: number, };

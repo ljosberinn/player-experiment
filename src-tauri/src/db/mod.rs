@@ -113,6 +113,40 @@ mod tests {
     }
 
     #[test]
+    fn an_older_database_gains_the_missing_column_with_its_rows_intact() {
+        // The upgrade path a real library takes, rather than the fresh-create
+        // path every other test exercises: stop at the version before the
+        // column existed, put a row in, then migrate the rest of the way.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("library.sqlite3");
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            let tx = conn.transaction().unwrap();
+            for (index, sql) in schema::MIGRATIONS.iter().enumerate().take(3) {
+                tx.execute_batch(sql).unwrap();
+                tx.pragma_update(None, "user_version", (index + 1) as i64)
+                    .unwrap();
+            }
+            tx.execute(
+                "INSERT INTO tracks (path, mtime, size, added_at) VALUES ('/m/a.mp3', 1, 2, 3)",
+                [],
+            )
+            .unwrap();
+            tx.commit().unwrap();
+        }
+
+        let db = Db::open(&path).expect("migrate an existing library");
+        let conn = db.conn().unwrap();
+
+        // Present, and null for a track nobody has looked for yet - not zero,
+        // which would read as "missing since the epoch".
+        let missing: Option<i64> = conn
+            .query_row("SELECT missing_since FROM tracks", [], |r| r.get(0))
+            .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[test]
     fn refuses_a_database_from_a_newer_build() {
         let (_dir, db) = temp_db();
         let mut conn = db.conn().unwrap();

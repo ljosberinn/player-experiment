@@ -1,6 +1,7 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import "./App.css";
+import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { Sidebar } from "./components/ui/Sidebar";
 import { StatusDisplay } from "./components/ui/StatusDisplay";
 import { TabBar } from "./components/ui/TabBar";
@@ -36,7 +37,8 @@ const SIDEBAR_SECTIONS = [
 ];
 
 export function App() {
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
+  const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const zoomFactor = useZoomStore((s) => s.factor);
   const stepZoom = useZoomStore((s) => s.step);
@@ -61,6 +63,7 @@ export function App() {
   const commitSearch = useLibraryStore((s) => s.commitSearch);
   const clearSearch = useLibraryStore((s) => s.clearSearch);
   const refresh = useLibraryStore((s) => s.refresh);
+  const removeMissing = useLibraryStore((s) => s.removeMissing);
   const error = useLibraryStore((s) => s.error);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
@@ -131,12 +134,12 @@ export function App() {
   useWindowGeometry();
 
   useEffect(() => {
-    if (exportNotice === null) {
+    if (toolbarNotice === null) {
       return;
     }
-    const timer = setTimeout(() => setExportNotice(null), NOTICE_MS);
+    const timer = setTimeout(() => setToolbarNotice(null), NOTICE_MS);
     return () => clearTimeout(timer);
-  }, [exportNotice]);
+  }, [toolbarNotice]);
 
   useEffect(() => {
     if (notice === null) {
@@ -178,9 +181,9 @@ export function App() {
         return;
       }
       const count = await exportLibrary(path, choice.scope);
-      setExportNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
+      setToolbarNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
     } catch (cause) {
-      setExportNotice(`Export failed: ${String(cause)}`);
+      setToolbarNotice(`Export failed: ${String(cause)}`);
     }
   };
 
@@ -281,6 +284,15 @@ export function App() {
               <button type="button" onClick={() => void runExport(exportTarget)}>
                 {exportTarget.label}
               </button>
+              {/* Only when there is something to clear, which in a library
+                  whose drives are all plugged in is never. A permanent button
+                  for a condition that rarely holds is one more thing to read
+                  past on every launch. */}
+              {stats.missing > 0 ? (
+                <button type="button" onClick={() => setConfirmRemoveMissing(true)}>
+                  Remove {stats.missing} Missing
+                </button>
+              ) : null}
             </div>
             <ScanBar />
           </div>
@@ -291,9 +303,9 @@ export function App() {
             </p>
           ) : null}
 
-          {notice || tagNotice || exportNotice ? (
+          {notice || tagNotice || toolbarNotice ? (
             <p className="content-notice" role="status">
-              {notice ?? tagNotice ?? exportNotice}
+              {notice ?? tagNotice ?? toolbarNotice}
             </p>
           ) : null}
 
@@ -424,6 +436,21 @@ export function App() {
             });
             return typeof picked === "string" ? picked : null;
           }}
+        />
+      ) : null}
+
+      {confirmRemoveMissing ? (
+        <ConfirmDialog
+          title="Remove missing songs?"
+          body={`${stats.missing} song${stats.missing === 1 ? "" : "s"} cannot be found on disk. Removing them takes them out of every playlist too. The files themselves are not touched - if a drive is simply unplugged, plug it back in and rescan instead.`}
+          confirmLabel="Remove"
+          onConfirm={() => {
+            setConfirmRemoveMissing(false);
+            void removeMissing().then((removed) => {
+              setToolbarNotice(`Removed ${removed} missing song${removed === 1 ? "" : "s"}.`);
+            });
+          }}
+          onCancel={() => setConfirmRemoveMissing(false)}
         />
       ) : null}
 

@@ -79,6 +79,18 @@ export function scanLibrary(): Promise<ScanSummary> {
   return invoke<ScanSummary>("scan_library");
 }
 
+/**
+ * Deletes the rows of files that are no longer on disk, returning how many.
+ *
+ * The only call that destroys library rows. A scan marks what it cannot find
+ * instead of deleting it, so an unplugged drive is recoverable - and throwing
+ * those rows away, along with the playlist entries pointing at them, is a
+ * decision the user makes rather than a side effect of scanning.
+ */
+export function removeMissingTracks(): Promise<number> {
+  return invoke<number>("remove_missing_tracks");
+}
+
 export function queryTracks(query: TrackQuery): Promise<Track[]> {
   return invoke<Track[]>("query_tracks", { query });
 }

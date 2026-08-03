@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use player_lib::db::{query, Db};
 use player_lib::model::{BrowseFilter, BrowseKind, SortDirection, SortField, TrackQuery};
+use player_lib::scan;
 
 const ROWS: usize = 10_000;
 
@@ -275,4 +276,56 @@ fn drilling_into_a_group_is_as_cheap_as_any_other_page() {
     assert_under("album drill-in", 60, || {
         assert_eq!(query::query_tracks(&conn, &q).unwrap().len(), 40);
     });
+}
+
+#[test]
+fn asking_how_many_files_are_missing_is_free() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery::default();
+
+    // Phase 16 put the missing count inside `library_stats`, which is on the
+    // hot path - every keystroke past the debounce, every sort, every playlist
+    // switch. It rides along in the same scan as the other three totals, so
+    // this shares their budget; needing its own would mean it had become a
+    // second pass over the table.
+    assert_under("totals with the missing count", 60, || {
+        let stats = query::library_stats(&conn, &q).unwrap();
+        assert_eq!(stats.tracks, ROWS as u32);
+        assert_eq!(stats.missing, 0);
+    });
+}
+
+#[test]
+fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
+    // The change phase 16 makes to a scan: what used to be one DELETE per
+    // vanished row is now one UPDATE per vanished row. The worst case is every
+    // file at once - an unplugged drive - so that is what is measured.
+    let (_dir, db) = seeded_library();
+    let mut conn = db.conn().unwrap();
+
+    let start = Instant::now();
+    // No watch folders are configured, so every row is a file the walk cannot
+    // find, which is exactly the unplugged-drive shape.
+    let summary = scan::scan(&mut conn, |_| {}).unwrap();
+    let elapsed = start.elapsed().as_millis();
+
+    assert_eq!(summary.missing, ROWS as u32);
+    assert!(
+        elapsed <= 400,
+        "marking {ROWS} rows missing took {elapsed}ms, budget is 400ms - a per-row \
+         transaction, or an UPDATE that cannot use the primary key, is the usual cause"
+    );
+
+    // And the second scan, which has nothing new to say, must not pay for the
+    // rows again: already-marked files are skipped before any write.
+    let start = Instant::now();
+    let again = scan::scan(&mut conn, |_| {}).unwrap();
+    let elapsed = start.elapsed().as_millis();
+
+    assert_eq!(again.missing, 0);
+    assert!(
+        elapsed <= 200,
+        "a rescan over {ROWS} already-marked rows took {elapsed}ms, budget is 200ms"
+    );
 }

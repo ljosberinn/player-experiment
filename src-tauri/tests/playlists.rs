@@ -158,12 +158,12 @@ fn a_rescan_that_finds_everything_leaves_playlists_alone() {
     assert_eq!(playlists::track_ids(&conn, playlist.id).unwrap(), ids);
 }
 
-/// Today a vanished file is deleted from the library, so it also vanishes from
-/// every playlist that pointed at it - an unplugged drive is data loss, not a
-/// temporary condition. Phase 16 replaces the delete with a "missing" mark;
-/// this test pins the current behaviour so that change is a visible one.
+/// The reason phase 16 exists. A vanished file used to be deleted from the
+/// library, taking every playlist entry pointing at it - so an unplugged drive
+/// was data loss rather than a temporary condition, and unrecoverable, since a
+/// later rescan re-adds the file under a new id.
 #[test]
-fn a_file_that_disappears_currently_takes_its_playlist_entry_with_it() {
+fn a_file_that_disappears_keeps_its_playlist_entry() {
     let h = harness();
     let mut conn = h.db.conn().unwrap();
     let playlist = playlists::create(&conn, "Evening", 0).unwrap();
@@ -176,7 +176,28 @@ fn a_file_that_disappears_currently_takes_its_playlist_entry_with_it() {
 
     std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
     let summary = scan::scan(&mut conn, |_| {}).expect("rescan");
-    assert_eq!(summary.removed, 1);
+    assert_eq!(summary.missing, 1);
+
+    assert_eq!(view(&h.db, playlist.id), ["Maki", "Sleeping Ute"]);
+}
+
+/// The other half: the entry does go when the user says so, because that is
+/// the one place rows are destroyed.
+#[test]
+fn removing_missing_tracks_takes_their_playlist_entries_with_them() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let playlist = playlists::create(&conn, "Evening", 0).unwrap();
+    playlists::add_tracks(
+        &mut conn,
+        playlist.id,
+        &[id_of(&h.db, "Maki"), id_of(&h.db, "Sleeping Ute")],
+    )
+    .unwrap();
+
+    std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
+    scan::scan(&mut conn, |_| {}).expect("rescan");
+    assert_eq!(scan::remove_missing(&conn).unwrap(), 1);
 
     assert_eq!(view(&h.db, playlist.id), ["Sleeping Ute"]);
 }

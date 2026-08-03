@@ -14,6 +14,7 @@ import {
 import { usePlaylistsStore } from "../playlists/store";
 import { ColumnHeader } from "./ColumnHeader";
 import type { ColumnDef } from "./columns";
+import { RowStatusCell } from "./RowStatusCell";
 import { rowMenuItems } from "./rowMenu";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
@@ -242,6 +243,7 @@ export function SongTable({
                   // play/pause shortcut and has to reach the window.
                 }}
               >
+                <RowStatusCell track={track} nowPlayingId={nowPlayingId} />
                 {columns.map((column) => (
                   <td
                     key={column.id}

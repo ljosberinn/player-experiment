@@ -14,7 +14,7 @@ import { SEARCH_DEBOUNCE_MS, useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   browseGroups: vi.fn(async () => []),
@@ -26,7 +26,7 @@ const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
     these tests are about. */
 function stats(tracks: number) {
-  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000 };
+  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000, missing: 0 };
 }
 
 const queryTracksMock = vi.mocked(queryTracks);
@@ -67,6 +67,7 @@ function track(id: number): Track {
     added_at: 0,
     play_count: 0,
     last_played_at: null,
+    missing_since: null,
   };
 }
 
@@ -108,7 +109,12 @@ beforeEach(() => {
 
 describe("refresh", () => {
   it("keeps the totals the footer needs, not just the count", async () => {
-    statsMock.mockResolvedValue({ tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 });
+    statsMock.mockResolvedValue({
+      tracks: 5,
+      durationMs: 3_000_000,
+      bytes: 214_000_000,
+      missing: 0,
+    });
 
     await useLibraryStore.getState().refresh();
 
@@ -119,6 +125,7 @@ describe("refresh", () => {
       tracks: 5,
       durationMs: 3_000_000,
       bytes: 214_000_000,
+      missing: 0,
     });
   });
 

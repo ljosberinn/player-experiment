@@ -31,6 +31,8 @@ pub struct Known {
     id: i64,
     mtime: i64,
     size: i64,
+    /// Whether the last scan failed to find it.
+    missing: bool,
 }
 
 /// Which files need work, decided before any tag is read.
@@ -38,7 +40,14 @@ pub struct Known {
 pub struct ScanPlan {
     pub added: Vec<PathBuf>,
     pub updated: Vec<PathBuf>,
-    pub removed: Vec<i64>,
+    /// Known files that are no longer on disk and are not already marked.
+    ///
+    /// Not deleted: see migration 4. Already-marked files are left out so the
+    /// timestamp keeps saying when the file first went, not when it was last
+    /// looked for.
+    pub missing: Vec<i64>,
+    /// Marked files that turned up again - an external drive plugged back in.
+    pub returned: Vec<i64>,
     pub unchanged: u32,
 }
 
@@ -112,11 +121,20 @@ pub fn plan(known: &HashMap<String, Known>, on_disk: &[(PathBuf, i64, i64)]) -> 
             }
             Some(_) => plan.unchanged += 1,
         }
+
+        // Independent of the branch above: a file that came back unchanged is
+        // still a file that came back, and one that came back edited needs
+        // both the re-read and the mark cleared.
+        if let Some(entry) = known.get(&key) {
+            if entry.missing {
+                plan.returned.push(entry.id);
+            }
+        }
     }
 
     for (key, entry) in known {
-        if !seen.contains(key) {
-            plan.removed.push(entry.id);
+        if !seen.contains(key) && !entry.missing {
+            plan.missing.push(entry.id);
         }
     }
 
@@ -124,7 +142,7 @@ pub fn plan(known: &HashMap<String, Known>, on_disk: &[(PathBuf, i64, i64)]) -> 
 }
 
 fn load_known(conn: &Connection) -> AppResult<HashMap<String, Known>> {
-    let mut stmt = conn.prepare("SELECT id, path, mtime, size FROM tracks")?;
+    let mut stmt = conn.prepare("SELECT id, path, mtime, size, missing_since FROM tracks")?;
     let rows = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(1)?,
@@ -132,10 +150,46 @@ fn load_known(conn: &Connection) -> AppResult<HashMap<String, Known>> {
                 id: row.get(0)?,
                 mtime: row.get(2)?,
                 size: row.get(3)?,
+                missing: row.get::<_, Option<i64>>(4)?.is_some(),
             },
         ))
     })?;
     Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
+}
+
+/// Marks `ids` as no longer on disk, or clears the mark when `at` is `None`.
+///
+/// One statement per id rather than an `IN` list: the list is unbounded - an
+/// unplugged drive can be the whole library - and SQLite's parameter limit is
+/// not.
+fn set_missing(tx: &rusqlite::Transaction<'_>, ids: &[i64], at: Option<i64>) -> AppResult<()> {
+    let mut stmt = tx.prepare("UPDATE tracks SET missing_since = ?2 WHERE id = ?1")?;
+    for id in ids {
+        stmt.execute(rusqlite::params![id, at])?;
+    }
+    Ok(())
+}
+
+/// Marks one track missing, for the player: a file that will not open is gone
+/// whether or not a scan has noticed yet.
+///
+/// Leaves an existing mark alone so the timestamp keeps its original meaning.
+pub fn mark_missing(conn: &Connection, id: i64) -> AppResult<()> {
+    conn.execute(
+        "UPDATE tracks SET missing_since = ?2 WHERE id = ?1 AND missing_since IS NULL",
+        rusqlite::params![id, now_secs()],
+    )?;
+    Ok(())
+}
+
+/// Deletes every track currently marked missing, returning how many went.
+///
+/// The only place library rows are destroyed. Playlist entries follow through
+/// `ON DELETE CASCADE`, which is why this is a deliberate action rather than
+/// something a scan does on the user's behalf.
+pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
+    let removed = conn.execute("DELETE FROM tracks WHERE missing_since IS NOT NULL", [])?;
+    Ok(removed as u32)
 }
 
 pub fn watch_folders(conn: &Connection) -> AppResult<Vec<PathBuf>> {
@@ -197,20 +251,17 @@ pub fn scan(
         total,
         added: 0,
         updated: 0,
-        removed: 0,
+        missing: 0,
         done: false,
     });
 
-    if !plan.removed.is_empty() {
+    if !plan.missing.is_empty() || !plan.returned.is_empty() {
         let tx = conn.transaction()?;
-        {
-            let mut stmt = tx.prepare("DELETE FROM tracks WHERE id = ?1")?;
-            for id in &plan.removed {
-                stmt.execute([id])?;
-            }
-        }
+        set_missing(&tx, &plan.missing, Some(now_secs()))?;
+        set_missing(&tx, &plan.returned, None)?;
         tx.commit()?;
-        summary.removed = plan.removed.len() as u32;
+        summary.missing = plan.missing.len() as u32;
+        summary.returned = plan.returned.len() as u32;
     }
 
     let mut scanned = 0_u32;
@@ -232,7 +283,7 @@ pub fn scan(
             total,
             added: summary.added,
             updated: summary.updated,
-            removed: summary.removed,
+            missing: summary.missing,
             done: false,
         });
     }
@@ -252,7 +303,7 @@ pub fn scan(
             total,
             added: summary.added,
             updated: summary.updated,
-            removed: summary.removed,
+            missing: summary.missing,
             done: false,
         });
     }
@@ -262,7 +313,7 @@ pub fn scan(
         total,
         added: summary.added,
         updated: summary.updated,
-        removed: summary.removed,
+        missing: summary.missing,
         done: true,
     });
 
@@ -367,6 +418,11 @@ mod tests {
     use super::*;
 
     fn known(entries: &[(&str, i64, i64)]) -> HashMap<String, Known> {
+        marked(entries, &[])
+    }
+
+    /// The same, with the named paths already marked missing.
+    fn marked(entries: &[(&str, i64, i64)], missing: &[&str]) -> HashMap<String, Known> {
         entries
             .iter()
             .enumerate()
@@ -377,6 +433,7 @@ mod tests {
                         id: i as i64 + 1,
                         mtime: *mtime,
                         size: *size,
+                        missing: missing.contains(path),
                     },
                 )
             })
@@ -408,7 +465,7 @@ mod tests {
         assert_eq!(plan.unchanged, 1);
         assert!(plan.added.is_empty());
         assert!(plan.updated.is_empty());
-        assert!(plan.removed.is_empty());
+        assert!(plan.missing.is_empty());
     }
 
     #[test]
@@ -428,8 +485,46 @@ mod tests {
 
         assert_eq!(plan.added, [PathBuf::from("/m/new.mp3")]);
         assert_eq!(plan.updated, [PathBuf::from("/m/edited.mp3")]);
-        assert_eq!(plan.removed.len(), 1, "the missing file should be removed");
+        assert_eq!(plan.missing.len(), 1, "the vanished file should be marked");
         assert_eq!(plan.unchanged, 1);
+    }
+
+    #[test]
+    fn a_file_that_is_still_gone_is_not_marked_twice() {
+        // Otherwise every rescan would move the timestamp forward and the
+        // count would report the same absence as news, over and over.
+        let plan = plan(
+            &marked(&[("/m/gone.mp3", 10, 100)], &["/m/gone.mp3"]),
+            &on_disk(&[]),
+        );
+
+        assert!(plan.missing.is_empty());
+        assert!(plan.returned.is_empty());
+    }
+
+    #[test]
+    fn a_marked_file_that_reappears_is_unmarked() {
+        let plan = plan(
+            &marked(&[("/m/back.mp3", 10, 100)], &["/m/back.mp3"]),
+            &on_disk(&[("/m/back.mp3", 10, 100)]),
+        );
+
+        assert_eq!(plan.returned.len(), 1);
+        assert_eq!(plan.unchanged, 1, "and it is not re-parsed for nothing");
+        assert!(plan.added.is_empty(), "it is the same row, not a new one");
+    }
+
+    #[test]
+    fn a_marked_file_that_reappears_edited_is_both_unmarked_and_re_read() {
+        // The drive was unplugged, the file was retagged elsewhere, and it is
+        // back. Both halves have to happen.
+        let plan = plan(
+            &marked(&[("/m/back.mp3", 10, 100)], &["/m/back.mp3"]),
+            &on_disk(&[("/m/back.mp3", 20, 140)]),
+        );
+
+        assert_eq!(plan.returned.len(), 1);
+        assert_eq!(plan.updated, [PathBuf::from("/m/back.mp3")]);
     }
 
     #[test]

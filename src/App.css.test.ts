@@ -13,7 +13,8 @@ import { describe, expect, it } from "vitest";
  * built from a variable) is out of its reach, and the checklist in PLAN.md
  * remains the real specification.
  */
-const css = readFileSync(`${process.cwd().replaceAll("\\", "/")}/src/App.css`, "utf8");
+const root = process.cwd().replaceAll("\\", "/");
+const css = readFileSync(`${root}/src/App.css`, "utf8");
 
 interface Rule {
   selector: string;
@@ -43,6 +44,16 @@ const HOVER_ALLOWED = [
   // makes it a menu rather than a list of buttons.
   ".context-item",
 ];
+
+/**
+ * Selectors that may move.
+ *
+ * One entry, and it should stay that way. The playing indicator's motion *is*
+ * the state rather than decoration on a state change, which is the line phase
+ * 13 drew; see PLAN.md phase 16. The reduced-motion fallback below is not
+ * optional for anything on this list.
+ */
+const ANIMATION_ALLOWED = [".row-status.playing .wave"];
 
 describe("the stylesheet", () => {
   it("parses into rules", () => {
@@ -75,6 +86,7 @@ describe("the stylesheet", () => {
     // backtracks to nothing, so `:\s*(?!none)` succeeds on ": none" and the
     // check silently passes everything.
     const offenders = all
+      .filter((rule) => !ANIMATION_ALLOWED.some((allowed) => rule.selector.includes(allowed)))
       .filter((rule) =>
         [...rule.body.matchAll(/(?:transition|animation)\s*:\s*([^;]+)/g)].some(
           (match) => (match[1] ?? "").trim() !== "none",
@@ -84,6 +96,48 @@ describe("the stylesheet", () => {
 
     // State changes are instant, the way a native list view repaints.
     expect(offenders).toEqual([]);
+  });
+
+  it("stops the one animation it allows under reduced motion", () => {
+    // An exception that ignores the OS setting is not an exception, it is the
+    // rule phase 13 removed coming back through a side door.
+    const reduced = css.slice(css.indexOf("prefers-reduced-motion"));
+
+    expect(reduced).toMatch(/\.row-status\.playing\s+\.wave\s*\{[^}]*animation:\s*none/);
+  });
+
+  it("keeps the row markers visible on the selected row", () => {
+    // The playing speaker was `--accent` on a row whose background is
+    // `--accent`: invisible until the selection moved off it. Any colour a
+    // marker sets has to be taken back on the selected row, where the row's
+    // own foreground is the only one guaranteed to contrast with its fill.
+    const coloured = all
+      .filter((rule) => /^\.row-status\.\w+$/.test(rule.selector.trim()))
+      .filter((rule) => /(?:^|;|\s)color:/.test(rule.body))
+      .map((rule) => rule.selector.trim().replace(".row-status", ""));
+
+    const overridden = all
+      .filter((rule) => rule.selector.includes(".song-row.selected"))
+      .filter((rule) => /color:\s*inherit/.test(rule.body))
+      .flatMap((rule) => rule.selector.split(","))
+      .filter((selector) => selector.includes(".row-status"))
+      .map((selector) => selector.trim().split(".row-status")[1] ?? "");
+
+    expect(coloured.length).toBeGreaterThan(0);
+    for (const state of coloured) {
+      expect(overridden, `${state} needs a selected-row colour`).toContain(state);
+    }
+  });
+
+  it("never says a state in colour alone", () => {
+    // The missing marker is red, and red is exactly what a red-green colour
+    // blindness does not deliver. The glyph has to carry it.
+    const missing = all.find((rule) => rule.selector.includes(".row-status.missing"));
+
+    expect(missing?.body).toMatch(/color:\s*var\(--danger\)/);
+    expect(readFileSync(`${root}/src/features/library/RowStatusCell.tsx`, "utf8")).toMatch(
+      /aria-hidden="true">!</,
+    );
   });
 
   it("turns focus rings off only in favour of :focus-visible", () => {

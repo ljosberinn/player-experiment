@@ -9,6 +9,7 @@ import {
   libraryStats,
   loadColumnConfig,
   queryTracks,
+  removeMissingTracks,
   type SortDirection,
   type SortField,
   saveColumnConfig,
@@ -115,6 +116,13 @@ interface LibraryState {
 
   /** Reloads the count and drops cached pages; call after any query change. */
   refresh: () => Promise<void>;
+  /**
+   * Deletes every track whose file is gone, and reloads the view.
+   *
+   * The one action in the app that destroys library rows; everything else
+   * marks, hides or reorders. Resolves to how many went.
+   */
+  removeMissing: () => Promise<number>;
   /** Reloads the open tab's groups under `refresh`'s token. Internal. */
   loadGroups: (token: number) => Promise<void>;
   /** Switches the view to a playlist, or back to the whole library. */
@@ -175,7 +183,7 @@ function defaultSortFor(playlistId: number | null): SortField {
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
-  stats: { tracks: 0, durationMs: 0, bytes: 0 },
+  stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0 },
   pages: new Map(),
   inFlight: new Set(),
   searchInput: "",
@@ -223,6 +231,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ error: String(cause), loading: false });
     }
     await get().loadGroups(token);
+  },
+
+  removeMissing: async () => {
+    try {
+      const removed = await removeMissingTracks();
+      // Through `refresh` rather than by patching `stats`: the rows are gone,
+      // so every page, count and group in the view is now wrong, and the
+      // playlist a row belonged to has lost an entry too.
+      await get().refresh();
+      return removed;
+    } catch (cause) {
+      set({ error: String(cause) });
+      return 0;
+    }
   },
 
   /**

@@ -8,7 +8,7 @@ import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(async () => []),
   allTrackIds: vi.fn(async () => []),
   browseGroups: vi.fn(async () => []),

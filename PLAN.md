@@ -1454,7 +1454,55 @@ a folder itself, is ingested, and the modal reports only what was skipped. The
 modal is the one exception to the app's "no dialogs for routine work" leaning,
 because silently dropping half a drag is worse than an interruption.
 
-**16 — Row status column** `feat/16-status`
+**16 — Row status column** `feat/16-status` — 🔄 **in review**
+
+*Built. What shipped, and where it differed from the sketch below:*
+
+- **Migration 4** adds `tracks.missing_since INTEGER NULL` with a **partial**
+  index (`WHERE missing_since IS NOT NULL`), so it costs one entry per missing
+  file rather than one per track - the "are any missing" question rides along
+  with every stats refresh, and in a healthy library the answer is none.
+- The scan plan gained `missing` and `returned` in place of `removed`, and
+  `ScanSummary` reports both. Already-marked files are deliberately left out of
+  `missing`, so the timestamp says when a file went rather than when it was
+  last looked for, and a second scan over the same absence reports nothing.
+- **The playlist test written in phase 6 to pin the old behaviour is now
+  inverted**, which is exactly what it was for: `a_file_that_disappears_-
+  currently_takes_its_playlist_entry_with_it` became
+  `..._keeps_its_playlist_entry`, with a second test covering the deliberate
+  removal taking the entries with it.
+- `Event::LoadFailed(track_id)` is emitted alongside the existing
+  `Event::Error(String)` rather than replacing it: the message is for the user
+  and the id is what lets the library mark the row, and one string cannot be
+  both.
+- `LibraryStats` gained `missing`, folded into the same scan as the other three
+  totals - it is asked for exactly when they are. A perf guard pins that it
+  needs no budget of its own, and another pins the worst case of the new write
+  path: marking an entire 10k library missing at once, which is what an
+  unplugged drive looks like.
+- The remove affordance is a **toolbar button that only exists when there is
+  something to remove**, behind the existing `ConfirmDialog`. Its wording names
+  the cost that is easy to miss - the playlist entries - and says what to do
+  instead if a drive is merely unplugged.
+- **A bug the user caught in review:** the playing speaker was `var(--accent)`
+  on a selected row whose background is `var(--accent)`, so it was invisible
+  until the selection moved off it. Both markers now take `color: inherit` on
+  the selected row, and a CSS guard requires any `.row-status.*` rule that sets
+  a colour to have that override. The glyphs carry the meaning without the
+  colour, which is why losing it there costs nothing.
+- `--danger` is now a theme variable in both blocks. It replaces the literal
+  `#c0392b` in `.content-error`, which was the one red the theme-parity guard
+  could not see and which read as brown on the dark surface.
+- `App.css.test.ts` gains `ANIMATION_ALLOWED`, a one-entry exception list
+  parallel to `HOVER_ALLOWED`, plus a check that the exception is turned off
+  under `prefers-reduced-motion`. An exception that ignores the OS setting is
+  the rule phase 13 removed coming back through a side door.
+- `headerBounds()` now queries `th[data-column]` rather than every `th`: the
+  status header is a fixed first column with no id, and counting it would have
+  offset every drag-to-reorder drop index by one.
+
+*The original entry follows.*
+
 A first column in every view, narrow and unlabeled, showing what is true about
 each file:
 

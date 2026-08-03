@@ -5,6 +5,7 @@ import { ContextMenu, type MenuItem, type MenuPosition } from "../../components/
 import type { SortDirection, SortField } from "../../ipc";
 import { columnDropIndex, draggedWidth, isDrag } from "./columnDrag";
 import { ALL_COLUMNS, type ColumnDef, MIN_COLUMN_WIDTH } from "./columns";
+import { STATUS_COLUMN_WIDTH } from "./rowStatus";
 import { useLibraryStore } from "./store";
 
 /** A press that may become a reorder, once it has travelled far enough. */
@@ -60,8 +61,10 @@ export function ColumnHeader({
    */
   const swallowClick = useRef(false);
 
+  // `[data-column]` rather than every `th`: the status column is a fixed first
+  // header with no id, and counting it would offset every drop index by one.
   const headerBounds = () =>
-    Array.from(rowRef.current?.querySelectorAll("th") ?? []).map((th) => {
+    Array.from(rowRef.current?.querySelectorAll("th[data-column]") ?? []).map((th) => {
       const rect = th.getBoundingClientRect();
       return { left: rect.left, right: rect.right };
     });
@@ -164,12 +167,22 @@ export function ColumnHeader({
           setMenu({ x: event.clientX, y: event.clientY });
         }}
       >
+        {/* The status column: first, fixed, and not in `columns` at all - it
+            cannot be sorted by, hidden, reordered or resized, so it has no
+            business in the configurable set. It carries no visible label, so
+            it needs a stated one or screen readers announce an empty column
+            header for every row. */}
+        <th scope="col" className="status" style={{ width: STATUS_COLUMN_WIDTH }}>
+          <span className="visually-hidden">Status</span>
+        </th>
+
         {columns.map((column) => {
           const width = resize?.id === column.id ? resize.width : column.width;
           return (
             <th
               key={column.id}
               scope="col"
+              data-column={column.id}
               style={{ width }}
               data-dragging={drag?.moved && drag.id === column.id ? "true" : undefined}
               aria-sort={

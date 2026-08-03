@@ -3,4 +3,8 @@
 /**
  * Progress of a library scan, emitted on `scan://progress`.
  */
-export type ScanProgress = { scanned: number, total: number, added: number, updated: number, removed: number, done: boolean, };
+export type ScanProgress = { scanned: number, total: number, added: number, updated: number, 
+/**
+ * Files that have gone from disk. Marked, not deleted - see migration 4.
+ */
+missing: number, done: boolean, };

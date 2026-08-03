@@ -80,6 +80,18 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
 /// The table needs the count for its scrollbar and the footer needs all three,
 /// and they change together, so this is what the store calls on a query change
 /// rather than asking twice.
+/// Deletes the rows of files that are no longer on disk.
+///
+/// The only command that destroys library rows, and it exists because scanning
+/// no longer does: a scan marks what it cannot find, so an unplugged drive is
+/// recoverable. Throwing those rows away - and the playlist entries pointing at
+/// them - is a decision, so it is a button.
+#[tauri::command]
+pub fn remove_missing_tracks(db: State<'_, Db>) -> AppResult<u32> {
+    let conn = db.conn()?;
+    scan::remove_missing(&conn)
+}
+
 #[tauri::command]
 pub fn library_stats(db: State<'_, Db>, query: TrackQuery) -> AppResult<LibraryStats> {
     let conn = db.conn()?;
