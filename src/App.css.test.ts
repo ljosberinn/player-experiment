@@ -40,9 +40,10 @@ const HOVER_ALLOWED = [
   // Every Windows title bar highlights these; not doing so reads as broken
   // rather than as native. Called out in PLAN.md phase 13.
   ".window-buttons",
-  // A menu's active entry follows the pointer by definition - that is what
-  // makes it a menu rather than a list of buttons.
-  ".context-item",
+  // `.context-item` used to be here: a menu's active entry follows the
+  // pointer by definition. Phase 24 removed the need for the exception rather
+  // than the behaviour - Base UI sets `data-highlighted` for the pointer and
+  // the keyboard alike, so the rule is a state selector, not a hover one.
 ];
 
 /**
@@ -215,15 +216,29 @@ describe("the stylesheet", () => {
     expect(rule?.body).not.toMatch(/min-height/);
   });
 
-  it("gives submenus a positioning context on the row, not the panel", () => {
-    const row = all.find((one) => /(^|\s)\.context-row$/.test(one.selector));
-    const submenu = all.find((one) => /(^|\s)\.context-submenu$/.test(one.selector));
+  it("positions no menu by hand", () => {
+    // Replaces the guard that required `.context-row { position: relative }`
+    // against `.context-submenu { position: absolute }`. Both rules are gone:
+    // a submenu is its own portalled popup that Floating UI anchors to the
+    // item that opened it, so hand-written offsets would now fight it rather
+    // than help. Their absence is the assertion.
+    for (const selector of [".context-row", ".context-submenu"]) {
+      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+      expect(rule, `${selector} should have gone with the hand-rolled menu`).toBeUndefined();
+    }
+  });
 
-    // The submenu is absolutely positioned. Without `position: relative` on the
-    // row, that resolves against the menu panel - the nearest positioned
-    // ancestor, since the panel is `fixed` - and the flyout pins itself to the
-    // top of the menu rather than to the item that opened it.
-    expect(submenu?.body).toMatch(/position:\s*absolute/);
-    expect(row?.body).toMatch(/position:\s*relative/);
+  it("highlights menu items from state rather than from :hover", () => {
+    // Stricter than before, and able to be: the pointer and the keyboard both
+    // set `data-highlighted`, so the menu no longer needs the hover exception
+    // that `HOVER_ALLOWED` grants it - and a `:hover` rule would now fight the
+    // keyboard, lighting up two rows at once.
+    const hovered = all
+      .filter((rule) => rule.selector.includes(".context-item"))
+      .filter((rule) => rule.selector.includes(":hover"))
+      .map((rule) => rule.selector);
+
+    expect(hovered).toEqual([]);
+    expect(css).toMatch(/\.context-item\[data-highlighted\]/);
   });
 });

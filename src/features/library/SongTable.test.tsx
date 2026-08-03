@@ -523,7 +523,12 @@ describe("SongTable", () => {
       });
       const user = await openRowMenu();
 
-      await user.click(await screen.findByRole("menuitem", { name: /Add to Playlist/ }));
+      // Keyboard, deliberately: Base UI keeps a closed submenu's positioner
+      // inert, and jsdom reports every rect as zero, so the pointer route to a
+      // submenu cannot be driven here at all. ArrowRight is the route that can
+      // be, and the e2e suite is where the pointer one is real.
+      // Play, Edit, Add to Playlist - separators are not stops.
+      await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}");
       await user.click(await screen.findByRole("menuitem", { name: "Evening" }));
 
       // The first keyboard-and-menu route to a playlist; dragging is mouse-only.

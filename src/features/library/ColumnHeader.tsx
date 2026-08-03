@@ -1,7 +1,6 @@
 import type React from "react";
 import { useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { ContextMenu, type MenuItem, type MenuPosition } from "../../components/ui/ContextMenu";
+import { ContextMenu, type MenuItem } from "../../components/ui/ContextMenu";
 import type { SortDirection, SortField } from "../../ipc";
 import { columnDropIndex, draggedWidth, isDrag } from "./columnDrag";
 import { ALL_COLUMNS, type ColumnDef, MIN_COLUMN_WIDTH } from "./columns";
@@ -51,7 +50,6 @@ export function ColumnHeader({
   const rowRef = useRef<HTMLTableRowElement>(null);
   const [drag, setDrag] = useState<HeaderDrag | null>(null);
   const [resize, setResize] = useState<ResizeDrag | null>(null);
-  const [menu, setMenu] = useState<MenuPosition | null>(null);
 
   /**
    * Suppresses the click that follows a drag.
@@ -159,88 +157,70 @@ export function ColumnHeader({
   ];
 
   return (
-    <>
-      <tr
-        ref={rowRef}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setMenu({ x: event.clientX, y: event.clientY });
-        }}
-      >
-        {/* The status column: first, fixed, and not in `columns` at all - it
+    // The header row is the trigger. It replaces the `onContextMenu` phase 20
+    // added, and with it the portal that used to be needed: a menu is a div,
+    // which is not valid inside a <thead> and which the browser hoisted out of
+    // the table anyway, taking its positioning with it. Base UI portals to the
+    // body itself.
+    <ContextMenu label="Columns" items={menuItems} render={<tr ref={rowRef} />}>
+      {/* The status column: first, fixed, and not in `columns` at all - it
             cannot be sorted by, hidden, reordered or resized, so it has no
             business in the configurable set. It carries no visible label, so
             it needs a stated one or screen readers announce an empty column
             header for every row. */}
-        <th scope="col" className="status" style={{ width: STATUS_COLUMN_WIDTH }}>
-          <span className="visually-hidden">Status</span>
-        </th>
+      <th scope="col" className="status" style={{ width: STATUS_COLUMN_WIDTH }}>
+        <span className="visually-hidden">Status</span>
+      </th>
 
-        {columns.map((column) => {
-          const width = resize?.id === column.id ? resize.width : column.width;
-          return (
-            <th
-              key={column.id}
-              scope="col"
-              data-column={column.id}
-              style={{ width }}
-              data-dragging={drag?.moved && drag.id === column.id ? "true" : undefined}
-              aria-sort={
-                sortBy === column.id ? (direction === "asc" ? "ascending" : "descending") : "none"
-              }
+      {columns.map((column) => {
+        const width = resize?.id === column.id ? resize.width : column.width;
+        return (
+          <th
+            key={column.id}
+            scope="col"
+            data-column={column.id}
+            style={{ width }}
+            data-dragging={drag?.moved && drag.id === column.id ? "true" : undefined}
+            aria-sort={
+              sortBy === column.id ? (direction === "asc" ? "ascending" : "descending") : "none"
+            }
+          >
+            <button
+              type="button"
+              className="song-header-cell"
+              onPointerDown={(event) => onHeaderPointerDown(event, column.id)}
+              onPointerMove={onHeaderPointerMove}
+              onPointerUp={onHeaderPointerUp}
+              onClick={() => {
+                if (swallowClick.current) {
+                  swallowClick.current = false;
+                  return;
+                }
+                onSort(column.id);
+              }}
             >
-              <button
-                type="button"
-                className="song-header-cell"
-                onPointerDown={(event) => onHeaderPointerDown(event, column.id)}
-                onPointerMove={onHeaderPointerMove}
-                onPointerUp={onHeaderPointerUp}
-                onClick={() => {
-                  if (swallowClick.current) {
-                    swallowClick.current = false;
-                    return;
-                  }
-                  onSort(column.id);
-                }}
-              >
-                {column.label}
-                {sortBy === column.id ? (
-                  <span className="sort-arrow" aria-hidden="true">
-                    {direction === "asc" ? "▲" : "▼"}
-                  </span>
-                ) : null}
-              </button>
+              {column.label}
+              {sortBy === column.id ? (
+                <span className="sort-arrow" aria-hidden="true">
+                  {direction === "asc" ? "▲" : "▼"}
+                </span>
+              ) : null}
+            </button>
 
-              {/* Not a button: it is a drag handle with nothing to activate,
+            {/* Not a button: it is a drag handle with nothing to activate,
                   and announcing one per column would bury the headers. Column
                   width is reachable from the keyboard only in the sense that
                   it does not need to be - nothing is unreachable without it. */}
-              <span
-                className="column-resizer"
-                data-testid={`resize-${column.id}`}
-                onPointerDown={(event) => onResizePointerDown(event, column)}
-                onPointerMove={onResizePointerMove}
-                onPointerUp={onResizePointerUp}
-              />
-            </th>
-          );
-        })}
-      </tr>
-
-      {/* Portalled because this component renders inside <thead>, and a menu
-          is a <div> - which is not valid there and which the browser would
-          hoist out of the table anyway, taking its positioning with it. */}
-      {menu === null
-        ? null
-        : createPortal(
-            <ContextMenu
-              items={menuItems}
-              position={menu}
-              onClose={() => setMenu(null)}
-              label="Columns"
-            />,
-            document.body,
-          )}
-    </>
+            <span
+              className="column-resizer"
+              data-testid={`resize-${column.id}`}
+              onPointerDown={(event) => onResizePointerDown(event, column)}
+              onPointerMove={onResizePointerMove}
+              onPointerUp={onResizePointerUp}
+            />
+          </th>
+        );
+      })}
+    </ContextMenu>
   );
 }

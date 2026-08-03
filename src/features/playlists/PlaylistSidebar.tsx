@@ -1,6 +1,7 @@
+import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { ContextMenu, type MenuPosition } from "../../components/ui/ContextMenu";
+import { ContextMenu } from "../../components/ui/ContextMenu";
 import type { Playlist } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { hasTrackIds, readTrackIds } from "./drag";
@@ -44,8 +45,6 @@ export function PlaylistSidebar({
 
   /** Which playlist the pointer is currently over with a valid drag. */
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
-  /** The open right-click menu, and which playlist it acts on. */
-  const [menu, setMenu] = useState<{ at: MenuPosition; playlist: Playlist } | null>(null);
   /** The playlist awaiting a yes/no on deletion. */
   const [confirming, setConfirming] = useState<Playlist | null>(null);
   // Renaming lives in the store because creating a playlist starts one, and
@@ -90,46 +89,70 @@ export function PlaylistSidebar({
       ) : (
         <ul aria-labelledby="playlists-heading">
           {playlists.map((playlist) => (
-            <li
+            // Each row is its own trigger, which removes the "right-clicking a
+            // playlist selects it first" special case: that existed so the
+            // highlight said which playlist Delete was about to remove, and a
+            // per-row trigger leaves no question in the first place.
+            <ContextMenu
               key={playlist.id}
-              className={[
-                "sidebar-row",
-                dropTargetId === playlist.id ? "drop-target" : "",
-                playlist.id === selectedId ? "current" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onDragOver={(event) => {
-                // A smart playlist's contents come from its filter, so there
-                // is nothing a drop could add. Refusing the drag outright says
-                // so more clearly than accepting it and doing nothing.
-                if (playlist.kind !== "static" || !hasTrackIds(event.dataTransfer)) {
-                  return;
-                }
-                // Both are required: without preventDefault the browser
-                // refuses the drop outright, and the effect is what makes the
-                // cursor say "copy" rather than "move".
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "copy";
-                setDropTargetId(playlist.id);
-              }}
-              onDragLeave={() => setDropTargetId((id) => (id === playlist.id ? null : id))}
-              onDrop={(event) => {
-                if (playlist.kind !== "static") {
-                  return;
-                }
-                event.preventDefault();
-                setDropTargetId(null);
-                void addTracks(playlist.id, readTrackIds(event.dataTransfer));
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                // Opening it first is what makes the menu legible: the sidebar
-                // row it belongs to is then the highlighted one, so there is no
-                // guessing which playlist Delete is about to remove.
-                void showPlaylist(playlist.id);
-                setMenu({ at: { x: event.clientX, y: event.clientY }, playlist });
-              }}
+              label={`${playlist.name} actions`}
+              items={[
+                {
+                  label: "Play",
+                  // Nothing to play, and nothing to write into an export file.
+                  // Disabled rather than absent: the actions still exist, this
+                  // playlist just has no contents for them to act on yet.
+                  disabled: playlist.trackCount === 0,
+                  onSelect: () => void playPlaylist(playlist.id),
+                },
+                { kind: "separator" },
+                ...(playlist.kind === "smart"
+                  ? [{ label: "Edit Filter…", onSelect: () => void editSmart(playlist.id) }]
+                  : []),
+                { label: "Rename", onSelect: () => startRename(playlist.id) },
+                { label: "Delete", onSelect: () => setConfirming(playlist) },
+                { kind: "separator" },
+                {
+                  label: "Export…",
+                  disabled: playlist.trackCount === 0,
+                  onSelect: () => onExport?.(playlist),
+                },
+              ]}
+              render={
+                <li
+                  className={[
+                    "sidebar-row",
+                    dropTargetId === playlist.id ? "drop-target" : "",
+                    playlist.id === selectedId ? "current" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onDragOver={(event: React.DragEvent<HTMLLIElement>) => {
+                    // A smart playlist's contents come from its filter, so
+                    // there is nothing a drop could add. Refusing the drag
+                    // outright says so more clearly than accepting it and
+                    // doing nothing.
+                    if (playlist.kind !== "static" || !hasTrackIds(event.dataTransfer)) {
+                      return;
+                    }
+                    // Both are required: without preventDefault the browser
+                    // refuses the drop outright, and the effect is what makes
+                    // the cursor say "copy" rather than "move".
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                    setDropTargetId(playlist.id);
+                  }}
+                  onDragLeave={() => setDropTargetId((id) => (id === playlist.id ? null : id))}
+                  onDrop={(event: React.DragEvent<HTMLLIElement>) => {
+                    if (playlist.kind !== "static") {
+                      return;
+                    }
+                    event.preventDefault();
+                    setDropTargetId(null);
+                    void addTracks(playlist.id, readTrackIds(event.dataTransfer));
+                  }}
+                />
+              }
             >
               {renamingId === playlist.id ? (
                 <RenameField
@@ -162,7 +185,7 @@ export function PlaylistSidebar({
                   <span className="sidebar-count">{playlist.trackCount}</span>
                 </button>
               )}
-            </li>
+            </ContextMenu>
           ))}
         </ul>
       )}
@@ -211,36 +234,6 @@ export function PlaylistSidebar({
             setConfirming(null);
             void removePlaylist(playlist.id);
           }}
-        />
-      ) : null}
-
-      {menu ? (
-        <ContextMenu
-          position={menu.at}
-          label={`${menu.playlist.name} actions`}
-          onClose={() => setMenu(null)}
-          items={[
-            {
-              label: "Play",
-              // Nothing to play, and nothing to write into an export file.
-              // Disabled rather than absent: the actions still exist, this
-              // playlist just has no contents for them to act on yet.
-              disabled: menu.playlist.trackCount === 0,
-              onSelect: () => void playPlaylist(menu.playlist.id),
-            },
-            { kind: "separator" },
-            ...(menu.playlist.kind === "smart"
-              ? [{ label: "Edit Filter…", onSelect: () => void editSmart(menu.playlist.id) }]
-              : []),
-            { label: "Rename", onSelect: () => startRename(menu.playlist.id) },
-            { label: "Delete", onSelect: () => setConfirming(menu.playlist) },
-            { kind: "separator" },
-            {
-              label: "Export…",
-              disabled: menu.playlist.trackCount === 0,
-              onSelect: () => onExport?.(menu.playlist),
-            },
-          ]}
         />
       ) : null}
     </div>

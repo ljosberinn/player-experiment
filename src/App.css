@@ -945,10 +945,18 @@ th.status {
    Positioned at the pointer in viewport coordinates, so they are fixed rather
    than absolute - an absolute menu inside the scrolling table would travel
    with the rows it is describing. */
-.context-menu {
-  position: fixed;
+/* Floating UI owns the coordinates now; this is what it positions. Everything
+   about *where* a menu goes - the fixed placement, the measure-then-nudge, the
+   submenu offset - moved out of the app in phase 24. */
+.context-positioner {
   z-index: 40;
+  outline: none;
+}
+
+.context-menu {
   min-width: 216px;
+  max-height: var(--available-height, 60vh);
+  overflow-y: auto;
   margin: 0;
   padding: 5px;
   list-style: none;
@@ -980,13 +988,15 @@ th.status {
 
 /* Hover and keyboard focus look the same on purpose: the menu tracks one
    active item whichever way it is being driven. */
-.context-item:hover:not(:disabled),
-.context-item.active:not(:disabled) {
+/* One selector where there were two, and no hover exception left to grant:
+   Base UI sets `data-highlighted` for both the pointer and the keyboard, so
+   the highlight follows whichever is driving without the CSS knowing which. */
+.context-item[data-highlighted] {
   background: var(--accent);
   color: #fff;
 }
 
-.context-item:disabled {
+.context-item[data-disabled] {
   color: var(--muted);
   cursor: default;
 }
@@ -1007,22 +1017,10 @@ th.status {
   white-space: nowrap;
 }
 
-/* The positioning context for a submenu. Without this the submenu's `absolute`
-   resolves against the menu panel - which is the `fixed` ancestor - and pins
-   itself to the top of the panel instead of to the row that opened it. */
-.context-row {
-  position: relative;
-}
-
-/* Submenus hang off their parent item rather than the menu, so they line up
-   with the row that opened them. */
-.context-submenu {
-  position: absolute;
-  top: -5px;
-  left: 100%;
-  max-height: 60vh;
-  overflow-y: auto;
-}
+/* `.context-row`'s positioning context and `.context-submenu`'s offsets are
+   gone with phase 24: a submenu is its own portalled popup that Floating UI
+   anchors to the item that opened it, so there is nothing left here to line up
+   by hand - and nothing left to get wrong when the menu is near an edge. */
 
 .context-arrow {
   color: inherit;
