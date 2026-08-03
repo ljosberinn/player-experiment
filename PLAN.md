@@ -1800,16 +1800,56 @@ cost. Submenu alignment, collision nudging, outside-click capture and focus
 restoration are all things this project has now debugged by hand, and neither
 modal has a focus trap or an inert background today.
 
-**The overlays, first and worth the most.**
-`src/components/ui/ContextMenu.tsx` becomes a thin adapter over
-`ContextMenu.Root`. The `MenuItem` union and the `{x, y}` `position` prop stay
-as the public API, so `SongTable.tsx`, `PlaylistSidebar.tsx` and `rowMenu.ts`
-are untouched: the pointer position feeds `Menu.Positioner`'s `anchor` as a
-virtual element, which is what makes the swap invisible from the outside. That
-deletes the measure-then-nudge effect, the resize and scroll close handlers,
-the capture-phase `mousedown` listener and the whole `step`/`choose` keyboard
-machine - roughly 150 of the file's 236 lines. Submenus become `SubmenuRoot`,
-and the `position: relative` trick on `.context-row` goes away with them.
+**The overlays, first and worth the most - and larger than this phase first
+assumed.** A spike on 2026-08-03 built the adapter this entry originally
+described and found its central claim false, so the shape below is what the
+code actually requires.
+
+*What the spike established.* `Menu.Positioner`'s `anchor` does accept a
+virtual element, so a zero-sized rect at the pointer positions the menu
+correctly and the `{x, y}` prop survives. Positioning was never the problem.
+**Keyboard navigation was.** Base UI wires a menu's arrow-key handling through
+its trigger, and a menu rendered `open` at a captured position has none;
+focusing the popup on mount does not substitute. Six of the thirteen existing
+`ContextMenu` tests failed - every arrow-key and submenu case - against an
+adapter that was otherwise working. Base UI ships a dedicated `ContextMenu`
+part for exactly this situation, but it is `Root` + `Trigger` only: it owns the
+`contextmenu` event and derives the pointer position itself.
+
+*So this is a call-site refactor, not an adapter swap.* The premise that
+`SongTable.tsx`, `PlaylistSidebar.tsx` and `rowMenu.ts` stay untouched does not
+hold, and pretending otherwise buys a menu whose keyboard support is worse than
+today's. Each place that opens a menu wraps the region it applies to in a
+`ContextMenu.Trigger` and stops capturing the event itself:
+
+- **`SongTable.tsx`** - the `<tbody>` becomes the trigger. The row-menu state
+  (`menu.at`, `menu.trackIds`, `menu.rowIndex`) loses its `at`, since Base UI
+  owns the position; what stays is *which rows the menu acts on*, which the
+  existing `onContextMenu` still decides before the trigger opens.
+- **`PlaylistSidebar.tsx`** - each playlist row becomes its own trigger, which
+  also removes the "right-clicking a playlist selects it" special case: the
+  trigger is the row, so there is no question which one was hit.
+- **`ColumnHeader.tsx`** - the header `<tr>` becomes the trigger, replacing the
+  `onContextMenu` added in phase 20.
+- **`rowMenu.ts` is genuinely untouched.** It builds a `MenuItem[]` and knows
+  nothing about how the menu opens, which is the part of the original claim
+  that survives.
+
+The `MenuItem` union stays as the shared vocabulary; `ContextMenu.tsx` keeps
+exporting a component that takes `items`, and gains a `children` prop for the
+trigger region in place of `position`. What still gets deleted is everything
+the spike confirmed is dead weight: the measure-then-nudge effect, the resize
+and scroll close handlers, the capture-phase `mousedown` listener, and the
+`step`/`choose` keyboard machine. Submenus become `SubmenuRoot`, and
+`.context-row`'s `position: relative` - the phase 17 fix for submenus opening
+at the panel top - goes with them.
+
+*Do it properly rather than partially.* Keeping the hand-rolled menu and
+adopting Base UI only for the dialogs and chrome was considered and rejected on
+2026-08-03: the menu is where the focus, collision and submenu bugs actually
+were, so excluding it would leave the phase's main benefit on the table. The
+larger refactor is the point, not a cost to be minimised.
+
 `ConfirmDialog` becomes `AlertDialog`, which is the role its own prose already
 claims; the tag and filter editors become `Dialog`; and `useDialogKeys` is
 deleted, because Escape is the library's and Enter-to-accept becomes a real
@@ -1851,14 +1891,25 @@ wanted behaviour here.
 
 **Bundle and startup.** Tree-shaken per component, into an app that loads from
 disk. Not a cost worth trading behaviour for, but record the built bundle size
-before and after so the claim is a number rather than an assumption.
+before and after so the claim is a number rather than an assumption. The
+baseline, measured after phase 20: **291,628 bytes** for the main chunk
+(90.54 kB gzipped).
+
+**The package is `@base-ui/react`, currently 1.6.0.** Worth stating because
+`@base-ui-components/react` also exists on npm - the former name - and is still
+published at `1.0.0-rc.0`, so a version check on the wrong one reads as "this
+library is barely released".
 
 *Testing:* the component tests are the specification and should move as little
-as possible. `ContextMenu.test.tsx` already queries `getByRole("menuitem")`
-and drives the arrow keys through `userEvent`, which is exactly what Base UI's
-roles and keyboard handling satisfy; expect to touch it only where it asserts
-internals - the `.active` class, and the container holding focus rather than
-the item. Base UI portals to `document.body`, so `chrome.test.tsx` and the
+as possible. `ContextMenu.test.tsx` already queries `getByRole("menuitem")` and
+drives the arrow keys through `userEvent`, which is what Base UI's roles and
+keyboard handling satisfy - but its *setup* has to change with the API: a test
+that renders the menu at a position must instead render a trigger and
+right-click it. The spike showed those six keyboard tests failing as the signal
+that the adapter approach was wrong, so they are the ones to watch: they should
+pass without their assertions being weakened. Beyond that, expect to touch only
+what asserts internals - the `.active` class, and the container holding focus
+rather than the item. Base UI portals to `document.body`, so `chrome.test.tsx` and the
 editor tests keep working under jsdom through `screen` rather than container
 queries. Add the two tests the old code could not pass: focus stays trapped
 inside an open dialog, and Tab from the last item wraps to the first. The e2e
