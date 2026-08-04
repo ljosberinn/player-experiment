@@ -30,14 +30,18 @@ import { invoke } from "../invoke";
  * real rather than a placeholder. Those cannot flake - they are true or the
  * design is broken.
  *
- * The **timing** claims are deliberately loose, an order of magnitude above
- * what the operation costs, because this runs on a shared CI runner where a
- * noisy neighbour can cost seconds. They are not a benchmark. They exist to
- * catch the failure that turns a paged query into a full scan or a windowed
- * render into a complete one, which costs orders of magnitude rather than
- * percent. A budget tight enough to measure a regression of 20% would fail on
- * a busy runner every other week, and a flaky perf test is one that gets
- * disabled.
+ * The **performance** claim is one, and it is a *ratio*: a cold page at the far
+ * end of the ordering must not cost meaningfully more than a cold page at the
+ * near end. That is the property that actually matters - the design promises
+ * cost does not grow with library size - and a ratio measures the app rather
+ * than the runner, which an absolute budget on a shared CI box cannot.
+ *
+ * The first version of this file asserted ceilings of ten and fifteen seconds
+ * and printed nothing. That was worth very little: a ceiling loose enough to
+ * survive a noisy runner only catches a total collapse, and a run that printed
+ * no numbers could not tell anyone that a page which used to land in 40ms now
+ * takes 900. Every timing is now recorded and printed at the end of the spec,
+ * because the log is where a trend lives.
  */
 
 /** Rows to add. Chosen to be past any plausible page-cache window. */
@@ -93,7 +97,47 @@ async function waitForRealRow(index: number, timeout: number): Promise<void> {
         const one = document.querySelector(`tr.song-row[aria-rowindex='${rowIndex}']`);
         return one !== null && one.querySelector(".skeleton") === null;
       }, index),
-    { timeout, timeoutMsg: `row ${index} never arrived with its data` },
+    // 25ms, not the 500ms default: the interval is the resolution of every
+    // measurement below, and at 500ms a page that took 40ms and one that took
+    // 400ms are the same number.
+    { timeout, interval: 25, timeoutMsg: `row ${index} never arrived with its data` },
+  );
+}
+
+/**
+ * Every timing taken during the run, printed together at the end.
+ *
+ * The first version of this spec asserted ceilings and printed nothing, so a
+ * green run said "not catastrophically broken" and stopped there. A number in
+ * the log is what makes a run worth reading: it is the only way anyone notices
+ * a page that used to land in 40ms now taking 900, which no ceiling loose
+ * enough to survive a shared runner will ever catch.
+ */
+const measurements: [string, number][] = [];
+
+/** Runs `work`, records how long it took, and hands the number back. */
+async function timed(label: string, work: () => Promise<unknown>): Promise<number> {
+  const started = Date.now();
+  await work();
+  const elapsed = Date.now() - started;
+  measurements.push([label, elapsed]);
+  return elapsed;
+}
+
+/**
+ * Re-sorts, which is the app's own way of throwing every cached page away.
+ *
+ * A measurement taken against a warm cache measures the cache. There is no
+ * back door for emptying it - and there should not be - so this uses the one
+ * the UI already has: a new sort changes the query token, and every page held
+ * against the old one is dropped.
+ */
+async function dropThePageCache(): Promise<void> {
+  const before = await browser.$("th[data-column='title']").getAttribute("aria-sort");
+  await browser.$("th[data-column='title'] button").click();
+  await browser.waitUntil(
+    async () => (await browser.$("th[data-column='title']").getAttribute("aria-sort")) !== before,
+    { timeout: 30_000, timeoutMsg: "the title column never changed its sort" },
   );
 }
 
@@ -129,6 +173,16 @@ describe("a library too big to put in the DOM", () => {
     });
   });
 
+  after(() => {
+    // Printed rather than asserted. The CI log is where a trend lives: these
+    // are the numbers to compare a run against the last one, and none of them
+    // has a threshold worth failing a build over on a shared machine.
+    const report = measurements
+      .map(([label, ms]) => `  ${label.padEnd(28)} ${String(ms).padStart(6)}ms`)
+      .join("\n");
+    console.log(`\n  ${existing + ROWS} rows, measured:\n${report}\n`);
+  });
+
   it("knows how many rows it has without holding them", async () => {
     expect(await rowCount()).toBe(existing + ROWS);
     // The scrollbar is driven by the count, so the scroll extent is the other
@@ -142,22 +196,15 @@ describe("a library too big to put in the DOM", () => {
     expect(await renderedRows()).toBeLessThan(MAX_RENDERED);
   });
 
-  it("reaches the last row, and reaches it quickly", async () => {
-    const started = Date.now();
+  it("reaches the last row at all", async () => {
     await scrollTo("bottom");
     await waitForRealRow(existing + ROWS, 30_000);
-    const elapsed = Date.now() - started;
 
-    // The row at the far end is the one a naive `OFFSET` degrades on: reaching
-    // it means running past 149,999 index entries. It is also where a page
-    // cache keyed on the wrong thing quietly returns the first page again.
-    const last = await browser.$(`tr.song-row[aria-rowindex='${existing + ROWS}']`);
-    await expect(last).toBeExisting();
-
-    // Ten seconds for one page of a hundred and fifty thousand rows: an order
-    // of magnitude above what it costs, so it fails on a broken query rather
-    // than on a busy runner. See the note at the top.
-    expect(elapsed).toBeLessThan(10_000);
+    // The row at the far end is where a page cache keyed on the wrong thing
+    // quietly returns the first page again, and where a naive `OFFSET` starts
+    // to hurt. Reaching it with its data is the structural half of that; the
+    // cost of reaching it is measured separately below.
+    await expect(browser.$(`tr.song-row[aria-rowindex='${existing + ROWS}']`)).toBeExisting();
   });
 
   it("still holds only a windowful at the far end", async () => {
@@ -167,27 +214,53 @@ describe("a library too big to put in the DOM", () => {
     expect(await renderedRows()).toBeLessThan(MAX_RENDERED);
   });
 
+  it("costs the same at the far end as at the near end", async () => {
+    // The one assertion here that is about performance rather than structure,
+    // and it is a **ratio** rather than a budget on purpose.
+    //
+    // An absolute budget measures the runner, not the app: on a shared CI box
+    // it has to be set an order of magnitude loose to avoid flaking, and by
+    // then it only catches a total collapse. A ratio cancels the runner out.
+    // Both pages are fetched cold, both are one page of a hundred and fifty
+    // thousand rows, and the only difference between them is how far into the
+    // ordering they sit - which is precisely the thing that degrades if the
+    // query stops using an index, or if paging is ever done by walking.
+    //
+    // If deep paging went linear, the far page would not be 3x the near one,
+    // it would be hundreds of times, and this fails while a 10-second ceiling
+    // would still pass.
+    await dropThePageCache();
+
+    await scrollTo("top");
+    const near = await timed("first page, cold", () => waitForRealRow(1, 30_000));
+
+    await scrollTo("bottom");
+    const far = await timed("last page, cold", () => waitForRealRow(existing + ROWS, 30_000));
+
+    // The floor absorbs measurement noise: at these speeds a page can land in
+    // 40ms, and 5x of a number that small is inside the round-trip cost of
+    // asking the question. Below the floor the ratio means nothing and the
+    // test is not trying to say anything.
+    expect(far).toBeLessThan(Math.max(near * 5, 1_500));
+  });
+
   it("sorts a library this size without losing the window", async () => {
-    // The sort is a fresh query, a fresh count and a dropped page cache, all
-    // at 150k rows. It is also the operation most likely to be accidentally
-    // done in Rust over every row instead of in SQL over an index.
+    // A fresh query, a fresh count and a dropped page cache, all at 150k rows.
+    // It is also the operation most likely to be accidentally done in Rust
+    // over every row instead of in SQL over an index.
     //
     // Back to the top first, and not for tidiness: the test before this one
     // leaves the table at the far end, and row 1 is then a hundred and fifty
     // thousand rows above the viewport - so waiting for it to render was
     // waiting for something virtualization is *supposed* to withhold. The
-    // first version of this test failed exactly there, which is the assertion
-    // working rather than the app.
+    // first version failed exactly there, which was the assertion working
+    // rather than the app.
     await scrollTo("top");
-    const started = Date.now();
-    await browser.$("th[data-column='title'] button").click();
-    await browser.waitUntil(
-      async () => (await browser.$("th[data-column='title']").getAttribute("aria-sort")) !== "none",
-      { timeout: 30_000, timeoutMsg: "the title column never reported itself sorted" },
-    );
-    await waitForRealRow(1, 30_000);
+    await timed("re-sort, to first painted row", async () => {
+      await dropThePageCache();
+      await waitForRealRow(1, 30_000);
+    });
 
-    expect(Date.now() - started).toBeLessThan(15_000);
     expect(await rowCount()).toBe(existing + ROWS);
     expect(await renderedRows()).toBeLessThan(MAX_RENDERED);
   });
@@ -200,9 +273,7 @@ describe("a library too big to put in the DOM", () => {
     const target = Math.floor((existing + ROWS) / 2);
     await scrollTo(target * 26);
 
-    const started = Date.now();
-    await waitForRealRow(target, 30_000);
-    expect(Date.now() - started).toBeLessThan(10_000);
+    await timed("jump to the middle", () => waitForRealRow(target, 30_000));
     expect(await renderedRows()).toBeLessThan(MAX_RENDERED);
   });
 });

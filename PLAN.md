@@ -2430,11 +2430,19 @@ passes a million pixels, the last row is real rather than a shimmer
 placeholder, and the DOM holds under two hundred rows - before a scroll, after
 scrolling to the bottom, after a re-sort and after a jump into the middle.
 
-*Loose where it is timing.* An order of magnitude above what the operations
-cost. These are not a benchmark; they catch a paged query becoming a full scan,
-which costs orders of magnitude rather than percent. A budget tight enough to
-see a 20% regression would fail on a busy runner every other week, and a flaky
-perf test is one that gets disabled.
+*A ratio where it is performance.* One assertion is about cost rather than
+structure, and it compares a cold page at the far end of the ordering against a
+cold page at the near end. That is the design's actual promise - cost does not
+grow with library size - and a ratio measures the app rather than the runner,
+which an absolute budget on a shared CI box cannot. The page cache is emptied
+through the UI's own route, a re-sort, because a measurement against a warm
+cache measures the cache.
+
+The first version asserted ten- and fifteen-second ceilings and printed
+nothing, which was worth very little: a ceiling loose enough to survive a noisy
+runner catches only a total collapse, and a run that reports no numbers cannot
+tell anyone a page that used to land in 40ms now takes 900. Every timing is now
+printed at the end of the spec. The log is where a trend lives.
 
 *Cost.* No extra job and no extra build - one more spec file against the app
 the e2e job already builds and launches.
