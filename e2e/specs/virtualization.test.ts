@@ -270,10 +270,16 @@ describe("a library too big to put in the DOM", () => {
     // fetched on the way, so this is the page cache being asked for a range it
     // has never seen rather than one adjacent to what it holds.
     await scrollTo("top");
+    await dropThePageCache();
+
+    // Cold, and deliberately so. The first version of this measured 7ms, which
+    // is not a fetch - it is a cache hit left over from the sweep before it,
+    // and a number that fast in a perf log is worse than no number, because it
+    // reads as evidence.
     const target = Math.floor((existing + ROWS) / 2);
     await scrollTo(target * 26);
 
-    await timed("jump to the middle", () => waitForRealRow(target, 30_000));
+    await timed("middle page, cold", () => waitForRealRow(target, 30_000));
     expect(await renderedRows()).toBeLessThan(MAX_RENDERED);
   });
 });
