@@ -30,6 +30,7 @@ it is out of date. Do not edit it by hand.
 | MIT OR Zlib OR Apache-2.0 | 1 |
 | MIT/Apache-2.0 | 14 |
 | MPL-2.0 | 9 |
+| OFL-1.1 | 1 |
 | Unicode-3.0 | 18 |
 | Unlicense OR MIT | 5 |
 | Unlicense/MIT | 2 |
@@ -396,20 +397,21 @@ the Rust crates, from crates.io at the exact version given.
 | [@floating-ui/dom](https://github.com/floating-ui/floating-ui.git) | 1.8.0 | MIT | [192](#licence-text-192) |
 | [@floating-ui/react-dom](https://github.com/floating-ui/floating-ui.git) | 2.1.9 | MIT | [192](#licence-text-192) |
 | [@floating-ui/utils](https://github.com/floating-ui/floating-ui.git) | 0.2.12 | MIT | [192](#licence-text-192) |
-| [@tanstack/react-table](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [193](#licence-text-193) |
-| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.9 | MIT | [194](#licence-text-194) |
-| [@tanstack/table-core](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [193](#licence-text-193) |
-| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.7 | MIT | [194](#licence-text-194) |
+| [@fontsource/space-grotesk](git+https://github.com/fontsource/font-files.git) | 5.3.0 | OFL-1.1 | [193](#licence-text-193) |
+| [@tanstack/react-table](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [194](#licence-text-194) |
+| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.9 | MIT | [195](#licence-text-195) |
+| [@tanstack/table-core](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [194](#licence-text-194) |
+| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.7 | MIT | [195](#licence-text-195) |
 | [@tauri-apps/api](git+https://github.com/tauri-apps/tauri.git) | 2.11.1 | Apache-2.0 OR MIT | — |
 | [@tauri-apps/plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2.7.2 | MIT OR Apache-2.0 | [153](#licence-text-153) |
 | [@tauri-apps/plugin-global-shortcut](https://github.com/tauri-apps/plugins-workspace) | 2.3.2 | MIT OR Apache-2.0 | [153](#licence-text-153) |
 | [@tauri-apps/plugin-updater](https://github.com/tauri-apps/plugins-workspace) | 2.10.1 | MIT OR Apache-2.0 | [153](#licence-text-153) |
-| [react](https://github.com/react/react.git) | 19.2.8 | MIT | [195](#licence-text-195) |
-| [react-dom](https://github.com/react/react.git) | 19.2.8 | MIT | [195](#licence-text-195) |
-| [reselect](https://github.com/reduxjs/reselect.git) | 5.2.0 | MIT | [196](#licence-text-196) |
-| [scheduler](https://github.com/facebook/react.git) | 0.27.0 | MIT | [195](#licence-text-195) |
-| [use-sync-external-store](https://github.com/facebook/react.git) | 1.6.0 | MIT | [195](#licence-text-195) |
-| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.14 | MIT | [197](#licence-text-197) |
+| [react](https://github.com/react/react.git) | 19.2.8 | MIT | [196](#licence-text-196) |
+| [react-dom](https://github.com/react/react.git) | 19.2.8 | MIT | [196](#licence-text-196) |
+| [reselect](https://github.com/reduxjs/reselect.git) | 5.2.0 | MIT | [197](#licence-text-197) |
+| [scheduler](https://github.com/facebook/react.git) | 0.27.0 | MIT | [196](#licence-text-196) |
+| [use-sync-external-store](https://github.com/facebook/react.git) | 1.6.0 | MIT | [196](#licence-text-196) |
+| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.14 | MIT | [198](#licence-text-198) |
 
 ## Licence texts
 
@@ -12212,27 +12214,99 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### Licence text 193
 
 ```text
-MIT License
+Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
 
-Copyright (c) 2016 Tanner Linsley
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
 ### Licence text 194
@@ -12240,7 +12314,7 @@ SOFTWARE.
 ```text
 MIT License
 
-Copyright (c) 2021-present Tanner Linsley
+Copyright (c) 2016 Tanner Linsley
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -12266,7 +12340,7 @@ SOFTWARE.
 ```text
 MIT License
 
-Copyright (c) Meta Platforms, Inc. and affiliates.
+Copyright (c) 2021-present Tanner Linsley
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -12288,6 +12362,32 @@ SOFTWARE.
 ```
 
 ### Licence text 196
+
+```text
+MIT License
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Licence text 197
 
 ```text
 The MIT License (MIT)
@@ -12313,7 +12413,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 197
+### Licence text 198
 
 ```text
 MIT License

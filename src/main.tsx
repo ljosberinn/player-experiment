@@ -1,3 +1,11 @@
+// The design's numeral face, for times and durations. Only the two weights the
+// app actually sets and only the latin subset: the full package carries five
+// weights across three subsets, and a local-only player has no reason to ship
+// glyphs it will never draw. Vite inlines the @font-face and copies the woff2
+// into the bundle, so nothing is fetched at runtime - which is the point, on an
+// app whose CSP forbids it and whose user may be offline.
+import "@fontsource/space-grotesk/latin-400.css";
+import "@fontsource/space-grotesk/latin-700.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
