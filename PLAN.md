@@ -2444,6 +2444,16 @@ runner catches only a total collapse, and a run that reports no numbers cannot
 tell anyone a page that used to land in 40ms now takes 900. Every timing is now
 printed at the end of the spec. The log is where a trend lives.
 
+*What the first runs measured*, debug build, end to end, 150,006 rows: a near
+page in 454-482ms, a far page in 528-1095ms, a full re-sort to first painted
+row in 262-300ms. So deep paging **is** more expensive - the query is
+`LIMIT ? OFFSET ?` and `OFFSET` walks the index to reach the offset, so cost
+does grow with depth. It grows by a small constant factor over a cheap
+operation rather than by orders of magnitude, and the run-to-run spread is as
+wide as the effect. Read one run as one sample: the first pass reported a far
+page at 528ms and looked like *no* difference at all, which the second pass
+contradicted.
+
 *Cost.* No extra job and no extra build - one more spec file against the app
 the e2e job already builds and launches.
 

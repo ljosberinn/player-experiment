@@ -31,10 +31,19 @@ import { invoke } from "../invoke";
  * design is broken.
  *
  * The **performance** claim is one, and it is a *ratio*: a cold page at the far
- * end of the ordering must not cost meaningfully more than a cold page at the
- * near end. That is the property that actually matters - the design promises
- * cost does not grow with library size - and a ratio measures the app rather
- * than the runner, which an absolute budget on a shared CI box cannot.
+ * end of the ordering must not cost *disproportionately* more than a cold page
+ * at the near end. A ratio measures the app rather than the runner, which an
+ * absolute budget on a shared CI box cannot.
+ *
+ * It is worth saying what the first instrumented runs actually showed, because
+ * it is not "no difference". A near page landed in 454-482ms and a far page in
+ * 528-1095ms, debug build, end to end. Deep paging *is* more expensive - the
+ * query is `LIMIT ? OFFSET ?` and `OFFSET` walks the index to get there, so
+ * cost does grow with depth. What the numbers say is that it grows by a small
+ * constant factor over a very cheap operation, not by orders of magnitude, and
+ * that the run-to-run spread on a shared runner is as wide as the effect being
+ * measured. Both facts are why the bound is loose and why the numbers are
+ * printed: a single run is one sample, and the log is where the trend lives.
  *
  * The first version of this file asserted ceilings of ten and fifteen seconds
  * and printed nothing. That was worth very little: a ceiling loose enough to
@@ -237,11 +246,17 @@ describe("a library too big to put in the DOM", () => {
     await scrollTo("bottom");
     const far = await timed("last page, cold", () => waitForRealRow(existing + ROWS, 30_000));
 
-    // The floor absorbs measurement noise: at these speeds a page can land in
-    // 40ms, and 5x of a number that small is inside the round-trip cost of
-    // asking the question. Below the floor the ratio means nothing and the
-    // test is not trying to say anything.
-    expect(far).toBeLessThan(Math.max(near * 5, 1_500));
+    // Observed on the runner, in a debug build, over two runs: a near page at
+    // 454-482ms and a far page at 528-1095ms. So the far page does cost more -
+    // `OFFSET` walks the index, and walking 150,000 entries is not free - but
+    // it costs about 2x, not 100x, and the run-to-run spread is as wide as the
+    // effect. Those numbers are why the multiplier is 5 and why the floor is
+    // 2.5s: both sit above the noise and far below a collapse.
+    //
+    // A tighter bound would be measuring this runner's mood. The failure worth
+    // catching is paging that walks *rows* instead of index entries, and that
+    // is three orders of magnitude away, not thirty percent.
+    expect(far).toBeLessThan(Math.max(near * 5, 2_500));
   });
 
   it("sorts a library this size without losing the window", async () => {
