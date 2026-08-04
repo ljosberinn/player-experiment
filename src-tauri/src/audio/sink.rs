@@ -151,6 +151,88 @@ impl AudioSink for NullSink {
     }
 }
 
+/// A sink that accepts every load and plays silence on a wall clock.
+///
+/// The counterpart to [`NullSink`], for the one machine where "no audio
+/// device" is the normal case rather than a fault: a CI runner. There, a real
+/// build falls back to `NullSink`, every load fails, and so nothing downstream
+/// of a successful load can be tested end to end - not the playing marker on a
+/// row, not the status display, not the position events. This sink makes those
+/// reachable without a sound card, and the e2e build is the only build that
+/// can select it (see `lib.rs`).
+///
+/// It never reports itself finished while something is loaded. A track that
+/// ends would advance the queue mid-assertion, and what the tests using this
+/// need is a track that stays put; queue advance has its own deterministic
+/// coverage against `FakeSink`.
+#[cfg(any(test, feature = "wdio"))]
+#[derive(Debug, Default)]
+pub struct SilentSink {
+    loaded: bool,
+    /// When the current run of playback started; `None` while paused.
+    since: Option<std::time::Instant>,
+    /// Everything played before the current run.
+    before: Duration,
+}
+
+#[cfg(any(test, feature = "wdio"))]
+impl SilentSink {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[cfg(any(test, feature = "wdio"))]
+impl AudioSink for SilentSink {
+    fn load(&mut self, _path: &Path) -> Result<(), String> {
+        self.loaded = true;
+        self.since = None;
+        self.before = Duration::ZERO;
+        Ok(())
+    }
+
+    fn play(&mut self) {
+        if self.loaded && self.since.is_none() {
+            self.since = Some(std::time::Instant::now());
+        }
+    }
+
+    fn pause(&mut self) {
+        if let Some(started) = self.since.take() {
+            self.before += started.elapsed();
+        }
+    }
+
+    fn stop(&mut self) {
+        self.loaded = false;
+        self.since = None;
+        self.before = Duration::ZERO;
+    }
+
+    fn set_volume(&mut self, _volume: f32) {}
+
+    fn seek(&mut self, position: Duration) -> Result<(), String> {
+        if !self.loaded {
+            return Err("nothing is loaded".to_owned());
+        }
+        self.before = position;
+        // Restarted so the elapsed time since the seek counts from there.
+        self.since = self.since.map(|_| std::time::Instant::now());
+        Ok(())
+    }
+
+    fn position(&self) -> Duration {
+        self.before
+            + self
+                .since
+                .map_or(Duration::ZERO, |started| started.elapsed())
+    }
+
+    fn finished(&self) -> bool {
+        !self.loaded
+    }
+}
+
 /// An [`AudioSink`] that decodes nothing, for tests.
 ///
 /// Position advances only when a test advances it, so queue-advance and
@@ -217,5 +299,52 @@ impl AudioSink for FakeSink {
 
     fn finished(&self) -> bool {
         self.loaded.is_none() || self.exhausted
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_silent_sink_advances_only_while_it_is_playing() {
+        let mut sink = SilentSink::new();
+        sink.load(Path::new(r"C:\music\1.mp3")).unwrap();
+        assert_eq!(sink.position(), Duration::ZERO);
+
+        sink.play();
+        std::thread::sleep(Duration::from_millis(30));
+        sink.pause();
+        let paused_at = sink.position();
+        assert!(paused_at > Duration::ZERO, "position never moved");
+
+        std::thread::sleep(Duration::from_millis(30));
+        assert_eq!(
+            sink.position(),
+            paused_at,
+            "a paused sink kept counting wall-clock time"
+        );
+    }
+
+    #[test]
+    fn the_silent_sink_seeks_and_stops() {
+        let mut sink = SilentSink::new();
+        assert!(
+            sink.seek(Duration::from_secs(1)).is_err(),
+            "seeking nothing must fail, not silently succeed"
+        );
+
+        sink.load(Path::new(r"C:\music\1.mp3")).unwrap();
+        sink.seek(Duration::from_secs(30)).unwrap();
+        assert!(sink.position() >= Duration::from_secs(30));
+
+        // Never finished while loaded: a track that ended would advance the
+        // queue underneath whatever is asserting on it.
+        sink.play();
+        assert!(!sink.finished());
+
+        sink.stop();
+        assert!(sink.finished());
+        assert_eq!(sink.position(), Duration::ZERO);
     }
 }

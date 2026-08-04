@@ -2257,7 +2257,7 @@ appears in about two hundred crates; each distinct text now appears once, in
 
 ---
 
-**27 — Appearance assertions in e2e** `feat/27-screenshots` — 🔄 **in review**
+**27 — Appearance assertions in e2e** `feat/27-screenshots` — ✅ **done** (PR #44)
 
 **The gap this closes.** Three defects reached the user in a running build
 during phases 16-18: the playing icon invisible on the selected row, the modal
@@ -2307,7 +2307,7 @@ against light.
 marker contrast, which was the first of the three defects. The smoke suite runs
 against an empty library and adding music needs a native folder picker. Seeding
 a SQLite file into the app data directory before launch is the way in, and is
-its own piece of work.
+its own piece of work. **Phase 30 closed this.**
 
 *Cost.* The app is already built and launched by the smoke suite, so this adds
 seconds of wall clock to a job already paid for, and - having dropped pixel
@@ -2357,6 +2357,53 @@ and track titles off the machine.
 *Testing:* the hook's formatting is unit-testable against a synthesized
 `PanicHookInfo`; rotation is unit-testable; that a panic on a spawned thread
 reaches the file is an integration test.
+
+---
+
+**30 — A seeded library in e2e** `feat/30-e2e-library` — 🔄 **in review**
+
+Phase 27 left one hole and named it: every spec ran against an **empty**
+library, so nothing had ever looked at a row - and the row is where the defects
+land. The first of the three that shipped was the playing marker rendered
+`--accent` on a row *filled* with `--accent`.
+
+Two things stood between the suite and a populated library, and both are about
+a CI runner not being a desktop.
+
+*Getting music in.* "Add Folder…" opens the OS folder picker, which WebDriver
+cannot answer. The way in is `add_watch_folder` invoked directly from the test
+through `window.__TAURI__` - the one command the suite drives itself. After
+that it is the app's own path: click Rescan, which scans and refreshes exactly
+as it does for a user. The mp3s are generated in Node at spec time (silent
+MPEG-1 frames behind a hand-written ID3v2.3 tag, ~180 lines, no dependency),
+the same trade the Rust integration tests already make: no encoder, no binary
+blobs in git, no licensing question about the audio. Six tracks over three
+artists, chosen so title order and artist order interleave differently - a sort
+assertion that held under both would prove nothing - plus a `.jpg` and a `.txt`
+the scanner must ignore.
+
+*Playing anything.* A runner has no audio device, so the app falls back to
+`NullSink`, where every load fails by design. No row could ever be marked
+playing. `SilentSink` accepts every load and advances position on a wall clock,
+selected by an environment variable that only a `wdio`-feature build reads.
+
+*Isolation.* One library shared by every spec means the spec that seeds six
+tracks breaks the spec that asserts on an empty one - and on a developer's
+machine it would be *their* library. `PLAYER_E2E_DATA_DIR`, again read only by
+the e2e build, gives each spec file its own; `beforeSession` sets it per spec,
+and the seeded spec asserts the empty state *before* it writes anything, so a
+silently-ignored override fails as itself rather than as a wrong row count.
+
+*What the rows are now asserted to do:* carry what the scanner read (whole rows
+at once, so a shifted column is legible in the failure); count six and ignore
+the two non-audio files; sort both ways; extend a selection with shift; mark
+the row being played and name it in the status display; and - the point of the
+exercise - keep the playing marker at 3:1 both on the selected row and off it,
+and every row's text at 4.5:1, in both themes.
+
+*Cost.* One more app launch on a job that already builds the binary, plus a
+scan of six ~100 kB files. Nothing added to storage: the fixtures are written
+under `e2e/.tmp`, which is gitignored and rebuilt per run.
 
 ---
 
