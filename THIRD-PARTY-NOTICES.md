@@ -18,14 +18,14 @@ it is out of date. Do not edit it by hand.
 | Apache-2.0 AND ISC | 1 |
 | Apache-2.0 AND MIT | 1 |
 | Apache-2.0 OR ISC OR MIT | 2 |
-| Apache-2.0 OR MIT | 35 |
+| Apache-2.0 OR MIT | 36 |
 | BSD-3-Clause | 3 |
 | BSD-3-Clause AND MIT | 1 |
 | BSD-3-Clause/MIT | 1 |
 | CC0-1.0 OR MIT-0 OR Apache-2.0 | 1 |
 | ISC | 2 |
-| MIT | 64 |
-| MIT OR Apache-2.0 | 159 |
+| MIT | 81 |
+| MIT OR Apache-2.0 | 162 |
 | MIT OR Apache-2.0 OR Zlib | 2 |
 | MIT OR Zlib OR Apache-2.0 | 1 |
 | MIT/Apache-2.0 | 14 |
@@ -389,6 +389,27 @@ the Rust crates, from crates.io at the exact version given.
 | [zerovec-derive](https://github.com/unicode-org/icu4x) | 0.11.3 | Unicode-3.0 | [87](#licence-text-87) |
 | [zip](https://github.com/zip-rs/zip2.git) | 4.6.1 | MIT | [189](#licence-text-189) |
 | [zmij](https://github.com/dtolnay/zmij) | 1.0.23 | MIT | [3](#licence-text-3) |
+| [@babel/runtime](https://github.com/babel/babel.git) | 7.29.7 | MIT | [190](#licence-text-190) |
+| [@base-ui/react](git+https://github.com/mui/base-ui.git) | 1.6.0 | MIT | [191](#licence-text-191) |
+| [@base-ui/utils](git+https://github.com/mui/base-ui.git) | 0.3.1 | MIT | [191](#licence-text-191) |
+| [@floating-ui/core](https://github.com/floating-ui/floating-ui.git) | 1.8.0 | MIT | [192](#licence-text-192) |
+| [@floating-ui/dom](https://github.com/floating-ui/floating-ui.git) | 1.8.0 | MIT | [192](#licence-text-192) |
+| [@floating-ui/react-dom](https://github.com/floating-ui/floating-ui.git) | 2.1.9 | MIT | [192](#licence-text-192) |
+| [@floating-ui/utils](https://github.com/floating-ui/floating-ui.git) | 0.2.12 | MIT | [192](#licence-text-192) |
+| [@tanstack/react-table](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [193](#licence-text-193) |
+| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.9 | MIT | [194](#licence-text-194) |
+| [@tanstack/table-core](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [193](#licence-text-193) |
+| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.7 | MIT | [194](#licence-text-194) |
+| [@tauri-apps/api](git+https://github.com/tauri-apps/tauri.git) | 2.11.1 | Apache-2.0 OR MIT | — |
+| [@tauri-apps/plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2.7.2 | MIT OR Apache-2.0 | [153](#licence-text-153) |
+| [@tauri-apps/plugin-global-shortcut](https://github.com/tauri-apps/plugins-workspace) | 2.3.2 | MIT OR Apache-2.0 | [153](#licence-text-153) |
+| [@tauri-apps/plugin-updater](https://github.com/tauri-apps/plugins-workspace) | 2.10.1 | MIT OR Apache-2.0 | [153](#licence-text-153) |
+| [react](https://github.com/react/react.git) | 19.2.8 | MIT | [195](#licence-text-195) |
+| [react-dom](https://github.com/react/react.git) | 19.2.8 | MIT | [195](#licence-text-195) |
+| [reselect](https://github.com/reduxjs/reselect.git) | 5.2.0 | MIT | [196](#licence-text-196) |
+| [scheduler](https://github.com/facebook/react.git) | 0.27.0 | MIT | [195](#licence-text-195) |
+| [use-sync-external-store](https://github.com/facebook/react.git) | 1.6.0 | MIT | [195](#licence-text-195) |
+| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.14 | MIT | [197](#licence-text-197) |
 
 ## Licence texts
 
@@ -12108,4 +12129,212 @@ SOFTWARE.
 
 Some files in the "tests/data" subdirectory of this repository are under other
 licences; see files named LICENSE.*.txt for details.
+```
+
+### Licence text 190
+
+```text
+MIT License
+
+Copyright (c) 2014-present Sebastian McKenzie and other contributors
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 191
+
+```text
+MIT License
+
+Copyright (c) 2019 Material-UI SAS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Licence text 192
+
+```text
+MIT License
+
+Copyright (c) 2021-present Floating UI contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### Licence text 193
+
+```text
+MIT License
+
+Copyright (c) 2016 Tanner Linsley
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Licence text 194
+
+```text
+MIT License
+
+Copyright (c) 2021-present Tanner Linsley
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Licence text 195
+
+```text
+MIT License
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Licence text 196
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2015-2018 Reselect Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Licence text 197
+
+```text
+MIT License
+
+Copyright (c) 2019 Paul Henschel
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
