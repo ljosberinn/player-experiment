@@ -2257,7 +2257,7 @@ appears in about two hundred crates; each distinct text now appears once, in
 
 ---
 
-**27 — Visual assertions in e2e** `feat/27-screenshots`
+**27 — Appearance assertions in e2e** `feat/27-screenshots` — 🔄 **in review**
 
 **The gap this closes.** Three defects reached the user in a running build
 during phases 16-18: the playing icon invisible on the selected row, the modal
@@ -2271,28 +2271,55 @@ The e2e job already builds and launches the real app on Windows, which is the
 expensive part and is already paid for. Screenshots are close to free on top of
 it.
 
-*Shape.* WebdriverIO's own `toMatchElementSnapshot`/`checkElement`, or a plain
-`browser.saveScreenshot` plus an image diff - the choice matters less than the
-storage discipline below. Baselines committed to the repo; diffs uploaded as
-artifacts **only on failure**, with short retention.
+*Shape - changed during the build, and this is the important part.* Screenshots
+were the obvious answer and turned out to be the wrong one. Pixel baselines have
+to be generated on the runner, because font rendering differs between a
+developer machine and Windows Server; they flake on antialiasing; they need
+storage for baselines and diffs; and a failure reports "17,000 pixels differ"
+rather than what is wrong.
 
-*What to shoot,* chosen as the smallest set covering the three classes of bug
-already seen: the song table with a row selected and one playing (marker
-contrast), the tag editor open (dialog position, field borders), the smart
-playlist editor (the filter row of selects), the error popover anchored, and a
-context menu open. Both themes if the harness can force `prefers-color-scheme` -
-two of the three defects were dark-mode only.
+And none of the three motivating defects was a pixel shift. Each was a
+**computed value** that could simply have been asked for: a colour, a
+bounding rect, a stacking order. So the suite asserts computed values in the
+real WebView2 - `getComputedStyle` and `getBoundingClientRect` - which is
+deterministic, needs no baseline, costs no storage, and names the fault when it
+fails ("select: border rgb(26,26,28) on rgb(25,26,28) = 1.02:1").
 
-*Cost.* The app is already launched, so this is seconds of wall clock, not
-minutes. **Storage is the axis to watch, not minutes:** baselines live in git
-(~1-2 MB for the set above, against a repo currently at 1.6 MB), and nothing is
-uploaded on a passing run, so Actions artifact storage stays at zero.
+*What is asserted,* against the smart-playlist filter editor - the dialog an
+empty library can reach, and the densest row of selects and inputs in the app:
 
-*Caveat.* Screenshot tests are the classic source of flakes - font rendering,
-antialiasing, animation timing. Mitigations: pin the window size, assert on
-element screenshots rather than the full page where possible, and lean on the
-fact that phase 13 already removed every transition and animation from the app,
-which is most of what makes these tests unstable elsewhere.
+- every field's border clears 2:1 against its own fill;
+- the dialog's rect is inside the viewport, and `elementFromPoint` at its own
+  centre lands inside it - which is what "below the footer" would fail;
+- three chrome foreground/background pairs clear 4.5:1.
+
+**Both themes in one run.** A runner boots light and two of the three defects
+were dark-only, so light-only assertions would have caught neither. `App.css`
+gained a `[data-theme="dark"]` block holding the same values as its
+`prefers-color-scheme` block, which the suite sets on the root element. The
+duplication is real - CSS cannot name a set of declarations and apply it from
+two selectors - so `App.css.test.ts` asserts the two blocks are identical, and
+the suite itself asserts the dark theme is actually different, so a
+`data-theme` that stopped working could not leave both passes silently running
+against light.
+
+*Still uncovered:* anything needing a populated library - the selected-row
+marker contrast, which was the first of the three defects. The smoke suite runs
+against an empty library and adding music needs a native folder picker. Seeding
+a SQLite file into the app data directory before launch is the way in, and is
+its own piece of work.
+
+*Cost.* The app is already built and launched by the smoke suite, so this adds
+seconds of wall clock to a job already paid for, and - having dropped pixel
+baselines - **nothing at all to storage**, neither in git nor in Actions
+artifacts.
+
+*Caveat.* Computed-style assertions catch what they are asked about, which is
+narrower than what a human notices in a screenshot. They would not catch a
+misaligned column or an overlapping label. What they do catch is the class that
+has actually shipped three times - a colour that disappears into its
+background, and a box in the wrong place - and they catch it without a baseline
+to maintain.
 
 ---
 

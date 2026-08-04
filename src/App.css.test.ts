@@ -315,4 +315,27 @@ describe("the stylesheet", () => {
     const fields = all.find((rule) => /\.modal input,\s*\.modal select/.test(rule.selector));
     expect(fields?.body).toMatch(/border:[^;]*var\(--field-border\)/);
   });
+
+  it("keeps the two dark themes from drifting apart", () => {
+    // The dark values exist twice: once under `prefers-color-scheme` for real
+    // users, once under `[data-theme="dark"]` so one e2e run can photograph
+    // both themes on a runner that boots light. CSS has no way to name a set of
+    // declarations and apply it from two selectors, so the duplication is real
+    // and this is what stops it rotting - a variable changed in one place and
+    // not the other would mean the suite checks a theme nobody sees.
+    const media = /@media \(prefers-color-scheme: dark\) \{\s*:root \{([\s\S]*?)\}\s*\}/.exec(css);
+    const attribute = /:root\[data-theme="dark"\] \{([\s\S]*?)\n\}/.exec(css);
+
+    const declarations = (body: string | undefined) =>
+      [...(body ?? "").matchAll(/(--[\w-]+):\s*([^;]+)/g)]
+        .map(([, name, value]) => `${name}: ${(value ?? "").trim()}`)
+        .sort();
+
+    const fromMedia = declarations(media?.[1]);
+    const fromAttribute = declarations(attribute?.[1]);
+
+    // Guards the guard: two failed matches would compare empty lists.
+    expect(fromMedia.length).toBeGreaterThan(5);
+    expect(fromAttribute).toEqual(fromMedia);
+  });
 });
