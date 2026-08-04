@@ -186,7 +186,7 @@ external-service phases, which have not been started. **v0.3.0 is released**
 | 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
 | 9 | Export & polish: JSON export, window geometry | ✅ merged (`b26feae`) |
 | 10 | last.fm scrobbling | ⬜ not started |
-| 11 | Crash & error reporting | ⬜ not started |
+| 11 | Crash & error reporting | ❌ cut, by decision |
 | 12 | Online tag lookup | ⬜ not started |
 | 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
 | 14 | Library totals in the footer | ✅ merged (`e079457`) |
@@ -1117,7 +1117,30 @@ sole trigger, so an hour-long mix scrobbles at 30 minutes, not at 4. Decided
 The 30-second floor is a separate question and is still worth adding: it costs
 nothing and matches what every other client does.
 
-**11 — Crash & error reporting** `feat/11-sentry`
+**11 — Crash & error reporting** `feat/11-sentry` — ❌ **cut, by decision**
+
+Cut on 2026-08-04, after the dependencies were added and built to check whether
+the plan's caveats were real rather than theoretical. They were: `sentry` 0.42 -
+two years behind 0.49, and pinned there by the plugin - pulls in `reqwest`,
+`hyper`, `rustls` and a TLS root store. A network stack, in an application whose
+entire premise is that it does not use the network.
+
+The rest of the caveat list below argued the same way: a single-maintainer
+plugin with no release in 11 months, an unreleased fix needing a git dependency
+`deny.toml` forbids, and a minidump handler that restarts the executable and
+would have to be explained to both the e2e harness and Windows antivirus.
+Against that, what is bought is diagnostics for a local music player with one
+user - who is also the person who would read the reports.
+
+**If crash visibility is wanted later, the cheap version is local.** Catch
+panics with `std::panic::set_hook`, write them to a log beside the database,
+and surface the last one in the app. No network, no DSN, no opt-in toggle to
+design, and nothing to scrub - step 8's scrubbing work existed entirely because
+Sentry would have carried file paths, folder names and track titles off the
+machine.
+
+*The original plan follows, kept for the record.*
+
 Optional, opt-in Sentry integration via
 [`tauri-plugin-sentry`](https://github.com/timfish/sentry-tauri) (crate
 `tauri-plugin-sentry`, npm `tauri-plugin-sentry-api`). Depends on nothing;
