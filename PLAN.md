@@ -2407,6 +2407,58 @@ under `e2e/.tmp`, which is gitignored and rebuilt per run.
 
 ---
 
+**31 — A hundred and fifty thousand rows in a real engine** `perf/31-virtualization` — 🔄 **in review**
+
+`PLAN.md` opens with the claim the whole design rests on, and every part of it
+was tested except the part a user would notice. `tests/perf.rs` proves the
+*queries* stay cheap at ten thousand rows. `SongTable.test.tsx` proves the
+virtualizer is *wired up* in jsdom - which has no layout and therefore no
+scrolling, so every row is 0px tall and the number rendered is whatever the
+mock decided. Nothing had ever scrolled a large library in an engine that lays
+it out.
+
+The rows are inserted rather than scanned: a hundred and fifty thousand real
+files would be gigabytes and minutes to produce a worse test, and what is under
+test is the table rather than ingest, which phase 30 covers with real mp3s. The
+seeding command refuses in any build a user could install - `e2e_only` is a bare
+`Err` there, because the code that could say yes is behind the `wdio` feature
+and is not compiled in - and a unit test asserts that in the same configuration
+a user gets.
+
+*Strict where it is exact.* The count reaches the far end, the scroll extent
+passes a million pixels, the last row is real rather than a shimmer
+placeholder, and the DOM holds under two hundred rows - before a scroll, after
+scrolling to the bottom, after a re-sort and after a jump into the middle.
+
+*A ratio where it is performance.* One assertion is about cost rather than
+structure, and it compares a cold page at the far end of the ordering against a
+cold page at the near end. That is the design's actual promise - cost does not
+grow with library size - and a ratio measures the app rather than the runner,
+which an absolute budget on a shared CI box cannot. The page cache is emptied
+through the UI's own route, a re-sort, because a measurement against a warm
+cache measures the cache.
+
+The first version asserted ten- and fifteen-second ceilings and printed
+nothing, which was worth very little: a ceiling loose enough to survive a noisy
+runner catches only a total collapse, and a run that reports no numbers cannot
+tell anyone a page that used to land in 40ms now takes 900. Every timing is now
+printed at the end of the spec. The log is where a trend lives.
+
+*What the first runs measured*, debug build, end to end, 150,006 rows: a near
+page in 454-482ms, a far page in 528-1095ms, a full re-sort to first painted
+row in 262-300ms. So deep paging **is** more expensive - the query is
+`LIMIT ? OFFSET ?` and `OFFSET` walks the index to reach the offset, so cost
+does grow with depth. It grows by a small constant factor over a cheap
+operation rather than by orders of magnitude, and the run-to-run spread is as
+wide as the effect. Read one run as one sample: the first pass reported a far
+page at 528ms and looked like *no* difference at all, which the second pass
+contradicted.
+
+*Cost.* No extra job and no extra build - one more spec file against the app
+the e2e job already builds and launches.
+
+---
+
 **Deferred, with the reason** — not phases, and not forgotten:
 
 - **`memo(SongTable)`** - see phase 25. Needs a profile, not an instinct.
