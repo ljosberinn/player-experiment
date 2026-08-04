@@ -23,10 +23,12 @@
  * fiddly and fails in the dangerous direction if it is wrong. Attributing a
  * crate that ships no code is harmless; missing one that does is not.
  *
- * npm: the production tree only (`npm ls --prod`). Dev dependencies are not
- * over-included the same way because the distinction is exact and the tree is
- * large - Vite, Biome, Vitest and WebdriverIO are build and test tooling whose
- * code never reaches the bundle.
+ * npm: the production entries of `package-lock.json`. Dev dependencies are not
+ * over-included the same way because the lockfile states the distinction
+ * exactly and the tree is large - Vite, Biome, Vitest and WebdriverIO are build
+ * and test tooling whose code never reaches the bundle. That also means the
+ * notices job can install with `--omit=dev`: the package list comes from the
+ * lockfile either way, and only production directories are read for text.
  */
 
 import { execFileSync } from "node:child_process";
@@ -49,6 +51,15 @@ const LICENSE_FILE = /^(LICENSE|LICENCE|COPYING|NOTICE)([-.].*)?$/i;
  */
 const NO_TEXT_NEEDED = new Set(["CC0-1.0", "Unlicense", "0BSD"]);
 
+/**
+ * Runs a tool and returns its stdout.
+ *
+ * Only cargo is called this way now, and a failure is fatal. The first version
+ * of this file also shelled out to npm and swallowed the failure as an empty
+ * dependency tree, which is how it shipped with 331 crates and **zero** npm
+ * packages - React, Base UI, Zustand and TanStack all silently unattributed.
+ * A tool that cannot run has not told us there is nothing to report.
+ */
 function run(command, args) {
   return execFileSync(command, args, {
     cwd: root,
@@ -108,53 +119,63 @@ function cargoPackages() {
     }));
 }
 
-/** Flattens `npm ls --prod --all --json` into one entry per name@version. */
+/**
+ * The production npm dependencies, from `package-lock.json`.
+ *
+ * The lockfile rather than `npm ls --prod --all --json`, which is what this
+ * did first. Calling npm from `execFileSync` is a cross-platform trap: on
+ * Windows npm is `npm.cmd`, and since CVE-2024-27980 Node refuses to spawn a
+ * `.cmd` without a shell, so the plain name throws ENOENT and the real name
+ * throws EINVAL. The lockfile needs no subprocess at all, is the same on every
+ * platform, records the dev/prod split exactly, and is already the file `npm
+ * ci` installs from - so it is the more authoritative source in the first
+ * place.
+ *
+ * Its keys are install paths, which handles nesting correctly: a transitive
+ * copy at `node_modules/a/node_modules/b` is read from there rather than from
+ * a hoisted `node_modules/b` that may be a different version.
+ */
 function npmPackages() {
-  let tree;
-  try {
-    tree = JSON.parse(run("npm", ["ls", "--prod", "--all", "--json"]));
-  } catch (error) {
-    // `npm ls` exits non-zero on peer-dependency complaints while still
-    // printing a complete tree, so the output matters more than the code.
-    tree = JSON.parse(error.stdout ?? "{}");
-  }
+  const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
 
-  const seen = new Map();
-  const walk = (node) => {
-    for (const [name, child] of Object.entries(node.dependencies ?? {})) {
-      const key = `${name}@${child.version}`;
-      if (!seen.has(key) && child.version) {
-        const directory = join(root, "node_modules", name);
-        let manifest = {};
-        try {
-          manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
-        } catch {
-          // A hoisted or deduped package that is not where its name suggests.
-          // It still gets an entry, just without a licence text.
-        }
-        const license =
-          typeof manifest.license === "string"
-            ? manifest.license
-            : Array.isArray(manifest.licenses)
-              ? manifest.licenses.map((one) => one.type ?? "?").join(" OR ")
-              : "(unstated)";
-        seen.set(key, {
-          ecosystem: "npm",
-          name,
-          version: child.version,
-          license,
-          repository:
-            typeof manifest.repository === "string"
-              ? manifest.repository
-              : (manifest.repository?.url ?? null),
-          texts: licenseTexts(directory),
-        });
+  return Object.entries(lock.packages ?? {})
+    .filter(([path, entry]) => {
+      // The root project is the empty key, and is not a third party.
+      if (!path.startsWith("node_modules/")) {
+        return false;
       }
-      walk(child);
-    }
-  };
-  walk(tree);
-  return [...seen.values()];
+      // `devOptional` means "reachable only through dev or optional", which is
+      // not something that ships either.
+      return entry.dev !== true && entry.devOptional !== true && Boolean(entry.version);
+    })
+    .map(([path, entry]) => {
+      const directory = join(root, path);
+      let manifest = {};
+      try {
+        manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+      } catch {
+        // Not installed in this checkout. The entry still counts - the lockfile
+        // is what decides what ships - it just carries no licence text.
+      }
+      const license =
+        entry.license ??
+        (typeof manifest.license === "string"
+          ? manifest.license
+          : Array.isArray(manifest.licenses)
+            ? manifest.licenses.map((one) => one.type ?? "?").join(" OR ")
+            : "(unstated)");
+      return {
+        ecosystem: "npm",
+        name: path.slice("node_modules/".length).replace(/.*\/node_modules\//, ""),
+        version: entry.version,
+        license,
+        repository:
+          typeof manifest.repository === "string"
+            ? manifest.repository
+            : (manifest.repository?.url ?? null),
+        texts: licenseTexts(directory),
+      };
+    });
 }
 
 function render(packages) {
@@ -242,7 +263,31 @@ function render(packages) {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
-const packages = [...cargoPackages(), ...npmPackages()];
+const crates = cargoPackages();
+const npm = npmPackages();
+
+// Neither ecosystem may be empty.
+//
+// This is the guard for the failure that already happened once: npm could not
+// be executed, the error was read as "no dependencies", and the file shipped
+// with every crate attributed and not one npm package. A wrong notices file is
+// worse than none, because it looks thorough - so an implausible answer is a
+// hard failure rather than a quiet one.
+for (const [ecosystem, found] of [
+  ["crate", crates],
+  ["npm", npm],
+]) {
+  if (found.length === 0) {
+    console.error(
+      `Found no ${ecosystem} dependencies, which cannot be right. The tool that ` +
+        "lists them probably failed without saying so; fix that rather than " +
+        "committing a notices file that omits an entire ecosystem.",
+    );
+    process.exit(1);
+  }
+}
+
+const packages = [...crates, ...npm];
 const rendered = render(packages);
 
 if (process.argv.includes("--check")) {
