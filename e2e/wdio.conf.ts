@@ -1,11 +1,33 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const application = join(repoRoot, "src-tauri", "target", "debug", "player.exe");
 
 /** Scratch space for the app data of a run, and for generated fixtures. */
 const workDir = join(repoRoot, "e2e", ".tmp");
+
+// At module scope, not in a hook, and this is not an accident.
+//
+// `@wdio/tauri-service` spawns the app in the launcher process during its own
+// `onPrepare`, and hook order between a service and this file is not something
+// either of them promises. Anything set in `onPrepare` or `beforeSession` may
+// therefore arrive after the app has already read its environment - which is
+// exactly what happened the first time this was written, and the symptom was a
+// spec asserting on an empty library finding six tracks in it.
+//
+// Importing this file happens before any of that, so setting them here is the
+// one placement that cannot lose the race.
+rmSync(workDir, { recursive: true, force: true });
+mkdirSync(workDir, { recursive: true });
+
+// Keeps the run out of the OS app-data directory, which on a developer's
+// machine holds *their* library. Read only by a build carrying the `wdio`
+// feature, so setting it against a shipped binary does nothing.
+process.env.PLAYER_E2E_DATA_DIR = join(workDir, "data");
+// A runner has no audio device, so the app would otherwise fall back to a sink
+// where every load fails by design - and no row could ever be shown playing.
+process.env.PLAYER_E2E_SILENT_AUDIO = "1";
 
 if (!existsSync(application)) {
   throw new Error(
@@ -16,7 +38,13 @@ if (!existsSync(application)) {
 
 export const config: WebdriverIO.Config = {
   runner: "local",
-  specs: ["./specs/**/*.test.ts"],
+  // Listed rather than globbed, because the order matters and a glob would
+  // hide that. One app process serves the whole run - the service spawns it
+  // once and each spec file opens a new session against it - so the specs
+  // share one library, and the one that puts music in it has to go last.
+  // `library` asserts the library is empty before it seeds, so an accidental
+  // reorder fails as itself rather than as a puzzle three specs later.
+  specs: ["./specs/smoke.test.ts", "./specs/appearance.test.ts", "./specs/library.test.ts"],
   maxInstances: 1,
   // @wdio/tauri-service owns the driver lifecycle. The default `embedded`
   // provider runs the WebDriver server inside the app itself (via
@@ -47,35 +75,4 @@ export const config: WebdriverIO.Config = {
   // to a Mocha timeout, which is exactly what happened before.
   mochaOpts: { ui: "bdd", timeout: 180_000 },
   waitforTimeout: 10_000,
-
-  /** Nothing from a previous run survives into this one. */
-  onPrepare() {
-    rmSync(workDir, { recursive: true, force: true });
-    mkdirSync(workDir, { recursive: true });
-  },
-
-  /**
-   * Gives the app a library of its own, per spec file.
-   *
-   * Without this every spec shares the one library under the OS app-data
-   * directory - which on a developer's machine is *their* library, and on a
-   * runner is whatever the spec before this one left in it. The suite has
-   * specs on both sides of that: `library` seeds six tracks, `smoke` asserts
-   * on the empty state.
-   *
-   * This hook runs in the worker process before the app is launched, so the
-   * variables reach it through the environment it inherits. Both are read only
-   * by a build with the `wdio` feature (see `src-tauri/src/lib.rs`), so setting
-   * them against a shipped binary does nothing.
-   */
-  beforeSession(_config, _capabilities, specs) {
-    const name = basename(specs[0] ?? "session").replace(/\.test\.ts$/, "");
-    const dataDir = join(workDir, `data-${name}`);
-    rmSync(dataDir, { recursive: true, force: true });
-    process.env.PLAYER_E2E_DATA_DIR = dataDir;
-
-    // A runner has no audio device, so the app would otherwise fall back to a
-    // sink where every load fails - and a row can never be shown playing.
-    process.env.PLAYER_E2E_SILENT_AUDIO = "1";
-  },
 };

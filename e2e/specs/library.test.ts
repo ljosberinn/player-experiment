@@ -121,14 +121,40 @@ function rows(): Promise<{ title: string; time: string; artist: string; album: s
   );
 }
 
-/** Sorts by a column the way a user does, and waits for the table to say so. */
+/**
+ * Sorts by a column the way a user does, and waits for the table to say so.
+ *
+ * Clicks until the header reports the direction asked for, rather than once:
+ * the header *toggles*, so a single click on a column already sorted that way
+ * turns it round. Written the naive way first, and it failed exactly there -
+ * the second test to ask for title-ascending got title-descending and then
+ * waited ten seconds for an attribute that was never coming.
+ *
+ * Two clicks is the most it can ever need: one to reach the column, one to
+ * turn it round. A third means the header is not toggling at all, and saying
+ * so is more use than looping.
+ */
 async function sortBy(column: string, expected: "ascending" | "descending"): Promise<void> {
-  await browser.$(`th[data-column='${column}'] button`).click();
-  await browser.waitUntil(
-    async () =>
-      (await browser.$(`th[data-column='${column}']`).getAttribute("aria-sort")) === expected,
-    { timeoutMsg: `the ${column} column never reported itself ${expected}` },
-  );
+  const header = () => browser.$(`th[data-column='${column}']`);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if ((await header().getAttribute("aria-sort")) === expected) {
+      return;
+    }
+    await browser.$(`th[data-column='${column}'] button`).click();
+    // Settles before the next look: the sort is a round trip to SQLite, so the
+    // attribute changes a moment after the click rather than with it.
+    await browser
+      .waitUntil(async () => (await header().getAttribute("aria-sort")) === expected, {
+        timeout: 15_000,
+      })
+      .catch(() => undefined);
+  }
+
+  const reached = await header().getAttribute("aria-sort");
+  if (reached !== expected) {
+    throw new Error(`the ${column} column reports ${reached}, not ${expected}`);
+  }
 }
 
 async function applyTheme(theme: "light" | "dark"): Promise<void> {
