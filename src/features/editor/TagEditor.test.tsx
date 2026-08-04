@@ -212,6 +212,12 @@ describe("TagEditor", () => {
   it("leaves Enter on a button to that button", async () => {
     const { onSave, onPickCover, user } = open([track()], "C:/art/cover.png");
 
+    // Let the dialog take its initial focus first. It claims focus on a later
+    // tick, so a synchronous `.focus()` here races it - and loses on a slow
+    // runner, which sent Enter to the Name field instead. It passed locally and
+    // failed on CI, which is the signature of this particular race.
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveFocus());
+
     screen.getByRole("button", { name: "Choose Artwork…" }).focus();
     await user.keyboard("{Enter}");
 
@@ -264,6 +270,10 @@ describe("TagEditor", () => {
 
     it("comes back round rather than falling out of the bottom", async () => {
       const { user } = open([track()]);
+
+      // Settle the dialog's own initial focus before taking it, for the same
+      // reason as the Enter test above.
+      await waitFor(() => expect(screen.getByLabelText("Name")).toHaveFocus());
 
       // Save is the last control in the dialog.
       screen.getByRole("button", { name: "Save" }).focus();
