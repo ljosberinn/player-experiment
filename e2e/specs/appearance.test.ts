@@ -57,7 +57,7 @@ function contrast(a: string, b: string): number {
  * its `prefers-color-scheme` block - kept identical by a guard in
  * `App.css.test.ts` - precisely so one run can check both.
  */
-async function useTheme(theme: "light" | "dark"): Promise<void> {
+async function applyTheme(theme: "light" | "dark"): Promise<void> {
   await browser.execute((value: string) => {
     if (value === "light") {
       delete document.documentElement.dataset.theme;
@@ -111,14 +111,23 @@ describe("appearance, in the engine that actually lays it out", () => {
   afterEach(async () => {
     // Both, always: a test that failed mid-dialog would otherwise leave it open
     // and take the next one down with it.
-    await closeDialog();
-    await useTheme("light");
+    //
+    // Swallowed, because cleanup is not the assertion. When the session has
+    // already gone these throw "A sessionId is required for this command",
+    // which lands in the log next to the real failure and reads like a second
+    // fault. Nothing here can fail in a way worth reporting.
+    try {
+      await closeDialog();
+      await applyTheme("light");
+    } catch {
+      // The session is gone; the test that mattered has already reported.
+    }
   });
 
   for (const theme of ["light", "dark"] as const) {
     describe(`in the ${theme} theme`, () => {
       beforeEach(async () => {
-        await useTheme(theme);
+        await applyTheme(theme);
       });
 
       it("draws form fields with an edge you can see", async () => {
@@ -270,11 +279,11 @@ describe("appearance, in the engine that actually lays it out", () => {
   it("has a dark theme that is actually different", async () => {
     // Guards the two tests above: if `data-theme` stopped being honoured, both
     // would quietly run twice against the light theme and still pass.
-    await useTheme("light");
+    await applyTheme("light");
     const light = await computed("body", "background-color");
-    await useTheme("dark");
+    await applyTheme("dark");
     const dark = await computed("body", "background-color");
-    await useTheme("light");
+    await applyTheme("light");
 
     expect(light).not.toBe("");
     expect(dark).not.toBe(light);

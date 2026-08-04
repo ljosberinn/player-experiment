@@ -3,7 +3,12 @@
   --chrome-border: #b4b4b4;
   --sidebar: #dfe4ec;
   --sidebar-text: #33373d;
-  --accent: #4a8fe0;
+  /* Darkened from #4a8fe0, which the appearance suite measured at 3.34:1
+     against the white text it carries - under the 4.5:1 WCAG AA threshold for
+     normal text, and this is the fill behind the *selected row*, which is the
+     surface the library is read on. #3574bd clears it at 4.79 and is still
+     recognisably the same blue. */
+  --accent: #3574bd;
   --row-odd: #f2f6fc;
   --text: #1d1d1f;
   /* Darkened from #6d7076, which the appearance suite measured at 4.05:1
@@ -43,7 +48,7 @@
     --chrome-border: #1a1a1c;
     --sidebar: #232326;
     --sidebar-text: #d8dade;
-    --accent: #4a8fe0;
+    --accent: #3574bd;
     --row-odd: #1f1f22;
     --text: #ececf0;
     --muted: #9a9ca2;
@@ -75,7 +80,7 @@
   --chrome-border: #1a1a1c;
   --sidebar: #232326;
   --sidebar-text: #d8dade;
-  --accent: #4a8fe0;
+  --accent: #3574bd;
   --row-odd: #1f1f22;
   --text: #ececf0;
   --muted: #9a9ca2;
