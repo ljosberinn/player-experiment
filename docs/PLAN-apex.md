@@ -73,9 +73,11 @@ is the reason this phase goes first — the cost only grows.
   not change shape and version history is continuous.
 - The e2e suite asserts the window title in `smoke.test.ts`; the assertion moves
   with it.
-- A version string appears in the title bar in the design. It already exists in the
-  status bar, read from the Rust crate through `get_app_info`. It moves rather than
-  being duplicated — one source, one place on screen.
+The version string the design shows in the title bar is **not** moved here. It
+already exists in the status bar, read from the Rust crate through `get_app_info`,
+and the title bar is rebuilt from scratch in phase 34 — moving it now means CSS
+that phase 34 throws away and four tests edited twice. It moves in 34, where the
+bar it lands on is being written anyway.
 
 **Not renamed:** the GitHub repository stays `ljosberinn/player-experiment`.
 Renaming it would break the remote, the `ci/screenshots` branch that PR bodies point
