@@ -13,6 +13,9 @@ pub const WINDOW_GEOMETRY: &str = "window.geometry";
 pub const COLUMNS: &str = "library.columns";
 /// Webview zoom factor, applied before the window is shown.
 pub const ZOOM: &str = "window.zoom";
+/// Unix seconds of the most recent crash the user has dismissed. Deliberately
+/// not exportable: it describes this machine's history, not the library.
+pub const CRASH_SEEN: &str = "crash.seen";
 
 /// Settings a library export is allowed to carry.
 ///

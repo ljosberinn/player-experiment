@@ -169,10 +169,14 @@ repo.
 
 ## Status — 2026-08-04
 
-Everything planned through phase 24 is merged to `main` except the four
-external-service phases, which have not been started. **v0.3.0 is released**
-(PR #28, tag `v0.3.0`). Two branches are in review: the frontend render pass
-(PR #38) and tag autocompletion (phase 18).
+Everything planned through phase 31 is merged to `main` except the two
+external-service phases, which are awaiting a decision rather than work.
+**v0.3.0 is released** (PR #28, tag `v0.3.0`); release-please is holding a
+0.4.0 pull request open with everything since.
+
+Phase 10 (last.fm) has a plan of its own in `docs/PLAN-lastfm.md` and a
+go/no-go question at the end of it. Phase 12 (online tag lookup) has neither
+yet.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -193,14 +197,20 @@ external-service phases, which have not been started. **v0.3.0 is released**
 | 15 | Ingest ergonomics | ❌ cut, by decision |
 | 16 | Row status column | ✅ merged ([#35](https://github.com/ljosberinn/player-experiment/pull/35)) |
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
-| 18 | Tag and filter autocompletion | 🔄 in review |
+| 18 | Tag and filter autocompletion | ✅ merged ([#39](https://github.com/ljosberinn/player-experiment/pull/39)) |
 | 19 | Browse by album, artist and genre | ✅ merged ([#27](https://github.com/ljosberinn/player-experiment/pull/27)) |
 | 20 | Column customization | ✅ merged ([#30](https://github.com/ljosberinn/player-experiment/pull/30)) |
 | 21 | Density and zoom | ✅ merged ([#33](https://github.com/ljosberinn/player-experiment/pull/33)) |
 | 22 | Media keys without focus | ✅ merged ([#32](https://github.com/ljosberinn/player-experiment/pull/32)) |
 | 23 | In-app updates | ✅ merged ([#23](https://github.com/ljosberinn/player-experiment/pull/23), fixed in [#34](https://github.com/ljosberinn/player-experiment/pull/34)) |
 | 24 | Base UI primitives | ✅ merged ([#36](https://github.com/ljosberinn/player-experiment/pull/36)) |
-| 25 | Frontend render pass | 🔄 in review ([#38](https://github.com/ljosberinn/player-experiment/pull/38)) |
+| 25 | Frontend render pass | ✅ merged ([#38](https://github.com/ljosberinn/player-experiment/pull/38)) |
+| 26 | Licence and third-party notices | ✅ merged ([#40](https://github.com/ljosberinn/player-experiment/pull/40)) |
+| 27 | Appearance assertions in e2e | ✅ merged ([#44](https://github.com/ljosberinn/player-experiment/pull/44)) |
+| 28 | Server-side branch protection | ✅ merged ([#43](https://github.com/ljosberinn/player-experiment/pull/43)) |
+| 29 | Local crash log | ✅ merged ([#46](https://github.com/ljosberinn/player-experiment/pull/46)) |
+| 30 | A seeded library in e2e | ✅ merged ([#45](https://github.com/ljosberinn/player-experiment/pull/45)) |
+| 31 | 150k rows in a real engine | ✅ merged ([#49](https://github.com/ljosberinn/player-experiment/pull/49)) |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
@@ -2205,7 +2215,7 @@ every rect as zero.
 
 ---
 
-**25 — Frontend render pass** `perf/25-frontend-renders` — 🔄 **in review** (PR #38)
+**25 — Frontend render pass** `perf/25-frontend-renders` — ✅ **done** (PR #38)
 
 Three store values changed on a schedule of their own and were all read at the
 top of `App`, so each re-rendered the whole tree - the song table and its forty
@@ -2236,7 +2246,7 @@ profile that justifies it.
 
 ---
 
-**26 — Licence and third-party notices** `chore/26-license-notices` — 🔄 **in review** (PR #40)
+**26 — Licence and third-party notices** `chore/26-license-notices` — ✅ **done** (PR #40)
 
 The project had no licence at all, which makes it legally unusable by anyone who
 finds it - public on GitHub is not a grant. Now MIT.
@@ -2339,7 +2349,7 @@ Small, and it protects everything after it.
 
 ---
 
-**29 — Local crash log** `feat/29-panic-log` — *the cheap half of the cut phase 11*
+**29 — Local crash log** `feat/29-panic-log` — ✅ **done** (PR #46)
 
 Phase 11 was cut because Sentry meant a network stack in an application whose
 premise is that it does not use the network. The failure class it would have
@@ -2354,13 +2364,87 @@ opt-in toggle to design, and nothing to scrub - phase 11's whole scrubbing
 section existed only because Sentry would have carried file paths, folder names
 and track titles off the machine.
 
-*Testing:* the hook's formatting is unit-testable against a synthesized
-`PanicHookInfo`; rotation is unit-testable; that a panic on a spawned thread
-reaches the file is an integration test.
+*Photographed, and this is new.* Phase 27 rejected screenshots as *assertions*
+and that stands - pixel baselines flake on antialiasing, differ between a
+developer machine and Windows Server, need storage for baselines and diffs, and
+report "17,000 pixels differ" rather than what is wrong. But a pull request
+that changes what the app looks like had been describing the change in prose
+and asking the reviewer to imagine it.
+
+So the e2e suite now *takes* pictures without *comparing* them. Nothing is
+compared, so nothing can flake. They are never committed: a binary that changes
+whenever the UI does is the cost that got baselines rejected, and it buys
+nothing when nothing reads them but a human. The first attempt did commit them,
+under `docs/screenshots/`, and that was reverted - a picture in the tree is a
+picture that has to be maintained, reviewed and carried forever.
+
+They still have to be *visible*, and that turned out to be the hard part. A
+markdown body can only embed an image it can fetch by URL; a build artifact is
+a zip behind an authenticated download; and the upload a human performs by
+dragging an image into the comment box goes to GitHub's own asset host through
+an endpoint that needs a web session, which no REST call replaces. So CI pushes
+them to `ci/screenshots`, a branch that exists only to hold them, and rewrites
+the pull request body between markers to point at raw URLs pinned to that
+commit. Nothing reaches `main`, nothing appears in the diff, and the pictures
+are in the pull request where they get looked at. The branch is disposable -
+deleting it breaks the images in old bodies and nothing else.
+
+The crash notice is the first subject because it is the one feature no unit
+test can reach end to end. The spec provokes a **real panic** through a
+test-only command - on a spawned thread, so the process survives, which is also
+the case the feature exists for - then reloads the webview, the closest a
+running session gets to a next launch. Everything between is the real path:
+hook, formatter, log file, `last_crash`, IPC, render. Confirmed working on the
+runner: four PNGs, both themes, collapsed and expanded, in the pull request
+body, fetched back at `200 image/png`.
+
+Whether the embedded WebDriver implemented `/screenshot` at all was a genuine
+question rather than an assumption - it is a Tauri plugin, not a browser
+driver - so `capture()` logs a failure instead of throwing. A spec whose
+subject is "what this looks like" should report that it could not photograph
+the thing, not fail as though the thing were broken.
+
+*Testing.* A `PanicHookInfo` cannot be constructed outside a real panic, so
+the formatter takes what the hook knows as parameters and the hook does no
+formatting of its own - which is what makes both testable. Rotation, the
+missing-file case and a report whose header is mangled are unit tests. That a
+panic on a *spawned* thread reaches the file is tested by spawning one and
+panicking in it, with the previous hook restored afterwards and the assertion
+searching the file rather than taking the last report: the hook is
+process-wide and the test harness runs tests in parallel.
+
+*Built as.* `crash.rs` holds the hook, the format, and a bounded log of the
+last five reports beside the database. The hook **chains** the previous one
+rather than replacing it, so a debug build still prints to stderr. Three
+commands surface it: `last_crash` (which returns nothing for a crash already
+dismissed, so the notice belongs to the crash rather than to the session),
+`acknowledge_crash`, and `reveal_crash_log` - the route to the four older
+reports, since only the most recent is ever shown.
+
+The notice itself is asked for once on mount, because a crash that has already
+happened cannot happen again while the app is up. Two of its three failure
+paths are deliberately silent: a crash log that cannot be read, and a
+dismissal that cannot be recorded, are both worse as an error banner than as
+nothing. The third - "show me the log file" not working - is reported, because
+the user asked for something and it did not happen.
+
+*It is a Base UI `AlertDialog`, and it started as a banner.* The banner was
+wrong twice over: it sat where the scan and tag notices sit, and those describe
+the session that is *running* while this one reports a session that is already
+over; and it could be scrolled past, which is the wrong affordance for the only
+message the app has about having died. `AlertDialog` rather than `Dialog` is
+the part that carries the meaning - a backdrop click cannot dismiss it, so the
+choice has to be made rather than clicked away. Escape still closes it and
+counts as having seen the crash, which has a test of its own.
+
+Deliberately **not** styled red. A panel of danger colour for something that
+has already stopped happening reads as an emergency, and by the time it is on
+screen the app is running fine. Only the panic message itself is in
+`--danger`.
 
 ---
 
-**30 — A seeded library in e2e** `feat/30-e2e-library` — 🔄 **in review**
+**30 — A seeded library in e2e** `feat/30-e2e-library` — ✅ **done** (PR #45)
 
 Phase 27 left one hole and named it: every spec ran against an **empty**
 library, so nothing had ever looked at a row - and the row is where the defects
@@ -2407,7 +2491,7 @@ under `e2e/.tmp`, which is gitignored and rebuilt per run.
 
 ---
 
-**31 — A hundred and fifty thousand rows in a real engine** `perf/31-virtualization` — 🔄 **in review**
+**31 — A hundred and fifty thousand rows in a real engine** `perf/31-virtualization` — ✅ **done** (PR #49)
 
 `PLAN.md` opens with the claim the whole design rests on, and every part of it
 was tested except the part a user would notice. `tests/perf.rs` proves the

@@ -58,9 +58,14 @@ export const config: WebdriverIO.Config = {
     "./specs/smoke.test.ts",
     "./specs/appearance.test.ts",
     "./specs/library.test.ts",
-    // Last, and it has to be: it puts a hundred and fifty thousand rows in the
-    // shared library and nothing after it would recognise the place.
+    // Last but one, and it has to be after the rest: it puts a hundred and
+    // fifty thousand rows in the shared library and nothing before it would
+    // recognise the place afterwards.
     "./specs/virtualization.test.ts",
+    // Truly last. It crashes the app on purpose, and the notice that reports
+    // the crash sits above the table until something dismisses it - which this
+    // spec does, but only if it gets that far.
+    "./specs/crash-notice.test.ts",
   ],
   maxInstances: 1,
   // @wdio/tauri-service owns the driver lifecycle. The default `embedded`

@@ -619,3 +619,24 @@ pub struct ScanSummary {
     pub returned: u32,
     pub unchanged: u32,
 }
+
+/// A panic the previous run wrote down.
+///
+/// Carries the full text as well as the one-line summary so that "show me the
+/// details" costs no second round trip, and the path so the app can offer to
+/// open the file in the OS file manager - which is the only route to the
+/// *older* reports, since only the most recent one is ever surfaced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CrashReport {
+    /// Unix seconds. Compared against what the user has already dismissed, so
+    /// a crash is reported once rather than at every launch after it.
+    #[ts(type = "number")]
+    pub when: i64,
+    /// The panic message alone, which is what the notice shows.
+    pub summary: String,
+    /// The whole report: thread, location, backtrace.
+    pub details: String,
+    pub path: String,
+}

@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod commands;
+pub mod crash;
 pub mod db;
 pub mod error;
 pub mod export;
@@ -89,6 +90,13 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let path = database_path(app.handle())?;
+            // Before anything that could panic is spawned, and before the
+            // database is even opened: a panic in `Db::open` is exactly the
+            // kind that takes the window with it and leaves nothing behind.
+            if let Some(dir) = path.parent() {
+                crash::install(crash::log_path(dir), app.package_info().version.to_string());
+            }
+
             let db = Db::open(&path)?;
             let volume = db.conn().and_then(|conn| settings::volume(&conn))?;
             app.manage(start_player(app.handle().clone(), db.clone(), volume));
@@ -163,6 +171,10 @@ pub fn run() {
             commands::player_set_volume,
             commands::player_snapshot,
             commands::seed_synthetic_tracks,
+            commands::e2e_provoke_panic,
+            commands::last_crash,
+            commands::acknowledge_crash,
+            commands::reveal_crash_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

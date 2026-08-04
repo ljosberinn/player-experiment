@@ -684,6 +684,52 @@ input[type="radio"] {
   color: var(--muted);
 }
 
+/* The dialog that reports a session that is already over.
+   
+   A `.modal` first, so it inherits the surface, the shadow and the centring
+   every other dialog has; wider than the default because a backtrace in a
+   40-character column is not a backtrace. It is deliberately *not* red: a
+   panel of danger colour for something that has already stopped happening
+   reads as an emergency, and by the time it is on screen the app is running
+   fine. The words carry the weight. */
+.crash-notice {
+  width: min(680px, 90vw);
+}
+
+.crash-notice-summary {
+  margin: 0;
+  /* A panic message is arbitrary text and can be long, with no spaces to wrap
+     at - a Windows path, most often. */
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.crash-notice-details {
+  max-height: 260px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--field-border);
+  border-radius: 4px;
+  background: var(--row-odd);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  /* A backtrace is a column of frames. Reflowing it makes it unreadable, so it
+     scrolls inside its own box rather than growing the dialog past the bottom
+     of a window that does not scroll. */
+  white-space: pre;
+}
+
+/* The two disclosure actions sit left, away from Dismiss: `.modal-actions`
+   pushes its children to the right, and a link that reveals a backtrace should
+   not look like it is part of the same decision as the button that closes the
+   dialog. */
+.crash-notice .modal-actions .link-button:first-child {
+  margin-right: auto;
+}
+
 .empty-state {
   margin: auto;
   color: var(--muted);

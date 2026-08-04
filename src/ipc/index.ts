@@ -6,6 +6,7 @@ import type { BrowseGroup } from "./bindings/BrowseGroup";
 import type { BrowseKind } from "./bindings/BrowseKind";
 import type { Combinator } from "./bindings/Combinator";
 import type { CoverEdit } from "./bindings/CoverEdit";
+import type { CrashReport } from "./bindings/CrashReport";
 import type { ExportScope } from "./bindings/ExportScope";
 import type { FilterField } from "./bindings/FilterField";
 import type { FilterGroup } from "./bindings/FilterGroup";
@@ -36,6 +37,7 @@ export type {
   BrowseKind,
   Combinator,
   CoverEdit,
+  CrashReport,
   ExportScope,
   FilterField,
   FilterGroup,
@@ -161,6 +163,28 @@ export function saveZoom(factor: string): Promise<void> {
 /** Writes an export to `path`, resolving to how many tracks it holds. */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });
+}
+
+/**
+ * The panic the previous run wrote down, if there is one the user has not
+ * dismissed yet.
+ *
+ * `null` in the overwhelmingly common case, which is why this is asked once at
+ * startup rather than subscribed to: a crash that has already happened cannot
+ * happen again while the app is running.
+ */
+export function lastCrash(): Promise<CrashReport | null> {
+  return invoke<CrashReport | null>("last_crash");
+}
+
+/** Marks every crash up to `when` as seen, so the notice does not return. */
+export function acknowledgeCrash(when: number): Promise<void> {
+  return invoke<void>("acknowledge_crash", { when });
+}
+
+/** Opens the OS file manager with the crash log selected. */
+export function revealCrashLog(): Promise<void> {
+  return invoke<void>("reveal_crash_log");
 }
 
 /** Opens the OS file manager with this track selected. */
