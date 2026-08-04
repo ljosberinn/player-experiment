@@ -69,6 +69,28 @@ jobs:
           manifest-path: src-tauri/Cargo.toml
           command: check advisories licenses sources bans
 
+  notices:
+    # A notices file is only worth having if it describes the dependency set
+    # that ships, so it gets the same drift check the generated bindings get.
+    # Its own job rather than a step on `frontend`: it needs both toolchains,
+    # and a stale notices file should not read as a failing test suite.
+    name: notices
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: rust-tests
+      - run: npm ci
+      - name: Third-party notices are up to date
+        run: npm run notices:check
+
   e2e:
     name: e2e
     runs-on: windows-latest

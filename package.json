@@ -1,6 +1,7 @@
 {
   "name": "player",
   "private": true,
+  "license": "MIT",
   "version": "0.3.0",
   "type": "module",
   "scripts": {
@@ -17,7 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_bindings"
+    "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_bindings",
+    "notices": "node scripts/notices.mjs",
+    "notices:check": "node scripts/notices.mjs --check"
   },
   "overrides": {
     "@wdio/native-utils": "2.5.0"
