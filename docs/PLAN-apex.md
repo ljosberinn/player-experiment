@@ -207,6 +207,18 @@ indicator to reconcile: the status column is the only one.
 
 Sort indicators stay in the column headers exactly as they are.
 
+**The Songs view has no title header.** Albums, Artists and Genres keep the large
+heading and its accent underline; Songs drops both and tightens the content pane's
+top padding to 10px. The view with 150k rows in it is the one that can least afford
+to spend a third of the fold on the word "Songs".
+
+What that heading carried — "22 songs, 2 hr 6 min" — moves to a 27px translucent
+strip along the bottom of the window, centered. We already have that strip: the
+status bar built in phase 9 puts the library summary in exactly that position, with
+zoom to its left and the version to its right. The design and the app converged
+here independently, so this is a restyle of `footer.statusbar`, not a new element,
+and the summary becomes view-scoped rather than library-wide.
+
 ---
 
 ## Phase 36 — The sidebar sections
