@@ -239,9 +239,27 @@ async function describePlayback(): Promise<string> {
   return `no row is marked playing: ${parts.join(" ")}`;
 }
 
-/** Plays row `index` the way a user does, and waits for the marker. */
+/**
+ * Plays row `index`, and waits for the marker.
+ *
+ * The click is real and the double-click is dispatched, which is not the
+ * shape anyone would choose. `element.doubleClick()` goes through the Actions
+ * API, and against this driver its two presses did not coalesce into a
+ * `dblclick` at all: the diagnostic below reported the row *selected* - so the
+ * click half had reached React - beside a backend whose queue was still empty.
+ * The activation event simply never happened.
+ *
+ * Dispatching it is proven in this file: the shift-click above reaches React's
+ * delegated handler the same way, and does so on CI. So the row is clicked for
+ * real, which is what selects and focuses it, and then told to activate.
+ */
 async function playRow(index: number): Promise<void> {
-  await row(index).doubleClick();
+  await row(index).click();
+  await browser.execute((rowIndex: number) => {
+    document
+      .querySelector(`tr.song-row[aria-rowindex='${rowIndex}']`)
+      ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  }, index + 1);
   // The marker is not an optimistic flip in the store: it comes back on
   // `player://state` after the player thread has loaded the file the row
   // named, so waiting for it waits for the whole round trip.
