@@ -2407,6 +2407,40 @@ under `e2e/.tmp`, which is gitignored and rebuilt per run.
 
 ---
 
+**31 — A hundred and fifty thousand rows in a real engine** `perf/31-virtualization` — 🔄 **in review**
+
+`PLAN.md` opens with the claim the whole design rests on, and every part of it
+was tested except the part a user would notice. `tests/perf.rs` proves the
+*queries* stay cheap at ten thousand rows. `SongTable.test.tsx` proves the
+virtualizer is *wired up* in jsdom - which has no layout and therefore no
+scrolling, so every row is 0px tall and the number rendered is whatever the
+mock decided. Nothing had ever scrolled a large library in an engine that lays
+it out.
+
+The rows are inserted rather than scanned: a hundred and fifty thousand real
+files would be gigabytes and minutes to produce a worse test, and what is under
+test is the table rather than ingest, which phase 30 covers with real mp3s. The
+seeding command refuses in any build a user could install - `e2e_only` is a bare
+`Err` there, because the code that could say yes is behind the `wdio` feature
+and is not compiled in - and a unit test asserts that in the same configuration
+a user gets.
+
+*Strict where it is exact.* The count reaches the far end, the scroll extent
+passes a million pixels, the last row is real rather than a shimmer
+placeholder, and the DOM holds under two hundred rows - before a scroll, after
+scrolling to the bottom, after a re-sort and after a jump into the middle.
+
+*Loose where it is timing.* An order of magnitude above what the operations
+cost. These are not a benchmark; they catch a paged query becoming a full scan,
+which costs orders of magnitude rather than percent. A budget tight enough to
+see a 20% regression would fail on a busy runner every other week, and a flaky
+perf test is one that gets disabled.
+
+*Cost.* No extra job and no extra build - one more spec file against the app
+the e2e job already builds and launches.
+
+---
+
 **Deferred, with the reason** — not phases, and not forgotten:
 
 - **`memo(SongTable)`** - see phase 25. Needs a profile, not an instinct.

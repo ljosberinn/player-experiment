@@ -171,6 +171,14 @@ describe("a library too big to put in the DOM", () => {
     // The sort is a fresh query, a fresh count and a dropped page cache, all
     // at 150k rows. It is also the operation most likely to be accidentally
     // done in Rust over every row instead of in SQL over an index.
+    //
+    // Back to the top first, and not for tidiness: the test before this one
+    // leaves the table at the far end, and row 1 is then a hundred and fifty
+    // thousand rows above the viewport - so waiting for it to render was
+    // waiting for something virtualization is *supposed* to withhold. The
+    // first version of this test failed exactly there, which is the assertion
+    // working rather than the app.
+    await scrollTo("top");
     const started = Date.now();
     await browser.$("th[data-column='title'] button").click();
     await browser.waitUntil(
