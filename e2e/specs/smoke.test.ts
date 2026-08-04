@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { closeMenu, itemsOf, openMenu } from "../menu";
 
 /** Snapshot of what the webview actually holds, for failure messages. */
 async function describeWebview(): Promise<string> {
@@ -74,8 +75,11 @@ describe("application shell", () => {
   });
 
   it("offers the controls that drive a scan", async () => {
-    await expect(browser.$("//button[text()='Add Folder…']")).toBeExisting();
-    await expect(browser.$("//button[text()='Rescan']")).toBeExisting();
+    // In the File menu since phase 34, where every action that used to sit on
+    // the toolbar now lives.
+    await openMenu("File");
+    expect(await itemsOf("File")).toEqual(["Add Folder…", "Rescan"]);
+    await closeMenu();
   });
 
   it("wires the transport up to a player that is actually running", async () => {

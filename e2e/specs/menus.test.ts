@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { closeMenu, itemsOf, openMenu } from "../menu";
 import { capture } from "../screenshot";
 
 /**
@@ -14,14 +15,6 @@ import { capture } from "../screenshot";
  * on the runner, which is a side effect a test suite has no business having.
  * That it exists, is enabled, and names the repository is what matters.
  */
-
-/** Opens a top-level menu by its label and waits for the popup. */
-async function openMenu(name: string): Promise<void> {
-  await browser.$(`//*[@role='menubar']//*[@role='menuitem'][normalize-space()='${name}']`).click();
-  await browser
-    .$(`//*[@role='menu'][@aria-label='${name}']`)
-    .waitForExist({ timeout: 10_000, timeoutMsg: `the ${name} menu never opened` });
-}
 
 /**
  * Whether an element is marked unavailable, by any of the three mechanisms.
@@ -44,24 +37,6 @@ async function isUnavailable(selector: string): Promise<boolean> {
       element.hasAttribute("data-disabled")
     );
   }, selector);
-}
-
-/** The labels inside the open menu, in order. */
-async function itemsOf(name: string): Promise<string[]> {
-  return browser.execute((menu: string) => {
-    const popup = document.querySelector(`[role='menu'][aria-label='${menu}']`);
-    if (popup === null) {
-      return [];
-    }
-    return Array.from(popup.querySelectorAll("[role='menuitem']")).map((item) =>
-      (item.textContent ?? "").trim(),
-    );
-  }, name);
-}
-
-async function closeMenu(): Promise<void> {
-  await browser.keys("Escape");
-  await browser.$("//*[@role='menu']").waitForExist({ timeout: 10_000, reverse: true });
 }
 
 describe("the menu bar", () => {
