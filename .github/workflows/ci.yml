@@ -225,14 +225,21 @@ jobs:
       - name: Run WebDriver smoke suite
         if: needs.changes.outputs.code == 'true'
         run: npm run e2e
-      - name: Upload failure screenshots
-        if: failure()
+      # Always, not only on failure: the suite now photographs what a feature
+      # looks like, and the whole point of those is to be looked at while the
+      # pull request is open rather than after something has broken.
+      #
+      # Still not committed to the repository. A binary that changes whenever
+      # the UI does is the cost that got pixel baselines rejected in phase 27,
+      # and it buys nothing here - nothing is compared to them.
+      - name: Upload screenshots
+        if: always() && needs.changes.outputs.code == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
           path: e2e/screenshots
           if-no-files-found: ignore
-          # Failure diagnostics, not an archive. Actions storage is billed by
+          # Review aid, not an archive. Actions storage is billed by
           # gigabyte-month, and a screenshot nobody looked at within a week is
           # a screenshot nobody will look at.
           retention-days: 7
