@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
-import { contrast, GRAPHIC_MINIMUM, TEXT_MINIMUM } from "../contrast";
+import { contrast, flatten, GRAPHIC_MINIMUM, TEXT_MINIMUM } from "../contrast";
 import { LIBRARY, writeLibrary } from "../fixtures";
 import { invoke } from "../invoke";
 
@@ -95,24 +95,18 @@ async function sortBy(column: string, expected: "ascending" | "descending"): Pro
   }
 }
 
-async function applyTheme(theme: "light" | "dark"): Promise<void> {
-  await browser.execute((value: string) => {
-    if (value === "light") {
-      delete document.documentElement.dataset.theme;
-    } else {
-      document.documentElement.dataset.theme = value;
-    }
-  }, theme);
-}
-
 /**
- * The colour of something on a row, and of whatever is painted behind it.
+ * The colour of something on a row, and of everything painted behind it.
  *
- * The background is resolved by walking up to the first ancestor that paints
- * one rather than being named: a selected row paints its own fill, an odd row
- * paints another, and a plain row paints nothing at all and shows the surface
- * behind it. Naming one by hand is how the first version of the appearance
- * suite produced a false positive.
+ * The background is resolved by walking the ancestors rather than being named:
+ * a selected row paints its own wash, an odd row paints another, and a plain
+ * row paints nothing at all and shows the surface behind it. Naming one by hand
+ * is how the first version of the appearance suite produced a false positive.
+ *
+ * Every layer, not the first: since phase 33 a selected row is an 18% accent
+ * wash, so the fill it paints is not the colour anything on it is read against.
+ * `flatten` composites the stack in the test process, where the parser that
+ * understands both `rgb()` and `oklch()` lives.
  */
 function colours(selector: string): Promise<{ text: string; behind: string } | null> {
   return browser.execute((sel: string) => {
@@ -121,16 +115,15 @@ function colours(selector: string): Promise<{ text: string; behind: string } | n
       return null;
     }
     let painter: Element | null = element;
-    let behind = "";
+    const stack: string[] = [];
     while (painter !== null) {
       const fill = getComputedStyle(painter).backgroundColor;
       if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-        behind = fill;
-        break;
+        stack.push(fill);
       }
       painter = painter.parentElement;
     }
-    return { text: getComputedStyle(element).color, behind };
+    return { text: getComputedStyle(element).color, behind: JSON.stringify(stack) };
   }, selector);
 }
 
@@ -239,14 +232,6 @@ describe("a library with something in it", () => {
     );
   });
 
-  afterEach(async () => {
-    try {
-      await applyTheme("light");
-    } catch {
-      // The session is gone; the test that mattered has already reported.
-    }
-  });
-
   it("puts what the scanner read into the rows", async () => {
     await sortBy("title", "ascending");
 
@@ -313,93 +298,101 @@ describe("a library with something in it", () => {
     expect(await browser.$("tr.song-row.playing").getAttribute("aria-rowindex")).toBe("1");
   });
 
-  for (const theme of ["light", "dark"] as const) {
-    describe(`in the ${theme} theme`, () => {
-      beforeEach(async () => {
-        await sortBy("title", "ascending");
-        await applyTheme(theme);
-      });
+  /* One theme since phase 33: the app is dark only, so what made this loop -
+     a runner that boots light while the defects were dark-only - no longer
+     applies. The colours are still measured; there is one pass of it. */
+  describe("in the one theme there is", () => {
+    beforeEach(async () => {
+      await sortBy("title", "ascending");
+    });
 
-      it("keeps the playing marker visible whether or not the row is selected", async () => {
-        // The defect this exists for: `.row-status.playing` is `--accent` and
-        // `.song-row.selected` is *filled* with `--accent`. Activating a row
-        // both plays and selects it, so the marker was accent on accent -
-        // invisible until the selection moved off it. It shipped. No unit test
-        // could have caught it: jsdom resolves no colours at all.
-        await playRow(0);
+    it("keeps the playing marker visible whether or not the row is selected", async () => {
+      // The defect this exists for: `.row-status.playing` is `--accent` and
+      // `.song-row.selected` is *filled* with `--accent`. Activating a row
+      // both plays and selects it, so the marker was accent on accent -
+      // invisible until the selection moved off it. It shipped. No unit test
+      // could have caught it: jsdom resolves no colours at all.
+      await playRow(0);
 
-        const onSelection = await colours("tr.song-row.playing.selected .row-status.playing");
-        // Moved off, where the marker takes `--accent` back and sits on the
-        // row's ordinary fill instead.
-        await row(3).click();
-        const alone = await colours("tr.song-row.playing:not(.selected) .row-status.playing");
+      const onSelection = await colours("tr.song-row.playing.selected .row-status.playing");
+      // Moved off, where the marker takes `--accent` back and sits on the
+      // row's ordinary fill instead.
+      await row(3).click();
+      const alone = await colours("tr.song-row.playing:not(.selected) .row-status.playing");
 
-        // Both states collected before either is judged, so a failure names
-        // whichever of them is wrong instead of stopping at the first.
-        const faint = [
-          { where: "on the selected row", measured: onSelection },
-          { where: "with the selection elsewhere", measured: alone },
-        ]
-          .map((state) => ({
-            ...state,
-            ratio:
-              state.measured === null ? 0 : contrast(state.measured.text, state.measured.behind),
-          }))
-          .filter((state) => state.ratio < GRAPHIC_MINIMUM)
-          .map((state) =>
+      // Both states collected before either is judged, so a failure names
+      // whichever of them is wrong instead of stopping at the first.
+      const faint = [
+        { where: "on the selected row", measured: onSelection },
+        { where: "with the selection elsewhere", measured: alone },
+      ]
+        .map((state) => ({
+          ...state,
+          ratio:
             state.measured === null
-              ? `${state.where}: no marker found`
-              : `${state.where}: ${state.measured.text} on ${state.measured.behind} = ${state.ratio.toFixed(2)}:1`,
-          );
-
-        expect(faint).toEqual([]);
-      });
-
-      it("keeps every row's own text legible", async () => {
-        // One selected, so the run covers the plain row, the odd row and the
-        // filled one - three different backgrounds, which is where a colour
-        // pair that works in one theme and collapses in the other shows up.
-        await row(1).click();
-
-        const measured = await browser.execute(() =>
-          Array.from(document.querySelectorAll("tr.song-row")).flatMap((one) => {
-            const cell = one.querySelector("td.song-cell:not(.status)");
-            if (cell === null) {
-              return [];
-            }
-            let painter: Element | null = cell;
-            let behind = "";
-            while (painter !== null) {
-              const fill = getComputedStyle(painter).backgroundColor;
-              if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-                behind = fill;
-                break;
-              }
-              painter = painter.parentElement;
-            }
-            return [
-              {
-                // Named by what the row *is*, so a failure reads "selected" or
-                // "odd" rather than an index into a virtualized list that means
-                // nothing by the time anybody reads it.
-                where: one.className.replace("song-row", "").trim() || "plain",
-                text: getComputedStyle(cell).color,
-                behind,
-              },
-            ];
-          }),
+              ? 0
+              : contrast(state.measured.text, flatten(JSON.parse(state.measured.behind))),
+        }))
+        .filter((state) => state.ratio < GRAPHIC_MINIMUM)
+        .map((state) =>
+          state.measured === null
+            ? `${state.where}: no marker found`
+            : `${state.where}: ${state.measured.text} on ${flatten(JSON.parse(state.measured.behind))} = ${state.ratio.toFixed(2)}:1`,
         );
 
-        expect(measured.length).toBe(LIBRARY.length);
-
-        const illegible = measured
-          .filter((one) => one.behind !== "")
-          .map((one) => ({ ...one, ratio: contrast(one.text, one.behind) }))
-          .filter((one) => one.ratio < TEXT_MINIMUM)
-          .map((one) => `${one.where}: ${one.text} on ${one.behind} = ${one.ratio.toFixed(2)}:1`);
-
-        expect(illegible).toEqual([]);
-      });
+      expect(faint).toEqual([]);
     });
-  }
+
+    it("keeps every row's own text legible", async () => {
+      // One selected, so the run covers the plain row, the odd row and the
+      // filled one - three different backgrounds, which is where a colour
+      // pair that works in one theme and collapses in the other shows up.
+      await row(1).click();
+
+      const measured = await browser.execute(() =>
+        Array.from(document.querySelectorAll("tr.song-row")).flatMap((one) => {
+          const cell = one.querySelector("td.song-cell:not(.status)");
+          if (cell === null) {
+            return [];
+          }
+          // Every fill up to the root, not the first one found. A selected
+          // row is an 18% accent wash since phase 33, so what the row paints
+          // is not the colour its text is read against; `flatten` composites
+          // the stack out in the test process.
+          let painter: Element | null = cell;
+          const stack: string[] = [];
+          while (painter !== null) {
+            const fill = getComputedStyle(painter).backgroundColor;
+            if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+              stack.push(fill);
+            }
+            painter = painter.parentElement;
+          }
+          return [
+            {
+              // Named by what the row *is*, so a failure reads "selected" or
+              // "odd" rather than an index into a virtualized list that means
+              // nothing by the time anybody reads it.
+              where: one.className.replace("song-row", "").trim() || "plain",
+              text: getComputedStyle(cell).color,
+              behind: stack.length === 0 ? "" : JSON.stringify(stack),
+            },
+          ];
+        }),
+      );
+
+      expect(measured.length).toBe(LIBRARY.length);
+
+      const illegible = measured
+        .filter((one) => one.behind !== "")
+        .map((one) => ({ ...one, ratio: contrast(one.text, flatten(JSON.parse(one.behind))) }))
+        .filter((one) => one.ratio < TEXT_MINIMUM)
+        .map(
+          (one) =>
+            `${one.where}: ${one.text} on ${flatten(JSON.parse(one.behind))} = ${one.ratio.toFixed(2)}:1`,
+        );
+
+      expect(illegible).toEqual([]);
+    });
+  });
 });

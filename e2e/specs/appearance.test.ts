@@ -1,5 +1,5 @@
 import { browser, expect } from "@wdio/globals";
-import { contrast, flatten } from "../contrast";
+import { contrast, flatten, luminance } from "../contrast";
 
 /**
  * The layer nothing else can see.
@@ -204,18 +204,15 @@ describe("appearance, in the engine that actually lays it out", () => {
               return [];
             }
             const style = getComputedStyle(element);
-            // Every fill from here up to the first opaque one, front to back.
-            // A single layer is not enough since phase 33: a highlight is an
-            // 18% wash, and reading it alone reports it as solid.
+            // Every fill from here up to the root, front to back. A single
+            // layer is not enough since phase 33: a highlight is an 18% wash,
+            // and reading it alone reports it as solid.
             let painter = element.parentElement;
             const stack: string[] = [];
             while (painter !== null) {
               const fill = getComputedStyle(painter).backgroundColor;
               if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
                 stack.push(fill);
-                if (!/rgba([^)]*,s*0?.d+s*)/.test(fill)) {
-                  break;
-                }
               }
               painter = painter.parentElement;
             }
@@ -269,9 +266,9 @@ describe("appearance, in the engine that actually lays it out", () => {
             if (element === null) {
               return { selector, text: "", behind: "", from: "" };
             }
-            // Starts at the element itself, and keeps going through any
-            // translucent layer: a selected row is an 18% accent wash over the
-            // table, so the fill it paints is not the colour text sits on.
+            // Starts at the element itself and keeps going to the root: a
+            // selected row is an 18% accent wash over the table, so the fill it
+            // paints is not the colour its text actually sits on.
             let painter: Element | null = element;
             let from: Element | null = null;
             const stack: string[] = [];
@@ -280,9 +277,6 @@ describe("appearance, in the engine that actually lays it out", () => {
               if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
                 stack.push(fill);
                 from ??= painter;
-                if (!/rgba([^)]*,s*0?.d+s*)/.test(fill)) {
-                  break;
-                }
               }
               painter = painter.parentElement;
             }
@@ -321,12 +315,14 @@ describe("appearance, in the engine that actually lays it out", () => {
     // first ancestor that paints one, so a stylesheet that failed to load
     // entirely would leave them measuring black text on white and passing.
     const background = await computed("body", "background-color");
-    const [r = 255, g = 255, b = 255] = (background.match(/[d.]+/g) ?? []).map(Number);
 
     expect(background).not.toBe("");
-    // Every surface in the ramp sits below oklch(0.3), which is nowhere near
-    // any channel reaching 128.
-    expect(Math.max(r, g, b)).toBeLessThan(128);
+    // Measured rather than pattern-matched on the string: the engine returns
+    // whichever notation the sheet was authored in, and this has to keep
+    // meaning the same thing if that ever changes again. Every surface in the
+    // ramp sits below oklch(0.3), nowhere near the 0.18 relative luminance of
+    // a mid grey.
+    expect(luminance(background)).toBeLessThan(0.05);
   });
 
   it("renders numerals in the face the design asks for", async () => {
