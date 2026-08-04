@@ -94,13 +94,26 @@ Tests and clippy are left to CI, which has the build cache for them. Each hook
 skips gracefully if `npx`/`cargo` is not on `PATH`, and `--no-verify` bypasses
 either when you need it.
 
-**`main` is not protected server-side.** GitHub gates both branch protection and
-rulesets behind Pro for private repositories, so neither could be enabled here.
-The substitute is a `pre-push` hook in `.githooks/` that refuses pushes to
-`main`, wired up by the `prepare` script on `npm install`. It is advisory: it
-cannot stop a push from a clone that skipped `npm install`, and `--no-verify`
-bypasses it. To get real enforcement, make the repo public or move it to a paid
-plan, then apply a ruleset requiring the four checks.
+**`main` is protected server-side.** A `no-master-push` ruleset applies four
+rules to the default branch: no deletion, no force-push, changes only through a
+pull request, and all six checks - `changes`, `frontend`, `rust`, `cargo-deny`,
+`notices`, `e2e` - required to pass before merge. There are no bypass actors, so
+it applies to the repository owner too.
+
+This was not always possible: GitHub gates rulesets behind Pro for *private*
+repositories, and the paragraph here used to say so. Making the repo public
+lifted that, and the ruleset had been enforcing everything except the checks -
+which meant a pull request with red CI could still be merged, the one thing the
+gate exists to prevent.
+
+`strict_required_status_checks_policy` is deliberately **off**. Requiring every
+branch to be current with `main` before merging would re-run the full gate on
+each PR every time anything else lands, and the gate costs real Actions minutes.
+
+The `pre-push` hook in `.githooks/` stays, wired up by the `prepare` script on
+`npm install`. It is now a convenience rather than the enforcement: it fails
+fast on the machine instead of after a round trip, but the server is what
+actually refuses.
 
 ## Licence
 

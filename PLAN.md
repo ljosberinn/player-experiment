@@ -880,8 +880,9 @@ build and not the cache - the debug build is 61s and `rust-cache` restores in
   An unplugged external drive therefore destroys playlist entries pointing at
   it, and a rescan cannot restore them. Scheduled as phase 16, which is also
   what makes a "missing" indicator possible.
-- **`main` is not protected server-side** — GitHub gates that behind Pro for
-  private repos. The pre-push hook is advisory only.
+- ~~**`main` is not protected server-side**~~ — fixed in phase 28. The
+  ruleset now requires all six checks; the pre-push hook is a fast-fail
+  convenience rather than the enforcement.
 - **No audio is asserted end to end.** GitHub's Windows runners have no output
   device, so CI exercises the engine, the queue and the IPC surface against a
   fake sink and only checks that the transport is live in e2e. Decoding is
@@ -2295,7 +2296,7 @@ which is most of what makes these tests unstable elsewhere.
 
 ---
 
-**28 — Server-side branch protection** `chore/28-protect-main`
+**28 — Server-side branch protection** `chore/28-protect-main` — ✅ **done**
 
 The README says `main` cannot be protected because GitHub gates that behind Pro
 for private repositories. **That is now stale - the repo is public**, and a
