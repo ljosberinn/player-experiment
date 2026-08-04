@@ -13,47 +13,117 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Which of the jobs below actually have to do their work.
+  #
+  # Every job still runs and still reports, because a required status check
+  # cannot be satisfied by a job that never ran - `paths-ignore` at the workflow
+  # level would leave a documentation-only PR permanently unmergeable once the
+  # checks are required. What gets skipped is the expensive *steps* inside each
+  # job, so a prose change costs five runner startups instead of a full gate:
+  # about 4 billed minutes rather than 17.
+  #
+  # It fails safe in the one direction that matters. Anything not recognised as
+  # prose counts as code, an unreadable file list counts as code, and a push
+  # counts as code. Only a changeset that is entirely documentation may skip.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      - id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Not a pull request - running everything."
+            exit 0
+          fi
+
+          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename') || files=""
+
+          if [ -z "$files" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Could not read the changed files - running everything."
+            exit 0
+          fi
+
+          code=false
+          while IFS= read -r file; do
+            case "$file" in
+              # A workflow change is code however it is spelled, and the
+              # notices file is generated - a hand edit to it is precisely what
+              # the notices job exists to catch.
+              .github/*|THIRD-PARTY-NOTICES.md) code=true ;;
+              *.md|LICENSE) ;;
+              *) code=true ;;
+            esac
+          done <<< "$files"
+
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Changed files:"
+          echo "$files"
+          echo "Full gate: $code"
+
   frontend:
     name: frontend
     runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.code == 'true'
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+        if: needs.changes.outputs.code == 'true'
       - name: Typecheck
+        if: needs.changes.outputs.code == 'true'
         run: npm run typecheck
       - name: Lint & format
+        if: needs.changes.outputs.code == 'true'
         run: npm run lint
       - name: Unit & component tests
+        if: needs.changes.outputs.code == 'true'
         run: npm run test:coverage
       # Runs here as well as inside `tauri build`, because a warning in the
       # e2e job's nine-minute log is a warning nobody reads. Warnings are
       # errors; see the onwarn handler in vite.config.ts.
       - name: Production build
+        if: needs.changes.outputs.code == 'true'
         run: npm run build
 
   rust:
     name: rust
     runs-on: windows-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.code == 'true'
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.changes.outputs.code == 'true'
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.code == 'true'
         with:
           workspaces: src-tauri
           shared-key: rust-tests
       - name: Format
+        if: needs.changes.outputs.code == 'true'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Clippy
+        if: needs.changes.outputs.code == 'true'
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Tests
+        if: needs.changes.outputs.code == 'true'
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Generated bindings are up to date
+        if: needs.changes.outputs.code == 'true'
         shell: bash
         run: |
           git diff --exit-code -- src/ipc/bindings \
@@ -62,9 +132,12 @@ jobs:
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.code == 'true'
       - uses: EmbarkStudios/cargo-deny-action@v2
+        if: needs.changes.outputs.code == 'true'
         with:
           manifest-path: src-tauri/Cargo.toml
           command: check advisories licenses sources bans
@@ -74,38 +147,68 @@ jobs:
     # that ships, so it gets the same drift check the generated bindings get.
     # Its own job rather than a step on `frontend`: it needs both toolchains,
     # and a stale notices file should not read as a failing test suite.
+    #
+    # Linux, not Windows. It reads metadata and licence files - `cargo metadata`
+    # compiles nothing and the npm side is a lockfile read - so the Windows
+    # runner was buying a 2x multiplier and a 17-second checkout. The one
+    # platform-sensitive part, `--filter-platform x86_64-pc-windows-msvc`, is a
+    # filter over the resolve graph and does not need the target installed; the
+    # generator normalises line endings, which is what makes the output
+    # identical either way.
     name: notices
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/setup-node@v7
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.changes.outputs.code == 'true'
       - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.code == 'true'
         with:
           workspaces: src-tauri
-          shared-key: rust-tests
-      - run: npm ci
+          # Its own key, and no target directory. This job never compiles, so
+          # restoring the test job's build artifacts was ~27 seconds spent on
+          # files it does not open. What it does want is the registry, so that
+          # reading three hundred crate manifests is not three hundred
+          # downloads.
+          shared-key: notices-metadata
+          cache-targets: false
+      # Production dependencies only. The package list comes from the lockfile,
+      # so dev packages contribute nothing but install time - and there are
+      # roughly five hundred of them against twenty-one that ship.
+      - run: npm ci --omit=dev
+        if: needs.changes.outputs.code == 'true'
       - name: Third-party notices are up to date
+        if: needs.changes.outputs.code == 'true'
         run: npm run notices:check
 
   e2e:
     name: e2e
     runs-on: windows-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.code == 'true'
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.changes.outputs.code == 'true'
       - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.code == 'true'
         with:
           workspaces: src-tauri
           shared-key: e2e-build
       - run: npm ci
+        if: needs.changes.outputs.code == 'true'
       # @wdio/tauri-service's default `embedded` provider runs the WebDriver
       # server inside the app, so no tauri-driver or msedgedriver is needed.
       # The instrumentation is behind the `wdio` cargo feature and its
@@ -113,12 +216,14 @@ jobs:
       # neither. That overlay also sets `withGlobalTauri`, which the service
       # needs on every command - see PLAN.md, "e2e wall time".
       - name: Build app (debug, e2e-instrumented)
+        if: needs.changes.outputs.code == 'true'
         env:
           # Pulls @wdio/tauri-plugin into the bundle. Every other build leaves
           # that import in a dead branch, so it ships nowhere else.
           VITE_E2E: "true"
         run: npm run tauri -- build --debug --no-bundle --features wdio --config src-tauri/tauri.wdio.conf.json
       - name: Run WebDriver smoke suite
+        if: needs.changes.outputs.code == 'true'
         run: npm run e2e
       - name: Upload failure screenshots
         if: failure()
@@ -127,3 +232,7 @@ jobs:
           name: e2e-screenshots
           path: e2e/screenshots
           if-no-files-found: ignore
+          # Failure diagnostics, not an archive. Actions storage is billed by
+          # gigabyte-month, and a screenshot nobody looked at within a week is
+          # a screenshot nobody will look at.
+          retention-days: 7
