@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { contrast, GRAPHIC_MINIMUM, TEXT_MINIMUM } from "../contrast";
 import { LIBRARY, writeLibrary } from "../fixtures";
+import { invoke } from "../invoke";
 
 /**
  * The suite that has rows in it.
@@ -21,69 +22,6 @@ import { LIBRARY, writeLibrary } from "../fixtures";
  * no row could ever be shown playing). Both are set in `wdio.conf.ts` and both
  * are read only by a build carrying the `wdio` feature.
  */
-
-declare global {
-  interface Window {
-    __TAURI__?: {
-      core: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
-    };
-    /** Where `invoke` parks a result until the poll below collects it. */
-    __e2eInvoke?: { done: boolean; value?: unknown; error?: string };
-  }
-}
-
-/**
- * Calls a Tauri command from the test.
- *
- * Used for exactly one thing - registering the watch folder - because the
- * button that normally does it opens the OS folder picker, which WebDriver
- * cannot answer. Everything after that goes through the UI.
- *
- * Started and collected in two steps rather than with `executeAsync`, which is
- * deprecated in WebdriverIO 9 and needs `/execute/async` on the driver. The
- * driver here is a Tauri plugin embedded in the app rather than a full browser
- * driver, and plain `execute` is what the rest of the suite already proves it
- * supports.
- */
-async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  await browser.execute(
-    (cmd: string, payload: Record<string, unknown>) => {
-      const box: NonNullable<Window["__e2eInvoke"]> = { done: false };
-      window.__e2eInvoke = box;
-
-      const tauri = window.__TAURI__;
-      if (tauri === undefined) {
-        box.error = "window.__TAURI__ is missing - is withGlobalTauri set?";
-        box.done = true;
-        return;
-      }
-
-      tauri.core.invoke(cmd, payload).then(
-        (value) => {
-          box.value = value;
-          box.done = true;
-        },
-        (cause) => {
-          box.error = String(cause);
-          box.done = true;
-        },
-      );
-    },
-    command,
-    args,
-  );
-
-  await browser.waitUntil(
-    async () => (await browser.execute(() => window.__e2eInvoke))?.done === true,
-    { timeout: 60_000, timeoutMsg: `${command} never settled` },
-  );
-
-  const result = await browser.execute(() => window.__e2eInvoke);
-  if (result?.error !== undefined) {
-    throw new Error(`${command} failed: ${result.error}`);
-  }
-  return result?.value as T;
-}
 
 /**
  * One row, addressed by its place in the current order.

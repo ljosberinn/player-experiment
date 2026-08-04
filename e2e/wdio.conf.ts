@@ -54,7 +54,14 @@ export const config: WebdriverIO.Config = {
   // share one library, and the one that puts music in it has to go last.
   // `library` asserts the library is empty before it seeds, so an accidental
   // reorder fails as itself rather than as a puzzle three specs later.
-  specs: ["./specs/smoke.test.ts", "./specs/appearance.test.ts", "./specs/library.test.ts"],
+  specs: [
+    "./specs/smoke.test.ts",
+    "./specs/appearance.test.ts",
+    "./specs/library.test.ts",
+    // Last, and it has to be: it puts a hundred and fifty thousand rows in the
+    // shared library and nothing after it would recognise the place.
+    "./specs/virtualization.test.ts",
+  ],
   maxInstances: 1,
   // @wdio/tauri-service owns the driver lifecycle. The default `embedded`
   // provider runs the WebDriver server inside the app itself (via
