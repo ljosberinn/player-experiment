@@ -2354,6 +2354,27 @@ opt-in toggle to design, and nothing to scrub - phase 11's whole scrubbing
 section existed only because Sentry would have carried file paths, folder names
 and track titles off the machine.
 
+*Photographed, and this is new.* Phase 27 rejected screenshots as *assertions*
+and that stands - pixel baselines flake on antialiasing, differ between a
+developer machine and Windows Server, need storage for baselines and diffs, and
+report "17,000 pixels differ" rather than what is wrong. But a pull request
+that changes what the app looks like had been describing the change in prose
+and asking the reviewer to imagine it.
+
+So the e2e suite now *takes* pictures without *comparing* them. Nothing is
+compared, so nothing can flake. They are uploaded as a build artifact with
+seven-day retention and never committed: a binary that changes whenever the UI
+does is the cost that got baselines rejected, and it buys nothing when nothing
+reads them but a human.
+
+The crash notice is the first subject because it is the one feature no unit
+test can reach end to end. The spec provokes a **real panic** through a
+test-only command - on a spawned thread, so the process survives, which is also
+the case the feature exists for - then reloads the webview, the closest a
+running session gets to a next launch. Everything between is the real path:
+hook, formatter, log file, `last_crash`, IPC, render. Confirmed working on the
+runner: four PNGs, both themes, collapsed and expanded, 288 kB total.
+
 *Testing.* A `PanicHookInfo` cannot be constructed outside a real panic, so
 the formatter takes what the hook knows as parameters and the hook does no
 formatting of its own - which is what makes both testable. Rotation, the
