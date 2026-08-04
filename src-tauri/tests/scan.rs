@@ -5,9 +5,9 @@ mod fixture;
 
 use std::path::Path;
 
-use player_lib::db::{query, Db};
-use player_lib::model::{SortField, TrackQuery};
-use player_lib::scan;
+use apex_lib::db::{query, Db};
+use apex_lib::model::{SortField, TrackQuery};
+use apex_lib::scan;
 use rusqlite::Connection;
 
 struct Harness {
@@ -32,12 +32,12 @@ fn harness() -> Harness {
     }
 }
 
-fn scan_now(db: &Db) -> player_lib::model::ScanSummary {
+fn scan_now(db: &Db) -> apex_lib::model::ScanSummary {
     let mut conn = db.conn().unwrap();
     scan::scan(&mut conn, |_| {}).expect("scan")
 }
 
-fn all_tracks(conn: &Connection) -> Vec<player_lib::model::Track> {
+fn all_tracks(conn: &Connection) -> Vec<apex_lib::model::Track> {
     query::query_tracks(
         conn,
         &TrackQuery {

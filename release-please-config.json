@@ -6,7 +6,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "player",
+      "package-name": "apex",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "src-tauri/tauri.conf.json", "jsonpath": "$.version" },

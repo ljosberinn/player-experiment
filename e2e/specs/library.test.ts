@@ -214,7 +214,7 @@ const BY_TITLE = [...LIBRARY].sort((a, b) => a.title.localeCompare(b.title));
 
 describe("a library with something in it", () => {
   before(async () => {
-    await browser.waitUntil(async () => (await browser.getTitle()) === "Player", {
+    await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
       timeout: 30_000,
       interval: 500,
     });

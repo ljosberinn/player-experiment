@@ -70,6 +70,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "apex"
+version = "0.3.0"
+dependencies = [
+ "lofty",
+ "rayon",
+ "rodio",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-updater",
+ "tauri-plugin-wdio",
+ "tauri-plugin-wdio-webdriver",
+ "tempfile",
+ "thiserror 2.0.19",
+ "ts-rs",
+ "walkdir",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2806,30 +2830,6 @@ name = "pkg-config"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
-
-[[package]]
-name = "player"
-version = "0.3.0"
-dependencies = [
- "lofty",
- "rayon",
- "rodio",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-updater",
- "tauri-plugin-wdio",
- "tauri-plugin-wdio-webdriver",
- "tempfile",
- "thiserror 2.0.19",
- "ts-rs",
- "walkdir",
-]
 
 [[package]]
 name = "plist"

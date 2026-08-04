@@ -10,11 +10,11 @@ mod fixture;
 use std::path::Path;
 use std::time::Duration;
 
-use player_lib::audio::engine::{Command, Engine, Event};
-use player_lib::audio::sink::AudioSink;
-use player_lib::db::{playback, query, Db};
-use player_lib::model::{PlaybackStatus, SortField, TrackQuery};
-use player_lib::scan;
+use apex_lib::audio::engine::{Command, Engine, Event};
+use apex_lib::audio::sink::AudioSink;
+use apex_lib::db::{playback, query, Db};
+use apex_lib::model::{PlaybackStatus, SortField, TrackQuery};
+use apex_lib::scan;
 
 /// Records what it was asked to do and lets a test move the playhead.
 #[derive(Default)]

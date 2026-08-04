@@ -31,7 +31,7 @@ describe("application shell", () => {
     // The driver can attach while the webview is still on about:blank, so wait
     // for the app document itself rather than trusting the first query.
     try {
-      await browser.waitUntil(async () => (await browser.getTitle()) === "Player", {
+      await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
         timeout: 30_000,
         interval: 500,
       });

@@ -106,7 +106,7 @@ function cargoPackages() {
     ]),
   );
   return meta.packages
-    .filter((pkg) => pkg.name !== "player")
+    .filter((pkg) => pkg.name !== "apex")
     .map((pkg) => ({
       ecosystem: "crate",
       name: pkg.name,
@@ -190,7 +190,7 @@ function render(packages) {
   lines.push("# Third-party notices");
   lines.push("");
   lines.push(
-    "Player is MIT licensed; see [LICENSE](LICENSE). It is built from the",
+    "Apex is MIT licensed; see [LICENSE](LICENSE). It is built from the",
     "open-source packages below, which carry their own terms.",
     "",
     "**This file is generated.** Run `npm run notices` to rebuild it; CI fails if",

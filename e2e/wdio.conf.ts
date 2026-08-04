@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const application = join(repoRoot, "src-tauri", "target", "debug", "player.exe");
+const application = join(repoRoot, "src-tauri", "target", "debug", "apex.exe");
 
 /** Scratch space for the app data of a run, and for generated fixtures. */
 const workDir = join(repoRoot, "e2e", ".tmp");

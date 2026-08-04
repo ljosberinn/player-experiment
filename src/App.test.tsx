@@ -42,7 +42,7 @@ vi.mock("./ipc", () => ({
   lastCrash: vi.fn(async () => null),
   acknowledgeCrash: vi.fn(),
   revealCrashLog: vi.fn(),
-  getAppInfo: vi.fn(async () => ({ name: "player", version: "0.4.2" })),
+  getAppInfo: vi.fn(async () => ({ name: "apex", version: "0.4.2" })),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
@@ -146,7 +146,7 @@ beforeEach(async () => {
   // Restated rather than left to the factory: `clearAllMocks` clears calls but
   // keeps implementations, so the one test that makes this reject was leaking
   // a versionless footer into every test declared after it.
-  vi.mocked(getAppInfo).mockResolvedValue({ name: "player", version: "0.4.2" });
+  vi.mocked(getAppInfo).mockResolvedValue({ name: "apex", version: "0.4.2" });
   vi.mocked(canUndoTagEdit).mockResolvedValue(false);
   statsMock.mockResolvedValue(stats(0));
   queryTracksMock.mockResolvedValue([]);

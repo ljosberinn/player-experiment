@@ -29,7 +29,7 @@ import { capture } from "../screenshot";
 
 /** Waits for the app document, which a reload has to be given time for. */
 async function waitForTheApp(): Promise<void> {
-  await browser.waitUntil(async () => (await browser.getTitle()) === "Player", {
+  await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
     timeout: 30_000,
     interval: 250,
   });

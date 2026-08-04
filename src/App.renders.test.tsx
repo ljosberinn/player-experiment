@@ -30,7 +30,7 @@ vi.mock("./ipc", () => ({
   lastCrash: vi.fn(async () => null),
   acknowledgeCrash: vi.fn(),
   revealCrashLog: vi.fn(),
-  getAppInfo: vi.fn(async () => ({ name: "player", version: "0.4.2" })),
+  getAppInfo: vi.fn(async () => ({ name: "apex", version: "0.4.2" })),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(async () => []),
   allTrackIds: vi.fn(async () => []),

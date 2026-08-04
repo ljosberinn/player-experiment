@@ -8,11 +8,11 @@
 
 use std::time::Instant;
 
-use player_lib::db::{query, synthetic, tag_values, Db};
-use player_lib::model::{
+use apex_lib::db::{query, synthetic, tag_values, Db};
+use apex_lib::model::{
     BrowseFilter, BrowseKind, SortDirection, SortField, TagValueField, TrackQuery,
 };
-use player_lib::scan;
+use apex_lib::scan;
 
 const ROWS: usize = 10_000;
 
