@@ -309,11 +309,6 @@ export function App() {
             <ScanBar />
           </div>
 
-          {/* Above every other notice, and outside the one below: this is the
-              only thing on screen that reports a session that is already over,
-              and it must not be crowded out by a message about this one. */}
-          <CrashNotice />
-
           {notice || tagNotice || toolbarNotice ? (
             <p className="content-notice" role="status">
               {notice ?? tagNotice ?? toolbarNotice}
@@ -373,6 +368,11 @@ export function App() {
           )}
         </main>
       </div>
+
+      {/* Beside the other dialogs rather than in the content flow: it is an
+          alert dialog now, so it portals to the body and its position here is
+          about where it belongs in the reading order, not on screen. */}
+      <CrashNotice />
 
       <footer className="statusbar">
         {/* First in the DOM as well as leftmost on screen. Grid auto-placement

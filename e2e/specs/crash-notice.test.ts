@@ -20,6 +20,11 @@ import { capture } from "../screenshot";
  * It also takes the pictures. Those are for the reviewer, not for an
  * assertion; see `screenshot.ts` for why this suite still has no pixel
  * baselines and is not getting any.
+ *
+ * The notice is a Base UI `AlertDialog`, so it portals to the body and is
+ * addressed by role rather than by class - and being an alert dialog rather
+ * than a dialog is itself the assertion that a backdrop click cannot make it
+ * go away.
  */
 
 /** Waits for the app document, which a reload has to be given time for. */
@@ -57,10 +62,13 @@ describe("the notice that reports a crash", () => {
   });
 
   it("reports the panic the app actually took", async () => {
-    const notice = browser.$(".crash-notice");
+    // `alertdialog`, not `dialog`: an alert dialog cannot be dismissed by
+    // clicking the backdrop, which is the point of using that Base UI part for
+    // a message the user has to actually answer.
+    const notice = browser.$("[role='alertdialog']");
     await notice.waitForExist({ timeout: 30_000 });
 
-    await expect(notice).toHaveText(/closed unexpectedly last time/);
+    await expect(notice).toHaveText(/closed unexpectedly/);
     // The message from the panic itself, not a generic apology: this is the
     // whole round trip - hook, formatter, log file, `last_crash`, IPC, render.
     await expect(browser.$(".crash-notice-summary")).toHaveText(
@@ -114,13 +122,13 @@ describe("the notice that reports a crash", () => {
 
   it("stays dismissed once dismissed", async () => {
     await browser.$("//button[text()='Dismiss']").click();
-    await expect(browser.$(".crash-notice")).not.toBeExisting();
+    await expect(browser.$("[role='alertdialog']")).not.toBeExisting();
 
     // The dismissal is recorded against *that* crash rather than the session,
     // so it has to survive a reload. This is the assertion that would have
     // caught storing a boolean instead of the timestamp.
     await browser.refresh();
     await waitForTheApp();
-    await expect(browser.$(".crash-notice")).not.toBeExisting();
+    await expect(browser.$("[role='alertdialog']")).not.toBeExisting();
   });
 });

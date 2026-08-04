@@ -30,30 +30,37 @@ beforeEach(() => {
 describe("CrashNotice", () => {
   it("says nothing when the last run ended normally", async () => {
     lastCrashMock.mockResolvedValue(null);
-    const { container } = render(<CrashNotice />);
+    render(<CrashNotice />);
 
     // Waited for rather than asserted immediately: the "nothing to say" case
     // renders nothing both before and after the call resolves, so an
     // assertion that ran first would pass without the answer having arrived.
     await waitFor(() => expect(lastCrashMock).toHaveBeenCalled());
-    expect(container).toBeEmptyDOMElement();
+    // By role rather than by container: the dialog portals to the body, so
+    // the component's own subtree is empty either way and asserting on it
+    // would pass whether or not a dialog had opened.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("stays quiet when the crash log cannot be read", async () => {
     // A launch that is otherwise fine should not gain an error banner because
     // the thing that reports errors could not be read.
     lastCrashMock.mockRejectedValue(new Error("the log is locked"));
-    const { container } = render(<CrashNotice />);
+    render(<CrashNotice />);
 
     await waitFor(() => expect(lastCrashMock).toHaveBeenCalled());
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("reports the panic message, not just that something happened", async () => {
     lastCrashMock.mockResolvedValue(REPORT);
     render(<CrashNotice />);
 
-    expect(await screen.findByText(/closed unexpectedly last time/)).toBeInTheDocument();
+    // `alertdialog`, not `dialog`: the difference is that a backdrop click
+    // cannot dismiss it, which is the whole reason this is the Base UI part it
+    // is. Asserting the role is asserting that.
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText(/closed unexpectedly/)).toBeInTheDocument();
     expect(screen.getByText(REPORT.summary)).toBeInTheDocument();
     // The backtrace is behind a disclosure: it is what a bug report needs and
     // not what the sentence needs.
@@ -82,7 +89,21 @@ describe("CrashNotice", () => {
     // The timestamp is what makes this "that crash" instead of "any crash":
     // acknowledging without it would silence the next one too.
     expect(acknowledgeCrashMock).toHaveBeenCalledWith(REPORT.when);
-    expect(screen.queryByText(/closed unexpectedly/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("closes on Escape, and counts that as having seen it", async () => {
+    // The other route out of an alert dialog, and it has to mean the same
+    // thing: someone who reads the message and presses Escape has seen the
+    // crash, so being told about it again on the next launch would be a bug.
+    const user = userEvent.setup();
+    lastCrashMock.mockResolvedValue(REPORT);
+    render(<CrashNotice />);
+
+    await screen.findByRole("alertdialog");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(acknowledgeCrashMock).toHaveBeenCalledWith(REPORT.when));
   });
 
   it("stays dismissed even if recording that failed", async () => {
@@ -96,7 +117,7 @@ describe("CrashNotice", () => {
     // The cost of the failure is being told once more next launch, which is
     // not worth a dialog about failing to close a notice.
     await waitFor(() => expect(acknowledgeCrashMock).toHaveBeenCalled());
-    expect(screen.queryByText(/closed unexpectedly/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("opens the log file, and says so when it cannot", async () => {
