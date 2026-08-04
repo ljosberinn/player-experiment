@@ -3,6 +3,7 @@ pub mod playlists;
 pub mod query;
 pub mod schema;
 pub mod settings;
+pub mod synthetic;
 pub mod tag_values;
 
 use std::path::{Path, PathBuf};

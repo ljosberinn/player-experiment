@@ -196,13 +196,62 @@ function colours(selector: string): Promise<{ text: string; behind: string } | n
   }, selector);
 }
 
+/**
+ * What the app thinks is playing, for a failure message.
+ *
+ * Built only when the wait below has already failed. "No row is marked
+ * playing" has at least four causes - the double-click never reached React,
+ * the command was rejected, the file would not load, or the marker is not
+ * wired to the state - and they are indistinguishable from the outside. Each
+ * of the four leaves a different trace here.
+ */
+async function describePlayback(): Promise<string> {
+  const safe = async <T>(label: string, read: () => Promise<T>): Promise<string> => {
+    try {
+      return `${label}=${JSON.stringify(await read())}`;
+    } catch (cause) {
+      return `${label}=<threw ${String(cause)}>`;
+    }
+  };
+
+  const parts = await Promise.all([
+    // The backend's own answer: status, the track it holds, and how long the
+    // queue is. A queue of zero means the command never arrived.
+    safe("snapshot", () => invoke("player_snapshot")),
+    // A load failure arrives on `player://error` and lands here. On a runner
+    // that fell back to the shipped sink this reads "no audio output device",
+    // which would mean the silent-sink variable never reached the app.
+    safe("errorPopup", () =>
+      browser.execute(() => document.querySelector(".error-popup")?.textContent ?? ""),
+    ),
+    safe("statusTitle", () =>
+      browser.execute(() => document.querySelector(".status-title")?.textContent ?? ""),
+    ),
+    // A selected row proves the double-click reached React at all: activating
+    // a row selects it on the way past.
+    safe("rowClasses", () =>
+      browser.execute(() =>
+        Array.from(document.querySelectorAll("tr.song-row")).map((one) => one.className),
+      ),
+    ),
+  ]);
+
+  return `no row is marked playing: ${parts.join(" ")}`;
+}
+
 /** Plays row `index` the way a user does, and waits for the marker. */
 async function playRow(index: number): Promise<void> {
   await row(index).doubleClick();
   // The marker is not an optimistic flip in the store: it comes back on
   // `player://state` after the player thread has loaded the file the row
   // named, so waiting for it waits for the whole round trip.
-  await browser.$("tr.song-row.playing").waitForExist({ timeout: 30_000 });
+  try {
+    await browser.$("tr.song-row.playing").waitForExist({ timeout: 30_000 });
+  } catch {
+    // Built after the wait rather than before, so it reports the state at the
+    // moment of failure.
+    throw new Error(await describePlayback());
+  }
 }
 
 const BY_TITLE = [...LIBRARY].sort((a, b) => a.title.localeCompare(b.title));

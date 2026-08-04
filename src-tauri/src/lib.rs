@@ -41,6 +41,23 @@ mod e2e {
     }
 }
 
+/// Refuses unless this is an e2e build that the harness launched.
+///
+/// The gate on `commands::seed_synthetic_tracks`, which writes a hundred and
+/// fifty thousand rows into the library. In a shipped binary this function is
+/// the whole of it - the code that could say yes is not compiled in - so the
+/// command exists there only to answer that it will not.
+pub(crate) fn e2e_only(what: &str) -> crate::error::AppResult<()> {
+    #[cfg(feature = "wdio")]
+    if e2e::var(e2e::DATA_DIR).is_some() {
+        return Ok(());
+    }
+
+    Err(crate::error::AppError::Internal(format!(
+        "{what} is test-only and this is not a test build"
+    )))
+}
+
 /// Where the library lives on disk, under the OS app-data directory.
 fn database_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, tauri::Error> {
     let default = app.path().app_data_dir()?;
@@ -145,6 +162,7 @@ pub fn run() {
             commands::player_seek,
             commands::player_set_volume,
             commands::player_snapshot,
+            commands::seed_synthetic_tracks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

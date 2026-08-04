@@ -8,7 +8,7 @@
 
 use std::time::Instant;
 
-use player_lib::db::{query, tag_values, Db};
+use player_lib::db::{query, synthetic, tag_values, Db};
 use player_lib::model::{
     BrowseFilter, BrowseKind, SortDirection, SortField, TagValueField, TrackQuery,
 };
@@ -16,44 +16,16 @@ use player_lib::scan;
 
 const ROWS: usize = 10_000;
 
-/// Inserts `ROWS` synthetic tracks. Rows are written directly rather than
-/// through the scanner: this measures query cost, not tag parsing.
+/// A library of `ROWS` synthetic tracks.
+///
+/// The rows come from `db::synthetic`, which the e2e virtualization spec also
+/// uses - written directly rather than through the scanner, because what these
+/// measure is query cost rather than tag parsing.
 fn seeded_library() -> (tempfile::TempDir, Db) {
     let dir = tempfile::tempdir().unwrap();
     let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
     let mut conn = db.conn().unwrap();
-
-    let tx = conn.transaction().unwrap();
-    {
-        let mut stmt = tx
-            .prepare(
-                "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album,
-                                     album_artist, genre, year, track_no, added_at)
-                 VALUES (?1, 1, 1, ?2, ?3, ?4, ?5, ?4, ?6, ?7, ?8, 0)",
-            )
-            .unwrap();
-        for i in 0..ROWS {
-            // No separators inside the names: each becomes a single token, so
-            // a search term cannot accidentally match a different column and
-            // make the expected result count a puzzle.
-            let artist = format!("Artist{:03}", i % 250);
-            let album = format!("Album{:03}", i % 800);
-            let genre = format!("Genre{:02}", i % 20);
-            stmt.execute(rusqlite::params![
-                format!("/music/{i:06}.mp3"),
-                180_000 + (i as i64 % 120_000),
-                format!("Track {i:06}"),
-                artist,
-                album,
-                genre,
-                1970 + (i as i64 % 55),
-                (i as i64 % 20) + 1,
-            ])
-            .unwrap();
-        }
-    }
-    tx.commit().unwrap();
-
+    synthetic::seed(&mut conn, ROWS as u32).unwrap();
     (dir, db)
 }
 
