@@ -18,6 +18,10 @@
     "updater:default",
     "core:webview:allow-set-webview-zoom",
     "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister"
+    "global-shortcut:allow-unregister",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://github.com/ljosberinn/*" }]
+    }
   ]
 }

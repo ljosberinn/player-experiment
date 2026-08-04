@@ -80,7 +80,7 @@ export function ContextMenu({
         <Base.Portal>
           <Base.Positioner className="context-positioner">
             <Base.Popup className="context-menu" aria-label={label}>
-              {items.map(renderItem)}
+              {items.map(renderMenuItem)}
             </Base.Popup>
           </Base.Positioner>
         </Base.Portal>
@@ -89,7 +89,17 @@ export function ContextMenu({
   );
 }
 
-function renderItem(item: MenuItem, index: number) {
+/**
+ * One entry, rendered.
+ *
+ * Exported since phase 34 so the menu bar draws its items with this and not
+ * with a copy. Every part below except `Root` and `Trigger` is literally the
+ * same component in Base UI's context-menu and menu namespaces - the two
+ * differ only in what opens them - so sharing this is not a trick, and it is
+ * what stops the Edit menu and the right-click menu, which offer the same
+ * actions, from slowly looking like two different menus.
+ */
+export function renderMenuItem(item: MenuItem, index: number) {
   if (item.kind === "separator") {
     // Keyed by index: a menu's items are a fixed list built at open time and
     // never reordered, and a separator has nothing else to key on.
@@ -112,7 +122,7 @@ function renderItem(item: MenuItem, index: number) {
                 // A submenu that renders nothing looks broken; this explains it.
                 <div className="context-empty">No playlists yet</div>
               ) : (
-                item.submenu.map(renderItem)
+                item.submenu.map(renderMenuItem)
               )}
             </Base.Popup>
           </Base.Positioner>

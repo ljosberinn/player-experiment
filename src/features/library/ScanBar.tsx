@@ -1,76 +1,46 @@
-import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
-import { addWatchFolder, onScanProgress, type ScanProgress, scanLibrary } from "../../ipc";
-import { useLibraryStore } from "./store";
+import { useEffect } from "react";
+import { useScanStore } from "./scan";
 
 /**
- * Adding folders and running scans.
+ * What a scan in progress looks like.
  *
- * Progress arrives as `scan://progress` events rather than by polling, and the
- * library refreshes once on completion - refreshing per event would re-query
- * the count hundreds of times during a large import.
+ * Only the readout since phase 34. Add Folder and Rescan were buttons here
+ * until the File menu gave them a home; what is left reports rather than acts,
+ * which is why it stays on the content header instead of moving into a menu -
+ * a menu that has to be open to tell you a scan is running is no use.
+ *
+ * Errors are not shown here either. They go to the one error popover the app
+ * has, alongside the four other stores that can fail, rather than appearing as
+ * a fifth kind of message in a fifth place.
  */
 export function ScanBar() {
-  const [progress, setProgress] = useState<ScanProgress | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const refresh = useLibraryStore((s) => s.refresh);
+  const progress = useScanStore((s) => s.progress);
+  const watch = useScanStore((s) => s.watch);
 
   useEffect(() => {
-    const unlisten = onScanProgress(setProgress);
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, []);
-
-  const chooseFolder = async () => {
-    setError(null);
-    try {
-      const selected = await open({ directory: true, multiple: false, title: "Add music folder" });
-      if (typeof selected !== "string") {
-        return;
+    // `watch` resolves to its own teardown, which may land after unmount.
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void watch().then((off) => {
+      if (cancelled) {
+        off();
+      } else {
+        stop = off;
       }
-      await addWatchFolder(selected);
-      await runScan();
-    } catch (cause) {
-      setError(String(cause));
-    }
-  };
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [watch]);
 
-  const runScan = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await scanLibrary();
-      await refresh();
-    } catch (cause) {
-      setError(String(cause));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  };
+  if (progress === null || progress.done) {
+    return null;
+  }
 
   return (
-    <div className="scanbar">
-      <button type="button" onClick={() => void chooseFolder()} disabled={busy}>
-        Add Folder…
-      </button>
-      <button type="button" onClick={() => void runScan()} disabled={busy}>
-        {busy ? "Scanning…" : "Rescan"}
-      </button>
-
-      {progress && !progress.done ? (
-        <span className="scan-progress" role="status">
-          Scanning {progress.scanned.toLocaleString()} of {progress.total.toLocaleString()}
-        </span>
-      ) : null}
-
-      {error ? (
-        <span className="scan-error" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </div>
+    <span className="scan-progress" role="status">
+      Scanning {progress.scanned.toLocaleString()} of {progress.total.toLocaleString()}
+    </span>
   );
 }

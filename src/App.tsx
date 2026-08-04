@@ -1,9 +1,10 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { Toolbar } from "@base-ui/react/toolbar";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
+import { MenuBar } from "./components/ui/MenuBar";
 import { Sidebar } from "./components/ui/Sidebar";
 import { TabBar } from "./components/ui/TabBar";
 import { TitleBar } from "./components/ui/TitleBar";
@@ -13,9 +14,11 @@ import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { BrowseView } from "./features/library/BrowseView";
 import { resolveColumns } from "./features/library/columns";
+import { rowMenuItems } from "./features/library/rowMenu";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
+import { useScanStore } from "./features/library/scan";
 import { useLibraryStore } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
@@ -25,6 +28,9 @@ import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { exportSelectionLabel, menus, REPOSITORY } from "./features/shell/menus";
+import { SettingsDialog } from "./features/shell/SettingsDialog";
+import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
@@ -33,7 +39,7 @@ import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import { type AppInfo, exportLibrary, getAppInfo, onLibraryChanged } from "./ipc";
+import { type AppInfo, exportLibrary, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
 import { formatLibrarySummary } from "./lib/format";
 
 const SIDEBAR_SECTIONS = [
@@ -43,6 +49,7 @@ const SIDEBAR_SECTIONS = [
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   /** What the error popover points at: the box that says what is playing. */
   const statusRef = useRef<HTMLDivElement>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -83,15 +90,22 @@ export function App() {
   const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
+  const addTracks = usePlaylistsStore((s) => s.addTracks);
   const selection = useLibraryStore((s) => s.selection);
   const editorTracks = useEditorStore((s) => s.tracks);
   const canUndoTags = useEditorStore((s) => s.canUndo);
   const tagNotice = useEditorStore((s) => s.notice);
   const tagError = useEditorStore((s) => s.error);
+  const openEditor = useEditorStore((s) => s.open);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
   const undoTags = useEditorStore((s) => s.undo);
   const refreshUndo = useEditorStore((s) => s.refreshUndo);
+
+  const addFolder = useScanStore((s) => s.addFolder);
+  const rescan = useScanStore((s) => s.rescan);
+  const scanError = useScanStore((s) => s.error);
+  const dismissScanError = useScanStore((s) => s.dismissError);
 
   const editing = usePlaylistsStore((s) => s.editing);
   const closeEditor = usePlaylistsStore((s) => s.closeEditor);
@@ -110,12 +124,13 @@ export function App() {
    * rather than uncovering the next one, which would read as the message
    * refusing to go away.
    */
-  const problem = error ?? playerError ?? playlistError ?? tagError ?? null;
+  const problem = error ?? playerError ?? playlistError ?? tagError ?? scanError ?? null;
   const dismissProblem = () => {
     dismissLibraryError();
     dismissPlayerError();
     dismissPlaylistError();
     dismissTagError();
+    dismissScanError();
   };
 
   useEffect(() => {
@@ -142,6 +157,8 @@ export function App() {
   }, [connect]);
 
   usePlayerShortcuts();
+  // F5, which is the library half of the keyboard rather than the transport.
+  useLibraryShortcuts();
   // The window-scoped bindings above stay as they are; this adds the four
   // media keys that have to work while the app is behind something else.
   useGlobalMediaKeys();
@@ -233,8 +250,6 @@ export function App() {
     }
   };
 
-  // Resolved from the store rather than fixed, so a hidden column, a reorder
-  // or a drag-resize reaches the table - and so a playlist can have its own.
   const columns = resolveColumns(columnConfig);
   const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
   const exportTarget = exportChoice([...selection.ids], currentPlaylist);
@@ -247,9 +262,60 @@ export function App() {
   // a column the arrangement is derived and a drop would have nowhere to go.
   const reorderable = editable && sortBy === "position";
 
+  /**
+   * The menu bar's contents, rebuilt whenever anything they depend on changes.
+   *
+   * Edit serves the *same* items the right-click menu does, built by the same
+   * `rowMenuItems` - which is the whole point of the menu existing. A menu bar
+   * that offered a different set of song actions from the row menu would be two
+   * things to keep in step, and the one that got forgotten would be this one.
+   */
+  const selectedIds = [...selection.ids];
+  const appMenus = menus({
+    missingCount: stats.missing,
+    canUndoTags,
+    hasExportTarget: selectedIds.length > 0 || currentPlaylist !== null,
+    exportSelectionLabel: exportSelectionLabel(selectedIds.length, currentPlaylist?.name ?? null),
+    rowItems:
+      selectedIds.length === 0
+        ? []
+        : rowMenuItems({
+            count: selectedIds.length,
+            playlists,
+            openPlaylist: currentPlaylist,
+            // By id rather than by row index: the menu bar has no row under a
+            // pointer to start from, and the selection is what it acts on.
+            onPlay: () => void play(selectedIds, 0),
+            onGetInfo: () => void openEditor(selectedIds),
+            onAddTo: (id) => void addTracks(id, selectedIds),
+            onRemove: () => {
+              if (playlistId !== null) {
+                void removeTracks(playlistId, selectedIds);
+              }
+            },
+            onExport: () => void runExport(exportChoice(selectedIds, null)),
+            onReveal: () => void revealTrack(selectedIds[0] as number),
+          }),
+    onAddFolder: () => void addFolder(),
+    onRescan: () => void rescan(),
+    onRemoveMissing: () => setConfirmRemoveMissing(true),
+    onUndoTags: () => void undoTags(),
+    onSettings: () => setShowSettings(true),
+    onExportAll: () => void runExport(exportChoice([], null)),
+    onExportSelection: () => void runExport(exportTarget),
+    // The only outbound link in the app, and the only URL its capability
+    // allows. A failure here is not worth an error dialog: the browser either
+    // opened or it did not, and the user can see which.
+    onOpenRepository: () => void openUrl(REPOSITORY).catch(() => {}),
+  });
+
+  // Resolved from the store rather than fixed, so a hidden column, a reorder
+  // or a drag-resize reaches the table - and so a playlist can have its own.
+
   return (
     <div className="app">
-      <TitleBar>
+      <TitleBar version={appInfo?.version ?? null}>
+        <MenuBar menus={appMenus} />
         <PlayerTransport />
         {/* Both of these subscribe to their own store values rather than
             taking them as props. They are the two things that change on a
@@ -270,42 +336,12 @@ export function App() {
         </Sidebar>
 
         <main className="content">
+          {/* The toolbar is gone as of phase 34. Every button on it was an
+              action without a home - Add Folder, Rescan, Undo, Export, Remove
+              Missing - and a menu bar is the home. What is left here is the
+              tab bar and the scan readout, which reports rather than acts. */}
           <div className="content-header">
             <TabBar active={tab} onChange={(next) => void showTab(next)} />
-            {/* A real toolbar: one tab stop for the group, arrows between the
-                buttons inside it. It was a div of buttons, so tabbing past the
-                library actions cost a keystroke each. */}
-            <Toolbar.Root className="scanbar" aria-label="Library actions">
-              {/* Get Info is no longer a button here: it lives on the row's
-                  right-click menu, where a per-song action belongs, and on
-                  Ctrl+I. Undo stays - it acts on the last edit, not on a
-                  selection, so no row menu is the right home for it. */}
-              <Toolbar.Button
-                render={<button type="button" />}
-                disabled={!canUndoTags}
-                onClick={() => void undoTags()}
-              >
-                Undo Tag Edit
-              </Toolbar.Button>
-              <Toolbar.Button
-                render={<button type="button" />}
-                onClick={() => void runExport(exportTarget)}
-              >
-                {exportTarget.label}
-              </Toolbar.Button>
-              {/* Only when there is something to clear, which in a library
-                  whose drives are all plugged in is never. A permanent button
-                  for a condition that rarely holds is one more thing to read
-                  past on every launch. */}
-              {stats.missing > 0 ? (
-                <Toolbar.Button
-                  render={<button type="button" />}
-                  onClick={() => setConfirmRemoveMissing(true)}
-                >
-                  Remove {stats.missing} Missing
-                </Toolbar.Button>
-              ) : null}
-            </Toolbar.Root>
             <ScanBar />
           </div>
 
@@ -418,7 +454,11 @@ export function App() {
 
             It is also the only way an update is ever applied: installing ends
             the process and starts the installer, so a player that did it on a
-            timer would stop mid-song. Pressing this is the consent. */}
+            timer would stop mid-song. Pressing this is the consent.
+
+            The version itself moved to the title bar in phase 34, so this no
+            longer replaces it - the corner is empty until there is an update,
+            which is the state it is in on all but a handful of launches. */}
         {updateStatus === "ready" || updateStatus === "installing" ? (
           <button
             type="button"
@@ -430,8 +470,6 @@ export function App() {
               ? "Installing…"
               : `${updateVersion} ready — restart to install`}
           </button>
-        ) : appInfo ? (
-          <span className="statusbar-version">v{appInfo.version}</span>
         ) : null}
       </footer>
 
@@ -470,6 +508,8 @@ export function App() {
           onCancel={() => setConfirmRemoveMissing(false)}
         />
       ) : null}
+
+      {showSettings ? <SettingsDialog onClose={() => setShowSettings(false)} /> : null}
 
       {editing ? (
         <SmartPlaylistEditor

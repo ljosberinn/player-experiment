@@ -57,6 +57,10 @@ export const config: WebdriverIO.Config = {
   specs: [
     "./specs/smoke.test.ts",
     "./specs/appearance.test.ts",
+    // Before the library is seeded, deliberately: the File menu's third entry
+    // appears only when songs are missing, and "no third entry" is the case
+    // worth asserting - an empty library cannot be missing anything.
+    "./specs/menus.test.ts",
     "./specs/library.test.ts",
     // Last but one, and it has to be after the rest: it puts a hundred and
     // fifty thousand rows in the shared library and nothing before it would
