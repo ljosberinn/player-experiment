@@ -103,34 +103,11 @@ mod tests {
     use crate::model::PlaybackStatus;
     use std::sync::mpsc::channel;
 
-    /// A silent sink that reports itself as loaded, so the thread can be
-    /// driven without an audio device.
-    #[derive(Default)]
-    struct SilentSink {
-        loaded: bool,
-    }
-
-    impl AudioSink for SilentSink {
-        fn load(&mut self, _path: &std::path::Path) -> Result<(), String> {
-            self.loaded = true;
-            Ok(())
-        }
-        fn play(&mut self) {}
-        fn pause(&mut self) {}
-        fn stop(&mut self) {
-            self.loaded = false;
-        }
-        fn set_volume(&mut self, _volume: f32) {}
-        fn seek(&mut self, _position: Duration) -> Result<(), String> {
-            Ok(())
-        }
-        fn position(&self) -> Duration {
-            Duration::ZERO
-        }
-        fn finished(&self) -> bool {
-            !self.loaded
-        }
-    }
+    // `sink::SilentSink` - a sink that reports itself as loaded, so the thread
+    // can be driven without an audio device. It used to be declared here as
+    // well; it now lives beside the other sinks because the e2e build needs
+    // one too.
+    use sink::SilentSink;
 
     #[test]
     fn commands_reach_the_engine_and_events_come_back() {

@@ -421,9 +421,52 @@ pub fn player_snapshot(db: State<'_, Db>, player: State<'_, Player>) -> AppResul
     playback::snapshot(&conn, &player.state())
 }
 
+/// Writes `count` synthetic rows into the library. **Test-only.**
+///
+/// The e2e suite's way of getting to a library size no fixture folder can
+/// reach: a hundred and fifty thousand files on disk would be gigabytes and
+/// minutes to produce a worse test than inserting the rows the scanner would
+/// have produced. What is under test there is the table - that the DOM stays
+/// bounded and the last page is reachable - not ingest, which the seeded
+/// library spec covers with real files.
+///
+/// A shipped build cannot run this: `e2e_only` is a bare `Err` there, because
+/// the code that could say yes is behind the `wdio` feature and is not
+/// compiled in. The command still exists in that build, and answers by
+/// refusing.
+#[tauri::command]
+pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResult<u32> {
+    crate::e2e_only("seed_synthetic_tracks")?;
+
+    // Off the IPC thread: a hundred and fifty thousand inserts is seconds of
+    // work, and blocking there would stall every other command behind it.
+    let seeded = tauri::async_runtime::spawn_blocking(move || -> AppResult<u32> {
+        let db = app.state::<Db>();
+        let mut conn = db.conn()?;
+        let seeded = crate::db::synthetic::seed(&mut conn, count)?;
+        // What tells the open view to re-count and re-fetch. Without it the
+        // table would keep the row count it had before the insert.
+        let _ = app.emit("library://changed", ());
+        Ok(seeded)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::Internal(format!("seed task failed: {e}")))?;
+
+    seeded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_synthetic_seed_is_refused_outside_a_test_build() {
+        // `cargo test` builds without the `wdio` feature, which is the same
+        // build a user installs. If this ever starts returning `Ok`, a command
+        // that writes a hundred and fifty thousand rows has become reachable
+        // from a shipped binary.
+        assert!(crate::e2e_only("seed_synthetic_tracks").is_err());
+    }
 
     #[test]
     fn reports_the_crate_name_and_a_semver_version() {

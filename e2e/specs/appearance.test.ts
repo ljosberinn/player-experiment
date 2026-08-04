@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { contrast } from "../contrast";
 
 /**
  * The layer nothing else can see.
@@ -34,20 +35,6 @@ import { browser, expect } from "@wdio/globals";
  * for. So this asserts computed values, which are deterministic, need no
  * baseline, and name the fault when they fail.
  */
-
-/** WCAG relative luminance for an `rgb(...)` string the engine returned. */
-function luminance(colour: string): number {
-  const [r = 0, g = 0, b = 0] = (colour.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
-  const linear = [r, g, b]
-    .map((channel) => channel / 255)
-    .map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * (linear[0] ?? 0) + 0.7152 * (linear[1] ?? 0) + 0.0722 * (linear[2] ?? 0);
-}
-
-function contrast(a: string, b: string): number {
-  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
-  return (high + 0.05) / (low + 0.05);
-}
 
 /**
  * Forces a theme for the rest of the spec.

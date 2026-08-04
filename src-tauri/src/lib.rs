@@ -14,9 +14,63 @@ use tauri::{Emitter, Manager};
 use crate::audio::{Event, Player, RodioSink};
 use crate::db::{playback, settings, Db};
 
+/// The environment this build reads, which exists only in the e2e build.
+///
+/// The whole module is behind the `wdio` feature, so a shipped binary cannot
+/// be pointed at another library or handed a fake audio device by setting a
+/// variable - the code that would read them is not in it.
+#[cfg(feature = "wdio")]
+mod e2e {
+    /// Directory the library database lives in, replacing the OS app-data one.
+    /// Gives each spec file its own library, so a spec that seeds one does not
+    /// leave rows behind for the spec that asserts on an empty one.
+    pub const DATA_DIR: &str = "PLAYER_E2E_DATA_DIR";
+
+    /// Selects a sink that accepts every load and plays silence. A CI runner
+    /// has no audio device, so without it nothing downstream of a successful
+    /// load is reachable.
+    pub const SILENT_AUDIO: &str = "PLAYER_E2E_SILENT_AUDIO";
+
+    /// The value of one of them, if it is set to anything.
+    ///
+    /// Non-empty is what counts as set: an empty value is what a shell leaves
+    /// behind when it means "unset", and treating that as a path would put the
+    /// library at the filesystem root.
+    pub fn var(name: &str) -> Option<std::ffi::OsString> {
+        std::env::var_os(name).filter(|value| !value.is_empty())
+    }
+}
+
+/// Refuses unless this is an e2e build that the harness launched.
+///
+/// The gate on `commands::seed_synthetic_tracks`, which writes a hundred and
+/// fifty thousand rows into the library. In a shipped binary this function is
+/// the whole of it - the code that could say yes is not compiled in - so the
+/// command exists there only to answer that it will not.
+pub(crate) fn e2e_only(what: &str) -> crate::error::AppResult<()> {
+    #[cfg(feature = "wdio")]
+    if e2e::var(e2e::DATA_DIR).is_some() {
+        return Ok(());
+    }
+
+    Err(crate::error::AppError::Internal(format!(
+        "{what} is test-only and this is not a test build"
+    )))
+}
+
 /// Where the library lives on disk, under the OS app-data directory.
 fn database_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, tauri::Error> {
-    Ok(app.path().app_data_dir()?.join("library.sqlite3"))
+    let default = app.path().app_data_dir()?;
+    Ok(data_dir(default).join("library.sqlite3"))
+}
+
+/// The app-data directory, or whatever the e2e build was pointed at instead.
+fn data_dir(default: std::path::PathBuf) -> std::path::PathBuf {
+    #[cfg(feature = "wdio")]
+    if let Some(overridden) = e2e::var(e2e::DATA_DIR) {
+        return std::path::PathBuf::from(overridden);
+    }
+    default
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -108,6 +162,7 @@ pub fn run() {
             commands::player_seek,
             commands::player_set_volume,
             commands::player_snapshot,
+            commands::seed_synthetic_tracks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -119,15 +174,34 @@ pub fn run() {
 /// running app: playback commands then fail loudly instead of the window
 /// refusing to open. CI runners are exactly that machine.
 fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
-    let sink = match RodioSink::open() {
-        Ok(sink) => sink,
+    // The e2e build can ask for a sink that succeeds without hardware. On the
+    // runner the branch below would take the `NullSink` path, where every load
+    // fails - so a test could never reach a playing row, which is exactly the
+    // appearance the suite is there to check.
+    #[cfg(feature = "wdio")]
+    if e2e::var(e2e::SILENT_AUDIO).is_some() {
+        return Player::spawn(audio::sink::SilentSink::new(), volume, forward(app, db));
+    }
+
+    match RodioSink::open() {
+        Ok(sink) => Player::spawn(sink, volume, forward(app, db)),
         Err(message) => {
             let _ = app.emit("player://error", &message);
-            return Player::spawn(audio::sink::NullSink::new(message), volume, |_, _| {});
+            // No forwarding: nothing can load, so there is no state to report.
+            Player::spawn(audio::sink::NullSink::new(message), volume, |_, _| {})
         }
-    };
+    }
+}
 
-    Player::spawn(sink, volume, move |event, state| match event {
+/// What the player thread does with each event it produces.
+///
+/// Separated from [`start_player`] because more than one sink can be behind it
+/// and all of them report the same way.
+fn forward(
+    app: tauri::AppHandle,
+    db: Db,
+) -> impl FnMut(&Event, &audio::EngineState) + Send + 'static {
+    move |event, state| match event {
         Event::StateChanged => {
             if let Ok(conn) = db.conn() {
                 if let Ok(snapshot) = playback::snapshot(&conn, state) {
@@ -178,7 +252,7 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
                 }
             }
         }
-    })
+    }
 }
 
 pub(crate) fn now_seconds() -> i64 {
