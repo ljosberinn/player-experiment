@@ -6,7 +6,11 @@
   --accent: #4a8fe0;
   --row-odd: #f2f6fc;
   --text: #1d1d1f;
-  --muted: #6d7076;
+  /* Darkened from #6d7076, which the appearance suite measured at 4.05:1
+     against `--chrome` - under the 4.5:1 WCAG AA threshold for body text, and
+     the footer summary is body text. This clears it on all three surfaces it
+     appears over: chrome 4.70, surface 5.76, sidebar 4.51. */
+  --muted: #63666c;
   --surface: #ffffff;
   --skeleton: #e3e6ea;
   --menu-border: #c4c4c8;

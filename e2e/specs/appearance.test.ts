@@ -213,27 +213,54 @@ describe("appearance, in the engine that actually lays it out", () => {
         // Not one defect but the class of them: a colour pair that works in one
         // theme and collapses in the other, which is how two of the three got
         // through.
-        const pairs = [
-          [".statusbar-summary", "footer.statusbar"],
-          [".status-summary", ".status-display"],
-          ["[role='tab'][aria-selected='true']", ".content-header"],
-        ] as const;
+        // Only the foreground is named. The background is *resolved* by walking
+        // up to the first ancestor that actually paints one, because naming it
+        // by hand is how the first version of this test produced a false
+        // positive: it measured the selected tab's white text against
+        // `.content-header` and reported 1.23:1, when the tab paints its own
+        // accent fill and the real ratio is fine.
+        const measured = await browser.execute(
+          (selectors: string[]) =>
+            selectors.map((selector) => {
+              const element = document.querySelector(selector);
+              if (element === null) {
+                return { selector, text: "", behind: "", from: "" };
+              }
+              let painter: Element | null = element;
+              let behind = "";
+              while (painter !== null) {
+                const fill = getComputedStyle(painter).backgroundColor;
+                if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+                  behind = fill;
+                  break;
+                }
+                painter = painter.parentElement;
+              }
+              return {
+                selector,
+                text: getComputedStyle(element).color,
+                behind,
+                from: painter === null ? "" : painter.className.toString() || painter.tagName,
+              };
+            }),
+          [
+            ".statusbar-summary",
+            ".status-summary",
+            "[role='tab'][aria-selected='true']",
+            ".sidebar-item",
+            ".empty-state",
+          ],
+        );
 
-        const illegible: string[] = [];
-        for (const [foreground, background] of pairs) {
-          const text = await computed(foreground, "color");
-          const behind = await computed(background, "background-color");
-          if (text === "" || behind === "" || behind === "rgba(0, 0, 0, 0)") {
-            continue;
-          }
+        const illegible = measured
+          .filter((one) => one.text !== "" && one.behind !== "")
+          .map((one) => ({ ...one, ratio: contrast(one.text, one.behind) }))
           // 4.5:1 is the WCAG AA threshold for body text.
-          const ratio = contrast(text, behind);
-          illegible.push(
-            ...(ratio > 4.5
-              ? []
-              : [`${foreground} (${text}) on ${background} (${behind}) = ${ratio.toFixed(2)}:1`]),
+          .filter((one) => one.ratio <= 4.5)
+          .map(
+            (one) =>
+              `${one.selector} (${one.text}) on ${one.from} (${one.behind}) = ${one.ratio.toFixed(2)}:1`,
           );
-        }
 
         expect(illegible).toEqual([]);
       });
