@@ -2205,7 +2205,7 @@ every rect as zero.
 
 ---
 
-**25 — Frontend render pass** `perf/25-frontend-renders` — 🔄 **in review** (PR #38)
+**25 — Frontend render pass** `perf/25-frontend-renders` — ✅ **done** (PR #38)
 
 Three store values changed on a schedule of their own and were all read at the
 top of `App`, so each re-rendered the whole tree - the song table and its forty
@@ -2236,7 +2236,7 @@ profile that justifies it.
 
 ---
 
-**26 — Licence and third-party notices** `chore/26-license-notices` — 🔄 **in review** (PR #40)
+**26 — Licence and third-party notices** `chore/26-license-notices` — ✅ **done** (PR #40)
 
 The project had no licence at all, which makes it legally unusable by anyone who
 finds it - public on GitHub is not a grant. Now MIT.
@@ -2339,7 +2339,7 @@ Small, and it protects everything after it.
 
 ---
 
-**29 — Local crash log** `feat/29-panic-log` — 🔄 **in review**
+**29 — Local crash log** `feat/29-panic-log` — ✅ **done** (PR #46)
 
 Phase 11 was cut because Sentry meant a network stack in an application whose
 premise is that it does not use the network. The failure class it would have
@@ -2364,7 +2364,9 @@ and asking the reviewer to imagine it.
 So the e2e suite now *takes* pictures without *comparing* them. Nothing is
 compared, so nothing can flake. They are never committed: a binary that changes
 whenever the UI does is the cost that got baselines rejected, and it buys
-nothing when nothing reads them but a human.
+nothing when nothing reads them but a human. The first attempt did commit them,
+under `docs/screenshots/`, and that was reverted - a picture in the tree is a
+picture that has to be maintained, reviewed and carried forever.
 
 They still have to be *visible*, and that turned out to be the hard part. A
 markdown body can only embed an image it can fetch by URL; a build artifact is
@@ -2383,7 +2385,14 @@ test-only command - on a spawned thread, so the process survives, which is also
 the case the feature exists for - then reloads the webview, the closest a
 running session gets to a next launch. Everything between is the real path:
 hook, formatter, log file, `last_crash`, IPC, render. Confirmed working on the
-runner: four PNGs, both themes, collapsed and expanded, 288 kB total.
+runner: four PNGs, both themes, collapsed and expanded, in the pull request
+body, fetched back at `200 image/png`.
+
+Whether the embedded WebDriver implemented `/screenshot` at all was a genuine
+question rather than an assumption - it is a Tauri plugin, not a browser
+driver - so `capture()` logs a failure instead of throwing. A spec whose
+subject is "what this looks like" should report that it could not photograph
+the thing, not fail as though the thing were broken.
 
 *Testing.* A `PanicHookInfo` cannot be constructed outside a real panic, so
 the formatter takes what the hook knows as parameters and the hook does no
@@ -2409,9 +2418,23 @@ dismissal that cannot be recorded, are both worse as an error banner than as
 nothing. The third - "show me the log file" not working - is reported, because
 the user asked for something and it did not happen.
 
+*It is a Base UI `AlertDialog`, and it started as a banner.* The banner was
+wrong twice over: it sat where the scan and tag notices sit, and those describe
+the session that is *running* while this one reports a session that is already
+over; and it could be scrolled past, which is the wrong affordance for the only
+message the app has about having died. `AlertDialog` rather than `Dialog` is
+the part that carries the meaning - a backdrop click cannot dismiss it, so the
+choice has to be made rather than clicked away. Escape still closes it and
+counts as having seen the crash, which has a test of its own.
+
+Deliberately **not** styled red. A panel of danger colour for something that
+has already stopped happening reads as an emergency, and by the time it is on
+screen the app is running fine. Only the panic message itself is in
+`--danger`.
+
 ---
 
-**30 — A seeded library in e2e** `feat/30-e2e-library` — 🔄 **in review**
+**30 — A seeded library in e2e** `feat/30-e2e-library` — ✅ **done** (PR #45)
 
 Phase 27 left one hole and named it: every spec ran against an **empty**
 library, so nothing had ever looked at a row - and the row is where the defects
@@ -2458,7 +2481,7 @@ under `e2e/.tmp`, which is gitignored and rebuilt per run.
 
 ---
 
-**31 — A hundred and fifty thousand rows in a real engine** `perf/31-virtualization` — 🔄 **in review**
+**31 — A hundred and fifty thousand rows in a real engine** `perf/31-virtualization` — ✅ **done** (PR #49)
 
 `PLAN.md` opens with the claim the whole design rests on, and every part of it
 was tested except the part a user would notice. `tests/perf.rs` proves the
