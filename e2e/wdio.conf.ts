@@ -18,7 +18,17 @@ const workDir = join(repoRoot, "e2e", ".tmp");
 //
 // Importing this file happens before any of that, so setting them here is the
 // one placement that cannot lose the race.
-rmSync(workDir, { recursive: true, force: true });
+//
+// The wipe is guarded, and that guard is the whole reason this comment is
+// three paragraphs long. **Every worker imports this file too**, so an
+// unguarded `rmSync` at module scope deletes the live SQLite file out from
+// under the app the launcher already started - which is what happened, and
+// the failure read "unable to open database file" from a command that had
+// worked seconds earlier. `WDIO_WORKER_ID` is set in workers and not in the
+// launcher, so only the launcher clears the directory.
+if (process.env.WDIO_WORKER_ID === undefined) {
+  rmSync(workDir, { recursive: true, force: true });
+}
 mkdirSync(workDir, { recursive: true });
 
 // Keeps the run out of the OS app-data directory, which on a developer's
