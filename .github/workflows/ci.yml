@@ -192,6 +192,11 @@ jobs:
     name: e2e
     runs-on: windows-latest
     needs: changes
+    # Beyond the default read-only token: the screenshot step below pushes to a
+    # branch of its own and rewrites this pull request's body.
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         if: needs.changes.outputs.code == 'true'
@@ -243,3 +248,13 @@ jobs:
           # gigabyte-month, and a screenshot nobody looked at within a week is
           # a screenshot nobody will look at.
           retention-days: 7
+      # And the same pictures *in* the pull request, because an artifact is a
+      # zip nobody opens. See scripts/screenshots.mjs for why this needs a
+      # branch of its own rather than an API call.
+      - name: Show the screenshots in the pull request
+        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/screenshots.mjs

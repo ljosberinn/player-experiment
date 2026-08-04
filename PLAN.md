@@ -2362,10 +2362,20 @@ that changes what the app looks like had been describing the change in prose
 and asking the reviewer to imagine it.
 
 So the e2e suite now *takes* pictures without *comparing* them. Nothing is
-compared, so nothing can flake. They are uploaded as a build artifact with
-seven-day retention and never committed: a binary that changes whenever the UI
-does is the cost that got baselines rejected, and it buys nothing when nothing
-reads them but a human.
+compared, so nothing can flake. They are never committed: a binary that changes
+whenever the UI does is the cost that got baselines rejected, and it buys
+nothing when nothing reads them but a human.
+
+They still have to be *visible*, and that turned out to be the hard part. A
+markdown body can only embed an image it can fetch by URL; a build artifact is
+a zip behind an authenticated download; and the upload a human performs by
+dragging an image into the comment box goes to GitHub's own asset host through
+an endpoint that needs a web session, which no REST call replaces. So CI pushes
+them to `ci/screenshots`, a branch that exists only to hold them, and rewrites
+the pull request body between markers to point at raw URLs pinned to that
+commit. Nothing reaches `main`, nothing appears in the diff, and the pictures
+are in the pull request where they get looked at. The branch is disposable -
+deleting it breaks the images in old bodies and nothing else.
 
 The crash notice is the first subject because it is the one feature no unit
 test can reach end to end. The spec provokes a **real panic** through a
