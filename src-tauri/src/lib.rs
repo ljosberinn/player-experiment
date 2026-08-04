@@ -171,6 +171,7 @@ pub fn run() {
             commands::player_set_volume,
             commands::player_snapshot,
             commands::seed_synthetic_tracks,
+            commands::e2e_provoke_panic,
             commands::last_crash,
             commands::acknowledge_crash,
             commands::reveal_crash_log,

@@ -483,6 +483,36 @@ pub fn last_crash(db: State<'_, Db>) -> AppResult<Option<CrashReport>> {
     }))
 }
 
+/// Panics on a spawned thread, on purpose. **Test-only.**
+///
+/// The e2e suite needs a crash report to exist so it can photograph the notice
+/// that reports one, and the honest way to produce one is to actually crash.
+/// A hand-written log file would be testing the file format against itself:
+/// this goes through the real hook, the real formatter and the real writer,
+/// which is the whole path the feature consists of.
+///
+/// On a *spawned* thread, so the process survives it. That is also the case
+/// the feature exists for - a panic on the player thread or in the scan pool
+/// is the one nothing else would ever report.
+///
+/// Refused in any build a user could install; see `e2e_only`.
+#[tauri::command]
+pub fn e2e_provoke_panic() -> AppResult<()> {
+    crate::e2e_only("e2e_provoke_panic")?;
+
+    // Joined, so the command does not return before the hook has finished
+    // writing - otherwise the next thing the test does is read a file that is
+    // not there yet.
+    std::thread::Builder::new()
+        .name("e2e-provoked".to_owned())
+        .spawn(|| panic!("a deliberate panic, provoked by the end-to-end suite"))
+        .map_err(|e| crate::error::AppError::Internal(format!("spawn failed: {e}")))?
+        .join()
+        .expect_err("the thread was supposed to panic");
+
+    Ok(())
+}
+
 /// Marks every crash up to `when` as seen.
 #[tauri::command]
 pub fn acknowledge_crash(db: State<'_, Db>, when: i64) -> AppResult<()> {
