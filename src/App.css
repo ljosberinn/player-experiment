@@ -3,10 +3,19 @@
   --chrome-border: #b4b4b4;
   --sidebar: #dfe4ec;
   --sidebar-text: #33373d;
-  --accent: #4a8fe0;
+  /* Darkened from #4a8fe0, which the appearance suite measured at 3.34:1
+     against the white text it carries - under the 4.5:1 WCAG AA threshold for
+     normal text, and this is the fill behind the *selected row*, which is the
+     surface the library is read on. #3574bd clears it at 4.79 and is still
+     recognisably the same blue. */
+  --accent: #3574bd;
   --row-odd: #f2f6fc;
   --text: #1d1d1f;
-  --muted: #6d7076;
+  /* Darkened from #6d7076, which the appearance suite measured at 4.05:1
+     against `--chrome` - under the 4.5:1 WCAG AA threshold for body text, and
+     the footer summary is body text. This clears it on all three surfaces it
+     appears over: chrome 4.70, surface 5.76, sidebar 4.51. */
+  --muted: #63666c;
   --surface: #ffffff;
   --skeleton: #e3e6ea;
   --menu-border: #c4c4c8;
@@ -16,6 +25,18 @@
      #191a1c is a ratio of about 1.02:1, so the input was invisible and a
      select was recognisable only by its arrow. */
   --field-border: #8e8e93;
+  /* A slider rail is a UI component whose extent has to be readable, and it
+     sits on `--chrome` in the toolbar and on `--surface` in the status
+     display. It used `--skeleton`, which is the loading-placeholder colour
+     tuned for `--surface` - on the title bar that was #e3e6ea on #e8e8e8, a
+     ratio of 1.02:1, so the volume slider's unfilled remainder was invisible.
+
+     Two values rather than one, because a single grey cannot do it: dark
+     enough to separate from the frame and it collides with the accent fill
+     it is supposed to contrast against. So the interior stays light and the
+     outline carries the edge. */
+  --track: #d9dde3;
+  --track-border: #7e8288;
   --danger: #c0392b;
 
   /* The one density value that repeats. Not a colour, so it sits outside the
@@ -39,7 +60,7 @@
     --chrome-border: #1a1a1c;
     --sidebar: #232326;
     --sidebar-text: #d8dade;
-    --accent: #4a8fe0;
+    --accent: #3574bd;
     --row-odd: #1f1f22;
     --text: #ececf0;
     --muted: #9a9ca2;
@@ -47,10 +68,45 @@
     --skeleton: #303035;
     --menu-border: #3d3d42;
     --field-border: #6d6e75;
+    --track: #26292d;
+    --track-border: #74777d;
     /* Lighter than the light theme's: #c0392b on a near-black surface is dark
        enough to read as brown rather than as a warning. */
     --danger: #ff7a6e;
   }
+}
+
+/* The same dark values, selectable without changing the operating system.
+   
+   This exists for the appearance suite: a CI runner boots light, and two of the
+   three visual defects that reached a user were dark-only - a marker the colour
+   of the row beneath it, and a field border at 1.02:1. Photographing one theme
+   would have missed both. Setting `data-theme` on the root lets one e2e run
+   check both.
+   
+   Only `dark` is honoured, because that is the direction the default needs
+   overriding in. The values are duplicated rather than shared - CSS has no way
+   to name a set of declarations and apply it from two selectors - so
+   `App.css.test.ts` asserts the two blocks are identical rather than trusting
+   them to stay so. */
+:root[data-theme="dark"] {
+  --chrome: #2c2c2e;
+  --chrome-border: #1a1a1c;
+  --sidebar: #232326;
+  --sidebar-text: #d8dade;
+  --accent: #3574bd;
+  --row-odd: #1f1f22;
+  --text: #ececf0;
+  --muted: #9a9ca2;
+  --surface: #191a1c;
+  --skeleton: #303035;
+  --menu-border: #3d3d42;
+  --field-border: #6d6e75;
+  --track: #26292d;
+  --track-border: #74777d;
+  /* Lighter than the light theme's: #c0392b on a near-black surface is dark
+     enough to read as brown rather than as a warning. */
+  --danger: #ff7a6e;
 }
 
 * {
@@ -224,9 +280,11 @@ input[type="radio"] {
 .status-track-rail {
   position: relative;
   width: 100%;
+  /* 5px of interior plus the border, so the control keeps its height. */
   height: 5px;
-  border-radius: 2px;
-  background: var(--skeleton);
+  border: 1px solid var(--track-border);
+  border-radius: 3px;
+  background: var(--track);
 }
 
 .volume-fill,
