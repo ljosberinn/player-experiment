@@ -1,6 +1,14 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
-import type { FilterField, FilterGroup, FilterOp, FilterRule, FilterValue } from "../../ipc";
+import { TagCombobox } from "../../components/ui/TagCombobox";
+import type {
+  FilterField,
+  FilterGroup,
+  FilterOp,
+  FilterRule,
+  FilterValue,
+  TagValueField,
+} from "../../ipc";
 import {
   addNode,
   countRules,
@@ -15,6 +23,7 @@ import {
   setCombinator,
   setRule,
   valueFor,
+  vocabularyFor,
 } from "./filterTree";
 
 /**
@@ -251,6 +260,7 @@ function RuleEditor({
       <ValueEditor
         value={rule.value}
         position={position}
+        vocabulary={vocabularyFor(rule.field)}
         onChange={(value) => onChange({ ...rule, value })}
       />
 
@@ -267,10 +277,13 @@ function RuleEditor({
 function ValueEditor({
   value,
   position,
+  vocabulary,
   onChange,
 }: {
   value: FilterValue;
   position: number;
+  /** Which existing values to suggest, or null where the field has none. */
+  vocabulary: TagValueField | null;
   onChange: (value: FilterValue) => void;
 }) {
   if (value.kind === "none") {
@@ -278,11 +291,15 @@ function ValueEditor({
   }
 
   if (value.kind === "text") {
+    // `is` and `is not` want the vocabulary exactly; `contains` wants it too,
+    // and matches loosely on top of whatever is picked. So the suggestions do
+    // not vary by operator - only by field.
     return (
-      <input
-        aria-label={`Value for condition ${position}`}
+      <TagCombobox
+        ariaLabel={`Value for condition ${position}`}
+        field={vocabulary}
         value={value.text}
-        onChange={(event) => onChange({ kind: "text", text: event.currentTarget.value })}
+        onChange={(text) => onChange({ kind: "text", text })}
       />
     );
   }

@@ -64,6 +64,7 @@ vi.mock("./ipc", () => ({
   writeTags: vi.fn(),
   undoTagEdit: vi.fn(),
   canUndoTagEdit: vi.fn(),
+  suggestTagValues: vi.fn(async () => []),
   listPlaylists: vi.fn(),
   createPlaylist: vi.fn(),
   createSmartPlaylist: vi.fn(),
@@ -580,7 +581,7 @@ describe("App playback", () => {
     await user.clear(screen.getByRole("textbox", { name: "Name" }));
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Grizzly");
     await user.click(screen.getByRole("button", { name: "+ Rule" }));
-    await user.type(screen.getByRole("textbox", { name: "Value for condition 1" }), "Grizzly Bear");
+    await user.type(screen.getByLabelText("Value for condition 1"), "Grizzly Bear");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -634,7 +635,7 @@ describe("App playback", () => {
 
     await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 1") });
     await user.click(await screen.findByRole("menuitem", { name: "Edit" }));
-    const genre = await screen.findByRole("textbox", { name: "Genre" });
+    const genre = await screen.findByLabelText("Genre");
     await user.type(genre, "Dream Pop");
     await user.click(screen.getByRole("button", { name: "Save" }));
 

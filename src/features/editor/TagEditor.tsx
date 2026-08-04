@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
-import { type CoverEdit, coverUrl, type TagEdit, type Track } from "../../ipc";
+import { TagCombobox } from "../../components/ui/TagCombobox";
+import { type CoverEdit, coverUrl, type TagEdit, type TagValueField, type Track } from "../../ipc";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
 
 /**
@@ -77,6 +78,7 @@ export function TagEditor({
                   value={draft[field.id] ?? (common.kind === "same" ? common.value : "")}
                   placeholder={common.kind === "mixed" ? "Mixed" : ""}
                   touched={touched}
+                  suggest={field.suggest ?? null}
                   onChange={(value) => setDraft((current) => ({ ...current, [field.id]: value }))}
                 />
               );
@@ -149,26 +151,31 @@ function TagField({
   value,
   placeholder,
   touched,
+  suggest,
   onChange,
 }: {
   label: string;
   value: string;
   placeholder: string;
   touched: boolean;
+  /** Which vocabulary to offer, or null for a field that has none. */
+  suggest: TagValueField | null;
   onChange: (value: string) => void;
 }) {
   const id = useId();
   return (
     <>
       <label htmlFor={id}>{label}</label>
-      <input
+      <TagCombobox
         id={id}
+        field={suggest}
         value={value}
         placeholder={placeholder}
         // Marked so it is visible at a glance which fields a save will write,
-        // which matters most when the selection is large.
+        // which matters most when the selection is large. Picking a suggestion
+        // is a change like any other, so it marks the field too.
         className={touched ? "touched" : undefined}
-        onChange={(event) => onChange(event.currentTarget.value)}
+        onChange={onChange}
       />
     </>
   );

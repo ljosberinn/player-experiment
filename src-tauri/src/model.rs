@@ -308,6 +308,29 @@ pub struct TagWriteSummary {
     pub errors: Vec<String>,
 }
 
+/// A field whose values are worth suggesting.
+///
+/// Deliberately shorter than [`FilterField`]. A vocabulary only helps where two
+/// songs genuinely ought to agree on a value - title, track number and comment
+/// are per-song by nature, and a dropdown of other songs' comments is noise at
+/// best and a way to paste the wrong data at worst.
+///
+/// Composer is absent because `tracks` has no composer column; adding one is a
+/// schema change and a scan change, not an autocompletion change.
+///
+/// A whitelist enum for the same reason [`FilterField`] is one: the value is
+/// interpolated into SQL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum TagValueField {
+    Artist,
+    AlbumArtist,
+    Album,
+    Genre,
+    Year,
+}
+
 /// A track column a smart playlist can filter on.
 ///
 /// A whitelist enum rather than a string, for the same reason [`SortField`] is

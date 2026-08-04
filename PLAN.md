@@ -167,54 +167,59 @@ repo.
 
 ---
 
-## Status — 2026-08-02
+## Status — 2026-08-04
 
-Phases 1–9 and 13, 14, 17 are merged to `main`. Nothing is in review. That completes the
-originally-planned nine. Next up is **phase 10 (last.fm scrobbling)**, or any
-of the later-added phases 15, 16, 18–23, which are independent of it.
+Everything planned through phase 24 is merged to `main` except the four
+external-service phases, which have not been started. **v0.3.0 is released**
+(PR #28, tag `v0.3.0`). Two branches are in review: the frontend render pass
+(PR #38) and tag autocompletion (phase 18).
 
 | | Phase | State |
 | --- | --- | --- |
-| 1 | Scaffold + CI gate | ✅ merged (`75dd29c`) |
-| 2 | Library core: schema, scan, queries | ✅ merged (`571b5c7`) |
-| 3 | Shell UI: chrome + virtualized table | ✅ merged (`423d029`) |
+| 1 | Scaffold + CI gate | ✅ merged ([#1](https://github.com/ljosberinn/player-experiment/pull/1)) |
+| 2 | Library core: schema, scan, queries | ✅ merged ([#2](https://github.com/ljosberinn/player-experiment/pull/2)) |
+| 3 | Shell UI: chrome + virtualized table | ✅ merged ([#3](https://github.com/ljosberinn/player-experiment/pull/3)) |
 | 4 | Playback: engine, transport, play counts | ✅ merged (`eb24e87`) |
 | 5 | Search: debounce, relevance ranking | ✅ merged (`843cbcf`) |
 | 6 | Playlists: CRUD, drag-and-drop, reorder | ✅ merged (`8f10a3d`) |
 | 7 | Smart playlists: filter compiler + editor | ✅ merged (`c067f57`) |
 | 8 | Tag editing: atomic writer + undo journal | ✅ merged (`571a4c2`) |
 | 9 | Export & polish: JSON export, window geometry | ✅ merged (`b26feae`) |
-| 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
+| 10 | last.fm scrobbling | ⬜ not started |
+| 11 | Crash & error reporting | ❌ cut, by decision |
+| 12 | Online tag lookup | ⬜ not started |
 | 13 | Native feel: no web tells, drag badge | ✅ merged (`daae2cf`) |
 | 14 | Library totals in the footer | ✅ merged (`e079457`) |
-| 10+ | last.fm, Sentry, tag sources, 15, 16, 18–23 | not started |
+| 15 | Ingest ergonomics | ❌ cut, by decision |
+| 16 | Row status column | ✅ merged ([#35](https://github.com/ljosberinn/player-experiment/pull/35)) |
+| 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
+| 18 | Tag and filter autocompletion | 🔄 in review |
+| 19 | Browse by album, artist and genre | ✅ merged ([#27](https://github.com/ljosberinn/player-experiment/pull/27)) |
+| 20 | Column customization | ✅ merged ([#30](https://github.com/ljosberinn/player-experiment/pull/30)) |
+| 21 | Density and zoom | ✅ merged ([#33](https://github.com/ljosberinn/player-experiment/pull/33)) |
+| 22 | Media keys without focus | ✅ merged ([#32](https://github.com/ljosberinn/player-experiment/pull/32)) |
+| 23 | In-app updates | ✅ merged ([#23](https://github.com/ljosberinn/player-experiment/pull/23), fixed in [#34](https://github.com/ljosberinn/player-experiment/pull/34)) |
+| 24 | Base UI primitives | ✅ merged ([#36](https://github.com/ljosberinn/player-experiment/pull/36)) |
+| 25 | Frontend render pass | 🔄 in review ([#38](https://github.com/ljosberinn/player-experiment/pull/38)) |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
-multi-select, cover art over the `cover://` protocol, live scan progress. With
-phase 4, double-clicking a row plays the whole view from that point: transport
-buttons, a draggable scrubber, volume that survives a restart, automatic queue
-advance, and play counts written back to the library. Search debounces, ranks
-by relevance, and puts the previous sort back when cleared. With phase 6 the
-sidebar grows a Playlists section: create, rename in place, delete, drag a
-multi-selection onto one, reorder inside it by dragging rows, and Delete to
-take rows back out. Phase 7 adds smart playlists: a nested and/or filter built
-in a dialog, compiled to parameterized SQL and re-evaluated live. Phase 8 adds
-tag editing: one dialog for one track or five hundred, writing through a
-temp-and-rename so a crash cannot corrupt an mp3, with one undo step per edit.
-Phase 17 adds right-click menus on songs and playlists - play, get info, add to
-a playlist, remove, export, show in Explorer, rename, delete, edit filter - plus
-Ctrl+I, and dropping songs on the sidebar's empty space to start a playlist.
-Phase 13 strips the web tells - no hand cursor, no hover highlights, no
-overscroll bounce, the webview's own menu suppressed outside text fields - and
-phase 14 makes the footer tell the truth: "5 songs, 50 minutes, 214 MB" for
-whatever the view currently holds.
-Phase 9 adds JSON export of the library, a selection or a playlist against a
-[documented schema](docs/export-schema.md), and a window that reopens where it
-was left.
+multi-select, cover art over the `cover://` protocol, live scan progress. Songs,
+Albums, Artists and Genres all navigate (19), columns are per-view configurable
+(20), and a file that has gone missing is marked rather than deleted (16).
+Double-clicking a row plays the whole view from that point: transport buttons,
+a draggable scrubber, volume that survives a restart, automatic queue advance,
+play counts, and the four media keys working while the app is behind something
+else (22). Right-click menus cover songs and playlists (17). Tag editing writes
+through a temp-and-rename with one undo step per edit (8), smart playlists
+compile a nested and/or filter to parameterized SQL (7), and JSON export follows
+a [documented schema](docs/export-schema.md) (9). The app checks for updates,
+downloads quietly, and installs only when the footer button is pressed (23, 34).
+Density and zoom are user-controlled (21), and the menus, dialogs, sliders and
+popovers are Base UI underneath (24).
 
-**Test counts.** 223 Rust (177 unit, 38 integration against generated mp3s,
-8 perf guards) and 456 frontend at 97.3% lines. CI runs
+**Test counts.** 271 Rust (215 unit, 43 integration against generated mp3s,
+13 perf guards) and 653 frontend at 96.7% lines. CI runs
 frontend / rust / cargo-deny / e2e on every PR; all four green on `main`.
 
 ### Decisions taken since this plan was written
@@ -958,7 +963,7 @@ selection model, scan progress. Reads real data from phase 2.
 > requirements - "adjustable column display" and "per playlist" - are still
 > outstanding, and this line made them look done.
 
-**4 — Playback** `feat/04-audio` — 🔄 **in review**
+**4 — Playback** `feat/04-audio` — ✅ **merged** (`eb24e87`)
 Audio thread, transport (play/pause/stop/next/prev), seek via the LCD scrubber,
 volume, position events, play counts, keyboard shortcuts.
 
@@ -973,7 +978,7 @@ table. Frontend: `src/features/player/` (store, shortcut mapping, window-level
 key handler), a real `<input type="range">` scrubber, and row activation by
 double-click or Enter.
 
-**5 — Search** `feat/05-search` — 🔄 **in review**
+**5 — Search** `feat/05-search` — ✅ **merged** (`843cbcf`)
 FTS5 triggers, debounced search box scoped to the current view, ranked results.
 
 *As built.* The FTS5 table and its triggers landed with phase 2; this phase is
@@ -984,7 +989,7 @@ immediate on Enter), and a per-query token makes stale counts and stale pages
 unwritable. Escape and a clear button empty the box; a search with no hits gets
 its own empty state rather than the "add a folder" one.
 
-**6 — Playlists** `feat/06-playlists` — 🔄 **in review**
+**6 — Playlists** `feat/06-playlists` — ✅ **merged** (`8f10a3d`)
 Static playlist CRUD, drag-and-drop of a multi-selection onto a sidebar
 playlist, reordering within one, per-playlist column config.
 
@@ -1004,7 +1009,7 @@ resize or toggle them (a gap from phase 3), so persisting a per-playlist
 arrangement would be storage for something the user cannot change. It belongs
 with the column UI, wherever that lands.
 
-**7 — Smart playlists** `feat/07-smart` — 🔄 **in review**
+**7 — Smart playlists** `feat/07-smart` — ✅ **merged** (`c067f57`)
 Filter-tree editor UI (nested and/or groups), the SQL compiler, live
 re-evaluation.
 
@@ -1021,7 +1026,7 @@ path-addressed function, and `SmartPlaylistEditor.tsx` is a dialog over it.
 Field/operator compatibility is enforced in the editor *and* validated by the
 backend, which compiles a filter before storing it.
 
-**8 — Tag editing** `feat/08-tags` — 🔄 **in review**
+**8 — Tag editing** `feat/08-tags` — ✅ **merged** (`571a4c2`)
 Single and bulk editor (mixed-value fields that only write when touched),
 cover art replace/remove, atomic writer, undo journal and an "Undo last edit"
 affordance.
@@ -1041,7 +1046,7 @@ are written first — they are what survives the app — and the rows follow in 
 transaction afterwards, re-read from the files rather than assumed from the
 edit.
 
-**9 — Export & polish** `feat/09-export` — 🔄 **in review**
+**9 — Export & polish** `feat/09-export` — ✅ **merged** (`b26feae`)
 JSON export (full library / selection / playlist, documented stable schema),
 settings persistence, window geometry, dark mode pass, empty and error states.
 
@@ -1112,7 +1117,30 @@ sole trigger, so an hour-long mix scrobbles at 30 minutes, not at 4. Decided
 The 30-second floor is a separate question and is still worth adding: it costs
 nothing and matches what every other client does.
 
-**11 — Crash & error reporting** `feat/11-sentry`
+**11 — Crash & error reporting** `feat/11-sentry` — ❌ **cut, by decision**
+
+Cut on 2026-08-04, after the dependencies were added and built to check whether
+the plan's caveats were real rather than theoretical. They were: `sentry` 0.42 -
+two years behind 0.49, and pinned there by the plugin - pulls in `reqwest`,
+`hyper`, `rustls` and a TLS root store. A network stack, in an application whose
+entire premise is that it does not use the network.
+
+The rest of the caveat list below argued the same way: a single-maintainer
+plugin with no release in 11 months, an unreleased fix needing a git dependency
+`deny.toml` forbids, and a minidump handler that restarts the executable and
+would have to be explained to both the e2e harness and Windows antivirus.
+Against that, what is bought is diagnostics for a local music player with one
+user - who is also the person who would read the reports.
+
+**If crash visibility is wanted later, the cheap version is local.** Catch
+panics with `std::panic::set_hook`, write them to a log beside the database,
+and surface the last one in the app. No network, no DSN, no opt-in toggle to
+design, and nothing to scrub - step 8's scrubbing work existed entirely because
+Sentry would have carried file paths, folder names and track titles off the
+machine.
+
+*The original plan follows, kept for the record.*
+
 Optional, opt-in Sentry integration via
 [`tauri-plugin-sentry`](https://github.com/timfish/sentry-tauri) (crate
 `tauri-plugin-sentry`, npm `tauri-plugin-sentry-api`). Depends on nothing;
@@ -1259,7 +1287,7 @@ UA header asserted present. One `#[ignore]`d live test per provider.
 *Note on scope:* third outbound network dependency, and like the other two it
 must be inert when unused — no request unless the user opens the lookup dialog.
 
-**13 — Native feel pass** `feat/13-native-feel` — 🔄 **in review**
+**13 — Native feel pass** `feat/13-native-feel` — ✅ **merged** (`daae2cf`)
 
 *Built. What shipped:*
 
@@ -1333,7 +1361,7 @@ walkthrough on the checklist above. Cheap to test, easy to regress.
 *Placement:* deliberately after the features, not before — every phase adds
 chrome, and doing this once at the end is cheaper than policing it per PR.
 
-**14 — Library totals in the footer** `feat/14-totals` — 🔄 **in review**
+**14 — Library totals in the footer** `feat/14-totals` — ✅ **merged** (`e079457`)
 
 *Built as specified, with two details worth recording:*
 
@@ -1454,7 +1482,7 @@ a folder itself, is ingested, and the modal reports only what was skipped. The
 modal is the one exception to the app's "no dialogs for routine work" leaning,
 because silently dropping half a drag is worse than an interruption.
 
-**16 — Row status column** `feat/16-status` — 🔄 **in review**
+**16 — Row status column** `feat/16-status` — ✅ **merged** (PR #35)
 
 *Built. What shipped, and where it differed from the sketch below:*
 
@@ -1553,7 +1581,7 @@ more expensive than the deleting one was.
 "playlist entries survive a missing file" is most of the argument for it and
 cannot be tested before playlists exist.
 
-**17 — Context menus, and dropping onto nothing** `feat/17-context-menus` — 🔄 **in review**
+**17 — Context menus, and dropping onto nothing** `feat/17-context-menus` — ✅ **merged** (`8caf601`)
 
 *Built. What shipped, and where it differed from the sketch below:*
 
@@ -1721,7 +1749,7 @@ before the dialog, and that the non-suggested fields have no combobox at all.
 
 ---
 
-**19 — Browse by album, artist and genre** `feat/19-browse` — 🔄 **in review**
+**19 — Browse by album, artist and genre** `feat/19-browse` — ✅ **merged** (PR #27)
 The Songs / Albums / Artists / Genres tabs were rendered `disabled` with a
 "Not implemented yet" tooltip from phase 3 until this one - three quarters of
 the primary navigation being dead chrome, and the last piece of the reference
@@ -1750,7 +1778,7 @@ untagged file and an album spanning two discs; a perf guard, since this is a
 `GROUP BY` over the whole library rather than a paged read; component tests
 for the drill-in and for the empty state of each tab.
 
-**20 — Column customization** `feat/20-columns` — 🔄 **in review**
+**20 — Column customization** `feat/20-columns` — ✅ **merged** (PR #30)
 Two of the original requirements - "adjustable column display" and "per
 playlist" - that phase 3's plan entry claimed and phase 3 did not deliver.
 
@@ -1847,7 +1875,7 @@ in CI rather than silently doing nothing - which is exactly how `dialog.save`,
 the actual complaint. 21b is the adjustable knob on top, and if 21a lands the
 density well it may be wanted less urgently than it looks now.
 
-**22 — Media keys that work without focus** `feat/22-global-keys` - in review
+**22 — Media keys that work without focus** `feat/22-global-keys` — ✅ **merged** (PR #32)
 Play/pause already answers `MediaPlayPause` and the transport keys, but only
 while the window has focus - `shortcutFor` is wired to a `keydown` listener on
 `window`, and a background app receives no key events at all. That is a
@@ -1883,7 +1911,7 @@ guard row. Whether the OS actually delivers the key when the window is
 unfocused cannot be tested in CI or in jsdom - it needs a real build, the same
 as drag-and-drop and Show in Explorer.
 
-**23 — In-app updates** `feat/23-updater` — 🔄 **in review**
+**23 — In-app updates** `feat/23-updater` — ✅ **merged** (PR #23)
 
 **Both blockers this entry opened with are gone.** The repository is public, so
 release assets are fetchable without a credential embedded in a shipped binary;
@@ -1964,7 +1992,7 @@ while `ready` shows the offer and the click installs. The install itself cannot
 be tested anywhere - it replaces the running binary - so the first real update
 is verified by hand, once, exactly like the release workflow was.
 
-**24 — Base UI primitives** `feat/24-base-ui` — 🔄 **in review**
+**24 — Base UI primitives** `feat/24-base-ui` — ✅ **merged** (PR #36)
 
 *Built, in the order this entry sets out. What shipped, and where it differed:*
 
@@ -2173,6 +2201,149 @@ queries. Add the two tests the old code could not pass: focus stays trapped
 inside an open dialog, and Tab from the last item wraps to the first. The e2e
 smoke suite is the real proof for the positioning work, since jsdom reports
 every rect as zero.
+
+---
+
+**25 — Frontend render pass** `perf/25-frontend-renders` — 🔄 **in review** (PR #38)
+
+Three store values changed on a schedule of their own and were all read at the
+top of `App`, so each re-rendered the whole tree - the song table and its forty
+virtualized rows included.
+
+| What | How often | Song-table renders before | After |
+|---|---|---|---|
+| `positionMs` | every 250ms while playing | 960 per four-minute track | 0 |
+| `volume` | every pointer move during a drag | 50 per 50-sample drag | 0 |
+| `searchInput` | every keystroke | 5 per five-letter word | 0 |
+
+Each moved into a component that subscribes on its own behalf -
+`NowPlayingStatus`, `PlayerTransport`, `SearchBox`. The volume case was the one
+not predicted: the slider reports with `onValueChange` rather than
+`onValueCommitted`, deliberately, so it writes at the pointer's sampling rate,
+faster than the audio thread ticks.
+
+`App.renders.test.tsx` counts renders rather than timing them - a count is exact
+where a wall-clock budget on a CI runner is noise. **File splitting is not what
+delivers this**: the lever is where the subscription lives, which is a component
+boundary, not a module boundary.
+
+`memo(SongTable)` was deliberately **not** taken. Nothing left in `App` changes
+often enough, the table subscribes to the selection itself so the one frequent
+update would re-render it regardless, and it would first need `resolveColumns`
+memoized and four callbacks stabilized or `memo` never hits. Revisit only with a
+profile that justifies it.
+
+---
+
+**26 — Licence and third-party notices** `chore/26-license-notices` — 🔄 **in review** (PR #40)
+
+The project had no licence at all, which makes it legally unusable by anyone who
+finds it - public on GitHub is not a grant. Now MIT.
+
+The dependencies were the real work. Nothing forces a licence on our code, but
+MIT/BSD/ISC all require their copyright notice to travel with a binary, and
+**symphonia is MPL-2.0** - the mp3 decoder, so not optional - which additionally
+requires recipients be told where to get the source of the covered files.
+`cssparser` and `selectors` under Tauri's webview layer are the same. v0.2.0 and
+v0.3.0 shipped all of it with no notice.
+
+`THIRD-PARTY-NOTICES.md` reproduces the licence text of all 331 packages that
+reach a build, generated by `scripts/notices.mjs` and drift-checked in CI. Both
+it and `LICENSE` bundle as installer resources. Licence texts are deduplicated -
+per package the file was 2.6 MB, because the Apache-2.0 text is ~11 kB and
+appears in about two hundred crates; each distinct text now appears once, in
+613 kB, with nothing collapsed that carries a copyright line.
+
+---
+
+**27 — Visual assertions in e2e** `feat/27-screenshots`
+
+**The gap this closes.** Three defects reached the user in a running build
+during phases 16-18: the playing icon invisible on the selected row, the modal
+rendering below the footer, and form fields with a border at 1.02:1 contrast.
+All three were layout or colour. All three passed 600+ green tests, because
+**jsdom applies no stylesheet** - it has no layout engine and no computed
+colour. The `App.css.test.ts` guards catch only what they are told to catch,
+one regression at a time, after the fact.
+
+The e2e job already builds and launches the real app on Windows, which is the
+expensive part and is already paid for. Screenshots are close to free on top of
+it.
+
+*Shape.* WebdriverIO's own `toMatchElementSnapshot`/`checkElement`, or a plain
+`browser.saveScreenshot` plus an image diff - the choice matters less than the
+storage discipline below. Baselines committed to the repo; diffs uploaded as
+artifacts **only on failure**, with short retention.
+
+*What to shoot,* chosen as the smallest set covering the three classes of bug
+already seen: the song table with a row selected and one playing (marker
+contrast), the tag editor open (dialog position, field borders), the smart
+playlist editor (the filter row of selects), the error popover anchored, and a
+context menu open. Both themes if the harness can force `prefers-color-scheme` -
+two of the three defects were dark-mode only.
+
+*Cost.* The app is already launched, so this is seconds of wall clock, not
+minutes. **Storage is the axis to watch, not minutes:** baselines live in git
+(~1-2 MB for the set above, against a repo currently at 1.6 MB), and nothing is
+uploaded on a passing run, so Actions artifact storage stays at zero.
+
+*Caveat.* Screenshot tests are the classic source of flakes - font rendering,
+antialiasing, animation timing. Mitigations: pin the window size, assert on
+element screenshots rather than the full page where possible, and lean on the
+fact that phase 13 already removed every transition and animation from the app,
+which is most of what makes these tests unstable elsewhere.
+
+---
+
+**28 — Server-side branch protection** `chore/28-protect-main`
+
+The README says `main` cannot be protected because GitHub gates that behind Pro
+for private repositories. **That is now stale - the repo is public**, and a
+`no-master-push` ruleset already exists enforcing PR-only, no force-push and no
+deletion.
+
+What it does *not* do is require the status checks, so a PR with red CI can
+still be merged - the one thing the whole four-job gate exists to prevent. Add
+`required_status_checks` for `frontend`, `rust`, `cargo-deny`, `e2e` and
+`notices` to the existing ruleset, and correct the README paragraph.
+
+Small, and it protects everything after it.
+
+---
+
+**29 — Local crash log** `feat/29-panic-log` — *the cheap half of the cut phase 11*
+
+Phase 11 was cut because Sentry meant a network stack in an application whose
+premise is that it does not use the network. The failure class it would have
+covered is still real and still invisible: a panic on the audio thread, in the
+`rayon` scan pool, or inside `symphonia` on a malformed mp3 takes the window
+with it and no JS handler ever runs.
+
+`std::panic::set_hook` writing to a log beside the database covers most of that
+for a fraction of the cost. Keep the last N panics, surface the most recent one
+in the app with a way to open the file, and rotate. No network, no DSN, no
+opt-in toggle to design, and nothing to scrub - phase 11's whole scrubbing
+section existed only because Sentry would have carried file paths, folder names
+and track titles off the machine.
+
+*Testing:* the hook's formatting is unit-testable against a synthesized
+`PanicHookInfo`; rotation is unit-testable; that a panic on a spawned thread
+reaches the file is an integration test.
+
+---
+
+**Deferred, with the reason** — not phases, and not forgotten:
+
+- **`memo(SongTable)`** - see phase 25. Needs a profile, not an instinct.
+- **A Composer column.** Phase 18's plan lists Composer among the fields worth
+  suggesting, but `tracks` has no such column. Adding one is a schema migration
+  plus a scan change plus a `lofty` read, which is a phase of its own rather
+  than an autocompletion detail.
+- **CSS Modules.** Considered and declined: it addresses collisions we do not
+  have, would weaken the cross-cutting `App.css.test.ts` guards that assert
+  absence, and would not have caught any of the three visual defects - jsdom
+  applies no stylesheet under CSS Modules either. Phase 27 is the fix for the
+  problem that was actually being felt.
 
 ---
 

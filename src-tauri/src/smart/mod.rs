@@ -27,7 +27,7 @@ pub const MAX_RULES: usize = 200;
 ///
 /// A user searching for a literal `%` must not get a wildcard, so `%`, `_` and
 /// the escape character itself are escaped before the pattern is built.
-const LIKE_ESCAPE: char = '\\';
+pub(crate) const LIKE_ESCAPE: char = '\\';
 
 pub struct Compiled {
     /// A complete boolean expression, safe to drop into a `WHERE`.
@@ -198,7 +198,10 @@ fn like(column: &str, negated: bool) -> String {
 }
 
 /// Neutralises the wildcards in a user's text so it matches literally.
-fn like_escape(value: &str) -> String {
+///
+/// Shared with the tag-value lookup, which faces the same problem: a band name
+/// containing `_` must not become a single-character wildcard.
+pub(crate) fn like_escape(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
         if character == '%' || character == '_' || character == LIKE_ESCAPE {

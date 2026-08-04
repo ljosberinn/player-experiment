@@ -56,6 +56,20 @@ const HOVER_ALLOWED = [
  */
 const ANIMATION_ALLOWED = [".row-status.playing .wave"];
 
+/** WCAG relative luminance, for the contrast ratio below. */
+function luminance(hex: string): number {
+  const channels = [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16) / 255);
+  const linear = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return (
+    0.2126 * (linear[0] as number) + 0.7152 * (linear[1] as number) + 0.0722 * (linear[2] as number)
+  );
+}
+
+function contrast(a: string, b: string): number {
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (high + 0.05) / (low + 0.05);
+}
+
 describe("the stylesheet", () => {
   it("parses into rules", () => {
     // Guards the guard: a regex that matched nothing would pass everything.
@@ -263,5 +277,42 @@ describe("the stylesheet", () => {
 
     expect(hovered).toEqual([]);
     expect(css).toMatch(/\.context-item\[data-highlighted\]/);
+  });
+
+  it("gives form fields a border you can actually see, in both themes", () => {
+    // This is the bug that shipped: `--chrome-border` is tuned to separate two
+    // panels of chrome, and in dark mode it was #1a1a1c against a field
+    // surface of #191a1c - a contrast ratio of about 1.02:1. The input was
+    // invisible and a select was recognisable only by its arrow. jsdom applies
+    // no stylesheet, so no component test could have caught it; this reads the
+    // colours and does the arithmetic.
+    const themes = [
+      { name: "light", block: css.slice(0, css.indexOf("@media (prefers-color-scheme: dark)")) },
+      { name: "dark", block: css.slice(css.indexOf("@media (prefers-color-scheme: dark)")) },
+    ];
+
+    for (const { name, block } of themes) {
+      const read = (variable: string) =>
+        new RegExp(`--${variable}:\\s*(#[0-9a-f]{6})`, "i").exec(block)?.[1];
+      const border = read("field-border");
+      const surface = read("surface");
+      const chrome = read("chrome");
+
+      expect(border, `${name} must define --field-border`).toBeDefined();
+      // Against the field's own fill, and against the dialog behind it: a
+      // border that only clears one of the two still leaves an edge missing.
+      expect(
+        contrast(border as string, surface as string),
+        `${name} border vs field`,
+      ).toBeGreaterThan(2);
+      expect(
+        contrast(border as string, chrome as string),
+        `${name} border vs dialog`,
+      ).toBeGreaterThan(2);
+    }
+
+    // And the fields must actually use it rather than the chrome divider.
+    const fields = all.find((rule) => /\.modal input,\s*\.modal select/.test(rule.selector));
+    expect(fields?.body).toMatch(/border:[^;]*var\(--field-border\)/);
   });
 });

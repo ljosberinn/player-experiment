@@ -202,6 +202,9 @@ pub fn clear_missing(conn: &Connection, id: i64) -> AppResult<bool> {
 /// something a scan does on the user's behalf.
 pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
     let removed = conn.execute("DELETE FROM tracks WHERE missing_since IS NOT NULL", [])?;
+    // Those rows were carrying tag values, and a value nothing carries any more
+    // should stop being suggested.
+    crate::db::tag_values::rebuild(conn)?;
     Ok(removed as u32)
 }
 
@@ -320,6 +323,11 @@ pub fn scan(
             done: false,
         });
     }
+
+    // Once, at the end, rather than per chunk: it is a whole-table aggregate
+    // either way, and running it 50 times during a first scan would pay for
+    // the same answer 50 times.
+    crate::db::tag_values::rebuild(conn)?;
 
     on_progress(ScanProgress {
         scanned,

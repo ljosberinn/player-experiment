@@ -10,6 +10,12 @@
   --surface: #ffffff;
   --skeleton: #e3e6ea;
   --menu-border: #c4c4c8;
+  /* Fields need their own border, not the chrome divider's. `--chrome-border`
+     is tuned to separate two panels of chrome; on a field's own `--surface` it
+     has almost no contrast, and in dark mode it had none at all - #1a1a1c on
+     #191a1c is a ratio of about 1.02:1, so the input was invisible and a
+     select was recognisable only by its arrow. */
+  --field-border: #8e8e93;
   --danger: #c0392b;
 
   /* The one density value that repeats. Not a colour, so it sits outside the
@@ -40,6 +46,7 @@
     --surface: #191a1c;
     --skeleton: #303035;
     --menu-border: #3d3d42;
+    --field-border: #6d6e75;
     /* Lighter than the light theme's: #c0392b on a near-black surface is dark
        enough to read as brown rather than as a warning. */
     --danger: #ff7a6e;
@@ -899,11 +906,29 @@ th.status {
 .modal select {
   height: var(--control-height);
   padding: 0 5px;
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--field-border);
   border-radius: 3px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
+}
+
+/* A select has to look like one before it is opened. Without this it reads as
+   a label with an arrow beside it, which is what a filter row full of them
+   looked like. */
+.modal select {
+  padding-right: 4px;
+}
+
+/* Which field is active, without waiting for the caret to blink. `:focus`
+   rather than `:focus-visible` here on purpose: these are text fields and
+   selects inside a dialog, where clicking one *is* the act of choosing where
+   to type, so the highlight is wanted for the pointer too. */
+.modal input:focus,
+.modal select:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: -1px;
 }
 
 .modal-summary {
@@ -1345,4 +1370,47 @@ body:not(:focus-within) .sidebar-row.current {
   min-width: 38px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* Suggestions under a tag or filter field.
+   Below the menu (40) and the dialogs it opens inside, because it belongs to a
+   field within one of them and has to sit over the dialog's own surface. */
+.suggest-positioner {
+  z-index: 60;
+  outline: none;
+}
+
+.suggest-popup {
+  /* Matched to the field it hangs off rather than a fixed width: a wider
+     Artist box gets a wider list, and the values line up under what was
+     typed. */
+  width: var(--anchor-width);
+  min-width: 180px;
+  max-height: var(--available-height, 40vh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  outline: none;
+}
+
+.suggest-item {
+  padding: 5px 10px;
+  border-radius: 4px;
+  color: var(--text);
+  /* Long band names are the reason this list exists, so they wrap rather than
+     being clipped to something that no longer distinguishes two spellings. */
+  overflow-wrap: anywhere;
+  cursor: default;
+}
+
+/* The same one selector the menu uses: Base UI marks the active item the same
+   way whether the pointer or the keyboard is driving. */
+.suggest-item[data-highlighted] {
+  background: var(--accent);
+  color: #fff;
 }

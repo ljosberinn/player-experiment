@@ -8,8 +8,10 @@
 
 use std::time::Instant;
 
-use player_lib::db::{query, Db};
-use player_lib::model::{BrowseFilter, BrowseKind, SortDirection, SortField, TrackQuery};
+use player_lib::db::{query, tag_values, Db};
+use player_lib::model::{
+    BrowseFilter, BrowseKind, SortDirection, SortField, TagValueField, TrackQuery,
+};
 use player_lib::scan;
 
 const ROWS: usize = 10_000;
@@ -335,4 +337,45 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
         "a rescan over {ROWS} already-marked rows took {elapsed}ms, budget is 1000ms - \
          it reads every row and writes none, so it must stay well under the first scan"
     );
+}
+
+#[test]
+fn a_suggestion_lookup_is_cheap_and_the_rebuild_that_feeds_it_is_affordable() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+
+    // The rebuild is the cost of *not* keeping running counts in step with
+    // every write. It runs after a scan and after a tag edit, so it is allowed
+    // to be a whole-table pass - but it must stay in the range of the scan it
+    // follows rather than doubling it.
+    let start = Instant::now();
+    tag_values::rebuild(&conn).unwrap();
+    let elapsed = start.elapsed().as_millis();
+    assert!(
+        elapsed <= 1_000,
+        "rebuilding the vocabulary over {ROWS} rows took {elapsed}ms, budget is 1000ms - \
+         five grouped aggregates, so a regression here means an index was dropped"
+    );
+
+    // The lookup is the one that runs while someone is typing, so it is the one
+    // that has to be genuinely fast. It reads `tag_values`, which holds one row
+    // per distinct value rather than one per track, so its cost should not
+    // track the library at all.
+    for field in [
+        TagValueField::Artist,
+        TagValueField::Album,
+        TagValueField::Genre,
+        TagValueField::Year,
+    ] {
+        assert_under(&format!("suggesting {field:?}"), 10, || {
+            tag_values::suggest(&conn, field, "0", 8).unwrap();
+        });
+    }
+
+    // An empty query is the "show me the vocabulary" case an `is` filter opens
+    // with, and it must not turn into a sort of the whole table.
+    assert_under("suggesting with no query typed yet", 10, || {
+        let found = tag_values::suggest(&conn, TagValueField::Artist, "", 8).unwrap();
+        assert_eq!(found.len(), 8);
+    });
 }

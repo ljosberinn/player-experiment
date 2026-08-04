@@ -387,6 +387,9 @@ pub fn apply(
             ],
         )?;
     }
+    // In the same transaction as the rows it is derived from, so a suggestion
+    // list can never describe a library state that was rolled back.
+    crate::db::tag_values::rebuild(&tx)?;
     tx.commit()?;
 
     Ok(TagWriteSummary {
@@ -459,6 +462,10 @@ pub fn undo_last(conn: &mut Connection) -> AppResult<TagWriteSummary> {
     // The batch goes whether or not every file came back: leaving it would
     // make the next undo try the same failures again forever.
     tx.execute("DELETE FROM tag_undo WHERE batch_id = ?1", [batch_id])?;
+    // An undo changes tags, so it changes the vocabulary - and this is the
+    // direction that matters most: a typo corrected and then un-corrected has
+    // to come back as a suggestion, or the list quietly disagrees with disk.
+    crate::db::tag_values::rebuild(&tx)?;
     tx.commit()?;
 
     Ok(TagWriteSummary {

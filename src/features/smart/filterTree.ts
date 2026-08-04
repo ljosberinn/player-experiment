@@ -5,6 +5,7 @@ import type {
   FilterOp,
   FilterRule,
   FilterValue,
+  TagValueField,
 } from "../../ipc";
 
 /**
@@ -46,6 +47,34 @@ export const FIELDS: FieldDef[] = [
   { id: "addedAt", label: "Date Added", kind: "timestamp" },
   { id: "lastPlayedAt", label: "Last Played", kind: "timestamp" },
 ];
+
+/**
+ * Which vocabulary of existing values a rule on `field` should suggest.
+ *
+ * "artist is ___" wants exactly what the tag editor's Artist field wants, and
+ * typing a band name by hand into a filter is how a smart playlist ends up
+ * matching nothing at all. The fields with no shared vocabulary - title,
+ * comment, location, every count and every date - offer none.
+ *
+ * Year is absent even though it has a vocabulary: its editor is a number input,
+ * and trading the spinner and the numeric keyboard for a dropdown of four-digit
+ * strings is a poor deal. The tag editor, where Year is free text already,
+ * still suggests it.
+ */
+export function vocabularyFor(field: FilterField): TagValueField | null {
+  switch (field) {
+    case "artist":
+      return "artist";
+    case "album":
+      return "album";
+    case "albumArtist":
+      return "albumArtist";
+    case "genre":
+      return "genre";
+    default:
+      return null;
+  }
+}
 
 export const OP_LABELS: Record<FilterOp, string> = {
   is: "is",
