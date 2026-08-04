@@ -218,6 +218,66 @@ describe("appearance, in the engine that actually lays it out", () => {
         expect(problems).toEqual([]);
       });
 
+      it("makes a control's shape visible against what it sits on", async () => {
+        // Reported by the user after the first version of this suite passed:
+        // the volume slider's rail was `--skeleton`, the loading-placeholder
+        // colour tuned for `--surface`, but the slider sits on `--chrome` in
+        // the toolbar. That was #e3e6ea on #e8e8e8 - 1.02:1, the same
+        // magnitude as the invisible field border, and this suite missed it
+        // because it only looked at text and at field borders.
+        //
+        // WCAG 1.4.11 asks 3:1 of the parts of a control needed to understand
+        // it, and a slider you cannot see the extent of is exactly that.
+        const parts = await browser.execute(
+          (selectors: string[]) =>
+            selectors.flatMap((selector) => {
+              const element = document.querySelector(selector);
+              if (element === null) {
+                return [];
+              }
+              const style = getComputedStyle(element);
+              let painter = element.parentElement;
+              let behind = "";
+              while (painter !== null) {
+                const fill = getComputedStyle(painter).backgroundColor;
+                if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+                  behind = fill;
+                  break;
+                }
+                painter = painter.parentElement;
+              }
+              // Either edge may carry it: a control can be legible through its
+              // own fill, or through an outline drawn around a fill that is not.
+              return [
+                {
+                  selector,
+                  behind,
+                  fill: style.backgroundColor,
+                  border: style.borderTopWidth === "0px" ? "" : style.borderTopColor,
+                },
+              ];
+            }),
+          [".volume-rail", ".status-track-rail", ".volume-thumb"],
+        );
+
+        const invisible = parts
+          .filter((part) => part.behind !== "")
+          .map((part) => ({
+            ...part,
+            best: Math.max(
+              part.fill === "" ? 0 : contrast(part.fill, part.behind),
+              part.border === "" ? 0 : contrast(part.border, part.behind),
+            ),
+          }))
+          .filter((part) => part.best < 3)
+          .map(
+            (part) =>
+              `${part.selector}: fill ${part.fill || "none"} / border ${part.border || "none"} on ${part.behind} = ${part.best.toFixed(2)}:1`,
+          );
+
+        expect(invisible).toEqual([]);
+      });
+
       it("keeps the chrome legible against what it sits on", async () => {
         // Not one defect but the class of them: a colour pair that works in one
         // theme and collapses in the other, which is how two of the three got

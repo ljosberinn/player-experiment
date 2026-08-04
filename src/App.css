@@ -25,6 +25,18 @@
      #191a1c is a ratio of about 1.02:1, so the input was invisible and a
      select was recognisable only by its arrow. */
   --field-border: #8e8e93;
+  /* A slider rail is a UI component whose extent has to be readable, and it
+     sits on `--chrome` in the toolbar and on `--surface` in the status
+     display. It used `--skeleton`, which is the loading-placeholder colour
+     tuned for `--surface` - on the title bar that was #e3e6ea on #e8e8e8, a
+     ratio of 1.02:1, so the volume slider's unfilled remainder was invisible.
+
+     Two values rather than one, because a single grey cannot do it: dark
+     enough to separate from the frame and it collides with the accent fill
+     it is supposed to contrast against. So the interior stays light and the
+     outline carries the edge. */
+  --track: #d9dde3;
+  --track-border: #7e8288;
   --danger: #c0392b;
 
   /* The one density value that repeats. Not a colour, so it sits outside the
@@ -56,6 +68,8 @@
     --skeleton: #303035;
     --menu-border: #3d3d42;
     --field-border: #6d6e75;
+    --track: #26292d;
+    --track-border: #74777d;
     /* Lighter than the light theme's: #c0392b on a near-black surface is dark
        enough to read as brown rather than as a warning. */
     --danger: #ff7a6e;
@@ -88,6 +102,8 @@
   --skeleton: #303035;
   --menu-border: #3d3d42;
   --field-border: #6d6e75;
+  --track: #26292d;
+  --track-border: #74777d;
   /* Lighter than the light theme's: #c0392b on a near-black surface is dark
      enough to read as brown rather than as a warning. */
   --danger: #ff7a6e;
@@ -264,9 +280,11 @@ input[type="radio"] {
 .status-track-rail {
   position: relative;
   width: 100%;
+  /* 5px of interior plus the border, so the control keeps its height. */
   height: 5px;
-  border-radius: 2px;
-  background: var(--skeleton);
+  border: 1px solid var(--track-border);
+  border-radius: 3px;
+  background: var(--track);
 }
 
 .volume-fill,
