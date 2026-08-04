@@ -169,10 +169,14 @@ repo.
 
 ## Status — 2026-08-04
 
-Everything planned through phase 24 is merged to `main` except the four
-external-service phases, which have not been started. **v0.3.0 is released**
-(PR #28, tag `v0.3.0`). Two branches are in review: the frontend render pass
-(PR #38) and tag autocompletion (phase 18).
+Everything planned through phase 31 is merged to `main` except the two
+external-service phases, which are awaiting a decision rather than work.
+**v0.3.0 is released** (PR #28, tag `v0.3.0`); release-please is holding a
+0.4.0 pull request open with everything since.
+
+Phase 10 (last.fm) has a plan of its own in `docs/PLAN-lastfm.md` and a
+go/no-go question at the end of it. Phase 12 (online tag lookup) has neither
+yet.
 
 | | Phase | State |
 | --- | --- | --- |
@@ -193,14 +197,20 @@ external-service phases, which have not been started. **v0.3.0 is released**
 | 15 | Ingest ergonomics | ❌ cut, by decision |
 | 16 | Row status column | ✅ merged ([#35](https://github.com/ljosberinn/player-experiment/pull/35)) |
 | 17 | Context menus, drop-to-create playlist | ✅ merged (`8caf601`) |
-| 18 | Tag and filter autocompletion | 🔄 in review |
+| 18 | Tag and filter autocompletion | ✅ merged ([#39](https://github.com/ljosberinn/player-experiment/pull/39)) |
 | 19 | Browse by album, artist and genre | ✅ merged ([#27](https://github.com/ljosberinn/player-experiment/pull/27)) |
 | 20 | Column customization | ✅ merged ([#30](https://github.com/ljosberinn/player-experiment/pull/30)) |
 | 21 | Density and zoom | ✅ merged ([#33](https://github.com/ljosberinn/player-experiment/pull/33)) |
 | 22 | Media keys without focus | ✅ merged ([#32](https://github.com/ljosberinn/player-experiment/pull/32)) |
 | 23 | In-app updates | ✅ merged ([#23](https://github.com/ljosberinn/player-experiment/pull/23), fixed in [#34](https://github.com/ljosberinn/player-experiment/pull/34)) |
 | 24 | Base UI primitives | ✅ merged ([#36](https://github.com/ljosberinn/player-experiment/pull/36)) |
-| 25 | Frontend render pass | 🔄 in review ([#38](https://github.com/ljosberinn/player-experiment/pull/38)) |
+| 25 | Frontend render pass | ✅ merged ([#38](https://github.com/ljosberinn/player-experiment/pull/38)) |
+| 26 | Licence and third-party notices | ✅ merged ([#40](https://github.com/ljosberinn/player-experiment/pull/40)) |
+| 27 | Appearance assertions in e2e | ✅ merged ([#44](https://github.com/ljosberinn/player-experiment/pull/44)) |
+| 28 | Server-side branch protection | ✅ merged ([#43](https://github.com/ljosberinn/player-experiment/pull/43)) |
+| 29 | Local crash log | ✅ merged ([#46](https://github.com/ljosberinn/player-experiment/pull/46)) |
+| 30 | A seeded library in e2e | ✅ merged ([#45](https://github.com/ljosberinn/player-experiment/pull/45)) |
+| 31 | 150k rows in a real engine | ✅ merged ([#49](https://github.com/ljosberinn/player-experiment/pull/49)) |
 
 **What works today.** Point the app at a folder, scan it, and browse the result:
 sortable virtualized table over a paged SQL query, FTS5 search from the toolbar,
