@@ -25,6 +25,11 @@ import { usePlayerStore } from "./features/player/store";
 
 vi.mock("./ipc", () => ({
   countTracks: vi.fn(),
+  // Answered rather than merely stubbed: the crash notice asks on mount, and
+  // an unresolved promise there leaves an act() warning in every App test.
+  lastCrash: vi.fn(async () => null),
+  acknowledgeCrash: vi.fn(),
+  revealCrashLog: vi.fn(),
   getAppInfo: vi.fn(async () => ({ name: "player", version: "0.4.2" })),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(async () => []),

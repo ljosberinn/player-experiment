@@ -2339,7 +2339,7 @@ Small, and it protects everything after it.
 
 ---
 
-**29 — Local crash log** `feat/29-panic-log` — *the cheap half of the cut phase 11*
+**29 — Local crash log** `feat/29-panic-log` — 🔄 **in review**
 
 Phase 11 was cut because Sentry meant a network stack in an application whose
 premise is that it does not use the network. The failure class it would have
@@ -2354,9 +2354,29 @@ opt-in toggle to design, and nothing to scrub - phase 11's whole scrubbing
 section existed only because Sentry would have carried file paths, folder names
 and track titles off the machine.
 
-*Testing:* the hook's formatting is unit-testable against a synthesized
-`PanicHookInfo`; rotation is unit-testable; that a panic on a spawned thread
-reaches the file is an integration test.
+*Testing.* A `PanicHookInfo` cannot be constructed outside a real panic, so
+the formatter takes what the hook knows as parameters and the hook does no
+formatting of its own - which is what makes both testable. Rotation, the
+missing-file case and a report whose header is mangled are unit tests. That a
+panic on a *spawned* thread reaches the file is tested by spawning one and
+panicking in it, with the previous hook restored afterwards and the assertion
+searching the file rather than taking the last report: the hook is
+process-wide and the test harness runs tests in parallel.
+
+*Built as.* `crash.rs` holds the hook, the format, and a bounded log of the
+last five reports beside the database. The hook **chains** the previous one
+rather than replacing it, so a debug build still prints to stderr. Three
+commands surface it: `last_crash` (which returns nothing for a crash already
+dismissed, so the notice belongs to the crash rather than to the session),
+`acknowledge_crash`, and `reveal_crash_log` - the route to the four older
+reports, since only the most recent is ever shown.
+
+The notice itself is asked for once on mount, because a crash that has already
+happened cannot happen again while the app is up. Two of its three failure
+paths are deliberately silent: a crash log that cannot be read, and a
+dismissal that cannot be recorded, are both worse as an error banner than as
+nothing. The third - "show me the log file" not working - is reported, because
+the user asked for something and it did not happen.
 
 ---
 

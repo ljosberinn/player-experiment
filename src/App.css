@@ -684,6 +684,49 @@ input[type="radio"] {
   color: var(--muted);
 }
 
+/* The one thing on screen that reports a session that is already over. It sits
+   above the ordinary notice line and carries a border rather than a fill: a
+   panel of danger-red for something that has already stopped happening reads
+   as an emergency, and by the time it is seen the app is running fine. */
+.crash-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
+.crash-notice-summary {
+  /* A panic message is arbitrary text and can be long, with no spaces to wrap
+     at - a Windows path, most often. */
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.crash-notice-details {
+  max-height: 240px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 4px;
+  background: var(--row-odd);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  /* A backtrace is a column of frames. Reflowing it makes it unreadable, so it
+     scrolls inside its own box rather than pushing the table off the bottom of
+     a window that does not scroll. */
+  white-space: pre;
+}
+
+.crash-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .empty-state {
   margin: auto;
   color: var(--muted);

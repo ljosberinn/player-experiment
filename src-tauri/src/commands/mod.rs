@@ -12,10 +12,10 @@ use crate::db::{playback, playlists, query, settings, tag_values, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::model::{
-    AppInfo, BrowseGroup, BrowseKind, FilterGroup, LibraryStats, PlayerSnapshot, Playlist,
-    ScanSummary, TagEdit, TagValueField, TagWriteSummary, Track, TrackQuery,
+    AppInfo, BrowseGroup, BrowseKind, CrashReport, FilterGroup, LibraryStats, PlayerSnapshot,
+    Playlist, ScanSummary, TagEdit, TagValueField, TagWriteSummary, Track, TrackQuery,
 };
-use crate::{scan, tags};
+use crate::{crash, scan, tags};
 
 pub fn app_info() -> AppInfo {
     AppInfo {
@@ -453,6 +453,61 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
     .map_err(|e| crate::error::AppError::Internal(format!("seed task failed: {e}")))?;
 
     seeded
+}
+
+/// The panic the previous run wrote down, if the user has not seen it yet.
+///
+/// Filtered here rather than in the frontend so that "already dismissed" is
+/// one fact in one place: the notice is shown once per crash, not at every
+/// launch after one.
+#[tauri::command]
+pub fn last_crash(db: State<'_, Db>) -> AppResult<Option<CrashReport>> {
+    let path = crash::log_path(crash_dir(&db));
+    let Some(report) = crash::latest(&path) else {
+        return Ok(None);
+    };
+
+    let conn = db.conn()?;
+    let seen = settings::get(&conn, settings::CRASH_SEEN)?
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
+    if report.when <= seen {
+        return Ok(None);
+    }
+
+    Ok(Some(CrashReport {
+        when: report.when,
+        summary: report.summary().to_owned(),
+        details: report.text,
+        path: path.to_string_lossy().into_owned(),
+    }))
+}
+
+/// Marks every crash up to `when` as seen.
+#[tauri::command]
+pub fn acknowledge_crash(db: State<'_, Db>, when: i64) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::CRASH_SEEN, &when.to_string())
+}
+
+/// Opens the file manager with the crash log selected.
+///
+/// The route to the reports older than the one the notice shows, which is why
+/// it reveals the file rather than rendering its contents.
+#[tauri::command]
+pub fn reveal_crash_log(db: State<'_, Db>) -> AppResult<()> {
+    crate::reveal::reveal(&crash::log_path(crash_dir(&db)))
+}
+
+/// Where the crash log lives: beside the database, whatever directory that is.
+///
+/// Derived from the database path rather than asked of Tauri again, so the two
+/// cannot drift apart - including in an e2e build, where the data directory is
+/// overridden.
+fn crash_dir(db: &Db) -> &std::path::Path {
+    db.path()
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
 }
 
 #[cfg(test)]

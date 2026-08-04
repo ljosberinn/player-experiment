@@ -7,6 +7,7 @@ import { ErrorPopover } from "./components/ui/ErrorPopover";
 import { Sidebar } from "./components/ui/Sidebar";
 import { TabBar } from "./components/ui/TabBar";
 import { TitleBar } from "./components/ui/TitleBar";
+import { CrashNotice } from "./features/crash/CrashNotice";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
@@ -307,6 +308,11 @@ export function App() {
             </Toolbar.Root>
             <ScanBar />
           </div>
+
+          {/* Above every other notice, and outside the one below: this is the
+              only thing on screen that reports a session that is already over,
+              and it must not be crowded out by a message about this one. */}
+          <CrashNotice />
 
           {notice || tagNotice || toolbarNotice ? (
             <p className="content-notice" role="status">
