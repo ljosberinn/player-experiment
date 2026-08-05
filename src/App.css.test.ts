@@ -297,17 +297,66 @@ describe("the stylesheet", () => {
     }
   });
 
-  it("gives the status display a fixed height, not a growing one", () => {
-    // `selector` carries any comment that preceded the rule, so this matches
+  it("gives the transport strip a fixed height, not a growing one", () => {
+    // The layout shift this pins shut used to be inside the now-playing box:
+    // idle showed one line, playing showed three plus a scrubber, and the box
+    // grew the moment a song started. Phase 35 fixed that by construction -
+    // the playhead is its own control on the strip and the box always shows
+    // the same shape - so what has to hold now is the strip itself, which is
+    // the row every one of those controls is measured against.
+    //
+    // `selector` carries any comment that preceded the rule, so these match
     // the tail rather than the whole string.
-    const rule = all.find((one) => /(^|\s)\.status-display$/.test(one.selector));
+    const strip = all.find((one) => /(^|\s)\.transport-strip$/.test(one.selector));
 
-    // Idle shows one line; playing shows three plus a scrubber. A box that
-    // sizes to its contents grows the moment a song starts and shoves the
-    // toolbar down - the layout shift this pins shut.
-    expect(rule).toBeDefined();
-    expect(rule?.body).toMatch(/[^-]height:\s*\d/);
-    expect(rule?.body).not.toMatch(/min-height/);
+    expect(strip).toBeDefined();
+    expect(strip?.body).toMatch(/[^-]height:\s*\d/);
+    expect(strip?.body).not.toMatch(/min-height/);
+
+    // And the cover, which is the tallest thing on it: a thumbnail sized to
+    // whatever image the file happened to carry would resize the strip.
+    const cover = all.find((one) => /(^|\s)\.now-playing-cover$/.test(one.selector));
+
+    expect(cover?.body).toMatch(/[^-]height:\s*\d/);
+    expect(cover?.body).toMatch(/object-fit:\s*cover/);
+  });
+
+  it("keeps the title bar and the footer the heights the design draws", () => {
+    // Both are stated rather than left to their contents, and both are what
+    // the transport strip and the content pane are measured against. A bar
+    // that sized itself would move every time a version string got a digit
+    // longer or a menu label changed.
+    for (const [selector, height] of [
+      [".titlebar", 36],
+      [".statusbar", 27],
+    ] as const) {
+      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+      expect(rule?.body, `${selector} should state its height`).toMatch(
+        new RegExp(`[^-]height:\\s*${height}px`),
+      );
+    }
+  });
+
+  it("blurs behind every translucent panel of chrome", () => {
+    // The panels are veils rather than fills so that phase 39's cover colours
+    // can drift behind them. A veil with no blur under it is just a slightly
+    // wrong colour - and worse, it lets whatever is behind it show through
+    // sharply, which is how translucent chrome turns text unreadable.
+    // The three blurred panels by name. `--hover-veil` is not one of them: it
+    // is the lift a title-bar button gives under the pointer, painted on top
+    // of chrome rather than being chrome. Nor is `--content-wash`, which is a
+    // tint over the window rather than a sheet of frosted glass.
+    const veiled = all.filter((rule) =>
+      /background:\s*var\(--(?:chrome|strip|sidebar)-veil\)/.test(rule.body),
+    );
+
+    // Guards the guard: a regex matching nothing would iterate an empty list.
+    expect(veiled.length).toBeGreaterThan(2);
+    for (const rule of veiled) {
+      expect(rule.body, `${rule.selector} is translucent but does not blur`).toMatch(
+        /backdrop-filter:\s*blur/,
+      );
+    }
   });
 
   it("positions no menu by hand", () => {
@@ -387,7 +436,7 @@ describe("the stylesheet", () => {
     const root = all.find((rule) => rule.selector.trim().endsWith(":root"));
     expect(root?.body).toMatch(/font-family:\s*"Segoe UI"/);
 
-    for (const selector of [".status-time", ".song-cell.right", ".statusbar-zoom-value"]) {
+    for (const selector of [".scrubber-time", ".song-cell.right", ".statusbar-zoom-value"]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
       expect(rule?.body, `${selector} should set the numeral face`).toMatch(
         /font-family:\s*var\(--font-numeric\)/,

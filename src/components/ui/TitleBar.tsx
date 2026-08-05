@@ -61,12 +61,18 @@ export function TitleBar({
 
       {children}
 
-      {/* Read from the Rust crate rather than baked in at build time: that
-          version is the one the installer and every export report. It moved
-          here from the status bar in phase 34, where the design puts it and
-          where the rest of the app's identity now lives. */}
-      {version === null ? null : <span className="titlebar-version">v{version}</span>}
-      <WindowButtons />
+      {/* The far end of the bar, wrapped rather than pushed there one at a
+          time: the version is absent for the first frame of every launch, and
+          two `margin-left: auto` items would share the free space between
+          them rather than one taking it all. */}
+      <div className="titlebar-right">
+        {/* Read from the Rust crate rather than baked in at build time: that
+            version is the one the installer and every export report. It moved
+            here from the status bar in phase 34, where the design puts it and
+            where the rest of the app's identity now lives. */}
+        {version === null ? null : <span className="titlebar-version">v{version}</span>}
+        <WindowButtons />
+      </div>
     </header>
   );
 }

@@ -43,10 +43,10 @@ describe("application shell", () => {
       throw new Error(await describeWebview());
     }
 
-    // The sidebar and tab bar are static chrome.
+    // The sidebar is static chrome, and since phase 35 it is also what chooses
+    // the view - the tab bar above the table is gone.
     await expect(browser.$("nav[aria-label='Library']")).toBeExisting();
-    await expect(browser.$("//button[text()='Music']")).toBeExisting();
-    await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Songs");
+    await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Songs");
     await expect(browser.$("input[aria-label='Search Library']")).toBeExisting();
   });
 
@@ -62,16 +62,19 @@ describe("application shell", () => {
     await expect(status).toHaveText(/songs?$|^No songs$/);
   });
 
-  it("switches to a browse tab, which was dead chrome until phase 19", async () => {
+  it("switches to a browse view, which was dead chrome until phase 19", async () => {
     // Albums/Artists/Genres rendered `disabled` from phase 3 onward. An empty
-    // library has no albums, so what this proves is that the tab is live and
+    // library has no albums, so what this proves is that the entry is live and
     // the view behind it renders - not what it renders.
-    await browser.$("//button[text()='Albums']").click();
-    await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Albums");
+    //
+    // Sidebar entries since phase 35, so `.` rather than `text()`: the label
+    // is a span inside the button, and `text()` only sees direct text nodes.
+    await browser.$("//button[.='Albums']").click();
+    await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Albums");
     await expect(browser.$(".empty-state")).toBeExisting();
 
-    await browser.$("//button[text()='Songs']").click();
-    await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Songs");
+    await browser.$("//button[.='Songs']").click();
+    await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Songs");
   });
 
   it("offers the controls that drive a scan", async () => {

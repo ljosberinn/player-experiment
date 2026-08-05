@@ -198,12 +198,14 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the chrome: sidebar, tabs, search and status bar", async () => {
+  it("shows the chrome: sidebar, library views, search and status bar", async () => {
     render(<App />);
 
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
-    expect(screen.getByRole("navigation", { name: "Library" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Songs" })).toBeInTheDocument();
+    const sidebar = screen.getByRole("navigation", { name: "Library" });
+    expect(sidebar).toBeInTheDocument();
+    // A sidebar entry since phase 35, not a tab above the table.
+    expect(within(sidebar).getByRole("button", { name: "Songs" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search Library" })).toBeInTheDocument();
     expect(screen.getAllByText("No songs").length).toBeGreaterThan(0);
   });
@@ -223,7 +225,10 @@ describe("App", () => {
     expect(await screen.findByText("5 songs, 50 minutes, 214 MB")).toBeInTheDocument();
   });
 
-  it("leaves the size off the toolbar display, which has less room", async () => {
+  it("says what is playing where the totals used to be", async () => {
+    // The transport strip used to show the library summary when nothing was
+    // playing - two places saying the same thing, one of them where the song
+    // title goes. Phase 35 left the totals to the footer alone.
     statsMock.mockResolvedValue({
       tracks: 5,
       durationMs: 3_000_000,
@@ -234,7 +239,8 @@ describe("App", () => {
     render(<App />);
     await screen.findByText("5 songs, 50 minutes, 214 MB");
 
-    expect(screen.getByText("5 songs, 50 minutes")).toBeInTheDocument();
+    expect(screen.queryByText("5 songs, 50 minutes")).not.toBeInTheDocument();
+    expect(screen.getByText("Nothing playing")).toBeInTheDocument();
   });
 
   it("totals what is on screen rather than the whole library", async () => {
@@ -736,7 +742,7 @@ describe("App playback", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Export failed: access denied");
   });
 
-  it("shows the current track in the status display once the backend reports one", async () => {
+  it("shows the current track on the transport strip once the backend reports one", async () => {
     vi.mocked(playerSnapshot).mockResolvedValue({
       status: "playing",
       track: track(1),
@@ -746,10 +752,10 @@ describe("App playback", () => {
       durationMs: 200_000,
       volume: 0.8,
     });
-    // The table renders the same title, so wait on the status display itself.
+    // The table renders the same title, so wait on the now-playing box itself.
     await renderWithLibrary({ waitForRows: false });
 
-    const display = await screen.findByTestId("status-display");
+    const display = await screen.findByTestId("now-playing");
     await waitFor(() => expect(display).toHaveTextContent("Track 1"));
     expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("30000");
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();

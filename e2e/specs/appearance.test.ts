@@ -228,8 +228,14 @@ describe("appearance, in the engine that actually lays it out", () => {
               },
             ];
           }),
-        [".volume-rail", ".status-track-rail", ".volume-thumb"],
+        [".volume-rail", ".scrubber-rail", ".volume-thumb"],
       );
+
+      // Guards the guard, and it is not hypothetical: a selector that matches
+      // nothing contributes no entry, so when the playhead's rail was renamed
+      // in phase 35 this test went on passing while measuring two controls
+      // instead of three. Every named selector has to be found.
+      expect(parts).toHaveLength(3);
 
       const invisible = parts
         .filter((part) => part.behind !== "")
@@ -289,8 +295,10 @@ describe("appearance, in the engine that actually lays it out", () => {
           }),
         [
           ".statusbar-summary",
-          ".status-summary",
-          "[role='tab'][aria-selected='true']",
+          ".now-playing-title",
+          ".now-playing-subtitle",
+          ".scrubber-time",
+          ".sidebar-item[aria-current='page']",
           ".sidebar-item",
           ".empty-state",
         ],
@@ -322,7 +330,15 @@ describe("appearance, in the engine that actually lays it out", () => {
       if (bar === null) {
         return null;
       }
-      const children = Array.from(bar.children).map((child) => {
+      // One level deep: the version and the caption buttons are wrapped in a
+      // `.titlebar-right` cluster, and measuring the wrapper alone would miss
+      // exactly the overflow this test exists to catch.
+      const boxes = Array.from(bar.children).flatMap((child) =>
+        child.className.toString().includes("titlebar-right")
+          ? Array.from(child.children)
+          : [child],
+      );
+      const children = boxes.map((child) => {
         const box = child.getBoundingClientRect();
         return {
           what: child.className.toString() || child.tagName,
@@ -336,26 +352,24 @@ describe("appearance, in the engine that actually lays it out", () => {
 
     expect(layout).not.toBe(null);
     const { children, width } = layout as NonNullable<typeof layout>;
-    expect(children.length).toBeGreaterThan(3);
+    expect(children.length).toBeGreaterThan(2);
 
     // One row: every child shares the row's vertical centre.
     //
     // Centres rather than tops, which is what the first two versions of this
-    // got wrong. The bar is `align-items: center` over children of wildly
+    // got wrong. The bar was `align-items: center` over children of wildly
     // different heights - a 67px status display beside a 26px button - so
-    // their *tops* differ by twenty-odd pixels while they sit in the same row,
-    // and every threshold loose enough to allow that was loose enough to miss
-    // a real wrap. Centred children have one centre however tall they are, and
-    // a wrapped one is a whole row away from it.
+    // their *tops* differed by twenty-odd pixels while they sat in the same
+    // row, and every threshold loose enough to allow that was loose enough to
+    // miss a real wrap. Centred children have one centre however tall they
+    // are, and a wrapped one is a whole row away from it.
     //
-    // The caption cluster is left out of the comparison, not out of the test:
-    // it deliberately hangs off the top edge (see `.window-buttons`, which
-    // pulls itself flush so the corner stays hittable), so its centre is not
-    // the row's by design. It still has to stay inside the window, which the
-    // right-edge check below covers.
-    const inFlow = children.filter((child) => !child.what.includes("window-buttons"));
-    const middle = Math.min(...inFlow.map((child) => child.middle));
-    const wrapped = inFlow
+    // The caption cluster is measured with everything else here. It used to be
+    // excluded, because it pulled itself flush with the top of a bar tall
+    // enough to hold the status display; the bar is 36px now and the buttons
+    // run its full height, so its centre is the row's like every other.
+    const middle = Math.min(...children.map((child) => child.middle));
+    const wrapped = children
       .filter((child) => child.middle > middle + 12)
       .map((child) => `${child.what} sits ${child.middle - middle}px below the row`);
 
@@ -366,6 +380,108 @@ describe("appearance, in the engine that actually lays it out", () => {
       .map((child) => `${child.what} runs ${child.right - width}px past the window`);
 
     expect([...wrapped, ...clipped]).toEqual([]);
+  });
+
+  it("fills the play button with the accent, not just a ring of it", async () => {
+    // The defect this exists for, and it reached CI: `.transport button` sets
+    // the shape for all three transport buttons and `.transport-play` sets the
+    // accent fill for the middle one - but the first is a class plus an
+    // element and the second is a class alone, so the broader rule won
+    // wherever they overlapped however far above it was written. The button
+    // rendered as a dark circle with an amber halo round it and nothing in the
+    // middle: the app's single most prominent control, absent.
+    //
+    // Nothing could have caught this by reading the stylesheet, because both
+    // rules were correct in isolation. The cascade is a property of the
+    // running document, so this asks the running document.
+    const play = await browser.execute(() => {
+      const button = document.querySelector(".transport-play");
+      const pill = document.querySelector(".transport");
+      if (button === null || pill === null) {
+        return null;
+      }
+      return {
+        fill: getComputedStyle(button).backgroundColor,
+        glyph: getComputedStyle(button).color,
+        behind: getComputedStyle(pill).backgroundColor,
+      };
+    });
+
+    expect(play).not.toBe(null);
+    const { fill, glyph, behind } = play as NonNullable<typeof play>;
+
+    // Painted at all, first: a transparent fill is what the defect looked like.
+    expect(fill).not.toBe("rgba(0, 0, 0, 0)");
+    expect(fill).not.toBe("transparent");
+    // And it has to stand out from the capsule it sits in, which is the whole
+    // job of the one solid accent fill in the chrome.
+    expect(contrast(fill, behind)).toBeGreaterThan(3);
+    // The glyph on top of it stays readable, which is what `--on-accent` is
+    // for - white on this amber would be 2.60:1.
+    expect(contrast(glyph, fill)).toBeGreaterThan(4.5);
+  });
+
+  it("stacks the three bands of chrome at the heights the design draws", async () => {
+    // The shell phase 35 built, measured rather than assumed: a 3px accent
+    // strip, a 36px title bar, a 78px transport strip, and a 27px footer at
+    // the other end. Every one of these is stated in the stylesheet, so a
+    // value that drifted would be a silent visual regression - the kind only
+    // the screenshot catches, and only if somebody looks at it.
+    const bands = await browser.execute(() =>
+      [".titlebar", ".transport-strip", ".statusbar"].map((selector) => {
+        const element = document.querySelector(selector);
+        return {
+          selector,
+          height: element === null ? -1 : Math.round(element.getBoundingClientRect().height),
+        };
+      }),
+    );
+
+    expect(bands).toEqual([
+      { selector: ".titlebar", height: 36 },
+      { selector: ".transport-strip", height: 78 },
+      { selector: ".statusbar", height: 27 },
+    ]);
+  });
+
+  it("keeps the whole transport strip on one row, inside the window", async () => {
+    // The same fault the title bar had, in the row that inherited its
+    // passengers: the strip carries six controls including a 340px playhead
+    // and a 200px search field, and a window narrow enough would wrap them.
+    const layout = await browser.execute(() => {
+      const strip = document.querySelector(".transport-strip");
+      if (strip === null) {
+        return null;
+      }
+      const children = Array.from(strip.children).map((child) => {
+        const box = child.getBoundingClientRect();
+        return {
+          what: child.className.toString() || child.tagName,
+          // Centres, for the same reason the title bar above measures them:
+          // this row holds a 58px pill beside a 14px playhead, so their tops
+          // differ by twenty pixels while they sit in the same row.
+          middle: Math.round(box.top + box.height / 2),
+          right: Math.round(box.right),
+        };
+      });
+      return { children, width: window.innerWidth };
+    });
+
+    expect(layout).not.toBe(null);
+    const { children, width } = layout as NonNullable<typeof layout>;
+    expect(children.length).toBeGreaterThan(4);
+
+    const middle = Math.min(...children.map((child) => child.middle));
+    const offenders = [
+      ...children
+        .filter((child) => child.middle > middle + 12)
+        .map((child) => `${child.what} sits ${child.middle - middle}px below the row`),
+      ...children
+        .filter((child) => child.right > width + 1)
+        .map((child) => `${child.what} runs ${child.right - width}px past the window`),
+    ];
+
+    expect(offenders).toEqual([]);
   });
 
   it("draws the accent strip along the top of the window", async () => {
