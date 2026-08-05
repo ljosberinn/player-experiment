@@ -59,6 +59,36 @@ function libraryView(label: string) {
   );
 }
 
+/**
+ * Right-clicks a playlist row, by dispatching the event rather than pressing.
+ *
+ * `click({ button: "right" })` goes through the Actions API, and against this
+ * driver it does not produce a `contextmenu` event at all - the first run of
+ * this spec found the menu simply never opened. That is the same limitation
+ * `library.test.ts` hit with `doubleClick()`, and the remedy there is the one
+ * used here: dispatch the event React is actually listening for.
+ *
+ * `ContextMenu.Trigger` owns the `contextmenu` event and derives the menu's
+ * position from it, so the coordinates are the row's own - a menu opened at
+ * 0,0 would be nudged back on screen and could land over its own trigger.
+ */
+async function openContextMenu(name: string): Promise<void> {
+  await browser.execute((playlist: string) => {
+    const trigger = document.querySelector(`button.sidebar-item[aria-label='${playlist}']`);
+    if (trigger === null) {
+      return;
+    }
+    const box = trigger.getBoundingClientRect();
+    trigger.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        clientX: Math.round(box.left + box.width / 2),
+        clientY: Math.round(box.top + box.height / 2),
+      }),
+    );
+  }, name);
+}
+
 async function settledAt(count: number, why: string): Promise<void> {
   await browser.waitUntil(async () => (await titles()).length === count, {
     timeout: 10_000,
@@ -125,8 +155,9 @@ describe("a smart playlist with a cutoff", () => {
   });
 
   it("reopens the editor on the cutoff it was saved with", async () => {
-    // Through the row's own menu: double-clicking a playlist starts a rename.
-    await playlistItem(NAME).click({ button: "right" });
+    // Through the row's own menu, which is the only route to it - double
+    // clicking a playlist starts a rename instead.
+    await openContextMenu(NAME);
     await browser.$("//*[@role='menuitem'][contains(., 'Edit Filter')]").click();
 
     const limit = await browser.$("input[aria-label='Limit']");
