@@ -431,6 +431,12 @@ input[type="radio"] {
   background: var(--pill);
 }
 
+/* Shape only. The fills belong to the two kinds of button below, and they have
+   to be *declared* there rather than overridden here: `.transport button` is
+   one class plus one element and `.transport-play` is one class, so a
+   `background` written here out-specifies the play button's accent however far
+   below it appears. That is exactly what happened - the button shipped to CI
+   with its halo and no fill, a dark circle ringed in amber. */
 .transport button {
   display: flex;
   align-items: center;
@@ -438,13 +444,13 @@ input[type="radio"] {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: transparent;
   cursor: default;
 }
 
 .transport-step {
   width: 36px;
   height: 36px;
+  background: transparent;
   color: var(--muted);
 }
 
@@ -912,10 +918,16 @@ input[type="radio"] {
   font-variant-numeric: tabular-nums;
 }
 
+/* The heading takes the row and the buttons sit together at its end. Was
+   `space-between`, which spreads three children evenly and left the + stranded
+   in the middle of the row with the gear out at the edge. */
 .sidebar-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+}
+
+.sidebar-title-row .sidebar-title {
+  flex: 1;
 }
 
 .sidebar-add {

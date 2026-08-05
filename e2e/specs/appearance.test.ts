@@ -382,6 +382,45 @@ describe("appearance, in the engine that actually lays it out", () => {
     expect([...wrapped, ...clipped]).toEqual([]);
   });
 
+  it("fills the play button with the accent, not just a ring of it", async () => {
+    // The defect this exists for, and it reached CI: `.transport button` sets
+    // the shape for all three transport buttons and `.transport-play` sets the
+    // accent fill for the middle one - but the first is a class plus an
+    // element and the second is a class alone, so the broader rule won
+    // wherever they overlapped however far above it was written. The button
+    // rendered as a dark circle with an amber halo round it and nothing in the
+    // middle: the app's single most prominent control, absent.
+    //
+    // Nothing could have caught this by reading the stylesheet, because both
+    // rules were correct in isolation. The cascade is a property of the
+    // running document, so this asks the running document.
+    const play = await browser.execute(() => {
+      const button = document.querySelector(".transport-play");
+      const pill = document.querySelector(".transport");
+      if (button === null || pill === null) {
+        return null;
+      }
+      return {
+        fill: getComputedStyle(button).backgroundColor,
+        glyph: getComputedStyle(button).color,
+        behind: getComputedStyle(pill).backgroundColor,
+      };
+    });
+
+    expect(play).not.toBe(null);
+    const { fill, glyph, behind } = play as NonNullable<typeof play>;
+
+    // Painted at all, first: a transparent fill is what the defect looked like.
+    expect(fill).not.toBe("rgba(0, 0, 0, 0)");
+    expect(fill).not.toBe("transparent");
+    // And it has to stand out from the capsule it sits in, which is the whole
+    // job of the one solid accent fill in the chrome.
+    expect(contrast(fill, behind)).toBeGreaterThan(3);
+    // The glyph on top of it stays readable, which is what `--on-accent` is
+    // for - white on this amber would be 2.60:1.
+    expect(contrast(glyph, fill)).toBeGreaterThan(4.5);
+  });
+
   it("stacks the three bands of chrome at the heights the design draws", async () => {
     // The shell phase 35 built, measured rather than assumed: a 3px accent
     // strip, a 36px title bar, a 78px transport strip, and a 27px footer at
