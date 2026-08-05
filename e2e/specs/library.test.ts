@@ -157,7 +157,7 @@ async function describePlayback(): Promise<string> {
       browser.execute(() => document.querySelector(".error-popup")?.textContent ?? ""),
     ),
     safe("statusTitle", () =>
-      browser.execute(() => document.querySelector(".status-title")?.textContent ?? ""),
+      browser.execute(() => document.querySelector(".now-playing-title")?.textContent ?? ""),
     ),
     // A selected row proves the double-click reached React at all: activating
     // a row selects it on the way past.
@@ -293,7 +293,7 @@ describe("a library with something in it", () => {
     await sortBy("title", "ascending");
     await playRow(0);
 
-    await expect(browser.$(".status-title")).toHaveText(BY_TITLE[0]?.title ?? "");
+    await expect(browser.$(".now-playing-title")).toHaveText(BY_TITLE[0]?.title ?? "");
     await expect(browser.$("tr.song-row.playing .row-status.playing")).toBeExisting();
     // The marker is on the row that was activated, not merely on some row.
     expect(await browser.$("tr.song-row.playing").getAttribute("aria-rowindex")).toBe("1");

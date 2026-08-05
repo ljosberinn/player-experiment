@@ -606,11 +606,20 @@ input[type="radio"] {
   cursor: default;
 }
 
+/* The hairline is the second deliberate deviation from the design, which draws
+   these as a bare 4px slab of `--track`. That slab is 1.33:1 against the strip
+   behind it - the extent of a slider, invisible - and WCAG 1.4.11 asks 3:1 of
+   the parts of a control needed to understand it. Lightening `--track` far
+   enough to carry it alone would take it from 0.28 to about 0.49, which is a
+   pale grey bar and a much larger departure than an outline is.
+
+   `box-sizing: border-box` throughout, so the rail is still 4px tall. */
 .volume-rail,
 .scrubber-rail {
   position: relative;
   width: 100%;
   height: 4px;
+  border: 1px solid var(--track-border);
   border-radius: 2px;
   background: var(--track);
 }
@@ -636,18 +645,17 @@ input[type="radio"] {
   background: var(--text);
 }
 
-/* The design draws the volume rail with no knob on it, and the rail is
-   draggable along its whole length, so there is nothing to show at rest. It
-   appears on keyboard focus - not on hover, which would be the "this is a
-   link" highlight phase 13 removed everywhere else. */
+/* The design draws the volume rail with no knob on it, and this is a knob.
+   That deviation is deliberate: a slider whose handle is invisible until it is
+   focused fails WCAG 1.4.11 - the appearance suite measured the transparent
+   version at 1.44:1 against the strip - and "the rail is draggable along its
+   whole length" is not something the picture says. It is the same knob the
+   playhead carries, which is also what makes the two read as one kind of
+   control. */
 .volume-thumb {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: transparent;
-}
-
-.volume-thumb:focus-visible {
   background: var(--text);
 }
 

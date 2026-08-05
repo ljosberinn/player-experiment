@@ -228,8 +228,14 @@ describe("appearance, in the engine that actually lays it out", () => {
               },
             ];
           }),
-        [".volume-rail", ".status-track-rail", ".volume-thumb"],
+        [".volume-rail", ".scrubber-rail", ".volume-thumb"],
       );
+
+      // Guards the guard, and it is not hypothetical: a selector that matches
+      // nothing contributes no entry, so when the playhead's rail was renamed
+      // in phase 35 this test went on passing while measuring two controls
+      // instead of three. Every named selector has to be found.
+      expect(parts).toHaveLength(3);
 
       const invisible = parts
         .filter((part) => part.behind !== "")

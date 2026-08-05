@@ -41,10 +41,11 @@ export function VolumeControl({
         <Slider.Control className="volume-control">
           <Slider.Track className="volume-rail">
             <Slider.Indicator className="volume-fill" />
-            {/* The design draws the rail with no knob on it. Keeping one that
-                appears on hover or focus leaves the resting picture as drawn
-                while still giving the control something to drag and something
-                to put a focus ring around. */}
+            {/* The design draws the rail with no knob. This one has the same
+                knob the playhead does, deliberately: a handle that is
+                invisible until focused measured 1.44:1 against the strip, and
+                WCAG 1.4.11 asks 3:1 of the parts of a control needed to
+                understand it. See `.volume-thumb` in App.css. */}
             <Slider.Thumb className="volume-thumb" aria-label="Volume" />
           </Slider.Track>
         </Slider.Control>
