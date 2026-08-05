@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
+import { LibraryNav } from "./components/ui/LibraryNav";
 import { MenuBar } from "./components/ui/MenuBar";
 import { Sidebar } from "./components/ui/Sidebar";
-import { TabBar } from "./components/ui/TabBar";
 import { TitleBar } from "./components/ui/TitleBar";
 import { CrashNotice } from "./features/crash/CrashNotice";
 import { useEditorStore } from "./features/editor/store";
@@ -19,10 +19,12 @@ import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
 import { useScanStore } from "./features/library/scan";
-import { useLibraryStore } from "./features/library/store";
+import { useLibraryStore, type ViewTab } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
+import { PlayerScrubber } from "./features/player/PlayerScrubber";
 import { PlayerTransport } from "./features/player/PlayerTransport";
+import { PlayerVolume } from "./features/player/PlayerVolume";
 import { usePlayerStore } from "./features/player/store";
 import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
@@ -34,17 +36,16 @@ import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
+import { viewSummary } from "./features/shell/viewSummary";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
 import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, exportLibrary, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
-import { formatLibrarySummary } from "./lib/format";
 
-const SIDEBAR_SECTIONS = [
-  { title: "Library", items: [{ id: "music", label: "Music", icon: "♪" }] },
-];
+/** What the heading over a browse view says. Songs has none - see below. */
+const VIEW_TITLES = { songs: "Songs", albums: "Albums", artists: "Artists", genres: "Genres" };
 
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
@@ -65,6 +66,9 @@ export function App() {
   const tab = useLibraryStore((s) => s.tab);
   const showTab = useLibraryStore((s) => s.showTab);
   const browse = useLibraryStore((s) => s.browse);
+  // Only for the footer's count of how many albums, artists or genres a browse
+  // view is listing; the view itself reads them for rendering.
+  const groups = useLibraryStore((s) => s.groups);
   const columnConfig = useLibraryStore((s) => s.columns);
   const loadColumns = useLibraryStore((s) => s.loadColumns);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
@@ -242,6 +246,21 @@ export function App() {
     }
   };
 
+  /**
+   * Opens one of the four library views from the sidebar.
+   *
+   * Two steps rather than one because the sidebar merged two controls that used
+   * to be separate: picking Songs while a playlist is open has to leave the
+   * playlist as well as choose the view, which is what the tab bar above the
+   * table never had to do.
+   */
+  const showLibraryView = async (view: ViewTab) => {
+    if (playlistId !== null) {
+      await showPlaylist(null);
+    }
+    await showTab(view);
+  };
+
   /** Double-click or Enter on a row: queue the whole view, start at that row. */
   const activateRow = async (rowIndex: number) => {
     const ids = await queueIds();
@@ -314,36 +333,57 @@ export function App() {
 
   return (
     <div className="app">
+      {/* The title bar carries the product identity and nothing else now: the
+          mark, the menus, the version and the window buttons. Everything that
+          used to ride on it is in the strip below, which is what the design
+          draws and what gives the menus the left edge to themselves. */}
       <TitleBar version={appInfo?.version ?? null}>
         <MenuBar menus={appMenus} />
-        <PlayerTransport />
-        {/* Both of these subscribe to their own store values rather than
-            taking them as props. They are the two things that change on a
-            schedule of their own - the playhead four times a second, the
-            search field on every keystroke - and read from here they
-            re-rendered the whole app, song table included. */}
-        <NowPlayingStatus ref={statusRef} />
-        <SearchBox />
       </TitleBar>
 
+      {/* Each of these subscribes to its own store values rather than taking
+          them as props. They are the things that change on a schedule of their
+          own - the playhead four times a second, the volume rail at the
+          pointer's sampling rate, the search field on every keystroke - and
+          read from here they re-rendered the whole app, song table included. */}
+      <div className="transport-strip">
+        <PlayerTransport />
+        <PlayerScrubber />
+        <div className="strip-gap" />
+        <NowPlayingStatus ref={statusRef} />
+        <div className="strip-gap" />
+        <PlayerVolume />
+        <SearchBox />
+      </div>
+
       <div className="body">
-        <Sidebar
-          sections={SIDEBAR_SECTIONS}
-          selectedId={playlistId === null ? "music" : ""}
-          onSelect={() => void showPlaylist(null)}
-        >
+        <Sidebar>
+          <LibraryNav
+            // Nothing in the library section is current while a playlist is
+            // open: the playlist is what the content pane is showing, and two
+            // highlighted rows would be two answers to one question.
+            active={playlistId === null ? tab : null}
+            onSelect={(view) => void showLibraryView(view)}
+          />
           <PlaylistSidebar onExport={(playlist) => void runExport(exportChoice([], playlist))} />
         </Sidebar>
 
         <main className="content">
-          {/* The toolbar is gone as of phase 34. Every button on it was an
-              action without a home - Add Folder, Rescan, Undo, Export, Remove
-              Missing - and a menu bar is the home. What is left here is the
-              tab bar and the scan readout, which reports rather than acts. */}
-          <div className="content-header">
-            <TabBar active={tab} onChange={(next) => void showTab(next)} />
-            <ScanBar />
-          </div>
+          {/* Returns null unless a scan is running, so this costs no space in
+              the ordinary case - but it stays mounted either way, because it
+              is what subscribes to the progress events. */}
+          <ScanBar />
+
+          {/* Songs has no heading, deliberately: it is the view with 150k rows
+              in it, and it is the one that can least afford to spend a third of
+              the fold on the word "Songs". What the heading carried is in the
+              footer instead, for every view. */}
+          {tab !== "songs" && browse === null ? (
+            <div className="view-heading">
+              <h1>{VIEW_TITLES[tab]}</h1>
+              <span className="view-heading-rule" aria-hidden="true" />
+            </div>
+          ) : null}
 
           {notice || tagNotice || toolbarNotice ? (
             <p className="content-notice" role="status">
@@ -444,8 +484,19 @@ export function App() {
           </button>
         </span>
 
+        {/* What the Songs heading used to carry, for every view. Scoped to
+            what is on screen rather than to the whole library: inside a
+            playlist, a search or an album, a line under the table that counted
+            something else would be answering a question nobody asked. */}
         <span className="statusbar-summary">
-          {formatLibrarySummary(stats.tracks, stats.durationMs, stats.bytes)}
+          {viewSummary({
+            tab,
+            drilledIn: browse !== null,
+            groupCount: groups.length,
+            trackCount: stats.tracks,
+            durationMs: stats.durationMs,
+            bytes: stats.bytes,
+          })}
         </span>
 
         {/* Only `ready` says anything. Checking and downloading happen quietly,

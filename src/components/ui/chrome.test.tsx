@@ -3,11 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
+import { LibraryNav } from "./LibraryNav";
+import { NowPlaying } from "./NowPlaying";
+import { Scrubber } from "./Scrubber";
 import { Sidebar } from "./Sidebar";
-import { StatusDisplay } from "./StatusDisplay";
-import { TabBar } from "./TabBar";
 import { TitleBar } from "./TitleBar";
 import { Transport } from "./Transport";
+import { VolumeControl } from "./VolumeControl";
 
 const minimize = vi.fn();
 const toggleMaximize = vi.fn();
@@ -138,63 +140,50 @@ describe("TitleBar", () => {
 
 describe("Transport", () => {
   it("disables controls that have no handler yet", () => {
-    render(<Transport volume={0.5} onVolumeChange={() => {}} />);
+    render(<Transport />);
 
     expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 
-  it("reports volume as a 0..1 fraction", async () => {
-    const onVolumeChange = vi.fn();
-    render(<Transport volume={0.5} onVolumeChange={onVolumeChange} />);
-
-    const slider = screen.getByRole("slider", { name: "Volume" });
-    expect(slider).toHaveValue("50");
-
-    // A range input is dragged, not typed into; fireEvent.change is how
-    // Testing Library models that.
-    fireEvent.change(slider, { target: { value: "60" } });
-
-    expect(onVolumeChange).toHaveBeenCalledWith(0.6);
-  });
-
   it("shows a pause affordance while playing", () => {
-    render(<Transport playing volume={0.5} onPlayPause={() => {}} onVolumeChange={() => {}} />);
+    render(<Transport playing onPlayPause={() => {}} />);
 
     expect(screen.getByRole("button", { name: "Pause" })).toBeEnabled();
   });
 });
 
-describe("StatusDisplay", () => {
-  it("shows the library summary when nothing is playing", () => {
-    render(<StatusDisplay track={null} summary="237 songs, 19.2 hours" />);
+describe("VolumeControl", () => {
+  it("reports volume as a 0..1 fraction", () => {
+    const onVolumeChange = vi.fn();
+    render(<VolumeControl volume={0.5} onVolumeChange={onVolumeChange} />);
 
-    expect(screen.getByText("237 songs, 19.2 hours")).toBeInTheDocument();
+    const slider = screen.getByRole("slider", { name: "Volume" });
+    expect(slider).toHaveValue("50");
+
+    // A slider is dragged, not typed into; fireEvent.change is how Testing
+    // Library models that.
+    fireEvent.change(slider, { target: { value: "60" } });
+
+    expect(onVolumeChange).toHaveBeenCalledWith(0.6);
   });
+});
 
-  it("shows title, artist and album for the current track", () => {
-    render(<StatusDisplay track={track()} summary="" />);
-
-    expect(screen.getByText("Maki")).toBeInTheDocument();
-    expect(screen.getByText("Guitar — Tokyo")).toBeInTheDocument();
-  });
-
-  it("falls back to the file name when a track has no title", () => {
-    render(<StatusDisplay track={track({ title: null })} summary="" />);
-
-    expect(screen.getByText("01 Maki.mp3")).toBeInTheDocument();
-  });
-
-  it("counts remaining time down rather than up", () => {
-    render(<StatusDisplay track={track()} positionMs={60_000} summary="" />);
+describe("Scrubber", () => {
+  it("reads elapsed on the left and the track's length on the right", () => {
+    // The right-hand figure is the total, not the time remaining. The design
+    // shows a duration there and so does the Time column, and two readings of
+    // the same song that disagree is worse to have on screen than a countdown
+    // is good to have.
+    render(<Scrubber positionMs={60_000} durationMs={208_000} />);
 
     expect(screen.getByText("1:00")).toBeInTheDocument();
-    expect(screen.getByText("-2:28")).toBeInTheDocument();
+    expect(screen.getByText("3:28")).toBeInTheDocument();
   });
 
-  it("exposes a seekable scrubber that reports milliseconds", async () => {
+  it("reports seeks in milliseconds", () => {
     const onSeek = vi.fn();
-    render(<StatusDisplay track={track()} positionMs={60_000} summary="" onSeek={onSeek} />);
+    render(<Scrubber positionMs={60_000} durationMs={208_000} onSeek={onSeek} />);
 
     const scrubber = screen.getByRole("slider", { name: "Seek" });
     expect(scrubber).toHaveValue("60000");
@@ -203,20 +192,45 @@ describe("StatusDisplay", () => {
     expect(onSeek).toHaveBeenCalledWith(90_000);
   });
 
-  it("disables the scrubber when there is nothing to seek through", () => {
-    render(<StatusDisplay track={track({ duration_ms: 0 })} summary="" onSeek={() => {}} />);
+  it("disables itself when there is nothing to seek through", () => {
+    render(<Scrubber onSeek={() => {}} />);
 
     expect(screen.getByRole("slider", { name: "Seek" })).toBeDisabled();
   });
 
   it("never shows a position past the end of the track", () => {
-    render(<StatusDisplay track={track()} positionMs={999_000} summary="" onSeek={() => {}} />);
+    render(<Scrubber positionMs={999_000} durationMs={208_000} onSeek={() => {}} />);
 
-    expect(screen.getByText("-0:00")).toBeInTheDocument();
+    // Both readings are the length: clamped, not 16:39 against a 3:28 track.
+    expect(screen.getAllByText("3:28")).toHaveLength(2);
+  });
+});
+
+describe("NowPlaying", () => {
+  it("says so when nothing is playing", () => {
+    // Rather than disappearing. It is the widest thing on the strip, and a box
+    // that arrived with the first song would shove the volume and the search
+    // field sideways at the moment of pressing play.
+    render(<NowPlaying track={null} />);
+
+    expect(screen.getByText("Nothing playing")).toBeInTheDocument();
+  });
+
+  it("shows title, artist and album for the current track", () => {
+    render(<NowPlaying track={track()} />);
+
+    expect(screen.getByText("Maki")).toBeInTheDocument();
+    expect(screen.getByText("Guitar — Tokyo")).toBeInTheDocument();
+  });
+
+  it("falls back to the file name when a track has no title", () => {
+    render(<NowPlaying track={track({ title: null })} />);
+
+    expect(screen.getByText("01 Maki.mp3")).toBeInTheDocument();
   });
 
   it("requests cover art through the protocol helper", () => {
-    render(<StatusDisplay track={track({ cover_hash: "abc" })} summary="" />);
+    render(<NowPlaying track={track({ cover_hash: "abc" })} />);
 
     expect(coverUrl).toHaveBeenCalledWith("abc");
     expect(screen.getByRole("presentation", { hidden: true })).toHaveAttribute(
@@ -226,12 +240,22 @@ describe("StatusDisplay", () => {
   });
 });
 
-describe("TabBar", () => {
-  it("marks the active tab", () => {
-    render(<TabBar active="albums" onChange={() => {}} />);
+describe("LibraryNav", () => {
+  it("marks the open view", () => {
+    render(<LibraryNav active="albums" onSelect={() => {}} />);
 
-    expect(screen.getByRole("tab", { name: "Albums" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Songs" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("button", { name: "Albums" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Songs" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("marks nothing while a playlist is open", () => {
+    // Two highlighted rows in one sidebar would be two answers to the question
+    // of what the content pane is showing.
+    render(<LibraryNav active={null} onSelect={() => {}} />);
+
+    for (const name of ["Songs", "Albums", "Artists", "Genres"]) {
+      expect(screen.getByRole("button", { name })).not.toHaveAttribute("aria-current");
+    }
   });
 
   it("offers all four views, none of them disabled", async () => {
@@ -239,77 +263,37 @@ describe("TabBar", () => {
     // until phase 19; three quarters of the primary navigation being dead is
     // the kind of thing a test should notice coming back.
     const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<TabBar active="songs" onChange={onChange} />);
+    const onSelect = vi.fn();
+    render(<LibraryNav active="songs" onSelect={onSelect} />);
 
     for (const name of ["Songs", "Albums", "Artists", "Genres"]) {
-      expect(screen.getByRole("tab", { name })).toBeEnabled();
+      expect(screen.getByRole("button", { name })).toBeEnabled();
     }
 
-    await user.click(screen.getByRole("tab", { name: "Genres" }));
-    expect(onChange).toHaveBeenCalledWith("genres");
+    await user.click(screen.getByRole("button", { name: "Genres" }));
+    expect(onSelect).toHaveBeenCalledWith("genres");
   });
 
-  it("moves between tabs with the arrow keys, and selects on Enter", async () => {
-    // The markup said `role="tablist"` from phase 3 and behaved like four
-    // buttons: Tab stopped on each, and the arrows did nothing. Phase 24 is
-    // where the role stopped being a claim.
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<TabBar active="songs" onChange={onChange} />);
+  it("shows Statistics as a placeholder that cannot be opened", () => {
+    // The design draws it, and it does nothing yet. Shown and unopenable rather
+    // than hidden: a sidebar that grows an entry later moves every playlist
+    // below it down the day it arrives.
+    render(<LibraryNav active="songs" onSelect={vi.fn()} />);
 
-    screen.getByRole("tab", { name: "Songs" }).focus();
-    await user.keyboard("{ArrowRight}");
-
-    // Focus moves; selection does not follow it. That is the right default
-    // here rather than a detail: selecting a tab re-runs the library query, so
-    // arrowing across all four would otherwise fire four of them.
-    expect(screen.getByRole("tab", { name: "Albums" })).toHaveFocus();
-    expect(onChange).not.toHaveBeenCalled();
-
-    await user.keyboard("{Enter}");
-    expect(onChange).toHaveBeenCalledWith("albums");
-  });
-
-  it("holds one tab stop for the group, not one per tab", async () => {
-    const user = userEvent.setup();
-    render(<TabBar active="albums" onChange={vi.fn()} />);
-
-    await user.tab();
-
-    // Tabbing into a tablist lands on the selected tab and tabbing again
-    // leaves the group - which is what stops a four-tab bar costing four
-    // keystrokes to walk past.
-    expect(screen.getByRole("tab", { name: "Albums" })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole("tab", { name: "Artists" })).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "Statistics" })).toBeDisabled();
   });
 });
 
 describe("Sidebar", () => {
-  it("marks the selected source and reports changes", async () => {
-    const onSelect = vi.fn();
-    const user = userEvent.setup();
+  it("is a labelled landmark holding whatever the shell puts in it", () => {
+    // Chrome only since phase 35 - everything inside owns its own behaviour.
     render(
-      <Sidebar
-        sections={[
-          {
-            title: "Library",
-            items: [
-              { id: "music", label: "Music" },
-              { id: "other", label: "Other" },
-            ],
-          },
-        ]}
-        selectedId="music"
-        onSelect={onSelect}
-      />,
+      <Sidebar>
+        <p>Sources</p>
+      </Sidebar>,
     );
 
-    expect(screen.getByRole("button", { name: "Music" })).toHaveAttribute("aria-current", "page");
-
-    await user.click(screen.getByRole("button", { name: "Other" }));
-
-    expect(onSelect).toHaveBeenCalledWith("other");
+    expect(screen.getByRole("navigation", { name: "Library" })).toBeInTheDocument();
+    expect(screen.getByText("Sources")).toBeInTheDocument();
   });
 });
