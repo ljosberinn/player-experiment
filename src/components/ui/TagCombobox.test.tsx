@@ -37,7 +37,14 @@ describe("TagCombobox", () => {
     expect(
       await screen.findByRole("option", { name: "Godspeed You! Black Emperor" }),
     ).toBeVisible();
-    expect(suggest).toHaveBeenCalledWith("artist", "god");
+    // Waited for rather than asserted outright, which is what made this flake
+    // on CI and never here. The field queries on mount too, with an empty
+    // string, and the mock answers every query with the same list - so the
+    // option above appears from *that* call, and on a runner slow enough to
+    // spend the 150ms debounce before the first keystroke lands it is the only
+    // call that has happened by the time the list renders. The debounced query
+    // for "god" is a second event, and this is the way to wait for one.
+    await waitFor(() => expect(suggest).toHaveBeenCalledWith("artist", "god"));
   });
 
   it("puts a suggestion in the field when one is chosen", async () => {
