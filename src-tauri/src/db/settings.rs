@@ -13,6 +13,10 @@ pub const WINDOW_GEOMETRY: &str = "window.geometry";
 pub const COLUMNS: &str = "library.columns";
 /// Webview zoom factor, applied before the window is shown.
 pub const ZOOM: &str = "window.zoom";
+/// Which sidebar sections the user has collapsed. Opaque JSON, like the column
+/// layout: which sections exist is the frontend's business, and mirroring that
+/// here would be two definitions to keep in step for nothing.
+pub const SIDEBAR: &str = "sidebar.sections";
 /// Unix seconds of the most recent crash the user has dismissed. Deliberately
 /// not exportable: it describes this machine's history, not the library.
 pub const CRASH_SEEN: &str = "crash.seen";
@@ -136,6 +140,11 @@ mod tests {
         // default, rather than by someone remembering to deny it.
         assert!(!is_exportable("something.new"));
         assert!(!is_exportable("lastfm.session_key"));
+        // And the two that describe this machine's window rather than the
+        // library. An export carried to another machine has no business
+        // folding its sidebar or resizing its columns.
+        assert!(!is_exportable(SIDEBAR));
+        assert!(!is_exportable(COLUMNS));
     }
 
     #[test]

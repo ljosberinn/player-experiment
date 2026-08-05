@@ -61,6 +61,10 @@ export const config: WebdriverIO.Config = {
     // appears only when songs are missing, and "no third entry" is the case
     // worth asserting - an empty library cannot be missing anything.
     "./specs/menus.test.ts",
+    // Also before the library is seeded: folding a sidebar section needs no
+    // songs, and it reloads the webview, which is cheaper to do over an empty
+    // library than over a hundred and fifty thousand rows.
+    "./specs/sidebar.test.ts",
     "./specs/library.test.ts",
     // Last but one, and it has to be after the rest: it puts a hundred and
     // fifty thousand rows in the shared library and nothing before it would

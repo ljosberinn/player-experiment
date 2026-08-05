@@ -7,16 +7,27 @@ import {
   deletePlaylist,
   type FilterGroup,
   listPlaylists,
+  loadSidebarSections,
   moveInPlaylist,
+  onLibraryChanged,
   type Playlist,
   playlistFilter,
   removeFromPlaylist,
   renamePlaylist,
+  saveSidebarSections,
   setPlaylistFilter,
 } from "../../ipc";
+import { debounce } from "../../lib/debounce";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { emptyFilter } from "../smart/filterTree";
+import {
+  type Collapsed,
+  parseSections,
+  type SectionId,
+  serialiseSections,
+  toggleSection,
+} from "./sections";
 
 /**
  * How long a drop confirmation stays on screen.
@@ -29,13 +40,38 @@ export const NOTICE_MS = 4000;
 /** The name a brand new playlist gets, the way every music player does it. */
 export const NEW_PLAYLIST_NAME = "New Playlist";
 
+/**
+ * How long the sidebar waits after the library changes before recounting.
+ *
+ * A scan emits `library://changed` far more often than anyone can read a
+ * number, and every emission would otherwise mean one `list_playlists` - which
+ * is a `count_tracks` per playlist, and for a smart one that is its whole
+ * compiled filter re-run. Quarter of a second is under the threshold at which
+ * a number feels stale and well above the rate a scan fires at.
+ */
+export const RECOUNT_DEBOUNCE_MS = 250;
+
 interface PlaylistsState {
   playlists: Playlist[];
   /** What the last drop or removal did, for a moment. */
   notice: string | null;
   error: string | null;
+  /** Which sidebar sections are folded away; see `sections.ts`. */
+  collapsed: Collapsed;
 
   load: () => Promise<void>;
+  /** Reads the stored sidebar arrangement. Called once, on mount. */
+  loadSections: () => Promise<void>;
+  /** Folds a section away or opens it, and remembers which. */
+  toggleSection: (id: SectionId) => Promise<void>;
+  /**
+   * Recounts on `library://changed`, debounced; returns its own teardown.
+   *
+   * The counts beside each playlist are the reason: a scan that adds a
+   * thousand songs changes what half of them say, and nothing else would tell
+   * the sidebar so.
+   */
+  watch: () => Promise<() => void>;
   /**
    * The smart playlist being edited, if the editor is open.
    *
@@ -92,6 +128,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   error: null,
   editing: null,
   renaming: null,
+  collapsed: {},
 
   load: async () => {
     try {
@@ -99,6 +136,41 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     } catch (cause) {
       set({ error: String(cause) });
     }
+  },
+
+  loadSections: async () => {
+    try {
+      set({ collapsed: parseSections(await loadSidebarSections()) });
+    } catch {
+      // A sidebar that cannot read its own arrangement opens every section,
+      // which is the state it would have on a first run. Not worth the one
+      // error popover the app has - nothing the user did has failed.
+    }
+  },
+
+  toggleSection: async (id) => {
+    const collapsed = toggleSection(get().collapsed, id);
+    // On screen first, stored second: folding a section is a pointer gesture
+    // and must not wait for SQLite to answer before it looks like it happened.
+    set({ collapsed });
+    try {
+      await saveSidebarSections(serialiseSections(collapsed));
+    } catch {
+      // The sidebar is folded either way; only the memory of it is lost.
+    }
+  },
+
+  watch: async () => {
+    // Debounced *around* the event rather than inside `load`, so a burst
+    // collapses into one reload rather than one per emission - which is the
+    // whole point. `list_playlists` counts every playlist, and for a smart one
+    // that means re-running its compiled filter.
+    const recount = debounce(() => void get().load(), RECOUNT_DEBOUNCE_MS);
+    const off = await onLibraryChanged(recount);
+    return () => {
+      recount.cancel();
+      off();
+    };
   },
 
   create: async (name) => {
