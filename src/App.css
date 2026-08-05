@@ -1552,6 +1552,31 @@ th.status {
   color: var(--muted);
 }
 
+/* The sort and the cutoff, under the rules rather than inside them: they are
+   not conditions a song meets, they decide the order and how many survive it. */
+.filter-order {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-left: 10px;
+}
+
+/* Wide enough for a five-digit cutoff and no wider - a number box that
+   stretches to fill the row reads as a text field. */
+.filter-order input[type="number"] {
+  width: 72px;
+}
+
+/* A disabled half of the row still has to be readable. WCAG 1.4.3 exempts
+   disabled controls, but the label beside them is not disabled and the row has
+   to be legible enough to know what ticking the box would do - so `--muted`,
+   which the rest of the app already uses for de-emphasised text, rather than
+   an opacity that would take it somewhere unmeasured. */
+.filter-order input:disabled,
+.filter-order select:disabled {
+  color: var(--muted);
+}
+
 /* One row per setting: a label, and the control that changes it. */
 .modal.settings {
   width: min(340px, 90vw);

@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::{AppError, AppResult};
-use crate::model::{FilterGroup, Playlist, PlaylistKind};
+use crate::model::{FilterGroup, Playlist, PlaylistKind, SmartOrder};
 
 /// Spacing between consecutive positions.
 ///
@@ -107,30 +107,85 @@ pub fn create(conn: &Connection, name: &str, at: i64) -> AppResult<Playlist> {
     get(conn, id)?.ok_or_else(|| AppError::Internal("playlist vanished after insert".to_owned()))
 }
 
-/// Creates a smart playlist: a name plus the filter that decides its contents.
+/// The largest cutoff a smart playlist may carry.
+///
+/// A limit past this is not a limit, it is the library, and the point of the
+/// bound is that the number reaches SQL as a value from a fixed range rather
+/// than as whatever a corrupt `sort_json` happens to hold.
+pub const MAX_SMART_LIMIT: u32 = 100_000;
+
+/// Checks an order is one the query layer can actually run.
+///
+/// Validated here rather than at compile time because both halves are only
+/// wrong in ways the type system cannot see: a sort field that is not a track
+/// column, and a limit of zero - which would be a playlist that is empty by
+/// construction, always a mistake rather than a request.
+fn validate_order(order: &SmartOrder) -> AppResult<()> {
+    if let Some(sort) = order.sort {
+        if !sort.field.is_track_column() {
+            return Err(AppError::Internal(format!(
+                "A smart playlist cannot be sorted by {:?}.",
+                sort.field
+            )));
+        }
+    }
+    match order.limit {
+        Some(0) => Err(AppError::Internal(
+            "A smart playlist limited to no songs would always be empty.".to_owned(),
+        )),
+        Some(limit) if limit > MAX_SMART_LIMIT => Err(AppError::Internal(format!(
+            "A smart playlist may hold at most {MAX_SMART_LIMIT} songs."
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Creates a smart playlist: a name, the filter that decides its contents, and
+/// the order it is held and shown in.
 ///
 /// The filter is validated by compiling it before it is stored, so a filter
 /// that cannot run never reaches the database and the error arrives while the
-/// user is still looking at the editor.
+/// user is still looking at the editor. The order is checked the same way.
 pub fn create_smart(
     conn: &Connection,
     name: &str,
     filter: &FilterGroup,
+    order: &SmartOrder,
     at: i64,
 ) -> AppResult<Playlist> {
     let name = normalize_name(name)?;
     crate::smart::compile(filter, at)?;
+    validate_order(order)?;
     conn.execute(
-        "INSERT INTO playlists (name, kind, filter_json, created_at) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![name, PlaylistKind::Smart.as_sql(), to_json(filter)?, at],
+        "INSERT INTO playlists (name, kind, filter_json, sort_json, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            name,
+            PlaylistKind::Smart.as_sql(),
+            to_json(filter)?,
+            order_to_json(order)?,
+            at
+        ],
     )?;
     let id = conn.last_insert_rowid();
     get(conn, id)?.ok_or_else(|| AppError::Internal("playlist vanished after insert".to_owned()))
 }
 
-/// Replaces a smart playlist's filter. Its membership follows immediately,
-/// because membership is the filter - there is nothing to recompute.
-pub fn set_filter(conn: &Connection, id: i64, filter: &FilterGroup, now: i64) -> AppResult<()> {
+/// Replaces a smart playlist's filter and order. Its membership follows
+/// immediately, because membership is the filter - there is nothing to
+/// recompute.
+///
+/// The two are written together rather than through separate setters: with a
+/// limit in play they jointly decide what the playlist holds, and a moment
+/// where the new filter is live against the old cutoff is a moment where the
+/// sidebar count is a number nobody asked for.
+pub fn set_smart(
+    conn: &Connection,
+    id: i64,
+    filter: &FilterGroup,
+    order: &SmartOrder,
+    now: i64,
+) -> AppResult<()> {
     match get(conn, id)? {
         None => {
             return Err(AppError::Internal(
@@ -145,11 +200,44 @@ pub fn set_filter(conn: &Connection, id: i64, filter: &FilterGroup, now: i64) ->
         Some(_) => {}
     }
     crate::smart::compile(filter, now)?;
+    validate_order(order)?;
     conn.execute(
-        "UPDATE playlists SET filter_json = ?2 WHERE id = ?1",
-        rusqlite::params![id, to_json(filter)?],
+        "UPDATE playlists SET filter_json = ?2, sort_json = ?3 WHERE id = ?1",
+        rusqlite::params![id, to_json(filter)?, order_to_json(order)?],
     )?;
     Ok(())
+}
+
+/// The stored order, for the editor, the query layer and the opening sort.
+///
+/// Absent or unreadable reads as the default - no order, no cutoff - for the
+/// same reason [`filter`] does: a playlist whose `sort_json` got mangled should
+/// be an editable playlist showing everything its filter matches, not one that
+/// fails to open. Falling back to *no* limit rather than to some guess is the
+/// safe direction: it can show too many songs, never too few.
+pub fn order(conn: &Connection, id: i64) -> AppResult<SmartOrder> {
+    let stored: Option<Option<String>> = conn
+        .query_row(
+            "SELECT sort_json FROM playlists WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let order: SmartOrder = stored
+        .flatten()
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default();
+    // A limit that survived storage but not validation - a hand-edited row, or
+    // one written by a future build - is dropped rather than trusted.
+    if validate_order(&order).is_err() {
+        return Ok(SmartOrder::default());
+    }
+    Ok(order)
+}
+
+fn order_to_json(order: &SmartOrder) -> AppResult<String> {
+    serde_json::to_string(order)
+        .map_err(|e| AppError::Internal(format!("could not store that order: {e}")))
 }
 
 /// The stored filter, for the editor and for the query layer.
@@ -194,6 +282,73 @@ pub fn set_columns(conn: &Connection, id: i64, columns_json: &str) -> AppResult<
         "UPDATE playlists SET columns_json = ?2 WHERE id = ?1",
         rusqlite::params![id, columns_json],
     )?;
+    Ok(())
+}
+
+/// How many songs each built-in holds.
+const BUILT_IN_LIMIT: u32 = 100;
+
+/// The smart playlists a library starts with.
+///
+/// Ordinary smart playlists, seeded once and then owned by the user: they can
+/// be renamed, edited and deleted like any other, and nothing anywhere
+/// special-cases them afterwards. That is only expressible because a smart
+/// playlist can now carry a sort and a cutoff - "Most Played" is not a filter,
+/// it is an ordering and a hundred.
+///
+/// Runs once per library, guarded by a settings flag rather than by looking for
+/// the playlists themselves. Checking for them would mean a user who deletes
+/// Most Played gets it back at the next launch, which is not what deleting
+/// something means.
+pub fn seed_built_ins(conn: &Connection, at: i64) -> AppResult<()> {
+    use crate::db::settings;
+    use crate::model::{
+        Combinator, FilterField, FilterNode, FilterOp, FilterRule, FilterValue, SmartSort,
+        SortDirection, SortField,
+    };
+
+    if settings::get(conn, settings::PLAYLISTS_SEEDED)?.is_some() {
+        return Ok(());
+    }
+    // Written first, so a failure part-way through leaves a library with one
+    // built-in rather than one that tries again and ends up with three.
+    settings::set(conn, settings::PLAYLISTS_SEEDED, "1")?;
+
+    let top = |field| SmartOrder {
+        sort: Some(SmartSort {
+            field,
+            direction: SortDirection::Desc,
+        }),
+        limit: Some(BUILT_IN_LIMIT),
+    };
+
+    // No rules at all: every song is a candidate, and the cutoff does the work.
+    create_smart(
+        conn,
+        "Recently Added",
+        &FilterGroup::default(),
+        &top(SortField::AddedAt),
+        at,
+    )?;
+
+    // `plays > 0` is not redundant next to the cutoff: without it a library
+    // with nothing played yet would show a hundred arbitrary songs under the
+    // heading "Most Played", which is worse than showing none.
+    create_smart(
+        conn,
+        "Most Played",
+        &FilterGroup {
+            combinator: Combinator::All,
+            children: vec![FilterNode::Rule(FilterRule {
+                field: FilterField::PlayCount,
+                op: FilterOp::GreaterThan,
+                value: FilterValue::Number { number: 0 },
+            })],
+        },
+        &top(SortField::PlayCount),
+        at,
+    )?;
+
     Ok(())
 }
 
@@ -733,7 +888,8 @@ mod tests {
     #[test]
     fn a_smart_playlist_stores_and_returns_its_filter() {
         let (_dir, conn) = seeded();
-        let playlist = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+        let playlist =
+            create_smart(&conn, "Recent", &year_is(2012), &SmartOrder::default(), 0).unwrap();
 
         assert_eq!(playlist.kind, PlaylistKind::Smart);
         assert_eq!(filter(&conn, playlist.id).unwrap(), Some(year_is(2012)));
@@ -754,7 +910,7 @@ mod tests {
             })],
         };
 
-        assert!(create_smart(&conn, "Broken", &broken, 0).is_err());
+        assert!(create_smart(&conn, "Broken", &broken, &SmartOrder::default(), 0).is_err());
         assert!(
             list(&conn).unwrap().is_empty(),
             "nothing should have been stored"
@@ -765,18 +921,27 @@ mod tests {
     fn the_two_kinds_do_not_accept_each_others_edits() {
         let (_dir, conn) = seeded();
         let stat = create(&conn, "Mix", 0).unwrap();
-        let smart = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+        let smart =
+            create_smart(&conn, "Recent", &year_is(2012), &SmartOrder::default(), 0).unwrap();
 
-        assert!(set_filter(&conn, stat.id, &year_is(2017), 0).is_err());
+        assert!(set_smart(&conn, stat.id, &year_is(2017), &SmartOrder::default(), 0).is_err());
         assert!(add_tracks(&mut seeded().1, smart.id, &[1]).is_err());
     }
 
     #[test]
     fn replacing_a_filter_replaces_it_wholesale() {
         let (_dir, conn) = seeded();
-        let playlist = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+        let playlist =
+            create_smart(&conn, "Recent", &year_is(2012), &SmartOrder::default(), 0).unwrap();
 
-        set_filter(&conn, playlist.id, &year_is(2017), 0).unwrap();
+        set_smart(
+            &conn,
+            playlist.id,
+            &year_is(2017),
+            &SmartOrder::default(),
+            0,
+        )
+        .unwrap();
 
         assert_eq!(filter(&conn, playlist.id).unwrap(), Some(year_is(2017)));
     }
@@ -784,7 +949,8 @@ mod tests {
     #[test]
     fn an_unreadable_filter_reads_as_no_filter_rather_than_an_unopenable_playlist() {
         let (_dir, conn) = seeded();
-        let playlist = create_smart(&conn, "Recent", &year_is(2012), 0).unwrap();
+        let playlist =
+            create_smart(&conn, "Recent", &year_is(2012), &SmartOrder::default(), 0).unwrap();
         conn.execute(
             "UPDATE playlists SET filter_json = 'not json' WHERE id = ?1",
             [playlist.id],
@@ -794,6 +960,219 @@ mod tests {
         // Matching everything is recoverable - the user can edit it back into
         // shape. Failing the view would leave them with no way in.
         assert_eq!(filter(&conn, playlist.id).unwrap(), None);
+    }
+
+    fn desc(field: crate::model::SortField, limit: u32) -> SmartOrder {
+        SmartOrder {
+            sort: Some(crate::model::SmartSort {
+                field,
+                direction: crate::model::SortDirection::Desc,
+            }),
+            limit: Some(limit),
+        }
+    }
+
+    #[test]
+    fn a_smart_playlist_stores_and_returns_its_order() {
+        let (_dir, conn) = seeded();
+        let wanted = desc(crate::model::SortField::PlayCount, 100);
+        let playlist = create_smart(&conn, "Top", &year_is(2012), &wanted, 0).unwrap();
+
+        assert_eq!(order(&conn, playlist.id).unwrap(), wanted);
+    }
+
+    #[test]
+    fn a_playlist_with_no_order_reads_as_no_order_rather_than_a_guess() {
+        let (_dir, conn) = seeded();
+        let playlist =
+            create_smart(&conn, "Any", &year_is(2012), &SmartOrder::default(), 0).unwrap();
+
+        let stored = order(&conn, playlist.id).unwrap();
+        assert_eq!(stored.sort, None);
+        assert_eq!(
+            stored.limit, None,
+            "absent must not become some default cap"
+        );
+    }
+
+    #[test]
+    fn the_filter_and_the_order_are_replaced_together() {
+        let (_dir, conn) = seeded();
+        let playlist = create_smart(
+            &conn,
+            "Top",
+            &year_is(2012),
+            &desc(crate::model::SortField::PlayCount, 100),
+            0,
+        )
+        .unwrap();
+
+        set_smart(
+            &conn,
+            playlist.id,
+            &year_is(2017),
+            &desc(crate::model::SortField::AddedAt, 10),
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(filter(&conn, playlist.id).unwrap(), Some(year_is(2017)));
+        assert_eq!(
+            order(&conn, playlist.id).unwrap(),
+            desc(crate::model::SortField::AddedAt, 10)
+        );
+    }
+
+    #[test]
+    fn a_sort_that_is_not_a_track_column_is_refused() {
+        let (_dir, conn) = seeded();
+
+        // Relevance needs a search to rank against and Position needs a static
+        // playlist to be positioned in. Inside a smart playlist's own cutoff
+        // neither exists, and picking a different hundred than the one asked
+        // for is worse than saying no.
+        for field in [
+            crate::model::SortField::Relevance,
+            crate::model::SortField::Position,
+        ] {
+            assert!(
+                create_smart(&conn, "Nope", &year_is(2012), &desc(field, 10), 0).is_err(),
+                "{field:?} should not be a smart playlist's sort"
+            );
+        }
+        assert!(list(&conn).unwrap().is_empty(), "nothing should be stored");
+    }
+
+    #[test]
+    fn a_cutoff_of_zero_or_an_absurd_one_is_refused() {
+        let (_dir, conn) = seeded();
+        let with_limit = |limit| SmartOrder {
+            sort: None,
+            limit: Some(limit),
+        };
+
+        // Zero would be a playlist that is empty by construction - always a
+        // slip rather than a request.
+        assert!(create_smart(&conn, "None", &year_is(2012), &with_limit(0), 0).is_err());
+        assert!(create_smart(
+            &conn,
+            "Everything",
+            &year_is(2012),
+            &with_limit(MAX_SMART_LIMIT + 1),
+            0
+        )
+        .is_err());
+        assert!(create_smart(
+            &conn,
+            "Plenty",
+            &year_is(2012),
+            &with_limit(MAX_SMART_LIMIT),
+            0
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn an_unreadable_order_reads_as_none_rather_than_an_unopenable_playlist() {
+        let (_dir, conn) = seeded();
+        let playlist = create_smart(
+            &conn,
+            "Top",
+            &year_is(2012),
+            &desc(crate::model::SortField::PlayCount, 10),
+            0,
+        )
+        .unwrap();
+
+        for stored in [
+            "not json",
+            // Valid JSON, but a cutoff `validate_order` would never have let in
+            // - a hand-edited row, or one written by a build that is not this
+            // one. Dropped rather than trusted, and dropped towards showing too
+            // many songs rather than too few.
+            r#"{"sort":null,"limit":0}"#,
+            r#"{"sort":{"field":"relevance","direction":"desc"},"limit":10}"#,
+        ] {
+            conn.execute(
+                "UPDATE playlists SET sort_json = ?2 WHERE id = ?1",
+                rusqlite::params![playlist.id, stored],
+            )
+            .unwrap();
+
+            assert_eq!(
+                order(&conn, playlist.id).unwrap(),
+                SmartOrder::default(),
+                "{stored} should have been dropped"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fresh_library_gets_the_two_built_ins() {
+        let (_dir, conn) = seeded();
+        seed_built_ins(&conn, 1_700_000_000).unwrap();
+
+        let names: Vec<String> = list(&conn).unwrap().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Most Played", "Recently Added"]);
+
+        let built_ins = list(&conn).unwrap();
+        for playlist in &built_ins {
+            assert_eq!(playlist.kind, PlaylistKind::Smart);
+            let stored = order(&conn, playlist.id).unwrap();
+            assert_eq!(stored.limit, Some(BUILT_IN_LIMIT));
+            assert_eq!(
+                stored.sort.map(|sort| sort.direction),
+                Some(crate::model::SortDirection::Desc)
+            );
+        }
+    }
+
+    #[test]
+    fn seeding_twice_does_not_produce_four_playlists() {
+        let (_dir, conn) = seeded();
+        seed_built_ins(&conn, 0).unwrap();
+        seed_built_ins(&conn, 0).unwrap();
+
+        assert_eq!(list(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_built_in_the_user_deleted_stays_deleted() {
+        let (_dir, conn) = seeded();
+        seed_built_ins(&conn, 0).unwrap();
+        let most_played = list(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Most Played")
+            .unwrap();
+
+        delete(&conn, most_played.id).unwrap();
+        // The next launch. Deleting something has to mean deleting it, which is
+        // why the guard is a flag rather than a check for the playlists.
+        seed_built_ins(&conn, 0).unwrap();
+
+        let names: Vec<String> = list(&conn).unwrap().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Recently Added"]);
+    }
+
+    #[test]
+    fn the_built_ins_are_ordinary_playlists_the_user_owns() {
+        let (_dir, conn) = seeded();
+        seed_built_ins(&conn, 0).unwrap();
+        let recent = list(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Recently Added")
+            .unwrap();
+
+        // Nothing special-cases them: renaming and re-filtering both work, and
+        // that is the point of building them out of sort and limit rather than
+        // out of a flag on the row.
+        rename(&conn, recent.id, "My Newest").unwrap();
+        set_smart(&conn, recent.id, &year_is(2012), &SmartOrder::default(), 0).unwrap();
+
+        assert_eq!(get(&conn, recent.id).unwrap().unwrap().name, "My Newest");
+        assert_eq!(order(&conn, recent.id).unwrap(), SmartOrder::default());
     }
 
     #[test]

@@ -12,15 +12,17 @@ import {
   onLibraryChanged,
   type Playlist,
   playlistFilter,
+  playlistOrder,
   removeFromPlaylist,
   renamePlaylist,
+  type SmartOrder,
   saveSidebarSections,
   setPlaylistFilter,
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
-import { emptyFilter } from "../smart/filterTree";
+import { emptyFilter, noOrder } from "../smart/filterTree";
 import {
   type Collapsed,
   parseSections,
@@ -75,9 +77,15 @@ interface PlaylistsState {
   /**
    * The smart playlist being edited, if the editor is open.
    *
-   * `playlistId: null` means "new"; the filter is what the dialog opened with.
+   * `playlistId: null` means "new"; the filter and order are what the dialog
+   * opened with.
    */
-  editing: { playlistId: number | null; name: string; filter: FilterGroup } | null;
+  editing: {
+    playlistId: number | null;
+    name: string;
+    filter: FilterGroup;
+    order: SmartOrder;
+  } | null;
 
   /**
    * Which playlist the sidebar should be renaming in place, if any.
@@ -97,7 +105,7 @@ interface PlaylistsState {
   editSmart: (playlistId: number | null) => Promise<void>;
   closeEditor: () => void;
   /** Saves what the editor holds, creating the playlist if it is new. */
-  saveSmart: (name: string, filter: FilterGroup) => Promise<void>;
+  saveSmart: (name: string, filter: FilterGroup, order: SmartOrder) => Promise<void>;
   rename: (playlistId: number, name: string) => Promise<void>;
   /** Deletes a playlist; the view falls back to the library if it was open. */
   remove: (playlistId: number) => Promise<void>;
@@ -212,15 +220,32 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
 
   editSmart: async (playlistId) => {
     if (playlistId === null) {
-      set({ editing: { playlistId: null, name: "New Smart Playlist", filter: emptyFilter } });
+      set({
+        editing: {
+          playlistId: null,
+          name: "New Smart Playlist",
+          filter: emptyFilter,
+          order: noOrder,
+        },
+      });
       return;
     }
     try {
-      // Read the stored filter rather than trusting anything cached: it is the
-      // one piece of a playlist the sidebar does not carry.
-      const filter = (await playlistFilter(playlistId)) ?? emptyFilter;
+      // Read the stored filter and order rather than trusting anything cached:
+      // they are the pieces of a playlist the sidebar does not carry. Fetched
+      // together so the editor cannot open on one playlist's rules beside
+      // another's cutoff if the second call is slower than the first.
+      const [filter, order] = await Promise.all([
+        playlistFilter(playlistId),
+        playlistOrder(playlistId),
+      ]);
       set({
-        editing: { playlistId, name: nameOf(get().playlists, playlistId), filter },
+        editing: {
+          playlistId,
+          name: nameOf(get().playlists, playlistId),
+          filter: filter ?? emptyFilter,
+          order,
+        },
         error: null,
       });
     } catch (cause) {
@@ -230,21 +255,21 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
 
   closeEditor: () => set({ editing: null }),
 
-  saveSmart: async (name, filter) => {
+  saveSmart: async (name, filter, order) => {
     const editing = get().editing;
     if (editing === null) {
       return;
     }
     try {
       if (editing.playlistId === null) {
-        const created = await createSmartPlaylist(name, filter);
+        const created = await createSmartPlaylist(name, filter, order);
         set({ editing: null });
         await get().load();
         await useLibraryStore.getState().showPlaylist(created.id);
         return;
       }
 
-      await setPlaylistFilter(editing.playlistId, filter);
+      await setPlaylistFilter(editing.playlistId, filter, order);
       if (name !== editing.name) {
         await renamePlaylist(editing.playlistId, name);
       }

@@ -21,7 +21,9 @@ use rusqlite::Connection;
 
 use crate::db::{playlists, query, settings};
 use crate::error::AppResult;
-use crate::model::{FilterGroup, PlaylistKind, SortDirection, SortField, Track, TrackQuery};
+use crate::model::{
+    FilterGroup, PlaylistKind, SmartOrder, SortDirection, SortField, Track, TrackQuery,
+};
 
 /// Bumped only for a breaking change to the shape below.
 ///
@@ -142,6 +144,18 @@ pub struct ExportPlaylist {
     pub track_ids: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<FilterGroup>,
+    /// A smart playlist's ordering and cutoff, alongside its filter.
+    ///
+    /// Present only when there is one: a playlist with neither a sort nor a
+    /// limit omits the key entirely rather than exporting two nulls, which is
+    /// also what keeps every export written before this phase a valid document
+    /// under the same schema.
+    ///
+    /// Without this a "Most Played" would export as its filter alone - `plays
+    /// greater than 0` - and read back as every song ever played rather than
+    /// the hundred it actually holds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<SmartOrder>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -262,6 +276,14 @@ fn export_playlist(
         } else {
             playlists::filter(conn, playlist.id)?.or_else(|| Some(FilterGroup::default()))
         },
+        order: if is_static {
+            None
+        } else {
+            // `Some(default)` would be two nulls in every smart playlist's
+            // entry; absent says the same thing and says it shorter.
+            Some(playlists::order(conn, playlist.id)?)
+                .filter(|order| *order != SmartOrder::default())
+        },
     })
 }
 
@@ -335,7 +357,14 @@ mod tests {
     fn a_smart_playlist_exports_its_filter_rather_than_a_snapshot_of_its_members() {
         let (_dir, db) = seeded();
         let conn = db.conn().unwrap();
-        playlists::create_smart(&conn, "Guitar", &artist_is("Guitar"), 0).unwrap();
+        playlists::create_smart(
+            &conn,
+            "Guitar",
+            &artist_is("Guitar"),
+            &crate::model::SmartOrder::default(),
+            0,
+        )
+        .unwrap();
 
         let export = build(&conn, &ExportScope::Library, 0).unwrap();
 
@@ -343,6 +372,34 @@ mod tests {
         assert_eq!(export.playlists[0].filter, Some(artist_is("Guitar")));
         assert_eq!(export.playlists[0].track_ids, None);
         assert_eq!(export.playlists[0].kind, "smart");
+        // No sort and no cutoff, so the key is absent rather than two nulls -
+        // which is also what every export written before the field existed
+        // looks like.
+        assert_eq!(export.playlists[0].order, None);
+    }
+
+    #[test]
+    fn a_limited_smart_playlist_exports_the_cutoff_that_decides_its_membership() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let order = crate::model::SmartOrder {
+            sort: Some(crate::model::SmartSort {
+                field: SortField::PlayCount,
+                direction: SortDirection::Desc,
+            }),
+            limit: Some(100),
+        };
+        playlists::create_smart(&conn, "Most Played", &artist_is("Guitar"), &order, 0).unwrap();
+
+        let export = build(&conn, &ExportScope::Library, 0).unwrap();
+
+        // Without this the filter alone would read back as every Guitar track
+        // rather than the hundred most played of them.
+        assert_eq!(export.playlists[0].order, Some(order));
+
+        let json = to_json(&export).unwrap();
+        assert!(json.contains(r#""limit": 100"#), "{json}");
+        assert!(json.contains(r#""field": "playCount""#), "{json}");
     }
 
     #[test]

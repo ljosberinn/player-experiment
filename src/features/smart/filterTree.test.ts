@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FilterGroup, FilterNode, FilterRule } from "../../ipc";
+import type { FilterGroup, FilterNode, FilterRule, SmartOrder } from "../../ipc";
 import {
   addNode,
   countRules,
@@ -11,9 +11,11 @@ import {
   newRule,
   opsFor,
   removeNode,
+  SORT_FIELDS,
   setCombinator,
   setRule,
   valueFor,
+  withLimit,
 } from "./filterTree";
 
 function rule(overrides: Partial<FilterRule> = {}): FilterNode {
@@ -175,5 +177,52 @@ describe("tree editing", () => {
     expect(countRules(tree)).toBe(3);
     expect(countRules(emptyFilter)).toBe(0);
     expect(countRules(newGroup() as FilterGroup)).toBe(1);
+  });
+});
+
+describe("a smart playlist's order", () => {
+  it("offers no sort the backend would refuse", () => {
+    const offered = SORT_FIELDS.map((field) => field.id);
+
+    // Relevance is a property of a search and position a property of a static
+    // playlist's membership. A smart playlist's cutoff has neither, and it
+    // decides which songs are in the playlist - so a silent fallback would
+    // hand back a different hundred than the one asked for.
+    expect(offered).not.toContain("relevance");
+    expect(offered).not.toContain("position");
+    expect(offered).toContain("playCount");
+    expect(offered).toContain("addedAt");
+  });
+
+  it("labels every field it offers", () => {
+    expect(SORT_FIELDS.every((field) => field.label.trim() !== "")).toBe(true);
+  });
+
+  it("supplies a sort when a cutoff arrives without one", () => {
+    const none: SmartOrder = { sort: null, limit: null };
+
+    // "The first hundred of no particular order" is never what somebody means
+    // by limiting a playlist to a hundred.
+    expect(withLimit(none, 100)).toEqual({
+      sort: { field: "addedAt", direction: "desc" },
+      limit: 100,
+    });
+  });
+
+  it("leaves an existing sort alone when a cutoff is added", () => {
+    const sorted: SmartOrder = { sort: { field: "year", direction: "asc" }, limit: null };
+
+    expect(withLimit(sorted, 10).sort).toEqual({ field: "year", direction: "asc" });
+  });
+
+  it("keeps the sort when the cutoff is taken away", () => {
+    const limited: SmartOrder = { sort: { field: "playCount", direction: "desc" }, limit: 100 };
+
+    // Sorting is useful on its own, so dropping the cutoff must not quietly
+    // discard the column the user picked.
+    expect(withLimit(limited, null)).toEqual({
+      sort: { field: "playCount", direction: "desc" },
+      limit: null,
+    });
   });
 });

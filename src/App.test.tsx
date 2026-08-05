@@ -75,6 +75,7 @@ vi.mock("./ipc", () => ({
   createSmartPlaylist: vi.fn(),
   setPlaylistFilter: vi.fn(),
   playlistFilter: vi.fn(),
+  playlistOrder: vi.fn(async () => ({ sort: null, limit: null })),
   renamePlaylist: vi.fn(),
   deletePlaylist: vi.fn(),
   addToPlaylist: vi.fn(),
@@ -612,17 +613,23 @@ describe("App playback", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(createSmartPlaylist).toHaveBeenCalledWith("Grizzly", {
-        combinator: "all",
-        children: [
-          {
-            type: "rule",
-            field: "artist",
-            op: "is",
-            value: { kind: "text", text: "Grizzly Bear" },
-          },
-        ],
-      }),
+      expect(createSmartPlaylist).toHaveBeenCalledWith(
+        "Grizzly",
+        {
+          combinator: "all",
+          children: [
+            {
+              type: "rule",
+              field: "artist",
+              op: "is",
+              value: { kind: "text", text: "Grizzly Bear" },
+            },
+          ],
+        },
+        // Untouched in this flow, and it still has to arrive: a smart playlist
+        // is its filter *and* its cutoff as of this phase.
+        { sort: null, limit: null },
+      ),
     );
     await waitFor(() =>
       expect(statsMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 9 })),

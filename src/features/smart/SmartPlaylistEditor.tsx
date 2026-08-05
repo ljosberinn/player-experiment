@@ -7,6 +7,9 @@ import type {
   FilterOp,
   FilterRule,
   FilterValue,
+  SmartOrder,
+  SortDirection,
+  SortField,
   TagValueField,
 } from "../../ipc";
 import {
@@ -20,10 +23,12 @@ import {
   opsFor,
   type Path,
   removeNode,
+  SORT_FIELDS,
   setCombinator,
   setRule,
   valueFor,
   vocabularyFor,
+  withLimit,
 } from "./filterTree";
 
 /**
@@ -36,17 +41,20 @@ export function SmartPlaylistEditor({
   title,
   name,
   filter,
+  order,
   onSave,
   onCancel,
 }: {
   title: string;
   name: string;
   filter: FilterGroup;
-  onSave: (name: string, filter: FilterGroup) => void;
+  order: SmartOrder;
+  onSave: (name: string, filter: FilterGroup, order: SmartOrder) => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(filter);
   const [draftName, setDraftName] = useState(name);
+  const [draftOrder, setDraftOrder] = useState(order);
   const nameId = useId();
   const canSave = draftName.trim() !== "";
 
@@ -73,7 +81,7 @@ export function SmartPlaylistEditor({
               onSubmit={(event) => {
                 event.preventDefault();
                 if (canSave) {
-                  onSave(draftName.trim(), draft);
+                  onSave(draftName.trim(), draft, draftOrder);
                 }
               }}
             />
@@ -93,6 +101,8 @@ export function SmartPlaylistEditor({
 
           <GroupEditor group={draft} path={[]} root onChange={setDraft} />
 
+          <OrderEditor order={draftOrder} onChange={setDraftOrder} />
+
           <p className="modal-summary">
             {countRules(draft) === 0
               ? "No conditions yet — this playlist will hold your whole library."
@@ -109,6 +119,145 @@ export function SmartPlaylistEditor({
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+/** What a "limited to" box offers when it is switched on. */
+const DEFAULT_LIMIT = 100;
+
+/**
+ * The sort and cutoff, one line under the rules.
+ *
+ * Two checkboxes rather than a sentinel value in each control: "sorted by
+ * nothing" and "limited to no songs" both need to be expressible, and a select
+ * with a blank first option says that far less clearly than a box you tick.
+ *
+ * The cutoff is what makes "Most Played" a smart playlist rather than a special
+ * case, so its label says what it actually does - it decides which songs are in
+ * the playlist, not merely the order they appear in.
+ */
+function OrderEditor({
+  order,
+  onChange,
+}: {
+  order: SmartOrder;
+  onChange: (next: SmartOrder) => void;
+}) {
+  const sortId = useId();
+  const limitId = useId();
+  const limited = order.limit !== null;
+
+  // The box holds text, the order holds a number, and the two are not the same
+  // thing: clearing it to retype has to leave an empty box rather than snapping
+  // to the clamped value, or the next keystroke lands beside a digit the user
+  // did not type. What the order carries meanwhile is the clamped reading.
+  const [limitText, setLimitText] = useState(String(order.limit ?? DEFAULT_LIMIT));
+
+  return (
+    <div className="filter-order">
+      <div className="filter-row">
+        <input
+          id={sortId}
+          type="checkbox"
+          checked={order.sort !== null}
+          // Unticking discards the sort, unless a cutoff is relying on it - a
+          // limit with no sort is a hundred arbitrary songs, so the two
+          // controls are not quite independent and the checkbox says so by
+          // refusing rather than by silently leaving itself ticked.
+          disabled={limited}
+          onChange={(event) =>
+            onChange({
+              ...order,
+              sort: event.currentTarget.checked ? { field: "addedAt", direction: "desc" } : null,
+            })
+          }
+        />
+        <label htmlFor={sortId}>Sorted by</label>
+
+        <select
+          aria-label="Sort by"
+          disabled={order.sort === null}
+          value={order.sort?.field ?? "addedAt"}
+          onChange={(event) =>
+            onChange({
+              ...order,
+              sort: {
+                field: event.currentTarget.value as SortField,
+                direction: order.sort?.direction ?? "desc",
+              },
+            })
+          }
+        >
+          {SORT_FIELDS.map((field) => (
+            <option key={field.id} value={field.id}>
+              {field.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          aria-label="Sort direction"
+          disabled={order.sort === null}
+          value={order.sort?.direction ?? "desc"}
+          onChange={(event) =>
+            onChange({
+              ...order,
+              sort: {
+                field: order.sort?.field ?? "addedAt",
+                direction: event.currentTarget.value as SortDirection,
+              },
+            })
+          }
+        >
+          <option value="desc">descending</option>
+          <option value="asc">ascending</option>
+        </select>
+      </div>
+
+      <div className="filter-row">
+        <input
+          id={limitId}
+          type="checkbox"
+          checked={limited}
+          onChange={(event) => {
+            if (event.currentTarget.checked) {
+              setLimitText(String(DEFAULT_LIMIT));
+              onChange(withLimit(order, DEFAULT_LIMIT));
+            } else {
+              onChange(withLimit(order, null));
+            }
+          }}
+        />
+        <label htmlFor={limitId}>Limited to</label>
+
+        <input
+          type="number"
+          aria-label="Limit"
+          min={1}
+          disabled={!limited}
+          value={limitText}
+          onChange={(event) => {
+            const raw = event.currentTarget.value;
+            setLimitText(raw);
+            onChange(withLimit(order, toLimit(raw)));
+          }}
+        />
+        <span>songs</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A half-typed or emptied limit box reads as one song rather than as zero.
+ *
+ * Zero is refused by the backend - a playlist that is empty by construction is
+ * always a slip - and clearing the box to retype the number is not a request
+ * for one. Clamping keeps the editor from producing a value it would then have
+ * to report an error about.
+ */
+function toLimit(raw: string): number {
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : 1;
 }
 
 function GroupEditor({

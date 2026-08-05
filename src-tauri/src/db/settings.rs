@@ -20,6 +20,10 @@ pub const SIDEBAR: &str = "sidebar.sections";
 /// Unix seconds of the most recent crash the user has dismissed. Deliberately
 /// not exportable: it describes this machine's history, not the library.
 pub const CRASH_SEEN: &str = "crash.seen";
+/// Set once the built-in smart playlists have been created. A flag rather than
+/// a check for the playlists themselves, so deleting Most Played deletes it
+/// instead of asking for it back on the next launch.
+pub const PLAYLISTS_SEEDED: &str = "playlists.seeded";
 
 /// Settings a library export is allowed to carry.
 ///

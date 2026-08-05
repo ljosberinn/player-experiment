@@ -12,14 +12,16 @@ import {
   onLibraryChanged,
   type Playlist,
   playlistFilter,
+  playlistOrder,
   removeFromPlaylist,
   renamePlaylist,
+  type SmartOrder,
   saveSidebarSections,
   setPlaylistFilter,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
-import { emptyFilter } from "../smart/filterTree";
+import { emptyFilter, noOrder } from "../smart/filterTree";
 import { RECOUNT_DEBOUNCE_MS, usePlaylistsStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -28,6 +30,7 @@ vi.mock("../../ipc", () => ({
   createSmartPlaylist: vi.fn(),
   setPlaylistFilter: vi.fn(),
   playlistFilter: vi.fn(),
+  playlistOrder: vi.fn(),
   renamePlaylist: vi.fn(),
   deletePlaylist: vi.fn(),
   addToPlaylist: vi.fn(),
@@ -56,6 +59,8 @@ const yearIs2012: FilterGroup = {
   children: [{ type: "rule", field: "year", op: "is", value: { kind: "number", number: 2012 } }],
 };
 
+const topPlayed: SmartOrder = { sort: { field: "playCount", direction: "desc" }, limit: 100 };
+
 const initialLibrary = useLibraryStore.getState();
 const initialPlaylists = usePlaylistsStore.getState();
 
@@ -72,6 +77,10 @@ beforeEach(() => {
     collapsed: {},
   });
   vi.mocked(listPlaylists).mockResolvedValue([]);
+  // Restated rather than left to `clearAllMocks`, which clears the calls and
+  // keeps the implementation: without this, one test's stored order leaks into
+  // every later test that opens the editor.
+  vi.mocked(playlistOrder).mockResolvedValue(topPlayed);
 });
 
 describe("playlists store", () => {
@@ -178,6 +187,7 @@ describe("playlists store", () => {
       playlistId: null,
       name: "New Smart Playlist",
       filter: emptyFilter,
+      order: noOrder,
     });
     expect(playlistFilter).not.toHaveBeenCalled();
   });
@@ -193,7 +203,23 @@ describe("playlists store", () => {
       playlistId: 4,
       name: "Recent",
       filter: yearIs2012,
+      order: topPlayed,
     });
+  });
+
+  it("reads the filter and the order together when opening the editor", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([smartPlaylist(4, "Most Played")]);
+    await usePlaylistsStore.getState().load();
+    vi.mocked(playlistFilter).mockResolvedValue(yearIs2012);
+
+    await usePlaylistsStore.getState().editSmart(4);
+
+    // Both, and from the backend rather than from the sidebar's rows: neither
+    // is carried on a `Playlist`, and opening on one playlist's rules beside
+    // another's cutoff would be a silent way to rewrite a playlist.
+    expect(playlistFilter).toHaveBeenCalledWith(4);
+    expect(playlistOrder).toHaveBeenCalledWith(4);
+    expect(usePlaylistsStore.getState().editing?.order).toEqual(topPlayed);
   });
 
   it("treats a playlist with no stored filter as an empty one", async () => {
@@ -208,9 +234,9 @@ describe("playlists store", () => {
     vi.mocked(createSmartPlaylist).mockResolvedValue(smartPlaylist(7, "Recent"));
     await usePlaylistsStore.getState().editSmart(null);
 
-    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012);
+    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012, topPlayed);
 
-    expect(createSmartPlaylist).toHaveBeenCalledWith("Recent", yearIs2012);
+    expect(createSmartPlaylist).toHaveBeenCalledWith("Recent", yearIs2012, topPlayed);
     expect(usePlaylistsStore.getState().editing).toBeNull();
     expect(useLibraryStore.getState().playlistId).toBe(7);
   });
@@ -224,11 +250,11 @@ describe("playlists store", () => {
     await usePlaylistsStore.getState().editSmart(4);
     const before = useLibraryStore.getState().queryToken;
 
-    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012);
+    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012, topPlayed);
 
     // Membership is the filter, so there is nothing to recompute - only to
     // ask again.
-    expect(setPlaylistFilter).toHaveBeenCalledWith(4, yearIs2012);
+    expect(setPlaylistFilter).toHaveBeenCalledWith(4, yearIs2012, topPlayed);
     expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
   });
 
@@ -239,11 +265,11 @@ describe("playlists store", () => {
     vi.mocked(playlistFilter).mockResolvedValue(emptyFilter);
 
     await usePlaylistsStore.getState().editSmart(4);
-    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012);
+    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012, topPlayed);
     expect(renamePlaylist).not.toHaveBeenCalled();
 
     await usePlaylistsStore.getState().editSmart(4);
-    await usePlaylistsStore.getState().saveSmart("Older", yearIs2012);
+    await usePlaylistsStore.getState().saveSmart("Older", yearIs2012, topPlayed);
     expect(renamePlaylist).toHaveBeenCalledWith(4, "Older");
   });
 
@@ -251,7 +277,7 @@ describe("playlists store", () => {
     vi.mocked(createSmartPlaylist).mockRejectedValue("Year does not accept Contains.");
     await usePlaylistsStore.getState().editSmart(null);
 
-    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012);
+    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012, topPlayed);
 
     // Closing it would throw away everything the user built.
     expect(usePlaylistsStore.getState().editing).not.toBeNull();
@@ -259,7 +285,7 @@ describe("playlists store", () => {
   });
 
   it("saves nothing when the editor is not open", async () => {
-    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012);
+    await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012, topPlayed);
 
     expect(createSmartPlaylist).not.toHaveBeenCalled();
     expect(setPlaylistFilter).not.toHaveBeenCalled();
