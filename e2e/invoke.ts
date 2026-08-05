@@ -13,6 +13,8 @@ declare global {
   interface Window {
     __TAURI__?: {
       core: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
+      /** Used by `viewport.ts` to zoom for a screenshot without persisting it. */
+      webview?: { getCurrentWebview: () => { setZoom: (factor: number) => Promise<void> } };
     };
     /** Where `invoke` parks a result until the poll below collects it. */
     __e2eInvoke?: { done: boolean; value?: unknown; error?: string };

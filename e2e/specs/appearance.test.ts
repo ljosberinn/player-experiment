@@ -310,6 +310,76 @@ describe("appearance, in the engine that actually lays it out", () => {
     });
   });
 
+  it("keeps the whole title bar on one row, inside the window", async () => {
+    // The defect this exists for, found by looking at a screenshot rather than
+    // by any assertion: the title bar was a four-column grid holding four
+    // things, and phase 34 gave it seven. Grid auto-placement only moves
+    // forward, so the overflow started a second row - the window buttons ended
+    // up below the bar and the now-playing display was clipped off the right
+    // edge of the window. Every unit test passed.
+    const layout = await browser.execute(() => {
+      const bar = document.querySelector(".titlebar");
+      if (bar === null) {
+        return null;
+      }
+      const children = Array.from(bar.children).map((child) => {
+        const box = child.getBoundingClientRect();
+        return {
+          what: child.className.toString() || child.tagName,
+          // The vertical centre, not the top - see below.
+          middle: Math.round(box.top + box.height / 2),
+          right: Math.round(box.right),
+        };
+      });
+      return { children, width: window.innerWidth };
+    });
+
+    expect(layout).not.toBe(null);
+    const { children, width } = layout as NonNullable<typeof layout>;
+    expect(children.length).toBeGreaterThan(3);
+
+    // One row: every child shares the row's vertical centre.
+    //
+    // Centres rather than tops, which is what the first two versions of this
+    // got wrong. The bar is `align-items: center` over children of wildly
+    // different heights - a 67px status display beside a 26px button - so
+    // their *tops* differ by twenty-odd pixels while they sit in the same row,
+    // and every threshold loose enough to allow that was loose enough to miss
+    // a real wrap. Centred children have one centre however tall they are, and
+    // a wrapped one is a whole row away from it.
+    //
+    // The caption cluster is left out of the comparison, not out of the test:
+    // it deliberately hangs off the top edge (see `.window-buttons`, which
+    // pulls itself flush so the corner stays hittable), so its centre is not
+    // the row's by design. It still has to stay inside the window, which the
+    // right-edge check below covers.
+    const inFlow = children.filter((child) => !child.what.includes("window-buttons"));
+    const middle = Math.min(...inFlow.map((child) => child.middle));
+    const wrapped = inFlow
+      .filter((child) => child.middle > middle + 12)
+      .map((child) => `${child.what} sits ${child.middle - middle}px below the row`);
+
+    // And nothing runs off the right edge, which is the other half of the same
+    // fault: a row that cannot wrap overflows instead.
+    const clipped = children
+      .filter((child) => child.right > width + 1)
+      .map((child) => `${child.what} runs ${child.right - width}px past the window`);
+
+    expect([...wrapped, ...clipped]).toEqual([]);
+  });
+
+  it("draws the accent strip along the top of the window", async () => {
+    // Decoration, and the design's most recognisable single element. Drawn as
+    // a pseudo-element, so it has no node to query - the height of the strip
+    // is the gap between the top of the window and the top of the title bar.
+    const offset = await browser.execute(() => {
+      const bar = document.querySelector(".titlebar");
+      return bar === null ? -1 : Math.round(bar.getBoundingClientRect().top);
+    });
+
+    expect(offset).toBeGreaterThan(0);
+  });
+
   it("draws the dark palette rather than a default white page", async () => {
     // Guards the tests above. They resolve the background by walking up to the
     // first ancestor that paints one, so a stylesheet that failed to load

@@ -3,6 +3,7 @@ import { browser, expect } from "@wdio/globals";
 import { contrast, flatten, GRAPHIC_MINIMUM, TEXT_MINIMUM } from "../contrast";
 import { LIBRARY, writeLibrary } from "../fixtures";
 import { invoke } from "../invoke";
+import { chooseFromMenu } from "../menu";
 
 /**
  * The suite that has rows in it.
@@ -223,9 +224,9 @@ describe("a library with something in it", () => {
 
     await invoke("add_watch_folder", { path: root });
 
-    // From here it is the app's own path: the button runs the scan and
+    // From here it is the app's own path: File ▸ Rescan runs the scan and
     // refreshes the view when it finishes.
-    await browser.$("//button[text()='Rescan']").click();
+    await chooseFromMenu("File", "Rescan");
     await browser.waitUntil(
       async () => (await browser.$$("tr.song-row").length) === LIBRARY.length,
       { timeout: 60_000, timeoutMsg: `the scan never produced ${LIBRARY.length} rows` },

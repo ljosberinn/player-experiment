@@ -1,9 +1,16 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScanProgress } from "../../ipc";
-import { addWatchFolder, onScanProgress, scanLibrary } from "../../ipc";
+import { onScanProgress, scanLibrary } from "../../ipc";
 import { ScanBar } from "./ScanBar";
+import { useScanStore } from "./scan";
+
+/**
+ * Only the readout since phase 34. Add Folder and Rescan moved to the File
+ * menu, and their behaviour is tested against the store that now owns it in
+ * `scan.test.ts` - which needs no DOM at all, because none of it was ever
+ * about one.
+ */
 
 vi.mock("../../ipc", () => ({
   addWatchFolder: vi.fn(),
@@ -18,7 +25,6 @@ vi.mock("./store", () => ({
 
 const onScanProgressMock = vi.mocked(onScanProgress);
 const scanLibraryMock = vi.mocked(scanLibrary);
-const addWatchFolderMock = vi.mocked(addWatchFolder);
 
 /** Captures the handler the component registers, so tests can drive events. */
 let emitProgress: ((progress: ScanProgress) => void) | undefined;
@@ -40,6 +46,9 @@ beforeEach(async () => {
   });
   const { open } = await import("@tauri-apps/plugin-dialog");
   vi.mocked(open).mockResolvedValue(null);
+  // The store is a module singleton; progress left behind by one test would
+  // otherwise be on screen at the start of the next.
+  useScanStore.setState({ progress: null, busy: false, error: null });
 });
 
 describe("ScanBar", () => {
@@ -81,39 +90,5 @@ describe("ScanBar", () => {
     unmount();
 
     await waitFor(() => expect(unlisten).toHaveBeenCalled());
-  });
-
-  it("disables both buttons while a scan is running", async () => {
-    let finish: (() => void) | undefined;
-    scanLibraryMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = () => resolve({ added: 0, updated: 0, missing: 0, returned: 0, unchanged: 0 });
-        }),
-    );
-    render(<ScanBar />);
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("button", { name: "Rescan" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Add Folder…" })).toBeDisabled();
-    });
-
-    finish?.();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Rescan" })).toBeEnabled());
-  });
-
-  it("surfaces a failure from the folder picker", async () => {
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    vi.mocked(open).mockRejectedValue("dialog unavailable");
-    render(<ScanBar />);
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("button", { name: "Add Folder…" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("dialog unavailable");
-    expect(addWatchFolderMock).not.toHaveBeenCalled();
   });
 });

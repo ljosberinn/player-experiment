@@ -12,7 +12,16 @@ import type { ReactNode } from "react";
  * transport controls, status display and search box can share one bar, as in
  * iTunes. That means dragging and the window buttons are ours to provide.
  */
-export function TitleBar({ children }: { children: ReactNode }) {
+export function TitleBar({
+  children,
+  // Absent until `get_app_info` answers, which is a real state on every launch
+  // and lasts a frame or two. Optional rather than required so that is spelled
+  // as one thing rather than as `version={null}` at every call site.
+  version = null,
+}: {
+  children: ReactNode;
+  version?: string | null;
+}) {
   /**
    * Drag the window, or maximize it on a double press.
    *
@@ -41,7 +50,22 @@ export function TitleBar({ children }: { children: ReactNode }) {
 
   return (
     <header className="titlebar" onMouseDown={onMouseDown} data-testid="titlebar">
+      {/* The mark and the wordmark, as the design draws them: a rounded accent
+          square holding a play triangle, then APEX. Drawn in CSS rather than
+          shipped as an image - it is two rectangles and a triangle, and an
+          image would be one more asset to keep in step with the palette. */}
+      <span className="titlebar-brand">
+        <span className="titlebar-mark" aria-hidden="true" />
+        <span className="titlebar-wordmark">APEX</span>
+      </span>
+
       {children}
+
+      {/* Read from the Rust crate rather than baked in at build time: that
+          version is the one the installer and every export report. It moved
+          here from the status bar in phase 34, where the design puts it and
+          where the rest of the app's identity now lives. */}
+      {version === null ? null : <span className="titlebar-version">v{version}</span>}
       <WindowButtons />
     </header>
   );

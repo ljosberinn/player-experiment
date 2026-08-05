@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useEditorStore } from "./features/editor/store";
@@ -174,12 +174,28 @@ beforeEach(async () => {
   vi.mocked(save).mockResolvedValue(null);
 });
 
+/**
+ * Opens a top-level menu and chooses one of its entries.
+ *
+ * The actions these tests drive were toolbar buttons until phase 34. They are
+ * menu items now, and the trigger has to be scoped to the menubar: Base UI
+ * gives a menubar trigger and the items inside its popup the same role, so an
+ * unscoped query for "Edit" would match both.
+ */
+async function chooseFromMenu(user: UserEvent, menu: string, item: string | RegExp) {
+  await user.click(within(screen.getByRole("menubar")).getByRole("menuitem", { name: menu }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
+}
+
 describe("App", () => {
   it("invites the user to add a folder when the library is empty", async () => {
     render(<App />);
 
     expect(await screen.findByText(/No songs yet/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add Folder…" })).toBeInTheDocument();
+    // The empty state names File ▸ Add Folder…, so the menu has to carry it.
+    expect(
+      within(screen.getByRole("menubar")).getByRole("menuitem", { name: "File" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the chrome: sidebar, tabs, search and status bar", async () => {
@@ -339,7 +355,7 @@ describe("App", () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Add Folder…" }));
+    await chooseFromMenu(user, "File", "Add Folder…");
 
     await waitFor(() => expect(addWatchFolderMock).toHaveBeenCalledWith("D:/Music"));
     expect(scanLibraryMock).toHaveBeenCalled();
@@ -349,7 +365,7 @@ describe("App", () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Add Folder…" }));
+    await chooseFromMenu(user, "File", "Add Folder…");
 
     await waitFor(() => expect(addWatchFolderMock).not.toHaveBeenCalled());
     expect(scanLibraryMock).not.toHaveBeenCalled();
@@ -360,7 +376,7 @@ describe("App", () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Rescan" }));
+    await chooseFromMenu(user, "File", "Rescan");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
   });
@@ -656,9 +672,8 @@ describe("App playback", () => {
     render(<App />);
     const user = userEvent.setup();
 
-    const undo = await screen.findByRole("button", { name: "Undo Tag Edit" });
-    await waitFor(() => expect(undo).toBeEnabled());
-    await user.click(undo);
+    await waitFor(() => expect(useEditorStore.getState().canUndo).toBe(true));
+    await chooseFromMenu(user, "Edit", "Undo Tag Edit");
 
     expect(undoTagEdit).toHaveBeenCalled();
     expect(await screen.findByRole("status")).toHaveTextContent("Reverted 2 songs.");
@@ -673,7 +688,7 @@ describe("App playback", () => {
     const user = userEvent.setup();
 
     // Nothing narrowing it: the whole library.
-    await user.click(await screen.findByRole("button", { name: "Export Library…" }));
+    await chooseFromMenu(user, "Export", "Export All…");
     await waitFor(() =>
       expect(exportLibrary).toHaveBeenCalledWith("D:/out.json", { kind: "library" }),
     );
@@ -681,7 +696,7 @@ describe("App playback", () => {
 
     // Open a playlist and it becomes the target.
     await user.click(screen.getByRole("button", { name: "Evening" }));
-    await user.click(await screen.findByRole("button", { name: "Export Evening…" }));
+    await chooseFromMenu(user, "Export", "Export “Evening”…");
     await waitFor(() =>
       expect(exportLibrary).toHaveBeenLastCalledWith("D:/out.json", {
         kind: "playlist",
@@ -691,7 +706,7 @@ describe("App playback", () => {
 
     // A selection is narrower still, so it wins.
     await user.click(await screen.findByText("Track 1"));
-    await user.click(await screen.findByRole("button", { name: "Export 1 Song…" }));
+    await chooseFromMenu(user, "Export", "Export 1 Song…");
     await waitFor(() =>
       expect(exportLibrary).toHaveBeenLastCalledWith("D:/out.json", {
         kind: "selection",
@@ -704,7 +719,7 @@ describe("App playback", () => {
     await renderWithLibrary();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Export Library…" }));
+    await chooseFromMenu(user, "Export", "Export All…");
 
     expect(exportLibrary).not.toHaveBeenCalled();
   });
@@ -716,7 +731,7 @@ describe("App playback", () => {
     await renderWithLibrary();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Export Library…" }));
+    await chooseFromMenu(user, "Export", "Export All…");
 
     expect(await screen.findByRole("status")).toHaveTextContent("Export failed: access denied");
   });
@@ -786,7 +801,7 @@ describe("removing missing songs", () => {
     statsMock.mockResolvedValue({ ...stats(5), missing: 2 });
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "Remove 2 Missing" }));
+    await chooseFromMenu(user, "File", "Remove 2 Missing Songs…");
 
     // The one action in the app that deletes library rows, and the one thing
     // someone needs to know before confirming is that an unplugged drive is
@@ -802,7 +817,7 @@ describe("removing missing songs", () => {
     statsMock.mockResolvedValue({ ...stats(5), missing: 2 });
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "Remove 2 Missing" }));
+    await chooseFromMenu(user, "File", "Remove 2 Missing Songs…");
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(removeMissingTracks).not.toHaveBeenCalled();
@@ -812,7 +827,7 @@ describe("removing missing songs", () => {
   it("stops offering the removal once the backend says a file came back", async () => {
     // Playing a track whose file has returned clears its mark in the backend,
     // which emits `library://changed`. The view has no other way to find out:
-    // the row would keep its marker and the toolbar would keep offering to
+    // the row would keep its marker and the File menu would keep offering to
     // remove a song that is no longer missing.
     let announce: (() => void) | undefined;
     vi.mocked(onLibraryChanged).mockImplementation(async (handler) => {
@@ -821,13 +836,23 @@ describe("removing missing songs", () => {
     });
     statsMock.mockResolvedValue({ ...stats(5), missing: 1 });
     render(<App />);
-    await screen.findByRole("button", { name: "Remove 1 Missing" });
+    const user = userEvent.setup();
+
+    const file = () => within(screen.getByRole("menubar")).getByRole("menuitem", { name: "File" });
+    await user.click(file());
+    expect(
+      await screen.findByRole("menuitem", { name: "Remove 1 Missing Song…" }),
+    ).toBeInTheDocument();
+    // Closed again, or the second opening below finds it already open.
+    await user.keyboard("{Escape}");
 
     statsMock.mockResolvedValue({ ...stats(5), missing: 0 });
     act(() => announce?.());
 
+    await waitFor(() => expect(useLibraryStore.getState().stats.missing).toBe(0));
+    await user.click(file());
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /Missing/ })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("menuitem", { name: /Missing/ })).not.toBeInTheDocument(),
     );
   });
 
@@ -837,7 +862,7 @@ describe("removing missing songs", () => {
     vi.mocked(removeMissingTracks).mockResolvedValue(2);
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: "Remove 2 Missing" }));
+    await chooseFromMenu(user, "File", "Remove 2 Missing Songs…");
     await user.click(screen.getByRole("button", { name: "Remove" }));
 
     expect(removeMissingTracks).toHaveBeenCalled();

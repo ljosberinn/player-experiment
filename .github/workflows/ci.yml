@@ -227,6 +227,62 @@ jobs:
           # that import in a dead branch, so it ships nowhere else.
           VITE_E2E: "true"
         run: npm run tauri -- build --debug --no-bundle --features wdio --config src-tauri/tauri.wdio.conf.json
+      # The runner boots at 1024x768, which caps how large the app window can
+      # be and so caps the screenshots the suite takes for the pull request
+      # body. There is no cmdlet for this on the runner image, so it is a
+      # P/Invoke to ChangeDisplaySettings.
+      #
+      # `continue-on-error`, and the script swallows its own failures: the
+      # screenshots are a review aid. A runner that refuses to resize should
+      # produce smaller pictures, not a red build. `viewport.ts` reports the
+      # size it actually reached.
+      - name: Give the runner a desktop-sized display
+        if: needs.changes.outputs.code == 'true'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $source = @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class Display {
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+            public struct DEVMODE {
+              [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+              public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+              public int dmFields;
+              public int dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+              public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+              [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+              public short dmLogPixels;
+              public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+              public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+            }
+            [DllImport("user32.dll")] public static extern int EnumDisplaySettings(string device, int mode, ref DEVMODE dm);
+            [DllImport("user32.dll")] public static extern int ChangeDisplaySettings(ref DEVMODE dm, int flags);
+            public static int Set(int width, int height) {
+              DEVMODE dm = new DEVMODE();
+              dm.dmDeviceName = new string(new char[32]);
+              dm.dmFormName = new string(new char[32]);
+              dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+              if (EnumDisplaySettings(null, -1, ref dm) == 0) { return -1; }
+              dm.dmPelsWidth = width;
+              dm.dmPelsHeight = height;
+              dm.dmFields = 0x80000 | 0x100000;   // DM_PELSWIDTH | DM_PELSHEIGHT
+              return ChangeDisplaySettings(ref dm, 0);
+            }
+          }
+          '@
+          try {
+            Add-Type -TypeDefinition $source -ErrorAction Stop
+            $result = [Display]::Set(1920, 1080)
+            Write-Host "ChangeDisplaySettings returned $result (0 means it worked)"
+          } catch {
+            Write-Host "Could not resize the display: $_"
+          }
+          Add-Type -AssemblyName System.Windows.Forms
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          Write-Host "Display is now $($bounds.Width)x$($bounds.Height)"
+
       - name: Run WebDriver smoke suite
         if: needs.changes.outputs.code == 'true'
         run: npm run e2e

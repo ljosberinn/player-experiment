@@ -88,6 +88,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // The only way this app opens anything outside itself. Its permission
+        // in capabilities/default.json names the exact URLs it may open rather
+        // than granting `opener:default`, so a link added later cannot quietly
+        // send a local-only player anywhere new.
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let path = database_path(app.handle())?;
             // Before anything that could panic is spawned, and before the
