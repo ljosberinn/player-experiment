@@ -63,7 +63,11 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
+    // The e2e directory is WebdriverIO territory, with one exception: the
+    // screenshot viewport arithmetic is pure and belongs in a unit run. The
+    // `.unit.` infix and the single-level glob both keep this away from the
+    // specs under `e2e/specs`, which need a browser and a built app.
+    include: ["src/**/*.test.{ts,tsx}", "e2e/*.unit.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
