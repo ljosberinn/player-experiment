@@ -338,10 +338,18 @@ describe("appearance, in the engine that actually lays it out", () => {
     expect(children.length).toBeGreaterThan(3);
 
     // One row: every child starts within a few pixels of the topmost one.
-    // Not exactly equal - they are vertically centred at different heights,
-    // and the window buttons deliberately hang off the top edge.
-    const highest = Math.min(...children.map((child) => child.top));
-    const wrapped = children
+    // Not exactly equal - they are vertically centred at different heights.
+    //
+    // The caption cluster is left out of this comparison, not out of the test.
+    // It deliberately hangs off the top edge (see `.window-buttons`, which
+    // pulls itself flush with the top so the corner stays hittable), so it is
+    // always the topmost thing on the bar by about thirty pixels - which made
+    // every *correctly* centred child look like it had wrapped below it. It
+    // still has to stay inside the window, which the right-edge check below
+    // covers.
+    const inFlow = children.filter((child) => !child.what.includes("window-buttons"));
+    const highest = Math.min(...inFlow.map((child) => child.top));
+    const wrapped = inFlow
       .filter((child) => child.top > highest + 20)
       .map((child) => `${child.what} sits ${child.top - highest}px below the bar`);
 
