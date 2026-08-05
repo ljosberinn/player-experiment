@@ -11,7 +11,7 @@ crash dialog — rendered at 1440×900 with every colour expressed in `oklch`.
 This document is the route from what is on `main` today to that design. It is a
 large sweep: the segmented tab bar is deleted, the transport moves out of the title
 bar, the library toolbar goes away, the product is renamed, and a colour ramp
-replaces the current one. Nine phases, one branch and one pull request each, in the
+replaces the current one. Ten phases, one branch and one pull request each, in the
 order given — later phases assume the earlier ones landed.
 
 Phases 1–31 are in `PLAN.md`; this continues its numbering at 32. The last.fm work
@@ -377,6 +377,52 @@ in both without further work.
 
 ---
 
+---
+
+## Phase 41 — Screenshots at a size somebody actually uses
+
+The e2e suite photographs features into the pull request body (phase 29). Those
+photographs are currently taken at whatever the harness window happens to be —
+1416×864, at zoom 1.0 — which is a laptop, not the case this app was built for. A
+reviewer looking at a table designed for tens of thousands of rows sees about
+twenty of them.
+
+The target is **1920×1080 with the interface at 90%**. That is a full desktop
+monitor with the UI scaled down slightly, which is how a dense library actually
+gets used, and it puts roughly a third more rows in frame.
+
+**Two things have to be true, and only one of them is ours.**
+
+The window has to be able to *be* 1920×1080, which needs a display at least that
+large. GitHub's Windows runners boot at 1024×768, so CI grows the virtual display
+before the suite runs. The mechanism is a P/Invoke to `ChangeDisplaySettings` from
+PowerShell — there is no cmdlet for it on the runner image — and it is allowed to
+fail: a runner that refuses simply produces smaller screenshots.
+
+The viewport then has to be sized in *physical* pixels, which is not what
+`window.innerWidth` reports once zoom is involved. Setting a window to 1920 wide
+and then zooming to 0.9 gives a 2133-pixel-wide CSS viewport inside an 1920-pixel
+window, and asking for `innerWidth === 1920` would fight that forever. The helper
+measures `innerWidth × devicePixelRatio`, compares against the target, adjusts the
+window by the difference, and repeats a bounded number of times.
+
+**Nothing asserts on any of it.** These are review aids; a screenshot that came out
+at 1024×768 because the runner refused to resize is a smaller picture, not a failed
+test. The helper reports what it achieved and the suite carries on — the same
+principle that made `capture()` return `false` rather than throw.
+
+**Zoom is applied to the webview directly, not through the store.** `useZoomStore`
+persists to `settings`, and a screenshot has no business changing a preference that
+outlives it. The webview's own `setZoom` is a display change and nothing more.
+
+The viewport is entered and left around each capture rather than set for the whole
+run. Two reasons: the appearance and virtualization suites assert against the
+window they were written for — "only a windowful of rows" means something different
+at 1080 pixels — and a spec that resized the window permanently would make every
+later spec's failure depend on which specs ran before it.
+
+---
+
 ## Testing
 
 Per phase, in the same pull request as the work — the existing standard, not a new
@@ -393,6 +439,7 @@ one.
 | 38 | repeat loops and bumps `play_count` | mute restores the prior level | mute, repeat, reload |
 | 39 | median-cut over fixture images; palette cached and reused | blobs absent under reduced motion and when disabled | screenshot with a cover, and without |
 | 40 | — | URL construction incl. encoding; album-artist preference; disabled states | menu shows both submenus |
+| 41 | — | the physical-pixel arithmetic, without a browser | the screenshots come out at the size asked for, or say what they came out at |
 
 Two properties get asserted rather than assumed, because both are easy to break
 silently:
