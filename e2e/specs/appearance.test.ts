@@ -310,6 +310,62 @@ describe("appearance, in the engine that actually lays it out", () => {
     });
   });
 
+  it("keeps the whole title bar on one row, inside the window", async () => {
+    // The defect this exists for, found by looking at a screenshot rather than
+    // by any assertion: the title bar was a four-column grid holding four
+    // things, and phase 34 gave it seven. Grid auto-placement only moves
+    // forward, so the overflow started a second row - the window buttons ended
+    // up below the bar and the now-playing display was clipped off the right
+    // edge of the window. Every unit test passed.
+    const layout = await browser.execute(() => {
+      const bar = document.querySelector(".titlebar");
+      if (bar === null) {
+        return null;
+      }
+      const children = Array.from(bar.children).map((child) => {
+        const box = child.getBoundingClientRect();
+        return {
+          what: child.className.toString() || child.tagName,
+          top: Math.round(box.top),
+          right: Math.round(box.right),
+        };
+      });
+      return { children, width: window.innerWidth };
+    });
+
+    expect(layout).not.toBe(null);
+    const { children, width } = layout as NonNullable<typeof layout>;
+    expect(children.length).toBeGreaterThan(3);
+
+    // One row: every child starts within a few pixels of the topmost one.
+    // Not exactly equal - they are vertically centred at different heights,
+    // and the window buttons deliberately hang off the top edge.
+    const highest = Math.min(...children.map((child) => child.top));
+    const wrapped = children
+      .filter((child) => child.top > highest + 20)
+      .map((child) => `${child.what} sits ${child.top - highest}px below the bar`);
+
+    // And nothing runs off the right edge, which is the other half of the same
+    // fault: a row that cannot wrap overflows instead.
+    const clipped = children
+      .filter((child) => child.right > width + 1)
+      .map((child) => `${child.what} runs ${child.right - width}px past the window`);
+
+    expect([...wrapped, ...clipped]).toEqual([]);
+  });
+
+  it("draws the accent strip along the top of the window", async () => {
+    // Decoration, and the design's most recognisable single element. Drawn as
+    // a pseudo-element, so it has no node to query - the height of the strip
+    // is the gap between the top of the window and the top of the title bar.
+    const offset = await browser.execute(() => {
+      const bar = document.querySelector(".titlebar");
+      return bar === null ? -1 : Math.round(bar.getBoundingClientRect().top);
+    });
+
+    expect(offset).toBeGreaterThan(0);
+  });
+
   it("draws the dark palette rather than a default white page", async () => {
     // Guards the tests above. They resolve the background by walking up to the
     // first ancestor that paints one, so a stylesheet that failed to load

@@ -56,6 +56,9 @@
      `e2e/contrast.ts` flattens the stack before measuring. */
   --accent: oklch(0.72 0.16 55);
   --accent-tint: oklch(0.72 0.16 55 / 0.18);
+  /* The tail of the strip along the top of the window, which fades out rather
+     than stopping. */
+  --accent-fade: oklch(0.72 0.16 55 / 0.2);
   --accent-wash: oklch(0.72 0.16 55 / 0.08);
   --on-accent: oklch(0.13 0.008 55);
 
@@ -174,16 +177,40 @@ input[type="radio"] {
   height: 100vh;
 }
 
+/* The strip along the very top of the window, from the design: full accent at
+   the left, fading to nothing by two thirds across. A pseudo-element rather
+   than a div - it is decoration with no meaning, and nothing should have to
+   render it or read past it in the DOM. */
+.app::before {
+  content: "";
+  flex: none;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-fade) 60%, transparent);
+}
+
 /* ---------- title bar ---------- */
 
+/* Flex, not grid, since phase 34. It was a four-column grid holding four
+   things; the brand, the menus and the version made it seven, and grid
+   auto-placement put the overflow on a second row - which pushed the window
+   buttons below the bar and clipped the status display off the right edge.
+   A row that must not wrap should say so rather than be counted. */
 .titlebar {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 14px;
   padding: 7px 0 7px 12px;
   background: var(--chrome);
   border-bottom: 1px solid var(--chrome-border);
+}
+
+/* Everything on the bar keeps its size; the status display takes what is
+   left. Without `min-width: 0` a flex item refuses to shrink below its
+   content, which is how a bar full of fixed-width controls overflows its
+   window instead of squeezing the one part that can give. */
+.titlebar > * {
+  flex: none;
 }
 
 /* A compact cluster in the top-right corner, after Discord's, rather than the
@@ -386,6 +413,12 @@ input[type="radio"] {
 /* ---------- status display ---------- */
 
 .status-display {
+  /* The one thing on the title bar that gives. Declared after `.titlebar > *`
+     above and at equal specificity, so it wins on order - which is also why
+     the flex properties live here rather than in a `.titlebar`-scoped rule
+     that would out-specify it and then have to restate the height. */
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -418,7 +451,12 @@ input[type="radio"] {
 }
 
 .status-text {
-  min-width: 312px;
+  /* Was a 312px floor, which is what made the title bar wider than the window
+     it sits in once the menus arrived. The box it lives in is flexible now and
+     gets the leftover space, which at any window this app supports is more
+     than 312px anyway. */
+  min-width: 0;
+  overflow: hidden;
   text-align: center;
 }
 
