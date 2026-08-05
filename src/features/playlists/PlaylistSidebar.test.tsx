@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -6,6 +6,7 @@ import {
   createPlaylist,
   deletePlaylist,
   listPlaylists,
+  loadSidebarSections,
   type Playlist,
   renamePlaylist,
 } from "../../ipc";
@@ -22,6 +23,9 @@ vi.mock("../../ipc", () => ({
   addToPlaylist: vi.fn(),
   removeFromPlaylist: vi.fn(),
   moveInPlaylist: vi.fn(),
+  loadSidebarSections: vi.fn(async () => null),
+  saveSidebarSections: vi.fn(async () => undefined),
+  onLibraryChanged: vi.fn(async () => () => {}),
   countTracks: vi.fn(async () => 0),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(async () => []),
@@ -30,6 +34,10 @@ vi.mock("../../ipc", () => ({
 
 function playlist(id: number, name: string, trackCount = 0): Playlist {
   return { id, name, kind: "static", trackCount, createdAt: 0 };
+}
+
+function smart(id: number, name: string, trackCount = 0): Playlist {
+  return { id, name, kind: "smart", trackCount, createdAt: 0 };
 }
 
 /** A drag carrying track ids, as the songs table would produce. */
@@ -53,8 +61,13 @@ beforeEach(() => {
     notice: null,
     error: null,
     renaming: null,
+    collapsed: {},
   });
   vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 4), playlist(2, "Focus", 9)]);
+  // Restated rather than left to the factory: `clearAllMocks` clears calls but
+  // keeps implementations, so the one test that stores a folded section was
+  // leaking a folded sidebar into every test declared after it.
+  vi.mocked(loadSidebarSections).mockResolvedValue(null);
 });
 
 describe("PlaylistSidebar", () => {
@@ -391,5 +404,94 @@ describe("PlaylistSidebar", () => {
 
     // A drag that carried nothing should not leave an empty playlist behind.
     expect(createPlaylist).not.toHaveBeenCalled();
+  });
+});
+
+describe("folding the sidebar sections", () => {
+  it("keeps smart and static playlists in sections of their own", async () => {
+    // One heading with two buttons on it - a + that made a playlist and a gear
+    // that made a smart one - is what this replaced. Nothing but the icon said
+    // which was which.
+    vi.mocked(listPlaylists).mockResolvedValue([
+      playlist(1, "Evening", 4),
+      smart(2, "Recently Added", 100),
+    ]);
+    render(<PlaylistSidebar />);
+
+    const smartList = await screen.findByRole("list", { name: "Smart Playlists" });
+    const staticList = screen.getByRole("list", { name: "Playlists" });
+
+    expect(within(smartList).getByRole("button", { name: "Recently Added" })).toBeInTheDocument();
+    expect(within(smartList).queryByRole("button", { name: "Evening" })).not.toBeInTheDocument();
+    expect(within(staticList).getByRole("button", { name: "Evening" })).toBeInTheDocument();
+  });
+
+  it("hides a section's contents when its heading is pressed", async () => {
+    const user = userEvent.setup();
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    const fold = screen.getByRole("button", { name: /^Playlists/ });
+    expect(fold).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(fold);
+
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Evening" })).not.toBeInTheDocument();
+  });
+
+  it("takes the drop target with it when it folds", async () => {
+    // A hidden drop target is a thing a drag can still find and a keyboard
+    // cannot, which is why the section unmounts rather than hides.
+    const user = userEvent.setup();
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    await user.click(screen.getByRole("button", { name: /^Playlists/ }));
+
+    expect(screen.queryByTestId("playlist-dropzone")).not.toBeInTheDocument();
+  });
+
+  it("opens a section that was stored folded", async () => {
+    // Through the stored value rather than by setting the store directly: the
+    // sidebar reads its arrangement on mount, so a hand-set state would be
+    // overwritten a tick later - which is the whole path being tested.
+    vi.mocked(loadSidebarSections).mockResolvedValue('{"playlists":true}');
+    const user = userEvent.setup();
+    render(<PlaylistSidebar />);
+
+    const fold = await screen.findByRole("button", { name: /^Playlists/ });
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Evening" })).not.toBeInTheDocument();
+
+    await user.click(fold);
+
+    expect(await screen.findByRole("button", { name: "Evening" })).toBeInTheDocument();
+  });
+
+  it("folds one section without touching the other", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      playlist(1, "Evening", 4),
+      smart(2, "Recently Added", 100),
+    ]);
+    const user = userEvent.setup();
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    await user.click(screen.getByRole("button", { name: /^Smart Playlists/ }));
+
+    expect(screen.queryByRole("button", { name: "Recently Added" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Evening" })).toBeInTheDocument();
+  });
+
+  it("shows how many songs each playlist holds", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      playlist(1, "Evening", 4),
+      smart(2, "Recently Added", 100),
+    ]);
+    render(<PlaylistSidebar />);
+
+    expect(await screen.findByText("4")).toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
   });
 });

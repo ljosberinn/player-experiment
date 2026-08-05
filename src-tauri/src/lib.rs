@@ -158,6 +158,8 @@ pub fn run() {
             commands::save_column_config,
             commands::load_zoom,
             commands::save_zoom,
+            commands::load_sidebar_sections,
+            commands::save_sidebar_sections,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,

@@ -160,6 +160,20 @@ export function saveZoom(factor: string): Promise<void> {
   return invoke<void>("save_zoom", { factor });
 }
 
+/**
+ * Which sidebar sections the user has folded away, or null on a first run.
+ *
+ * Opaque to the backend, like the column layout: which sections exist is
+ * decided here, in `features/playlists/sections.ts`.
+ */
+export function loadSidebarSections(): Promise<string | null> {
+  return invoke<string | null>("load_sidebar_sections");
+}
+
+export function saveSidebarSections(sectionsJson: string): Promise<void> {
+  return invoke<void>("save_sidebar_sections", { sectionsJson });
+}
+
 /** Writes an export to `path`, resolving to how many tracks it holds. */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });

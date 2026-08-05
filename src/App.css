@@ -918,16 +918,61 @@ input[type="radio"] {
   font-variant-numeric: tabular-nums;
 }
 
-/* The heading takes the row and the buttons sit together at its end. Was
-   `space-between`, which spreads three children evenly and left the + stranded
-   in the middle of the row with the gear out at the edge. */
+/* The heading takes the row and the buttons sit at its end. Was
+   `space-between`, which spread three children evenly and left the + stranded
+   in the middle of the row - there were two buttons then, a + and a gear, and
+   phase 36 gave each section its own + instead. */
 .sidebar-title-row {
   display: flex;
   align-items: center;
+  /* The row carries the heading's padding, and the heading inside it carries
+     none. The design does it this way and the reason shows up in a screenshot:
+     with 9px of padding under the *title* and none under the button beside it,
+     the two are centred against boxes of different heights and the + sits
+     visibly below the word it belongs to. */
+  padding: 0 10px 9px;
 }
 
 .sidebar-title-row .sidebar-title {
   flex: 1;
+  padding: 0;
+}
+
+/* The whole heading folds the section, not a 13px glyph beside it. Inherits
+   the heading's type so the button is invisible as a button - what says it is
+   one is the triangle, and what says which way it points is the state. */
+.sidebar-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: default;
+}
+
+/* A disclosure triangle, drawn with the same border trick as the transport
+   glyphs. Points down when the section is open and right when it is folded,
+   which is the one convention every file tree and settings pane shares. */
+.sidebar-chevron {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4px solid currentcolor;
+  border-right: 3.5px solid transparent;
+  border-left: 3.5px solid transparent;
+}
+
+/* Rotated rather than redrawn, so the two states cannot drift apart. The
+   transform is instant - `*` turns transitions off app-wide. */
+.sidebar-fold[aria-expanded="false"] .sidebar-chevron {
+  transform: rotate(-90deg);
 }
 
 .sidebar-add {

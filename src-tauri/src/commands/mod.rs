@@ -333,6 +333,24 @@ pub fn save_zoom(db: State<'_, Db>, factor: String) -> AppResult<()> {
     settings::set(&conn, settings::ZOOM, &factor)
 }
 
+/// Which sidebar sections are collapsed, as the frontend wrote them.
+///
+/// Opaque here, like the column layout and for the same reason: which sections
+/// exist is decided in the sidebar, and a second definition of that in Rust
+/// would be one more thing to keep in step. Deliberately not exportable - it
+/// describes how this machine's window is arranged, not the library.
+#[tauri::command]
+pub fn load_sidebar_sections(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::SIDEBAR)
+}
+
+#[tauri::command]
+pub fn save_sidebar_sections(db: State<'_, Db>, sections_json: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::SIDEBAR, &sections_json)
+}
+
 #[tauri::command]
 pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {
     let conn = db.conn()?;

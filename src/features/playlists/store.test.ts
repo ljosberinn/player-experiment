@@ -7,17 +7,20 @@ import {
   deletePlaylist,
   type FilterGroup,
   listPlaylists,
+  loadSidebarSections,
   moveInPlaylist,
+  onLibraryChanged,
   type Playlist,
   playlistFilter,
   removeFromPlaylist,
   renamePlaylist,
+  saveSidebarSections,
   setPlaylistFilter,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { emptyFilter } from "../smart/filterTree";
-import { usePlaylistsStore } from "./store";
+import { RECOUNT_DEBOUNCE_MS, usePlaylistsStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   listPlaylists: vi.fn(),
@@ -30,6 +33,9 @@ vi.mock("../../ipc", () => ({
   addToPlaylist: vi.fn(),
   removeFromPlaylist: vi.fn(),
   moveInPlaylist: vi.fn(),
+  loadSidebarSections: vi.fn(async () => null),
+  saveSidebarSections: vi.fn(async () => undefined),
+  onLibraryChanged: vi.fn(async () => () => {}),
   countTracks: vi.fn(async () => 0),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
   queryTracks: vi.fn(async () => []),
@@ -63,6 +69,7 @@ beforeEach(() => {
     error: null,
     editing: null,
     renaming: null,
+    collapsed: {},
   });
   vi.mocked(listPlaylists).mockResolvedValue([]);
 });
@@ -337,5 +344,113 @@ describe("playPlaylist", () => {
 
     expect(usePlayerStore.getState().play).not.toHaveBeenCalled();
     expect(usePlaylistsStore.getState().notice).toBe("Evening is empty.");
+  });
+});
+
+describe("the sidebar arrangement", () => {
+  it("opens every section on a first run", async () => {
+    vi.mocked(loadSidebarSections).mockResolvedValue(null);
+
+    await usePlaylistsStore.getState().loadSections();
+
+    expect(usePlaylistsStore.getState().collapsed).toEqual({});
+  });
+
+  it("reads back what was folded", async () => {
+    vi.mocked(loadSidebarSections).mockResolvedValue('{"smart":true}');
+
+    await usePlaylistsStore.getState().loadSections();
+
+    expect(usePlaylistsStore.getState().collapsed).toEqual({ smart: true });
+  });
+
+  it("opens every section rather than failing when the setting cannot be read", async () => {
+    // A sidebar that cannot read its own arrangement is not an error the user
+    // needs told about - nothing they did has failed - and this runs on mount,
+    // so throwing here would take the sidebar down with it.
+    vi.mocked(loadSidebarSections).mockRejectedValue(new Error("no database"));
+
+    await usePlaylistsStore.getState().loadSections();
+
+    expect(usePlaylistsStore.getState().collapsed).toEqual({});
+    expect(usePlaylistsStore.getState().error).toBeNull();
+  });
+
+  it("folds on screen before it has been stored", async () => {
+    // Folding a section is a pointer gesture and must not wait for SQLite to
+    // answer before it looks like it happened.
+    let store: (() => void) | undefined;
+    vi.mocked(saveSidebarSections).mockReturnValue(
+      new Promise<void>((resolve) => {
+        store = resolve;
+      }),
+    );
+
+    const toggling = usePlaylistsStore.getState().toggleSection("playlists");
+
+    expect(usePlaylistsStore.getState().collapsed).toEqual({ playlists: true });
+    store?.();
+    await toggling;
+    expect(saveSidebarSections).toHaveBeenCalledWith('{"playlists":true}');
+  });
+
+  it("stays folded when storing the arrangement fails", async () => {
+    vi.mocked(saveSidebarSections).mockRejectedValue(new Error("read-only"));
+
+    await usePlaylistsStore.getState().toggleSection("smart");
+
+    // The sidebar is folded either way; only the memory of it is lost.
+    expect(usePlaylistsStore.getState().collapsed).toEqual({ smart: true });
+    expect(usePlaylistsStore.getState().error).toBeNull();
+  });
+});
+
+describe("recounting after the library changes", () => {
+  it("reloads once for a burst, not once per event", async () => {
+    // A scan emits `library://changed` far more often than anyone can read a
+    // number, and every emission would otherwise be one `list_playlists` -
+    // which is a count per playlist, and for a smart one its whole compiled
+    // filter re-run.
+    vi.useFakeTimers();
+    let fire: (() => void) | undefined;
+    vi.mocked(onLibraryChanged).mockImplementation(async (handler: () => void) => {
+      fire = handler;
+      return () => {};
+    });
+
+    const stop = await usePlaylistsStore.getState().watch();
+    vi.mocked(listPlaylists).mockClear();
+
+    for (let i = 0; i < 20; i += 1) {
+      fire?.();
+    }
+    expect(listPlaylists).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(RECOUNT_DEBOUNCE_MS);
+    expect(listPlaylists).toHaveBeenCalledTimes(1);
+
+    stop();
+    vi.useRealTimers();
+  });
+
+  it("drops a pending recount when it stops watching", async () => {
+    // Otherwise the reload lands after the sidebar has gone, which in a test
+    // is a stray promise and in the app is a write to an unmounted store.
+    vi.useFakeTimers();
+    let fire: (() => void) | undefined;
+    vi.mocked(onLibraryChanged).mockImplementation(async (handler: () => void) => {
+      fire = handler;
+      return () => {};
+    });
+
+    const stop = await usePlaylistsStore.getState().watch();
+    vi.mocked(listPlaylists).mockClear();
+
+    fire?.();
+    stop();
+    await vi.advanceTimersByTimeAsync(RECOUNT_DEBOUNCE_MS * 4);
+
+    expect(listPlaylists).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
