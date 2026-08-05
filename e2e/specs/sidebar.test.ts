@@ -18,9 +18,33 @@ import { browser, expect } from "@wdio/globals";
  * they expect.
  */
 
-/** The heading button that folds a section, by the section's visible name. */
+/**
+ * The heading button that folds a section, by the section's visible name.
+ *
+ * `normalize-space(.)` rather than `contains(.)`, which is what the first
+ * version used and which is wrong here in a way that looked right: "Smart
+ * Playlists" contains "Playlists", and `$` returns the first match in document
+ * order - so asking for Playlists folded the smart section instead, reported
+ * itself collapsed quite correctly, and then failed on the other section's
+ * drop zone still being there.
+ */
 function fold(name: string) {
-  return browser.$(`//button[@aria-expanded][contains(., '${name}')]`);
+  return browser.$(`//button[@aria-expanded][normalize-space(.)='${name}']`);
+}
+
+/**
+ * Puts a section into the state a test needs, whatever state it is in.
+ *
+ * Rather than assuming: these specs share one app process and one library, so
+ * a test that failed halfway through leaves the sidebar however it got to, and
+ * the next one asserting from a guessed starting point fails as a puzzle
+ * rather than as itself.
+ */
+async function setFolded(name: string, folded: boolean): Promise<void> {
+  const heading = fold(name);
+  if ((await heading.getAttribute("aria-expanded")) === String(!folded)) {
+    await heading.click();
+  }
 }
 
 async function waitForTheApp(): Promise<void> {
@@ -39,14 +63,12 @@ describe("the sidebar sections", () => {
   after(async () => {
     // Whatever this spec did, the next one starts with an open sidebar.
     for (const name of ["Smart Playlists", "Playlists"]) {
-      const heading = fold(name);
-      if ((await heading.getAttribute("aria-expanded")) === "false") {
-        await heading.click();
-      }
+      await setFolded(name, false);
     }
   });
 
   it("folds a section away and opens it again", async () => {
+    await setFolded("Playlists", false);
     const playlists = fold("Playlists");
     await expect(playlists).toHaveAttribute("aria-expanded", "true");
 
@@ -62,7 +84,10 @@ describe("the sidebar sections", () => {
   });
 
   it("is still folded after the app comes back", async () => {
-    await fold("Smart Playlists").click();
+    // One folded and one open, so what comes back can be told apart from a
+    // blanket default in either direction.
+    await setFolded("Playlists", false);
+    await setFolded("Smart Playlists", true);
     await expect(fold("Smart Playlists")).toHaveAttribute("aria-expanded", "false");
 
     await browser.refresh();
