@@ -133,9 +133,39 @@ fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
             }
             Some(_) => {
                 let filter = crate::db::playlists::filter(conn, playlist_id)?.unwrap_or_default();
+                let order = crate::db::playlists::order(conn, playlist_id)?;
                 let compiled = crate::smart::compile(&filter, crate::now_seconds())?;
-                conditions.push(compiled.sql);
-                params.extend(compiled.params);
+
+                match order.limit {
+                    None => {
+                        conditions.push(compiled.sql);
+                        params.extend(compiled.params);
+                    }
+                    // A cutoff decides *membership*, so it belongs here, in the
+                    // scope every query shares, rather than as a `LIMIT` on the
+                    // page. Appending one to the page query would mean the open
+                    // playlist changed which hundred songs it held whenever the
+                    // user clicked a column header, and searching inside it
+                    // would search the whole library. As a condition, the count,
+                    // the page, the id list and the sidebar's number all narrow
+                    // together with no arithmetic at the call sites.
+                    Some(limit) => {
+                        // The inner `FROM tracks` is what the compiled filter's
+                        // `tracks.`-qualified columns bind to - the innermost
+                        // scope wins - so this reads as a plain subquery rather
+                        // than a correlated one. Aliasing the inner table would
+                        // silently turn every one of those references into a
+                        // reference to the *outer* row, which is why it is not
+                        // aliased however tempting that looks.
+                        conditions.push(format!(
+                            "tracks.id IN (SELECT tracks.id FROM tracks WHERE {} ORDER BY {} LIMIT ?)",
+                            compiled.sql,
+                            smart_order_by(order.sort),
+                        ));
+                        params.extend(compiled.params);
+                        params.push(Box::new(limit.min(crate::db::playlists::MAX_SMART_LIMIT)));
+                    }
+                }
             }
         }
     }
@@ -213,6 +243,33 @@ fn order_by(scope: &Scope, query: &TrackQuery) -> String {
     let sort = format!("tracks.{}", query.sort_by.as_sql());
     let direction = query.direction.as_sql();
     format!("{sort} IS NULL, {sort} {direction}, tracks.id {direction}")
+}
+
+/// The `ORDER BY` that decides which rows a smart playlist's cutoff keeps.
+///
+/// Not the display order - that is [`order_by`], driven by whatever the user
+/// clicked. This one runs inside the membership subquery, where the only thing
+/// it settles is which N songs are in the playlist at all.
+///
+/// With no sort stored there is nothing to rank by, and a bare `LIMIT` over an
+/// unordered query returns whatever SQLite finds first - which is stable in
+/// practice and guaranteed by nothing. Ordering by id makes "the first hundred"
+/// mean the same hundred on every run, which is the least surprising thing an
+/// unsorted cutoff can do.
+///
+/// `sort.field` is an enum whose SQL forms are literals, and it has already been
+/// checked to be a real track column, so this interpolation carries no input.
+fn smart_order_by(sort: Option<crate::model::SmartSort>) -> String {
+    let Some(sort) = sort else {
+        return "tracks.id ASC".to_owned();
+    };
+    let column = format!("tracks.{}", sort.field.as_sql());
+    let direction = sort.direction.as_sql();
+    // NULLs last and a tie-break on id, matching the display order's
+    // convention: an untagged file should not head up "Recently Added", and
+    // ties have to break the same way every time or the hundredth song in the
+    // playlist changes between two queries that should agree.
+    format!("{column} IS NULL, {column} {direction}, tracks.id {direction}")
 }
 
 pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
@@ -373,7 +430,7 @@ pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, V
 mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::model::{BrowseFilter, SortDirection};
+    use crate::model::{BrowseFilter, FilterGroup, SmartOrder, SmartSort, SortDirection};
 
     fn seeded() -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
@@ -946,15 +1003,15 @@ mod tests {
             .is_empty());
     }
 
-    fn smart(db: &Db, filter: crate::model::FilterGroup) -> i64 {
+    fn smart(db: &Db, filter: FilterGroup) -> i64 {
         let conn = db.conn().unwrap();
-        crate::db::playlists::create_smart(&conn, "Smart", &filter, 0)
+        crate::db::playlists::create_smart(&conn, "Smart", &filter, &SmartOrder::default(), 0)
             .unwrap()
             .id
     }
 
-    fn artist_is(name: &str) -> crate::model::FilterGroup {
-        crate::model::FilterGroup {
+    fn artist_is(name: &str) -> FilterGroup {
+        FilterGroup {
             combinator: crate::model::Combinator::All,
             children: vec![crate::model::FilterNode::Rule(crate::model::FilterRule {
                 field: crate::model::FilterField::Artist,
@@ -1026,6 +1083,218 @@ mod tests {
         assert_eq!(
             paths(query_tracks(&conn, &query).unwrap()),
             ["/m/3.mp3", "/m/4.mp3"]
+        );
+    }
+
+    fn smart_with(db: &Db, filter: FilterGroup, order: SmartOrder) -> i64 {
+        let conn = db.conn().unwrap();
+        crate::db::playlists::create_smart(&conn, "Top", &filter, &order, 0)
+            .unwrap()
+            .id
+    }
+
+    fn top(field: SortField, limit: u32) -> SmartOrder {
+        SmartOrder {
+            sort: Some(SmartSort {
+                field,
+                direction: SortDirection::Desc,
+            }),
+            limit: Some(limit),
+        }
+    }
+
+    /// The seeded library with play counts, so a "most played" cutoff has
+    /// something to rank: /m/1 once through to /m/4 four times, /m/5 never.
+    fn played() -> (tempfile::TempDir, Db) {
+        let (dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        for plays in 1..=4 {
+            conn.execute(
+                "UPDATE tracks SET play_count = ?1 WHERE path = ?2",
+                rusqlite::params![plays, format!("/m/{plays}.mp3")],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    /// Paths in the view, sorted, so an assertion is about *which* songs the
+    /// playlist holds rather than about the order they were displayed in.
+    fn members(conn: &Connection, query: &TrackQuery) -> Vec<String> {
+        let mut found = paths(query_tracks(conn, query).unwrap());
+        found.sort();
+        found
+    }
+
+    #[test]
+    fn a_cutoff_decides_which_songs_the_playlist_holds() {
+        let (_dir, db) = played();
+        let id = smart_with(&db, FilterGroup::default(), top(SortField::PlayCount, 2));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+
+        // The two most played, not the first two of five.
+        assert_eq!(members(&conn, &query), ["/m/3.mp3", "/m/4.mp3"]);
+        // And the count agrees, without anyone computing min(total, limit):
+        // it runs through the same scope the rows did.
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
+        assert_eq!(library_stats(&conn, &query).unwrap().tracks, 2);
+        assert_eq!(all_track_ids(&conn, &query).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn sorting_the_view_reorders_it_without_changing_what_is_in_it() {
+        let (_dir, db) = played();
+        let id = smart_with(&db, FilterGroup::default(), top(SortField::PlayCount, 2));
+        let conn = db.conn().unwrap();
+        let view = |sort_by, direction| TrackQuery {
+            playlist_id: Some(id),
+            sort_by,
+            direction,
+            limit: 100,
+            ..Default::default()
+        };
+
+        // This is the whole reason the cutoff lives in the scope rather than on
+        // the page query: clicking a column header must not hand the user a
+        // different two songs.
+        let expected = ["/m/3.mp3", "/m/4.mp3"];
+        assert_eq!(
+            members(&conn, &view(SortField::Title, SortDirection::Asc)),
+            expected
+        );
+        assert_eq!(
+            members(&conn, &view(SortField::Path, SortDirection::Desc)),
+            expected
+        );
+        assert_eq!(
+            members(&conn, &view(SortField::PlayCount, SortDirection::Asc)),
+            expected,
+            "even sorting by the cutoff's own column, backwards"
+        );
+    }
+
+    #[test]
+    fn a_search_inside_a_limited_playlist_searches_only_what_it_holds() {
+        let (_dir, db) = played();
+        // The top two by play count are Half Gate (3) and Gun-Shy (4), so the
+        // Guitar tracks are outside the playlist entirely.
+        let id = smart_with(&db, FilterGroup::default(), top(SortField::PlayCount, 2));
+        let conn = db.conn().unwrap();
+        let search = |term: &str| TrackQuery {
+            playlist_id: Some(id),
+            search: Some(term.to_owned()),
+            sort_by: SortField::Relevance,
+            limit: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(members(&conn, &search("Shields")), ["/m/3.mp3", "/m/4.mp3"]);
+        // In the library, "Tokyo" matches two tracks. In this playlist it
+        // matches none - which `min(count, limit)` could not have told us.
+        assert_eq!(count_tracks(&conn, &search("Tokyo")).unwrap(), 0);
+        assert!(query_tracks(&conn, &search("Tokyo")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_cutoff_composes_with_the_filter_rather_than_replacing_it() {
+        let (_dir, db) = played();
+        // Grizzly Bear only, then the single most played of those.
+        let id = smart_with(&db, artist_is("Grizzly Bear"), top(SortField::PlayCount, 1));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(members(&conn, &query), ["/m/4.mp3"]);
+    }
+
+    #[test]
+    fn a_cutoff_larger_than_the_library_is_not_a_restriction() {
+        let (_dir, db) = played();
+        let id = smart_with(&db, FilterGroup::default(), top(SortField::PlayCount, 500));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 5);
+    }
+
+    #[test]
+    fn the_playlist_follows_the_library_rather_than_freezing_the_first_hundred() {
+        let (_dir, db) = played();
+        let id = smart_with(&db, FilterGroup::default(), top(SortField::PlayCount, 2));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+        assert_eq!(members(&conn, &query), ["/m/3.mp3", "/m/4.mp3"]);
+
+        // Playing /m/1 six times should push /m/3 out. Nothing is
+        // materialised, so nothing needs invalidating - the same property the
+        // unlimited case has.
+        conn.execute(
+            "UPDATE tracks SET play_count = 6 WHERE path = '/m/1.mp3'",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(members(&conn, &query), ["/m/1.mp3", "/m/4.mp3"]);
+    }
+
+    #[test]
+    fn a_cutoff_with_no_sort_still_picks_the_same_songs_every_time() {
+        let (_dir, db) = played();
+        let id = smart_with(
+            &db,
+            FilterGroup::default(),
+            SmartOrder {
+                sort: None,
+                limit: Some(3),
+            },
+        );
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+
+        // Which three is arbitrary; that it is the *same* three on every query
+        // is not, and a bare LIMIT over an unordered query guarantees nothing.
+        let first = members(&conn, &query);
+        assert_eq!(first.len(), 3);
+        assert_eq!(members(&conn, &query), first);
+    }
+
+    #[test]
+    fn an_untagged_row_does_not_head_up_a_descending_cutoff() {
+        let (_dir, db) = played();
+        // /m/5 has no year at all. Sorted by year descending, NULL must not
+        // outrank 2015 and take one of the two places.
+        let id = smart_with(&db, FilterGroup::default(), top(SortField::Year, 2));
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            playlist_id: Some(id),
+            limit: 100,
+            ..Default::default()
+        };
+
+        let found = members(&conn, &query);
+        assert!(
+            !found.contains(&"/m/5.mp3".to_owned()),
+            "the untagged row took a place: {found:?}"
         );
     }
 

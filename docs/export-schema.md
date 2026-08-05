@@ -75,6 +75,7 @@ and meant to be scripted against.
 | `createdAt` | integer | |
 | `trackIds` | array of integer | **Static playlists only**, in playlist order. |
 | `filter` | object | **Smart playlists only** — the filter tree, not a snapshot of its members. |
+| `order` | object | **Smart playlists only, and only when it has one** — the sort and cutoff. |
 
 Exactly one of `trackIds` and `filter` is present, which tells a reader which
 kind it is holding without having to trust `kind`.
@@ -98,6 +99,29 @@ shape is a group of rules:
 `group`. A rule's `value` is one of `{"kind":"text","text":…}`,
 `{"kind":"number","number":…}`, `{"kind":"range","from":…,"to":…}`, or
 `{"kind":"none"}` for operators that take no value.
+
+### `order`
+
+A smart playlist may also carry a sort and a cutoff:
+
+```json
+{ "sort": { "field": "playCount", "direction": "desc" }, "limit": 100 }
+```
+
+Both parts are independently nullable, and the whole key is **omitted** when
+neither is set — which is what every export written before this field existed
+looks like, so those remain valid documents at the same `schemaVersion`.
+
+`limit` is what makes a playlist like "Most Played" expressible, and it is a
+statement about **membership**, not about display: the playlist holds that many
+songs, chosen by `sort`. A reader reconstructing the playlist has to apply the
+sort and the cutoff as part of evaluating the filter, not afterwards to whatever
+the filter returned — those give different answers as soon as anything else
+narrows the view.
+
+`field` is one of the track columns (`title`, `artist`, `album`, `albumArtist`,
+`genre`, `year`, `trackNo`, `durationMs`, `addedAt`, `playCount`,
+`lastPlayedAt`, `path`); `direction` is `asc` or `desc`.
 
 ## `settings[]`
 

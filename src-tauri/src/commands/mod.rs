@@ -13,7 +13,7 @@ use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CrashReport, FilterGroup, LibraryStats, PlayerSnapshot,
-    Playlist, ScanSummary, TagEdit, TagValueField, TagWriteSummary, Track, TrackQuery,
+    Playlist, ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track, TrackQuery,
 };
 use crate::{crash, scan, tags};
 
@@ -132,15 +132,17 @@ pub fn create_playlist(db: State<'_, Db>, name: String) -> AppResult<Playlist> {
     playlists::create(&conn, &name, crate::now_seconds())
 }
 
-/// Creates a smart playlist. Its contents are its filter, evaluated live.
+/// Creates a smart playlist. Its contents are its filter and cutoff, evaluated
+/// live.
 #[tauri::command]
 pub fn create_smart_playlist(
     db: State<'_, Db>,
     name: String,
     filter: FilterGroup,
+    order: SmartOrder,
 ) -> AppResult<Playlist> {
     let conn = db.conn()?;
-    playlists::create_smart(&conn, &name, &filter, crate::now_seconds())
+    playlists::create_smart(&conn, &name, &filter, &order, crate::now_seconds())
 }
 
 #[tauri::command]
@@ -148,9 +150,10 @@ pub fn set_playlist_filter(
     db: State<'_, Db>,
     playlist_id: i64,
     filter: FilterGroup,
+    order: SmartOrder,
 ) -> AppResult<()> {
     let conn = db.conn()?;
-    playlists::set_filter(&conn, playlist_id, &filter, crate::now_seconds())
+    playlists::set_smart(&conn, playlist_id, &filter, &order, crate::now_seconds())
 }
 
 /// The stored filter, for the editor to open.
@@ -158,6 +161,14 @@ pub fn set_playlist_filter(
 pub fn playlist_filter(db: State<'_, Db>, playlist_id: i64) -> AppResult<Option<FilterGroup>> {
     let conn = db.conn()?;
     playlists::filter(&conn, playlist_id)
+}
+
+/// The stored order and cutoff, for the editor to open and for the songs table
+/// to know which column a playlist should arrive sorted by.
+#[tauri::command]
+pub fn playlist_order(db: State<'_, Db>, playlist_id: i64) -> AppResult<SmartOrder> {
+    let conn = db.conn()?;
+    playlists::order(&conn, playlist_id)
 }
 
 #[tauri::command]

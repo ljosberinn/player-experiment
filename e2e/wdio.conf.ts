@@ -66,6 +66,9 @@ export const config: WebdriverIO.Config = {
     // library than over a hundred and fifty thousand rows.
     "./specs/sidebar.test.ts",
     "./specs/library.test.ts",
+    // After `library`, which is what puts songs in the shared library: a
+    // cutoff with nothing to cut off proves nothing.
+    "./specs/smart-playlists.test.ts",
     // Last but one, and it has to be after the rest: it puts a hundred and
     // fifty thousand rows in the shared library and nothing before it would
     // recognise the place afterwards.

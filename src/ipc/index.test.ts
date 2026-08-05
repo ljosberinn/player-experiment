@@ -35,9 +35,11 @@ import {
   playerStop,
   playerToggle,
   playlistFilter,
+  playlistOrder,
   queryTracks,
   removeFromPlaylist,
   renamePlaylist,
+  type SmartOrder,
   saveWindowGeometry,
   scanLibrary,
   setPlaylistFilter,
@@ -257,21 +259,31 @@ describe("ipc", () => {
         ],
       };
       const playlist = { id: 4, name: "Recent", kind: "smart", trackCount: 9, createdAt: 0 };
+      const order: SmartOrder = { sort: { field: "playCount", direction: "desc" }, limit: 100 };
 
       invokeMock.mockResolvedValue(playlist);
-      await expect(createSmartPlaylist("Recent", filter)).resolves.toEqual(playlist);
+      await expect(createSmartPlaylist("Recent", filter, order)).resolves.toEqual(playlist);
       expect(invokeMock).toHaveBeenCalledWith("create_smart_playlist", {
         name: "Recent",
         filter,
+        order,
       });
 
       invokeMock.mockResolvedValue(undefined);
-      await setPlaylistFilter(4, filter);
-      expect(invokeMock).toHaveBeenCalledWith("set_playlist_filter", { playlistId: 4, filter });
+      await setPlaylistFilter(4, filter, order);
+      expect(invokeMock).toHaveBeenCalledWith("set_playlist_filter", {
+        playlistId: 4,
+        filter,
+        order,
+      });
 
       invokeMock.mockResolvedValue(filter);
       await expect(playlistFilter(4)).resolves.toEqual(filter);
       expect(invokeMock).toHaveBeenCalledWith("playlist_filter", { playlistId: 4 });
+
+      invokeMock.mockResolvedValue(order);
+      await expect(playlistOrder(4)).resolves.toEqual(order);
+      expect(invokeMock).toHaveBeenCalledWith("playlist_order", { playlistId: 4 });
     });
 
     it("names the reorder arguments the way the command expects", async () => {

@@ -571,7 +571,8 @@ export function App() {
           title={editing.playlistId === null ? "New Smart Playlist" : "Edit Smart Playlist"}
           name={editing.name}
           filter={editing.filter}
-          onSave={(name, filter) => void saveSmart(name, filter)}
+          order={editing.order}
+          onSave={(name, filter, order) => void saveSmart(name, filter, order)}
           onCancel={closeEditor}
         />
       ) : null}

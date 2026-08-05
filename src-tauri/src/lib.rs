@@ -103,6 +103,11 @@ pub fn run() {
             }
 
             let db = Db::open(&path)?;
+            // Here rather than inside `Db::open`: which playlists a new library
+            // starts with is a product decision, and the storage layer opening
+            // a database should not be the thing that has an opinion about it.
+            db.conn()
+                .and_then(|conn| db::playlists::seed_built_ins(&conn, now_seconds()))?;
             let volume = db.conn().and_then(|conn| settings::volume(&conn))?;
             app.manage(start_player(app.handle().clone(), db.clone(), volume));
             app.manage(db);
@@ -146,6 +151,7 @@ pub fn run() {
             commands::create_smart_playlist,
             commands::set_playlist_filter,
             commands::playlist_filter,
+            commands::playlist_order,
             commands::rename_playlist,
             commands::delete_playlist,
             commands::add_to_playlist,

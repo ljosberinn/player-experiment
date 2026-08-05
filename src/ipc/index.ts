@@ -22,6 +22,8 @@ import type { Playlist } from "./bindings/Playlist";
 import type { PlaylistKind } from "./bindings/PlaylistKind";
 import type { ScanProgress } from "./bindings/ScanProgress";
 import type { ScanSummary } from "./bindings/ScanSummary";
+import type { SmartOrder } from "./bindings/SmartOrder";
+import type { SmartSort } from "./bindings/SmartSort";
 import type { SortDirection } from "./bindings/SortDirection";
 import type { SortField } from "./bindings/SortField";
 import type { TagEdit } from "./bindings/TagEdit";
@@ -53,6 +55,8 @@ export type {
   PlaylistKind,
   ScanProgress,
   ScanSummary,
+  SmartOrder,
+  SmartSort,
   SortDirection,
   SortField,
   TagEdit,
@@ -255,18 +259,46 @@ export function createPlaylist(name: string): Promise<Playlist> {
   return invoke<Playlist>("create_playlist", { name });
 }
 
-/** Creates a smart playlist. Its contents are its filter, evaluated live. */
-export function createSmartPlaylist(name: string, filter: FilterGroup): Promise<Playlist> {
-  return invoke<Playlist>("create_smart_playlist", { name, filter });
+/**
+ * Creates a smart playlist. Its contents are its filter and cutoff, evaluated
+ * live.
+ */
+export function createSmartPlaylist(
+  name: string,
+  filter: FilterGroup,
+  order: SmartOrder,
+): Promise<Playlist> {
+  return invoke<Playlist>("create_smart_playlist", { name, filter, order });
 }
 
-export function setPlaylistFilter(playlistId: number, filter: FilterGroup): Promise<void> {
-  return invoke<void>("set_playlist_filter", { playlistId, filter });
+/**
+ * Replaces both halves of what a smart playlist holds.
+ *
+ * The filter and the order go together because with a cutoff in play they
+ * jointly decide the membership, and writing one without the other would leave
+ * a moment where the playlist is a combination the user never asked for.
+ */
+export function setPlaylistFilter(
+  playlistId: number,
+  filter: FilterGroup,
+  order: SmartOrder,
+): Promise<void> {
+  return invoke<void>("set_playlist_filter", { playlistId, filter, order });
 }
 
 /** The stored filter, for the editor to open. Null when there is none to read. */
 export function playlistFilter(playlistId: number): Promise<FilterGroup | null> {
   return invoke<FilterGroup | null>("playlist_filter", { playlistId });
+}
+
+/**
+ * The stored sort and cutoff.
+ *
+ * Never null: a playlist with neither reads as `{ sort: null, limit: null }`,
+ * which is a real answer rather than a missing one.
+ */
+export function playlistOrder(playlistId: number): Promise<SmartOrder> {
+  return invoke<SmartOrder>("playlist_order", { playlistId });
 }
 
 export function renamePlaylist(playlistId: number, name: string): Promise<void> {

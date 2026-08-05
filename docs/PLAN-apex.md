@@ -11,8 +11,9 @@ crash dialog — rendered at 1440×900 with every colour expressed in `oklch`.
 This document is the route from what is on `main` today to that design. It is a
 large sweep: the segmented tab bar is deleted, the transport moves out of the title
 bar, the library toolbar goes away, the product is renamed, and a colour ramp
-replaces the current one. Ten phases, one branch and one pull request each, in the
-order given — later phases assume the earlier ones landed.
+replaces the current one. Eleven phases, one branch and one pull request each, in
+the order given — later phases assume the earlier ones landed. The last of them is
+maintenance rather than design, and is the only one that could run at any time.
 
 Phases 1–31 are in `PLAN.md`; this continues its numbering at 32. The last.fm work
 in `docs/PLAN-lastfm.md` is unaffected and can land before, after or between these.
@@ -270,9 +271,21 @@ concatenated into SQL, so it can never be user text. The limit is a bound intege
 The `playlists.sort_json` column has existed unused since migration 1 and is where
 this is stored; no schema change is needed.
 
-`count_tracks` has to learn about the limit or every "Most Played" will report the
-whole library. `min(count, limit)` at the call site is enough and avoids a second
-query shape.
+**A limit decides membership, not display order.** "Most Played, limited to 100"
+means the playlist *contains* a hundred songs — so the limit has to be part of what
+`scope()` builds, as `tracks.id IN (SELECT id … ORDER BY … LIMIT ?)`, rather than a
+`LIMIT` appended to the page query. Anything else falls apart the moment a second
+condition lands on the same view: sorting the open playlist by title would silently
+change which hundred songs it holds, and searching inside it would search the whole
+library. The sort is *also* the playlist's default display order when it is opened,
+which is a separate use of the same stored value.
+
+This supersedes the `min(count, limit)` note this phase was planned with. That was
+written assuming the limit rode on the page query, and it is wrong for the same
+reason: with a search running, the true count is "how many of the limited hundred
+match", which `min` cannot compute from the unlimited total. Putting the limit in
+the scope makes `count_tracks`, `library_stats` and `all_track_ids` correct with no
+call-site arithmetic at all — they already share `scope()`.
 
 The rule builder in `SmartPlaylistEditor` gains a footer row — *sorted by …
 descending, limited to … songs* — with both parts optional. The design's modal has
@@ -423,6 +436,60 @@ later spec's failure depend on which specs ran before it.
 
 ---
 
+## Phase 42 — The dependencies, and who watches them
+
+Nothing here is a feature. It is the maintenance that has been accumulating quietly
+since phase 1, found by running `npm outdated` on 2026-08-05 rather than by anything
+breaking.
+
+**`@tanstack/react-table` is removed.** It has been a dependency since the phase 1
+scaffold and has never been imported — a search of every `.ts`, `.tsx`, `.js`,
+`.mjs` and `.json` in the repository finds it in `package.json` and nowhere else.
+`PLAN.md` named TanStack Table, but the songs table ended up hand-rolled, and that
+was the right call rather than an oversight: the row model is server-side keyset
+paging over SQLite, so sorting, filtering and pagination all live in Rust. A table
+library whose whole value is owning those three has nothing left to own here.
+`@tanstack/react-virtual`, which *is* used, is a different package and stays.
+
+That also settles what to do about its 9.0.0 release: adopting it would mean
+rewriting a working virtualized table to hand a library back responsibilities the
+database already has. Removing the dependency drops a licence entry from
+`THIRD-PARTY-NOTICES.md` that we currently attest to for code that never ships.
+
+**The routine updates**, all inside their existing semver ranges: `@base-ui/react`
+1.6→1.7, `@biomejs/biome` 2.5.6→2.5.7, `@testing-library/user-event` 14.6.1→14.6.3,
+the four `@wdio/*` packages to 9.30.1, and `@wdio/tauri-plugin`/`@wdio/tauri-service`
+1.2→1.3. The wdio bump is the one that needs a real CI run rather than a green
+`npm ls`: the embedded driver is what the whole e2e suite stands on, and it is the
+one dependency here whose failure mode is "the suite cannot start".
+
+**The majors are not all one job.** In rising order of how much they can break:
+
+| Package | → | Why it is where it is |
+|---|---|---|
+| `@testing-library/jest-dom` | 7 | A handful of matchers; the surface we touch is small |
+| `@vitejs/plugin-react` | 6 | Two majors of mostly peer-range churn |
+| `vitest` + `@vitest/coverage-v8` | 4 | Move together. Coverage thresholds are configured, and v4 may express them differently |
+| `jsdom` | 30 | Four majors. The one that surfaces latent assumptions in component tests |
+| `vite` | 8 | After plugin-react, and only once Tauri v2 is confirmed to support it |
+| `typescript` | 7 | The native port — a different compiler. Its own branch, with nothing else in it |
+
+Rust is quieter: `ts-rs` 11→12 and `sha2` 0.10→0.11 are the only breaking ones.
+`rusqlite`, `lofty`, `rodio` and `tauri` are all current.
+
+**Nobody was watching.** `.github/` holds `workflows/` and nothing else — no
+`dependabot.yml`, no Renovate — which is why this accumulated silently rather than
+arriving as a stream of small PRs. A grouped weekly Dependabot config over npm,
+cargo and `github-actions`, with patches and minors batched into one pull request
+per ecosystem and majors left to open individually, puts the routine half of this
+phase on a schedule and leaves only the table above as a decision.
+
+The split matters for how this lands: the removal, the in-range updates and the
+Dependabot config are one pull request. Each major is its own, because a red CI run
+has to point at one suspect.
+
+---
+
 ## Testing
 
 Per phase, in the same pull request as the work — the existing standard, not a new
@@ -440,6 +507,7 @@ one.
 | 39 | median-cut over fixture images; palette cached and reused | blobs absent under reduced motion and when disabled | screenshot with a cover, and without |
 | 40 | — | URL construction incl. encoding; album-artist preference; disabled states | menu shows both submenus |
 | 41 | — | the physical-pixel arithmetic, without a browser | the screenshots come out at the size asked for, or say what they came out at |
+| 42 | `cargo test` unchanged | the existing suites, which are the test | the existing suite on the new wdio — the point of the phase |
 
 Two properties get asserted rather than assumed, because both are easy to break
 silently:

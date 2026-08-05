@@ -119,6 +119,20 @@ impl SortField {
             Self::Path => "path",
         }
     }
+
+    /// Whether this field is a column of `tracks` rather than a property of
+    /// the query that produced the row.
+    ///
+    /// [`Self::Relevance`] needs an FTS join to rank against and
+    /// [`Self::Position`] needs a playlist membership to be positioned in.
+    /// Neither exists inside a smart playlist's own filter, so both are refused
+    /// there rather than quietly falling back the way `db::query` does - a
+    /// silent fallback is fine for a display order the user can see and change,
+    /// but a smart playlist's sort decides *which songs it holds*, and picking
+    /// a different hundred than the one asked for is not a detail.
+    pub fn is_track_column(self) -> bool {
+        !matches!(self, Self::Relevance | Self::Position)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -136,6 +150,35 @@ impl SortDirection {
             Self::Desc => "DESC",
         }
     }
+}
+
+/// A smart playlist's ordering.
+///
+/// Two jobs, which is why it is stored rather than left to the table's own
+/// sort: it is the order the playlist opens in, and - when [`SmartOrder::limit`]
+/// is set - it is what decides which songs are in the playlist at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SmartSort {
+    pub field: SortField,
+    pub direction: SortDirection,
+}
+
+/// The ordering and cutoff stored in `playlists.sort_json`.
+///
+/// Both parts optional and both defaulting to absent, which is exactly what
+/// every smart playlist created before this existed has: a filter, no order,
+/// no cutoff. That is why the column has been nullable and unread since
+/// migration 1 and why nothing needed a schema change to start using it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SmartOrder {
+    pub sort: Option<SmartSort>,
+    /// How many songs the playlist holds at most. `None` is "all of them".
+    #[ts(type = "number | null")]
+    pub limit: Option<u32>,
 }
 
 /// Which grouping the browse views present.

@@ -1,15 +1,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type FilterGroup, suggestTagValues } from "../../ipc";
-import { emptyFilter } from "./filterTree";
+import { type FilterGroup, type SmartOrder, suggestTagValues } from "../../ipc";
+import { emptyFilter, noOrder } from "./filterTree";
 import { SmartPlaylistEditor } from "./SmartPlaylistEditor";
 
 // The value field suggests what the library already holds; these tests are
 // about the tree, so it holds nothing.
 vi.mock("../../ipc", () => ({ suggestTagValues: vi.fn(async () => []) }));
 
-function open(filter: FilterGroup = emptyFilter, name = "Recent") {
+function open(filter: FilterGroup = emptyFilter, name = "Recent", order: SmartOrder = noOrder) {
   const onSave = vi.fn();
   const onCancel = vi.fn();
   render(
@@ -17,6 +17,7 @@ function open(filter: FilterGroup = emptyFilter, name = "Recent") {
       title="New Smart Playlist"
       name={name}
       filter={filter}
+      order={order}
       onSave={onSave}
       onCancel={onCancel}
     />,
@@ -27,6 +28,11 @@ function open(filter: FilterGroup = emptyFilter, name = "Recent") {
 /** The filter the last save carried. */
 function saved(onSave: ReturnType<typeof vi.fn>): FilterGroup {
   return onSave.mock.calls.at(-1)?.[1] as FilterGroup;
+}
+
+/** The order the last save carried. */
+function savedOrder(onSave: ReturnType<typeof vi.fn>): SmartOrder {
+  return onSave.mock.calls.at(-1)?.[2] as SmartOrder;
 }
 
 const artistIs = (text: string): FilterGroup => ({
@@ -48,7 +54,98 @@ describe("SmartPlaylistEditor", () => {
     await user.type(screen.getByLabelText("Value for condition 1"), "Grizzly Bear");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(onSave).toHaveBeenCalledWith("Recent", artistIs("Grizzly Bear"));
+    expect(onSave).toHaveBeenCalledWith("Recent", artistIs("Grizzly Bear"), noOrder);
+  });
+
+  describe("sort and limit", () => {
+    it("opens on nothing sorted and nothing limited", () => {
+      open();
+
+      expect(screen.getByRole("checkbox", { name: "Sorted by" })).not.toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "Limited to" })).not.toBeChecked();
+      // Both controls inert until their box is ticked, so an unsorted playlist
+      // cannot be given a direction that means nothing.
+      expect(screen.getByRole("combobox", { name: "Sort by" })).toBeDisabled();
+      expect(screen.getByRole("spinbutton", { name: "Limit" })).toBeDisabled();
+    });
+
+    it("hands back the sort and cutoff it was opened with, untouched", async () => {
+      const order: SmartOrder = { sort: { field: "playCount", direction: "desc" }, limit: 100 };
+      const { onSave, user } = open(emptyFilter, "Most Played", order);
+
+      expect(screen.getByRole("combobox", { name: "Sort by" })).toHaveValue("playCount");
+      expect(screen.getByRole("spinbutton", { name: "Limit" })).toHaveValue(100);
+
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(savedOrder(onSave)).toEqual(order);
+    });
+
+    it("builds a most-played cutoff from nothing", async () => {
+      const { onSave, user } = open();
+
+      await user.click(screen.getByRole("checkbox", { name: "Limited to" }));
+      await user.selectOptions(screen.getByRole("combobox", { name: "Sort by" }), "playCount");
+      const limit = screen.getByRole("spinbutton", { name: "Limit" });
+      await user.clear(limit);
+      await user.type(limit, "25");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(savedOrder(onSave)).toEqual({
+        sort: { field: "playCount", direction: "desc" },
+        limit: 25,
+      });
+    });
+
+    it("supplies a sort when a cutoff is switched on without one", async () => {
+      const { user } = open();
+
+      await user.click(screen.getByRole("checkbox", { name: "Limited to" }));
+
+      // A limit with no sort is a hundred arbitrary songs, which is never what
+      // "limit this to a hundred" means.
+      expect(screen.getByRole("checkbox", { name: "Sorted by" })).toBeChecked();
+      expect(screen.getByRole("combobox", { name: "Sort by" })).toBeEnabled();
+      // And it cannot be taken away again while the cutoff is relying on it.
+      expect(screen.getByRole("checkbox", { name: "Sorted by" })).toBeDisabled();
+    });
+
+    it("keeps the sort when the cutoff is switched back off", async () => {
+      const order: SmartOrder = { sort: { field: "year", direction: "asc" }, limit: 10 };
+      const { onSave, user } = open(emptyFilter, "Oldest", order);
+
+      await user.click(screen.getByRole("checkbox", { name: "Limited to" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      // Sorting is useful on its own, so dropping the cutoff must not quietly
+      // throw away the column the user picked.
+      expect(savedOrder(onSave)).toEqual({
+        sort: { field: "year", direction: "asc" },
+        limit: null,
+      });
+    });
+
+    it("does not offer a sort the backend would refuse", () => {
+      open();
+      const sort = screen.getByRole("combobox", { name: "Sort by" });
+
+      // Relevance needs a search to rank against and position needs a static
+      // playlist to sit in; neither exists inside a smart playlist.
+      expect(sort).not.toHaveTextContent(/relevance/i);
+      expect(sort).not.toHaveTextContent(/position/i);
+    });
+
+    it("reads an emptied limit box as one song rather than as none", async () => {
+      const order: SmartOrder = { sort: { field: "addedAt", direction: "desc" }, limit: 5 };
+      const { onSave, user } = open(emptyFilter, "Recent", order);
+
+      await user.clear(screen.getByRole("spinbutton", { name: "Limit" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      // Zero is refused by the backend, and clearing the box to retype is not
+      // a request for an always-empty playlist.
+      expect(savedOrder(onSave).limit).toBe(1);
+    });
   });
 
   it("offers only the operators the chosen field accepts", async () => {

@@ -5,6 +5,8 @@ import type {
   FilterOp,
   FilterRule,
   FilterValue,
+  SmartOrder,
+  SortField,
   TagValueField,
 } from "../../ipc";
 
@@ -265,6 +267,56 @@ export function setRule(root: FilterGroup, path: Path, rule: FilterRule): Filter
       at === index && child.type === "rule" ? { type: "rule", ...rule } : child,
     ),
   }));
+}
+
+/**
+ * The columns a smart playlist may be sorted and cut off by.
+ *
+ * Not every `SortField`: `relevance` needs a search to rank against and
+ * `position` needs a static playlist to sit in, and neither exists inside a
+ * smart playlist. The backend refuses both, so leaving them out here is the
+ * editor agreeing with it rather than the only thing enforcing it.
+ */
+export const SORT_FIELDS: { id: SortField; label: string }[] = [
+  { id: "title", label: "Name" },
+  { id: "artist", label: "Artist" },
+  { id: "album", label: "Album" },
+  { id: "albumArtist", label: "Album Artist" },
+  { id: "genre", label: "Genre" },
+  { id: "year", label: "Year" },
+  { id: "trackNo", label: "Track Number" },
+  { id: "durationMs", label: "Time" },
+  { id: "addedAt", label: "Date Added" },
+  { id: "playCount", label: "Plays" },
+  { id: "lastPlayedAt", label: "Last Played" },
+  { id: "path", label: "Location" },
+];
+
+/** What a smart playlist starts with: no order, and no cutoff. */
+export const noOrder: SmartOrder = { sort: null, limit: null };
+
+/**
+ * The sort a cutoff falls back to when one is switched on without one.
+ *
+ * A limit with no sort is a hundred arbitrary songs, which is never what
+ * somebody means by "limit this to a hundred". Date Added descending is the
+ * one that reads as an answer rather than as a coin toss.
+ */
+export const defaultSort: SmartOrder["sort"] = { field: "addedAt", direction: "desc" };
+
+/**
+ * Keeps the two halves of an order consistent as the editor changes one.
+ *
+ * The rule is one-way: turning a cutoff on supplies a sort if there is none,
+ * because a cutoff without one is meaningless. Turning the cutoff back off
+ * leaves the sort alone - it is still a useful thing on its own, and silently
+ * discarding what the user picked would be a small theft.
+ */
+export function withLimit(order: SmartOrder, limit: number | null): SmartOrder {
+  if (limit === null) {
+    return { ...order, limit: null };
+  }
+  return { sort: order.sort ?? defaultSort, limit };
 }
 
 /** How many rules the whole tree holds, for "N conditions" in the editor. */

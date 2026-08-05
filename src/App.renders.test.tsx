@@ -70,6 +70,7 @@ vi.mock("./ipc", () => ({
   createSmartPlaylist: vi.fn(),
   setPlaylistFilter: vi.fn(),
   playlistFilter: vi.fn(),
+  playlistOrder: vi.fn(async () => ({ sort: null, limit: null })),
   renamePlaylist: vi.fn(),
   deletePlaylist: vi.fn(),
   addToPlaylist: vi.fn(),
