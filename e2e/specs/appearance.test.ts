@@ -326,7 +326,8 @@ describe("appearance, in the engine that actually lays it out", () => {
         const box = child.getBoundingClientRect();
         return {
           what: child.className.toString() || child.tagName,
-          top: Math.round(box.top),
+          // The vertical centre, not the top - see below.
+          middle: Math.round(box.top + box.height / 2),
           right: Math.round(box.right),
         };
       });
@@ -337,21 +338,26 @@ describe("appearance, in the engine that actually lays it out", () => {
     const { children, width } = layout as NonNullable<typeof layout>;
     expect(children.length).toBeGreaterThan(3);
 
-    // One row: every child starts within a few pixels of the topmost one.
-    // Not exactly equal - they are vertically centred at different heights.
+    // One row: every child shares the row's vertical centre.
     //
-    // The caption cluster is left out of this comparison, not out of the test.
-    // It deliberately hangs off the top edge (see `.window-buttons`, which
-    // pulls itself flush with the top so the corner stays hittable), so it is
-    // always the topmost thing on the bar by about thirty pixels - which made
-    // every *correctly* centred child look like it had wrapped below it. It
-    // still has to stay inside the window, which the right-edge check below
-    // covers.
+    // Centres rather than tops, which is what the first two versions of this
+    // got wrong. The bar is `align-items: center` over children of wildly
+    // different heights - a 67px status display beside a 26px button - so
+    // their *tops* differ by twenty-odd pixels while they sit in the same row,
+    // and every threshold loose enough to allow that was loose enough to miss
+    // a real wrap. Centred children have one centre however tall they are, and
+    // a wrapped one is a whole row away from it.
+    //
+    // The caption cluster is left out of the comparison, not out of the test:
+    // it deliberately hangs off the top edge (see `.window-buttons`, which
+    // pulls itself flush so the corner stays hittable), so its centre is not
+    // the row's by design. It still has to stay inside the window, which the
+    // right-edge check below covers.
     const inFlow = children.filter((child) => !child.what.includes("window-buttons"));
-    const highest = Math.min(...inFlow.map((child) => child.top));
+    const middle = Math.min(...inFlow.map((child) => child.middle));
     const wrapped = inFlow
-      .filter((child) => child.top > highest + 20)
-      .map((child) => `${child.what} sits ${child.top - highest}px below the bar`);
+      .filter((child) => child.middle > middle + 12)
+      .map((child) => `${child.what} sits ${child.middle - middle}px below the row`);
 
     // And nothing runs off the right edge, which is the other half of the same
     // fault: a row that cannot wrap overflows instead.
