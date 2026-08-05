@@ -16,6 +16,13 @@ decoding off the webview thread.
 Out of scope permanently: movies, TV shows, podcasts, apps, tones, store, device
 sync. No code signing (local-only).
 
+**The layout described above holds through phase 31 and no further.** From phase
+32 the app moves onto a new design — renamed **Apex**, with sidebar navigation
+in place of the segmented tab bar, a transport strip in place of the LCD in the
+title bar, no toolbar, and a dark-only `oklch` palette. That route is planned in
+[docs/PLAN-apex.md](docs/PLAN-apex.md); the phases below are left as they were
+written, because they are the record of how the app got here.
+
 ### Decisions taken
 
 | Area | Choice |
