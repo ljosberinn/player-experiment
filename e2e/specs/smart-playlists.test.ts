@@ -39,10 +39,24 @@ function titles(): Promise<string[]> {
   );
 }
 
-/** The sidebar's navigation button for a playlist. Its accessible name is the
-    playlist's name, deliberately - the count beside it keeps changing. */
-function sidebarItem(name: string) {
+/** The sidebar's button for a playlist. Its accessible name is the playlist's
+    name, deliberately - the count beside it keeps changing. */
+function playlistItem(name: string) {
   return browser.$(`button.sidebar-item[aria-label='${name}']`);
+}
+
+/**
+ * The sidebar's button for a library view.
+ *
+ * By its visible label rather than by `aria-label`, which these do not carry:
+ * a playlist row has one because its count would otherwise keep renaming it,
+ * and Songs has nothing that changes. Addressing both the same way is what
+ * made the first version of this spec fail in its cleanup hook.
+ */
+function libraryView(label: string) {
+  return browser.$(
+    `//button[contains(@class,'sidebar-item')][.//span[normalize-space(.)='${label}']]`,
+  );
 }
 
 async function settledAt(count: number, why: string): Promise<void> {
@@ -64,7 +78,11 @@ describe("a smart playlist with a cutoff", () => {
 
     await browser.$("button[aria-label='New smart playlist']").click();
 
-    const name = await browser.$(".modal input[type='text']");
+    // `.modal-field input` rather than `input[type='text']`: the name field
+    // declares no `type` at all, and an attribute selector needs the attribute
+    // to be present - the implicit default does not satisfy it. That is what
+    // failed here first, and every later failure was this one cascading.
+    const name = await browser.$(".modal-field input");
     await name.waitForExist({ timeout: 10_000 });
     await name.setValue(NAME);
 
@@ -83,7 +101,7 @@ describe("a smart playlist with a cutoff", () => {
 
     // The sidebar count runs through the same scope the rows did, so a
     // disagreement here means the cutoff reached one and not the other.
-    await expect(sidebarItem(NAME).$(".sidebar-count")).toHaveText(String(LIMIT));
+    await expect(playlistItem(NAME).$(".sidebar-count")).toHaveText(String(LIMIT));
   });
 
   it("holds the same songs however the view is sorted", async () => {
@@ -108,7 +126,7 @@ describe("a smart playlist with a cutoff", () => {
 
   it("reopens the editor on the cutoff it was saved with", async () => {
     // Through the row's own menu: double-clicking a playlist starts a rename.
-    await sidebarItem(NAME).click({ button: "right" });
+    await playlistItem(NAME).click({ button: "right" });
     await browser.$("//*[@role='menuitem'][contains(., 'Edit Filter')]").click();
 
     const limit = await browser.$("input[aria-label='Limit']");
@@ -123,8 +141,15 @@ describe("a smart playlist with a cutoff", () => {
   });
 
   after(async () => {
+    // Escape first, unconditionally. This is the first spec in the suite to
+    // drive a *context* menu, and if that turns out not to work in the
+    // embedded driver the test above fails with a dialog or a menu still open
+    // - whose backdrop would swallow the click below and fail the cleanup as
+    // well, hiding which one was the real failure.
+    await browser.keys(["Escape"]);
+
     // The specs share one library. Leaving a playlist selected would hand the
     // next one a two-row view where it expects the whole library.
-    await browser.$("button.sidebar-item[aria-label='Songs']").click();
+    await libraryView("Songs").click();
   });
 });
