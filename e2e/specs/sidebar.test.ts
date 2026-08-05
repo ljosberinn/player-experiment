@@ -106,7 +106,7 @@ describe("the sidebar sections", () => {
     await browser.waitUntil(
       async () => {
         const stored = await invoke<string | null>("load_sidebar_sections");
-        return stored !== null && stored.includes("smart");
+        return stored?.includes("smart") === true;
       },
       { timeout: 10_000, timeoutMsg: "the folded section never reached the settings table" },
     );
