@@ -925,10 +925,17 @@ input[type="radio"] {
 .sidebar-title-row {
   display: flex;
   align-items: center;
+  /* The row carries the heading's padding, and the heading inside it carries
+     none. The design does it this way and the reason shows up in a screenshot:
+     with 9px of padding under the *title* and none under the button beside it,
+     the two are centred against boxes of different heights and the + sits
+     visibly below the word it belongs to. */
+  padding: 0 10px 9px;
 }
 
 .sidebar-title-row .sidebar-title {
   flex: 1;
+  padding: 0;
 }
 
 /* The whole heading folds the section, not a 13px glyph beside it. Inherits
