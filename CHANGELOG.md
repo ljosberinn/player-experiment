@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/ljosberinn/player-experiment/compare/v0.3.0...v0.4.0) (2026-08-05)
+
+
+### Features
+
+* **tags:** suggest values the library already uses ([#39](https://github.com/ljosberinn/player-experiment/issues/39)) ([bf0c0aa](https://github.com/ljosberinn/player-experiment/commit/bf0c0aa29488677d71fb3308922939701f2527ab))
+* write panics down, say so on the next launch, and photograph the notice ([#46](https://github.com/ljosberinn/player-experiment/issues/46)) ([18d9f37](https://github.com/ljosberinn/player-experiment/commit/18d9f379bc7db4c6b4189ae82dd47561e9ee0239))
+
+
+### Performance
+
+* **ui:** keep the playhead, volume and search out of the song table ([#38](https://github.com/ljosberinn/player-experiment/issues/38)) ([017051f](https://github.com/ljosberinn/player-experiment/commit/017051ffacd1c1ab0e5826fdb5039148456b6723))
+
+
+### Documentation
+
+* draft the last.fm plan, and correct two premises behind it ([#47](https://github.com/ljosberinn/player-experiment/issues/47)) ([0f4f9f9](https://github.com/ljosberinn/player-experiment/commit/0f4f9f9e7d18bb820b8a823d0d41b23ea2fb2434))
+* main is protected server-side now, so stop saying it is not ([#43](https://github.com/ljosberinn/player-experiment/issues/43)) ([c64e6f5](https://github.com/ljosberinn/player-experiment/commit/c64e6f584751aff6e490ea4f50b0ddaf98fc93cb))
+* plan the move onto the Apex design ([#50](https://github.com/ljosberinn/player-experiment/issues/50)) ([8066043](https://github.com/ljosberinn/player-experiment/commit/8066043653c42e61ef3833b545ae5f8b220bd3cb))
+
 ## [0.3.0](https://github.com/ljosberinn/player-experiment/compare/v0.2.0...v0.3.0) (2026-08-03)
 
 
