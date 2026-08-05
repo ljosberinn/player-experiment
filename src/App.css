@@ -38,6 +38,11 @@
   --text: oklch(0.94 0.005 55);
   --sidebar-text: oklch(0.88 0.005 55);
   --muted: oklch(0.72 0.01 55);
+  /* The design states 0.75 for the menu bar labels and the sidebar counts,
+     against 0.72 everywhere else. Three hundredths of lightness is not a
+     difference anyone can see, but the palette is meant to be exactly what the
+     design says rather than approximately. */
+  --label: oklch(0.75 0.01 55);
 
   /* The accent, and the two ways it is allowed to be used.
 
@@ -300,28 +305,30 @@ input[type="radio"] {
 
 /* ---------- menu bar ---------- */
 
+/* Plain labels 16px apart, as the design draws them - not the padded pills the
+   first version had. A menu bar is a row of words; the popup is what says which
+   one is open. */
 .menubar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 16px;
 }
 
 .menubar-trigger {
-  padding: 3px 9px;
+  padding: 0;
   border: 0;
-  border-radius: 4px;
   background: transparent;
-  color: var(--muted);
+  color: var(--label);
   font: inherit;
-  font-size: 13px;
+  font-size: 11.5px;
   cursor: default;
 }
 
 /* Open, or walked onto by the keyboard - Base UI marks both the same way, so
-   the bar highlights whichever is driving without knowing which. */
+   the bar highlights whichever is driving without knowing which. The design
+   brightens the label rather than filling behind it. */
 .menubar-trigger[data-popup-open],
 .menubar-trigger[data-highlighted] {
-  background: var(--accent-tint);
   color: var(--text);
 }
 
@@ -607,7 +614,7 @@ input[type="radio"] {
 }
 
 .sidebar-count {
-  color: var(--muted);
+  color: var(--label);
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
 }
