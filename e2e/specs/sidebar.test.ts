@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { invoke } from "../invoke";
 
 /**
  * Folding a sidebar section, and finding it still folded next launch.
@@ -42,7 +43,13 @@ function fold(name: string) {
  */
 async function setFolded(name: string, folded: boolean): Promise<void> {
   const heading = fold(name);
-  if ((await heading.getAttribute("aria-expanded")) === String(!folded)) {
+  // Spelled out rather than compared against `String(!folded)`, which is how
+  // the first version of this managed to click whenever the section was
+  // already in the state being asked for - inverted, and inverted in a way
+  // that reads fine.
+  const isOpen = (await heading.getAttribute("aria-expanded")) === "true";
+  const wantOpen = !folded;
+  if (isOpen !== wantOpen) {
     await heading.click();
   }
 }
@@ -89,6 +96,20 @@ describe("the sidebar sections", () => {
     await setFolded("Playlists", false);
     await setFolded("Smart Playlists", true);
     await expect(fold("Smart Playlists")).toHaveAttribute("aria-expanded", "false");
+
+    // Waited for rather than assumed. Folding paints before it stores - it is
+    // a pointer gesture and must not wait for SQLite to look like it happened
+    // - so a reload fired straight after the click could beat the write and
+    // fail as "persistence is broken" when it is only a race in the test.
+    // Reading the setting back is also the most direct evidence there is that
+    // the value reached the database at all.
+    await browser.waitUntil(
+      async () => {
+        const stored = await invoke<string | null>("load_sidebar_sections");
+        return stored !== null && stored.includes("smart");
+      },
+      { timeout: 10_000, timeoutMsg: "the folded section never reached the settings table" },
+    );
 
     await browser.refresh();
     await waitForTheApp();
