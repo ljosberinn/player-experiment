@@ -1,6 +1,9 @@
-# player
+# Apex
 
-A local-only desktop music player for large mp3 libraries — iTunes 11 layout, modern styling.
+A local-only desktop music player for large mp3 libraries.
+
+The layout began as an echo of iTunes 11 and is moving onto a design of its own —
+see [docs/PLAN-apex.md](docs/PLAN-apex.md) for what changes and in what order.
 
 Tauri v2 (Rust core) + React 19 / TypeScript / Vite.
 
@@ -117,7 +120,7 @@ actually refuses.
 
 ## Licence
 
-Player is [MIT licensed](LICENSE).
+Apex is [MIT licensed](LICENSE).
 
 Its dependencies are not all as permissive, and one of them asks something of
 anyone who ships a build: **symphonia**, the mp3 decoder, is MPL-2.0, as are

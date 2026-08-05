@@ -1,5 +1,5 @@
 [package]
-name = "player"
+name = "apex"
 version = "0.3.0"
 description = "Local music player"
 authors = ["Gerrit Alex"]
@@ -14,7 +14,7 @@ publish = false
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "player_lib"
+name = "apex_lib"
 # Desktop-only: the staticlib/cdylib targets the template ships are for mobile
 # and only produce linker warnings here.
 crate-type = ["rlib"]

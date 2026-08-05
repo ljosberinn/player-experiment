@@ -346,7 +346,7 @@ export function App() {
             </p>
           ) : total === 0 ? (
             <p className="empty-state">
-              No songs yet. Use <strong>Add Folder…</strong> to point Player at your music.
+              No songs yet. Use <strong>Add Folder…</strong> to point Apex at your music.
             </p>
           ) : (
             <SongTable

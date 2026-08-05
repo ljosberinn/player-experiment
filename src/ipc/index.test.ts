@@ -56,9 +56,9 @@ const convertFileSrcMock = vi.mocked(convertFileSrc);
 
 describe("ipc", () => {
   it("invokes get_app_info and returns its payload", async () => {
-    invokeMock.mockResolvedValue({ name: "player", version: "0.1.0" });
+    invokeMock.mockResolvedValue({ name: "apex", version: "0.1.0" });
 
-    await expect(getAppInfo()).resolves.toEqual({ name: "player", version: "0.1.0" });
+    await expect(getAppInfo()).resolves.toEqual({ name: "apex", version: "0.1.0" });
     expect(invokeMock).toHaveBeenCalledWith("get_app_info");
   });
 

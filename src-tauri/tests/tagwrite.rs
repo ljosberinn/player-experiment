@@ -5,10 +5,10 @@ mod fixture;
 
 use std::path::{Path, PathBuf};
 
-use player_lib::db::Db;
-use player_lib::model::{CoverEdit, TagEdit};
-use player_lib::scan;
-use player_lib::tags::{self, write};
+use apex_lib::db::Db;
+use apex_lib::model::{CoverEdit, TagEdit};
+use apex_lib::scan;
+use apex_lib::tags::{self, write};
 
 struct Harness {
     _dir: tempfile::TempDir,

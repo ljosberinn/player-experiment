@@ -89,7 +89,7 @@ function computed(selector: string, property: string): Promise<string> {
 
 describe("appearance, in the engine that actually lays it out", () => {
   before(async () => {
-    await browser.waitUntil(async () => (await browser.getTitle()) === "Player", {
+    await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
       timeout: 30_000,
       interval: 500,
     });

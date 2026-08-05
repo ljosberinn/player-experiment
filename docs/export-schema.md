@@ -1,6 +1,6 @@
 # Export schema
 
-The JSON Player writes from **Export** is a published contract. It is versioned
+The JSON Apex writes from **Export** is a published contract. It is versioned
 and meant to be scripted against.
 
 `schemaVersion` is **1**.
@@ -8,8 +8,13 @@ and meant to be scripted against.
 ## Compatibility
 
 - **Adding a field is not a breaking change.** Read the document with a parser
-  that ignores keys it does not know, and a newer Player will keep working.
+  that ignores keys it does not know, and a newer Apex will keep working.
 - `schemaVersion` is bumped only when a field is **removed or reinterpreted**.
+- **`generator.name` changed from `"player"` to `"apex"`** when the app was
+  renamed. `schemaVersion` did not move: the field still means what it always
+  meant — the name of the app that wrote the file — and that name is now Apex.
+  A reader that matched on the literal `"player"` was matching on a value the
+  schema never promised to hold still. Match on `schemaVersion` instead.
 - Field names are `camelCase` throughout.
 - Times are **Unix seconds**, integers, UTC.
 
@@ -19,7 +24,7 @@ and meant to be scripted against.
 {
   "schemaVersion": 1,
   "exportedAt": 1735689600,
-  "generator": { "name": "player", "version": "0.1.0" },
+  "generator": { "name": "apex", "version": "0.1.0" },
   "scope": "library",
   "tracks": [],
   "playlists": [],

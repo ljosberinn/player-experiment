@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn reports_the_crate_name_and_a_semver_version() {
         let info = app_info();
-        assert_eq!(info.name, "player");
+        assert_eq!(info.name, "apex");
         assert_eq!(info.version.split('.').count(), 3);
     }
 }

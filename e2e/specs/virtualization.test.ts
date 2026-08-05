@@ -161,7 +161,7 @@ describe("a library too big to put in the DOM", () => {
   let existing = 0;
 
   before(async () => {
-    await browser.waitUntil(async () => (await browser.getTitle()) === "Player", {
+    await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
       timeout: 30_000,
       interval: 500,
     });

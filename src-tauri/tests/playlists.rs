@@ -4,9 +4,9 @@
 
 mod fixture;
 
-use player_lib::db::{playlists, query, Db};
-use player_lib::model::{SortField, TrackQuery};
-use player_lib::scan;
+use apex_lib::db::{playlists, query, Db};
+use apex_lib::model::{SortField, TrackQuery};
+use apex_lib::scan;
 
 struct Harness {
     _dir: tempfile::TempDir,
