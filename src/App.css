@@ -1,46 +1,92 @@
+/* The palette.
+   =========================================================================
+   One hue - 55, a warm orange-brown - stated in `oklch`, from the Apex design
+   (docs/PLAN-apex.md, phase 33). Two rules hold this block together:
+
+   **Every colour in the app is defined here and nowhere else.** No rule below
+   writes a literal. That is not tidiness: it is the only reason restoring a
+   light theme later is a second block of variables rather than an audit of six
+   hundred declarations. `App.css.test.ts` fails the build if a literal appears
+   outside this block.
+
+   **Dark only, for now.** The light and `prefers-color-scheme` blocks that
+   stood here are gone - the design has no light counterpart, and inventing one
+   would mean shipping a theme nobody drew and nobody looks at. The indirection
+   above is what keeps that door open.
+
+   `oklch` rather than hex because lightness is perceptual there: `0.72` reads
+   as the same brightness at every hue and chroma, so the ramp can be reasoned
+   about arithmetically. Every ratio quoted below is computed, not estimated -
+   see the oklch-to-sRGB conversion in `App.css.test.ts`. */
 :root {
-  --chrome: #e8e8e8;
-  --chrome-border: #b4b4b4;
-  --sidebar: #dfe4ec;
-  --sidebar-text: #33373d;
-  /* Darkened from #4a8fe0, which the appearance suite measured at 3.34:1
-     against the white text it carries - under the 4.5:1 WCAG AA threshold for
-     normal text, and this is the fill behind the *selected row*, which is the
-     surface the library is read on. #3574bd clears it at 4.79 and is still
-     recognisably the same blue. */
-  --accent: #3574bd;
-  --row-odd: #f2f6fc;
-  --text: #1d1d1f;
-  /* Darkened from #6d7076, which the appearance suite measured at 4.05:1
-     against `--chrome` - under the 4.5:1 WCAG AA threshold for body text, and
-     the footer summary is body text. This clears it on all three surfaces it
-     appears over: chrome 4.70, surface 5.76, sidebar 4.51. */
-  --muted: #63666c;
-  --surface: #ffffff;
-  --skeleton: #e3e6ea;
-  --menu-border: #c4c4c8;
-  /* Fields need their own border, not the chrome divider's. `--chrome-border`
-     is tuned to separate two panels of chrome; on a field's own `--surface` it
-     has almost no contrast, and in dark mode it had none at all - #1a1a1c on
-     #191a1c is a ratio of about 1.02:1, so the input was invisible and a
-     select was recognisable only by its arrow. */
-  --field-border: #8e8e93;
-  /* A slider rail is a UI component whose extent has to be readable, and it
-     sits on `--chrome` in the toolbar and on `--surface` in the status
-     display. It used `--skeleton`, which is the loading-placeholder colour
-     tuned for `--surface` - on the title bar that was #e3e6ea on #e8e8e8, a
-     ratio of 1.02:1, so the volume slider's unfilled remainder was invisible.
+  /* Surfaces, darkest first. The window is a stack: sidebar behind, content
+     in front, controls in front of that. */
+  --sidebar: oklch(0.14 0.008 55);
+  --chrome: oklch(0.15 0.008 55);
+  --surface: oklch(0.17 0.008 55);
+  /* Barely a stripe - 0.025 of lightness. The design has no zebra at all, and
+     at 150k rows something has to help the eye track across a wide row; this
+     is the least that still does. */
+  --row-odd: oklch(0.195 0.008 55);
+  --field: oklch(0.21 0.01 55);
+  --skeleton: oklch(0.24 0.01 55);
+  --track: oklch(0.28 0.01 55);
 
-     Two values rather than one, because a single grey cannot do it: dark
-     enough to separate from the frame and it collides with the accent fill
-     it is supposed to contrast against. So the interior stays light and the
-     outline carries the edge. */
-  --track: #d9dde3;
-  --track-border: #7e8288;
-  --danger: #c0392b;
+  /* Text. `--muted` clears 4.5:1 on every surface above it: 7.70 on surface,
+     7.92 on chrome, 7.14 on a field, 8.01 on the sidebar. The design's own
+     dim tones were lifted to exactly this value for the same reason. */
+  --text: oklch(0.94 0.005 55);
+  --sidebar-text: oklch(0.88 0.005 55);
+  --muted: oklch(0.72 0.01 55);
 
-  /* The one density value that repeats. Not a colour, so it sits outside the
-     light/dark blocks - the parity guard compares colour variables only.
+  /* The accent, and the two ways it is allowed to be used.
+
+     **Never as a fill under white text.** White on this amber is 2.60:1 -
+     unreadable, and it is what the selected row used to be. A fill takes
+     `--on-accent`, which is 7.71:1 the other way round.
+
+     **Selection and highlight use the tint**, an 18% wash over whatever is
+     behind it. Composited over the table that is 12.18:1 for ordinary text,
+     against 2.18:1 for the fill it replaces. That is the design's own answer
+     and it is the correct one: a selected row has to stay as readable as an
+     unselected one, and 150k rows are read on it.
+
+     Note the compositing happens in sRGB, not linear light - which is why a
+     ratio computed against the tint's own colour is meaningless and why
+     `e2e/contrast.ts` flattens the stack before measuring. */
+  --accent: oklch(0.72 0.16 55);
+  --accent-tint: oklch(0.72 0.16 55 / 0.18);
+  --accent-wash: oklch(0.72 0.16 55 / 0.08);
+  --on-accent: oklch(0.13 0.008 55);
+
+  /* Borders. Three weights, because they do three different jobs: a hairline
+     between panels, a visible edge on a menu, and an edge on a field that has
+     to be found by eye. The last one is the defect this whole indirection was
+     born from - a field border at 1.02:1 shipped once. It is 2.95:1 against
+     the field's own fill and 3.27:1 against the chrome behind it. */
+  --chrome-border: oklch(1 0 0 / 0.06);
+  --menu-border: oklch(1 0 0 / 0.1);
+  --field-border: oklch(0.5 0.01 55);
+  --track-border: oklch(0.5 0.01 55);
+
+  /* Red, and the two surfaces it appears on. `--danger` is text: 7.16:1 on
+     surface, 6.85:1 on a striped row. `--destructive` is a fill under
+     `--on-danger` at 5.41:1 - a darker red, because a fill and a label are
+     opposite problems. */
+  --danger: oklch(0.72 0.17 25);
+  --destructive: oklch(0.55 0.21 25);
+  --on-danger: oklch(1 0 0);
+  --close-hover: oklch(0.58 0.21 27);
+
+  /* The veil a title-bar button lifts under the pointer, the scrim behind a
+     dialog, and the shadow every popup casts. Stated once so a second popup
+     cannot invent its own. */
+  --hover-veil: oklch(1 0 0 / 0.06);
+  --scrim: oklch(0 0 0 / 0.6);
+  --shadow: 0 8px 24px oklch(0 0 0 / 0.55);
+
+  /* The one density value that repeats. Not a colour, so the literal-colour
+     guard ignores it.
 
      Row height is deliberately NOT here: the virtualizer measures it, so it
      lives in SongTable.tsx as the single source both the estimate and the
@@ -48,65 +94,17 @@
      step, and the two drifting is what makes rows overlap. */
   --control-height: 26px;
 
-  color-scheme: light dark;
+  /* Numerals only. Space Grotesk's figures are the design's one typographic
+     signature - times, durations, the playhead - and it is deliberately not
+     the UI face: a whole interface in it would read as a poster. Vendored
+     through `@fontsource` rather than fetched from Google Fonts, which an
+     offline app cannot do and the CSP forbids. */
+  --font-numeric: "Space Grotesk", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  color-scheme: dark;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 14px;
   color: var(--text);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --chrome: #2c2c2e;
-    --chrome-border: #1a1a1c;
-    --sidebar: #232326;
-    --sidebar-text: #d8dade;
-    --accent: #3574bd;
-    --row-odd: #1f1f22;
-    --text: #ececf0;
-    --muted: #9a9ca2;
-    --surface: #191a1c;
-    --skeleton: #303035;
-    --menu-border: #3d3d42;
-    --field-border: #6d6e75;
-    --track: #26292d;
-    --track-border: #74777d;
-    /* Lighter than the light theme's: #c0392b on a near-black surface is dark
-       enough to read as brown rather than as a warning. */
-    --danger: #ff7a6e;
-  }
-}
-
-/* The same dark values, selectable without changing the operating system.
-   
-   This exists for the appearance suite: a CI runner boots light, and two of the
-   three visual defects that reached a user were dark-only - a marker the colour
-   of the row beneath it, and a field border at 1.02:1. Photographing one theme
-   would have missed both. Setting `data-theme` on the root lets one e2e run
-   check both.
-   
-   Only `dark` is honoured, because that is the direction the default needs
-   overriding in. The values are duplicated rather than shared - CSS has no way
-   to name a set of declarations and apply it from two selectors - so
-   `App.css.test.ts` asserts the two blocks are identical rather than trusting
-   them to stay so. */
-:root[data-theme="dark"] {
-  --chrome: #2c2c2e;
-  --chrome-border: #1a1a1c;
-  --sidebar: #232326;
-  --sidebar-text: #d8dade;
-  --accent: #3574bd;
-  --row-odd: #1f1f22;
-  --text: #ececf0;
-  --muted: #9a9ca2;
-  --surface: #191a1c;
-  --skeleton: #303035;
-  --menu-border: #3d3d42;
-  --field-border: #6d6e75;
-  --track: #26292d;
-  --track-border: #74777d;
-  /* Lighter than the light theme's: #c0392b on a near-black surface is dark
-     enough to read as brown rather than as a warning. */
-  --danger: #ff7a6e;
 }
 
 * {
@@ -184,11 +182,7 @@ input[type="radio"] {
   align-items: center;
   gap: 14px;
   padding: 7px 0 7px 12px;
-  background: linear-gradient(
-    to bottom,
-    var(--chrome),
-    color-mix(in srgb, var(--chrome) 92%, black)
-  );
+  background: var(--chrome);
   border-bottom: 1px solid var(--chrome-border);
 }
 
@@ -223,13 +217,13 @@ input[type="radio"] {
 }
 
 .window-buttons button:hover {
-  background: rgb(128 128 128 / 20%);
+  background: var(--hover-veil);
   color: var(--text);
 }
 
 .window-buttons button.close:hover {
-  background: #e81123;
-  color: #fff;
+  background: var(--close-hover);
+  color: var(--on-danger);
 }
 
 /* ---------- transport ---------- */
@@ -245,7 +239,7 @@ input[type="radio"] {
   height: var(--control-height);
   border: 1px solid var(--chrome-border);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
   cursor: default;
   font-size: 12px;
@@ -326,7 +320,7 @@ input[type="radio"] {
   padding: 5px 12px;
   border: 1px solid var(--chrome-border);
   border-radius: 5px;
-  background: var(--surface);
+  background: var(--field);
 }
 
 .status-summary {
@@ -367,6 +361,7 @@ input[type="radio"] {
 
 .status-time {
   color: var(--muted);
+  font-family: var(--font-numeric);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -392,7 +387,7 @@ input[type="radio"] {
   padding: 0 26px 0 10px;
   border: 1px solid var(--chrome-border);
   border-radius: 11px;
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
 }
 
@@ -483,8 +478,8 @@ input[type="radio"] {
 }
 
 .sidebar-item[aria-current="page"] {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tint);
+  color: var(--text);
 }
 
 .sidebar-label {
@@ -496,11 +491,8 @@ input[type="radio"] {
 
 .sidebar-count {
   color: var(--muted);
+  font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
-}
-
-.sidebar-item[aria-current="page"] .sidebar-count {
-  color: rgba(255, 255, 255, 0.75);
 }
 
 .sidebar-title-row {
@@ -553,7 +545,7 @@ input[type="radio"] {
   padding: 1px 5px;
   border: 1px solid var(--accent);
   border-radius: 3px;
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
   font: inherit;
 }
@@ -586,7 +578,7 @@ input[type="radio"] {
   padding: 4px 17px;
   border: 0;
   border-right: 1px solid var(--chrome-border);
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   cursor: default;
@@ -597,8 +589,8 @@ input[type="radio"] {
 }
 
 .tab[aria-selected="true"] {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tint);
+  color: var(--text);
 }
 
 .tab:disabled {
@@ -617,7 +609,7 @@ input[type="radio"] {
   padding: 0 14px;
   border: 1px solid var(--chrome-border);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   cursor: default;
@@ -658,8 +650,8 @@ input[type="radio"] {
   padding: 8px 12px;
   border: 1px solid var(--danger);
   border-radius: 5px;
-  background: var(--surface);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  background: var(--chrome);
+  box-shadow: var(--shadow);
 }
 
 /* The heading carries the colour and the message stays in the body text:
@@ -714,7 +706,7 @@ input[type="radio"] {
   border: 1px solid var(--field-border);
   border-radius: 4px;
   background: var(--row-odd);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-numeric);
   font-size: 11px;
   /* A backtrace is a column of frames. Reflowing it makes it unreadable, so it
      scrolls inside its own box rather than growing the dialog past the bottom
@@ -770,14 +762,20 @@ input[type="radio"] {
   border-right: 1px solid var(--chrome-border);
 }
 
+/* Quiet, uppercase and letter-spaced, after the design. A header row that
+   competes with the rows beneath it is a header row that gets read every time
+   the eye scans down the table. */
 .song-header-cell {
   width: 100%;
   padding: 5px 12px;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   font: inherit;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   text-align: left;
   cursor: default;
 }
@@ -806,9 +804,12 @@ input[type="radio"] {
   background: var(--row-odd);
 }
 
+/* A wash, not a fill. White on the accent is 2.60:1, and this is the surface
+   a library is read on; the tint keeps ordinary text at 12.18:1 and still says
+   plainly which rows are selected. */
 .song-row.selected {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tint);
+  color: var(--text);
 }
 
 /* The row currently playing, marked even when the selection has moved on.
@@ -837,6 +838,7 @@ input[type="radio"] {
 
 .song-cell.right {
   text-align: right;
+  font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
 }
 
@@ -969,7 +971,7 @@ th.status {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--scrim);
 }
 
 .modal {
@@ -1012,7 +1014,7 @@ th.status {
   padding: 0 5px;
   border: 1px solid var(--field-border);
   border-radius: 3px;
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
   font: inherit;
 }
@@ -1051,7 +1053,7 @@ th.status {
   padding: 0 14px;
   border: 1px solid var(--chrome-border);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   cursor: default;
@@ -1060,7 +1062,7 @@ th.status {
 .modal button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .modal button:disabled {
@@ -1159,10 +1161,10 @@ th.status {
   margin: 0;
   padding: 5px;
   list-style: none;
-  background: var(--surface);
+  background: var(--chrome);
   border: 1px solid var(--menu-border);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  box-shadow: var(--shadow);
   outline: none;
 }
 
@@ -1191,8 +1193,8 @@ th.status {
    Base UI sets `data-highlighted` for both the pointer and the keyboard, so
    the highlight follows whichever is driving without the CSS knowing which. */
 .context-item[data-highlighted] {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tint);
+  color: var(--text);
 }
 
 .context-item[data-disabled] {
@@ -1249,7 +1251,7 @@ th.status {
    Explorer and Finder both do this, and clearing it loses the user's place the
    moment they alt-tab to check something. */
 body:not(:focus-within) .song-row.selected {
-  background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+  background: var(--accent-wash);
   color: var(--text);
 }
 
@@ -1263,7 +1265,7 @@ body:not(:focus-within) .sidebar-row.current {
   padding: 5px 12px;
   border-radius: 4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 14px;
   white-space: nowrap;
@@ -1276,9 +1278,9 @@ body:not(:focus-within) .sidebar-row.current {
 
 /* The one place a colour carries meaning rather than decoration. */
 .modal-actions .destructive {
-  border-color: #c0392b;
-  background: #c0392b;
-  color: #fff;
+  border-color: var(--destructive);
+  background: var(--destructive);
+  color: var(--on-danger);
 }
 
 /* The update prompt replaces the version in the corner rather than adding a
@@ -1359,7 +1361,9 @@ body:not(:focus-within) .sidebar-row.current {
   display: block;
   width: 158px;
   height: 158px;
+  border-radius: 6px;
   background: var(--skeleton);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -1473,6 +1477,7 @@ body:not(:focus-within) .sidebar-row.current {
 .statusbar-zoom-value {
   min-width: 38px;
   text-align: center;
+  font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1495,10 +1500,10 @@ body:not(:focus-within) .sidebar-row.current {
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: var(--surface);
+  background: var(--chrome);
   border: 1px solid var(--menu-border);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  box-shadow: var(--shadow);
   outline: none;
 }
 
@@ -1515,6 +1520,6 @@ body:not(:focus-within) .sidebar-row.current {
 /* The same one selector the menu uses: Base UI marks the active item the same
    way whether the pointer or the keyboard is driving. */
 .suggest-item[data-highlighted] {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tint);
+  color: var(--text);
 }

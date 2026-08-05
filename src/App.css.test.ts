@@ -56,18 +56,49 @@ const HOVER_ALLOWED = [
  */
 const ANIMATION_ALLOWED = [".row-status.playing .wave"];
 
-/** WCAG relative luminance, for the contrast ratio below. */
-function luminance(hex: string): number {
-  const channels = [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16) / 255);
-  const linear = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  return (
-    0.2126 * (linear[0] as number) + 0.7152 * (linear[1] as number) + 0.0722 * (linear[2] as number)
-  );
+/**
+ * `oklch(L C H)` to linear sRGB, then to WCAG relative luminance.
+ *
+ * The palette is stated in `oklch`, and its lightness channel is *not* WCAG
+ * luminance - `oklch(0.5 …)` is perceptually half-bright, which is nowhere near
+ * half the light. Comparing the L values directly would be a plausible-looking
+ * guard that passes unreadable pairs, so this does the real conversion: oklch →
+ * oklab → LMS → linear sRGB, the transform from the CSS Color 4 specification.
+ *
+ * Out-of-gamut components are clamped, as a display would.
+ */
+function linearSrgb(colour: string): [number, number, number] {
+  const [L = 0, C = 0, H = 0] = (colour.match(/[\d.]+/g) ?? []).map(Number);
+  const a = C * Math.cos((H * Math.PI) / 180);
+  const b = C * Math.sin((H * Math.PI) / 180);
+
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ].map((channel) => Math.min(1, Math.max(0, channel))) as [number, number, number];
+}
+
+function luminance(colour: string): number {
+  const [r, g, b] = linearSrgb(colour);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 function contrast(a: string, b: string): number {
   const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
   return (high + 0.05) / (low + 0.05);
+}
+
+/** The `:root` block, which is the only place a colour may be written. */
+const tokenBlock = css.slice(css.indexOf(":root {"), css.indexOf("\n}", css.indexOf(":root {")));
+
+/** One token's value, by name. */
+function token(name: string): string {
+  return new RegExp(`--${name}:\\s*([^;]+)`).exec(tokenBlock)?.[1]?.trim() ?? "";
 }
 
 describe("the stylesheet", () => {
@@ -174,30 +205,79 @@ describe("the stylesheet", () => {
     expect(inputs?.body).toMatch(/cursor:\s*text/);
   });
 
-  it("defines both themes for every colour variable", () => {
-    // `rules()` flattens, so the dark `:root` is just the second one with that
-    // selector - the media prelude is not part of any selector it returns.
-    const roots = all.filter((rule) => rule.selector === ":root");
-    const [light, dark] = roots;
+  it("writes every colour in one block and nowhere else", () => {
+    // The reason a light theme stays cheap to restore. With the light and
+    // `prefers-color-scheme` blocks gone (phase 33), nothing structural stops a
+    // literal being written straight into a component rule - and every one that
+    // is written there is a colour that would have to be found by hand later.
+    //
+    // The token block is exempt by definition; it is where they belong.
+    const outside = css.slice(css.indexOf("\n}", css.indexOf(":root {")));
+    const literals = [
+      ...outside.matchAll(/(?:#[0-9a-f]{3,8}|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\()/gi),
+    ].map((match) => {
+      const line = outside.slice(0, match.index).split("\n").length;
+      return `${match[0]} (roughly line ${line} after :root)`;
+    });
 
-    // Colours only, matched on the value rather than the name. Phase 21a added
-    // density variables (`--row-height` and friends) which have no dark
-    // variant and should not have one - requiring a duplicate would mean
-    // stating the same measurement twice and letting the two drift.
-    const colours = (body: string) =>
-      [...body.matchAll(/(--[\w-]+):\s*([^;]+)/g)]
-        .filter(([, , value]) => /^(#|rgb|hsl|color-mix)/.test((value ?? "").trim()))
-        .map(([, name]) => name)
-        .sort();
+    expect(literals).toEqual([]);
+  });
 
-    expect(roots).toHaveLength(2);
-    // Guards the guard: a value regex that matched nothing would compare two
-    // empty lists and pass whatever the themes actually say.
-    expect(colours(light?.body ?? "").length).toBeGreaterThan(5);
+  it("defines the tokens the rest of the sheet asks for", () => {
+    // The other half of the rule above: a rule may only use `var()`, so a
+    // `var(--typo)` would silently resolve to nothing rather than to a colour.
+    const declared = new Set(
+      [...tokenBlock.matchAll(/(--[\w-]+):/g)].map(([, name]) => name as string),
+    );
+    const used = new Set([...css.matchAll(/var\((--[\w-]+)/g)].map(([, name]) => name as string));
 
-    // A colour defined only in light mode is a light-mode colour burned into
-    // the dark theme, which is how dark modes end up with one unreadable panel.
-    expect(colours(dark?.body ?? "")).toEqual(colours(light?.body ?? ""));
+    // Guards the guard: a regex that matched nothing would compare empty sets.
+    expect(declared.size).toBeGreaterThan(15);
+    expect([...used].filter((name) => !declared.has(name) && !name.startsWith("--a"))).toEqual([]);
+  });
+
+  it("keeps text readable on every surface it is drawn on", () => {
+    // The palette is one hue at eight lightnesses, so a surface added a step
+    // too close to the text above it is an easy and invisible mistake. WCAG AA
+    // for body text is 4.5:1; these are the pairings the app actually makes.
+    const failures = [
+      ["text", "surface"],
+      ["text", "chrome"],
+      ["text", "field"],
+      ["text", "row-odd"],
+      ["muted", "surface"],
+      ["muted", "chrome"],
+      ["muted", "field"],
+      ["muted", "sidebar"],
+      ["danger", "surface"],
+      ["on-accent", "accent"],
+      ["on-danger", "destructive"],
+    ]
+      .map(([fore, back]) => ({
+        pair: `${fore} on ${back}`,
+        ratio: contrast(token(fore as string), token(back as string)),
+      }))
+      .filter((one) => one.ratio < 4.5)
+      .map((one) => `${one.pair} = ${one.ratio.toFixed(2)}:1`);
+
+    expect(failures).toEqual([]);
+  });
+
+  it("never fills with the accent under light text", () => {
+    // This is the pairing the redesign had to correct: white on the amber is
+    // 2.60:1, and it was the fill behind the *selected row* - the surface a
+    // library is read on. Selection uses `--accent-tint` instead, and a solid
+    // accent fill may only carry `--on-accent`.
+    expect(contrast(token("text"), token("accent"))).toBeLessThan(4.5);
+
+    const fills = all
+      .filter((rule) => /background:\s*var\(--accent\)/.test(rule.body))
+      // Anchored, or `border-color: var(--accent)` reads as a foreground and
+      // every accent-bordered button is a false positive.
+      .filter((rule) => /(?:^|[;{\s])color:\s*var\(--(?!on-accent)/.test(rule.body))
+      .map((rule) => rule.selector);
+
+    expect(fills).toEqual([]);
   });
 
   it("keeps every status bar child on one row", () => {
@@ -279,63 +359,39 @@ describe("the stylesheet", () => {
     expect(css).toMatch(/\.context-item\[data-highlighted\]/);
   });
 
-  it("gives form fields a border you can actually see, in both themes", () => {
+  it("gives form fields a border you can actually see", () => {
     // This is the bug that shipped: `--chrome-border` is tuned to separate two
-    // panels of chrome, and in dark mode it was #1a1a1c against a field
-    // surface of #191a1c - a contrast ratio of about 1.02:1. The input was
-    // invisible and a select was recognisable only by its arrow. jsdom applies
-    // no stylesheet, so no component test could have caught it; this reads the
-    // colours and does the arithmetic.
-    const themes = [
-      { name: "light", block: css.slice(0, css.indexOf("@media (prefers-color-scheme: dark)")) },
-      { name: "dark", block: css.slice(css.indexOf("@media (prefers-color-scheme: dark)")) },
-    ];
-
-    for (const { name, block } of themes) {
-      const read = (variable: string) =>
-        new RegExp(`--${variable}:\\s*(#[0-9a-f]{6})`, "i").exec(block)?.[1];
-      const border = read("field-border");
-      const surface = read("surface");
-      const chrome = read("chrome");
-
-      expect(border, `${name} must define --field-border`).toBeDefined();
-      // Against the field's own fill, and against the dialog behind it: a
-      // border that only clears one of the two still leaves an edge missing.
-      expect(
-        contrast(border as string, surface as string),
-        `${name} border vs field`,
-      ).toBeGreaterThan(2);
-      expect(
-        contrast(border as string, chrome as string),
-        `${name} border vs dialog`,
-      ).toBeGreaterThan(2);
-    }
+    // panels of chrome, and in dark mode it was #1a1a1c against a #191a1c field
+    // - a contrast ratio of about 1.02:1. The input was invisible and a select
+    // was recognisable only by its arrow. jsdom applies no stylesheet, so no
+    // component test could have caught it; this reads the colours and does the
+    // arithmetic.
+    //
+    // Against the field's own fill, and against the panel behind it: a border
+    // that only clears one of the two still leaves an edge missing.
+    expect(contrast(token("field-border"), token("field")), "border vs field").toBeGreaterThan(2);
+    expect(contrast(token("field-border"), token("chrome")), "border vs dialog").toBeGreaterThan(2);
 
     // And the fields must actually use it rather than the chrome divider.
     const fields = all.find((rule) => /\.modal input,\s*\.modal select/.test(rule.selector));
     expect(fields?.body).toMatch(/border:[^;]*var\(--field-border\)/);
   });
 
-  it("keeps the two dark themes from drifting apart", () => {
-    // The dark values exist twice: once under `prefers-color-scheme` for real
-    // users, once under `[data-theme="dark"]` so one e2e run can photograph
-    // both themes on a runner that boots light. CSS has no way to name a set of
-    // declarations and apply it from two selectors, so the duplication is real
-    // and this is what stops it rotting - a variable changed in one place and
-    // not the other would mean the suite checks a theme nobody sees.
-    const media = /@media \(prefers-color-scheme: dark\) \{\s*:root \{([\s\S]*?)\}\s*\}/.exec(css);
-    const attribute = /:root\[data-theme="dark"\] \{([\s\S]*?)\n\}/.exec(css);
+  it("uses the numeral face for numbers and not for prose", () => {
+    // Space Grotesk is the design's one typographic signature and its whole job
+    // is figures. Set on `body` it would turn the entire app into a poster, so
+    // the guard is that the token exists, that the places numbers are read use
+    // it, and that the UI font is still what everything else inherits.
+    expect(token("font-numeric")).toMatch(/Space Grotesk/);
 
-    const declarations = (body: string | undefined) =>
-      [...(body ?? "").matchAll(/(--[\w-]+):\s*([^;]+)/g)]
-        .map(([, name, value]) => `${name}: ${(value ?? "").trim()}`)
-        .sort();
+    const root = all.find((rule) => rule.selector.trim().endsWith(":root"));
+    expect(root?.body).toMatch(/font-family:\s*"Segoe UI"/);
 
-    const fromMedia = declarations(media?.[1]);
-    const fromAttribute = declarations(attribute?.[1]);
-
-    // Guards the guard: two failed matches would compare empty lists.
-    expect(fromMedia.length).toBeGreaterThan(5);
-    expect(fromAttribute).toEqual(fromMedia);
+    for (const selector of [".status-time", ".song-cell.right", ".statusbar-zoom-value"]) {
+      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+      expect(rule?.body, `${selector} should set the numeral face`).toMatch(
+        /font-family:\s*var\(--font-numeric\)/,
+      );
+    }
   });
 });

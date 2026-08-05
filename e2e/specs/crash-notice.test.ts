@@ -36,16 +36,6 @@ async function waitForTheApp(): Promise<void> {
   await browser.$(".statusbar-summary").waitForExist({ timeout: 30_000 });
 }
 
-async function applyTheme(theme: "light" | "dark"): Promise<void> {
-  await browser.execute((value: string) => {
-    if (value === "light") {
-      delete document.documentElement.dataset.theme;
-    } else {
-      document.documentElement.dataset.theme = value;
-    }
-  }, theme);
-}
-
 describe("the notice that reports a crash", () => {
   before(async () => {
     await waitForTheApp();
@@ -90,28 +80,23 @@ describe("the notice that reports a crash", () => {
   it("looks like this", async () => {
     // The photographs. No assertion on their contents - they are for the
     // reviewer of the pull request that changes them.
+    // One theme since phase 33, so two photographs where there were four.
     const taken: string[] = [];
 
-    for (const theme of ["light", "dark"] as const) {
-      await applyTheme(theme);
-
-      // Collapsed and expanded: the second is what a bug report gets pasted
-      // from, and it is the one whose layout can push the table off screen.
-      const collapsed = browser.$("//button[text()='Show details']");
-      if (await collapsed.isExisting()) {
-        await collapsed.click();
-      }
-      if (await capture(`crash-notice-${theme}-expanded`)) {
-        taken.push(`${theme}-expanded`);
-      }
-
-      await browser.$("//button[text()='Hide details']").click();
-      if (await capture(`crash-notice-${theme}`)) {
-        taken.push(theme);
-      }
+    // Collapsed and expanded: the second is what a bug report gets pasted
+    // from, and it is the one whose layout can push the table off screen.
+    const collapsed = browser.$("//button[text()='Show details']");
+    if (await collapsed.isExisting()) {
+      await collapsed.click();
+    }
+    if (await capture("crash-notice-expanded")) {
+      taken.push("expanded");
     }
 
-    await applyTheme("light");
+    await browser.$("//button[text()='Hide details']").click();
+    if (await capture("crash-notice")) {
+      taken.push("collapsed");
+    }
 
     // Reported rather than asserted. If this driver turns out not to implement
     // the screenshot endpoint at all, that is worth knowing from the log - and
