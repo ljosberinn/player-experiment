@@ -65,6 +65,10 @@ export const config: WebdriverIO.Config = {
     // songs, and it reloads the webview, which is cheaper to do over an empty
     // library than over a hundred and fifty thousand rows.
     "./specs/sidebar.test.ts",
+    // Also before the library: mute and repeat are player state reached
+    // through two buttons on the strip, and neither needs a song to prove it
+    // reaches the backend and comes back. It reloads the webview too.
+    "./specs/transport.test.ts",
     "./specs/library.test.ts",
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.

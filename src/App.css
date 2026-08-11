@@ -565,19 +565,28 @@ input[type="radio"] {
   gap: 8px;
 }
 
-/* Three ascending bars, the tallest half-lit. Not a level meter and not a
-   button - yet. Making it toggle mute is phase 38, along with the muted state
-   it would need to draw. */
+/* Three ascending bars, the tallest half-lit. Not a level meter: it is the mute
+   button as of phase 38, which is why it is a `button` with a hit area rather
+   than the 12px of glyph the design draws. The bars stay exactly where they
+   were - the padding grows outward. */
 .volume-mark {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 2px;
   height: 12px;
+  padding: 6px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  cursor: default;
+  box-sizing: content-box;
 }
 
 .volume-mark i {
   width: 2px;
-  background: var(--accent);
+  background: currentcolor;
 }
 
 .volume-mark i:nth-child(1) {
@@ -590,11 +599,65 @@ input[type="radio"] {
 
 .volume-mark i:nth-child(3) {
   height: 12px;
-  background: var(--accent-half);
+  opacity: 0.5;
+}
+
+/* Muted: the bars go the colour of everything else that is switched off, and a
+   slash crosses them. Two signals rather than one, because "the amber bars are
+   grey now" is only readable against the memory of what they looked like a
+   moment ago - and is no signal at all to anyone who cannot tell the two
+   apart. The slash is the thing that says it on its own. */
+.volume-mark[aria-pressed="true"] {
+  color: var(--dim);
+}
+
+.volume-mark[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 2px;
+  top: 50%;
+  height: 1.5px;
+  border-radius: 1px;
+  background: currentcolor;
+  rotate: -30deg;
 }
 
 .volume-slider {
   width: 80px;
+}
+
+/* ---------- repeat one ---------- */
+
+/* Off, it is the same weight as the other quiet chrome on the strip. On, it
+   takes the accent and a wash behind it - the only lit toggle in the window,
+   and it has to be legible as "still on" hours after it was pressed. */
+.repeat-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.repeat-button[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.repeat-button:disabled {
+  opacity: 0.4;
+}
+
+/* The 1 inside the loop. Here rather than as an attribute on the element,
+   because `var()` in an SVG presentation attribute does not resolve. */
+.repeat-button text {
+  font-family: var(--font-numeric);
 }
 
 /* ---------- sliders ---------- */
@@ -663,6 +726,15 @@ input[type="radio"] {
   height: 11px;
   border-radius: 50%;
   background: var(--text);
+}
+
+/* Muted: the rail dims, still showing the level unmuting returns to rather
+   than dropping to zero. Written *after* the two rules it dims, deliberately -
+   a more specific selector placed above them is exactly how the play button
+   shipped to CI as an empty circle in phase 34. */
+.volume[data-muted] .volume-fill,
+.volume[data-muted] .volume-thumb {
+  opacity: 0.45;
 }
 
 /* A disabled scrubber is the idle state, not an error: nothing is playing, so

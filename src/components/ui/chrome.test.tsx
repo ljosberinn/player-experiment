@@ -5,6 +5,7 @@ import type { Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { LibraryNav } from "./LibraryNav";
 import { NowPlaying } from "./NowPlaying";
+import { RepeatButton } from "./RepeatButton";
 import { Scrubber } from "./Scrubber";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
@@ -166,6 +167,66 @@ describe("VolumeControl", () => {
     fireEvent.change(slider, { target: { value: "60" } });
 
     expect(onVolumeChange).toHaveBeenCalledWith(0.6);
+  });
+
+  it("keeps showing the level while muted", async () => {
+    // Not zero. The rail is what unmuting comes back to, and a slider that
+    // dropped to the floor on mute would have thrown that away on screen even
+    // though the backend still holds it.
+    const onToggleMute = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <VolumeControl volume={0.4} muted onVolumeChange={() => {}} onToggleMute={onToggleMute} />,
+    );
+
+    expect(screen.getByRole("slider", { name: "Volume" })).toHaveValue("40");
+
+    const button = screen.getByRole("button", { name: "Unmute" });
+    expect(button).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(button);
+    expect(onToggleMute).toHaveBeenCalledOnce();
+  });
+
+  it("offers to mute while audible", () => {
+    render(<VolumeControl volume={0.4} onVolumeChange={() => {}} onToggleMute={() => {}} />);
+
+    const button = screen.getByRole("button", { name: "Mute" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("disables the mute button when there is nothing to toggle it", () => {
+    render(<VolumeControl volume={0.4} onVolumeChange={() => {}} />);
+
+    expect(screen.getByRole("button", { name: "Mute" })).toBeDisabled();
+  });
+});
+
+describe("RepeatButton", () => {
+  it("says whether it is on, rather than changing its name", async () => {
+    // One control in two states: the label stays "Repeat one" and the pressed
+    // state carries the difference, which is what a screen reader announces.
+    const onToggle = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(<RepeatButton onToggle={onToggle} />);
+
+    const button = screen.getByRole("button", { name: "Repeat one" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(button);
+    expect(onToggle).toHaveBeenCalledOnce();
+
+    rerender(<RepeatButton repeating onToggle={onToggle} />);
+    expect(screen.getByRole("button", { name: "Repeat one" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("disables itself without a handler", () => {
+    render(<RepeatButton />);
+
+    expect(screen.getByRole("button", { name: "Repeat one" })).toBeDisabled();
   });
 });
 

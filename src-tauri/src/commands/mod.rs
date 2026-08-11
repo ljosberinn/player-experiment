@@ -443,6 +443,32 @@ pub fn player_set_volume(
     settings::set(&conn, settings::VOLUME, &volume.clamp(0.0, 1.0).to_string())
 }
 
+/// Mutes or unmutes, and remembers which for the next launch.
+///
+/// The level is not touched: `player.volume` still holds what unmuting comes
+/// back to, which is the whole reason mute is its own flag rather than a
+/// volume of zero.
+#[tauri::command]
+pub fn player_set_muted(
+    db: State<'_, Db>,
+    player: State<'_, Player>,
+    muted: bool,
+) -> AppResult<()> {
+    player.send(Command::SetMuted(muted))?;
+    let conn = db.conn()?;
+    settings::set(&conn, settings::MUTED, if muted { "true" } else { "false" })
+}
+
+/// Turns repeat-one on or off.
+///
+/// Not persisted, unlike mute and volume. A player that came back from a
+/// restart still looping one song would be a surprise, and repeat is a thing
+/// done to the song playing now rather than a preference about the app.
+#[tauri::command]
+pub fn player_set_repeat_one(player: State<'_, Player>, repeat: bool) -> AppResult<()> {
+    player.send(Command::SetRepeatOne(repeat))
+}
+
 /// The current state, for a window that has just opened and missed the events.
 #[tauri::command]
 pub fn player_snapshot(db: State<'_, Db>, player: State<'_, Player>) -> AppResult<PlayerSnapshot> {

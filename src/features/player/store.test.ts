@@ -8,6 +8,8 @@ import {
   playerPlay,
   playerPrevious,
   playerSeek,
+  playerSetMuted,
+  playerSetRepeatOne,
   playerSetVolume,
   playerSnapshot,
   playerStop,
@@ -26,6 +28,8 @@ vi.mock("../../ipc", () => ({
   playerPrevious: vi.fn(),
   playerSeek: vi.fn(),
   playerSetVolume: vi.fn(),
+  playerSetMuted: vi.fn(),
+  playerSetRepeatOne: vi.fn(),
   playerSnapshot: vi.fn(),
 }));
 
@@ -62,6 +66,8 @@ function snapshot(overrides: Partial<PlayerSnapshot> = {}): PlayerSnapshot {
     positionMs: 0,
     durationMs: 200_000,
     volume: 0.8,
+    muted: false,
+    repeatOne: false,
     ...overrides,
   };
 }
@@ -96,6 +102,8 @@ beforeEach(() => {
     positionMs: 0,
     durationMs: 0,
     volume: 0.8,
+    muted: false,
+    repeatOne: false,
     queueIndex: null,
     queueLen: 0,
     error: null,
@@ -109,6 +117,8 @@ beforeEach(() => {
     playerPrevious,
     playerSeek,
     playerSetVolume,
+    playerSetMuted,
+    playerSetRepeatOne,
   ]) {
     vi.mocked(command).mockResolvedValue(undefined);
   }
@@ -265,5 +275,60 @@ describe("setVolume", () => {
     await usePlayerStore.getState().setVolume(-0.5);
     expect(usePlayerStore.getState().volume).toBe(0);
     expect(playerSetVolume).toHaveBeenLastCalledWith(0);
+  });
+
+  it("lifts a mute in its echo, as the backend does", async () => {
+    // Otherwise the fill follows the pointer under a lit mute button until the
+    // state event lands - the one place the local echo could disagree with the
+    // player it is echoing.
+    usePlayerStore.setState({ muted: true });
+
+    await usePlayerStore.getState().setVolume(0.6);
+
+    expect(usePlayerStore.getState().muted).toBe(false);
+  });
+});
+
+describe("mute and repeat", () => {
+  it("asks for the opposite of what it currently has", async () => {
+    await usePlayerStore.getState().toggleMute();
+    expect(playerSetMuted).toHaveBeenCalledWith(true);
+
+    usePlayerStore.setState({ muted: true });
+    await usePlayerStore.getState().toggleMute();
+    expect(playerSetMuted).toHaveBeenLastCalledWith(false);
+
+    await usePlayerStore.getState().toggleRepeatOne();
+    expect(playerSetRepeatOne).toHaveBeenCalledWith(true);
+  });
+
+  it("waits for the backend rather than flipping itself", async () => {
+    // Same rule as play/pause: the player owns the state, and a button that
+    // lit before the command landed would have to be un-lit if it failed.
+    await usePlayerStore.getState().toggleMute();
+    expect(usePlayerStore.getState().muted).toBe(false);
+
+    await usePlayerStore.getState().toggleRepeatOne();
+    expect(usePlayerStore.getState().repeatOne).toBe(false);
+  });
+
+  it("adopts both from a state event", async () => {
+    const handlers = captureListeners();
+    await usePlayerStore.getState().connect();
+
+    handlers.state?.(snapshot({ muted: true, repeatOne: true, volume: 0.4 }));
+
+    const state = usePlayerStore.getState();
+    expect(state.muted).toBe(true);
+    expect(state.repeatOne).toBe(true);
+    // Muted is not a volume of zero: the rail still shows what comes back.
+    expect(state.volume).toBe(0.4);
+  });
+
+  it("reports a failing toggle instead of swallowing it", async () => {
+    vi.mocked(playerSetMuted).mockRejectedValue(new Error("the player thread is not running"));
+
+    await usePlayerStore.getState().toggleMute();
+    expect(usePlayerStore.getState().error).toContain("the player thread is not running");
   });
 });

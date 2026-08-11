@@ -166,6 +166,8 @@ beforeEach(async () => {
     positionMs: 0,
     durationMs: 0,
     volume: 0.8,
+    muted: false,
+    repeatOne: false,
   });
   vi.mocked(playerPlay).mockResolvedValue(undefined);
   vi.mocked(playerToggle).mockResolvedValue(undefined);
@@ -758,6 +760,8 @@ describe("App playback", () => {
       positionMs: 30_000,
       durationMs: 200_000,
       volume: 0.8,
+      muted: false,
+      repeatOne: false,
     });
     // The table renders the same title, so wait on the now-playing box itself.
     await renderWithLibrary({ waitForRows: false });

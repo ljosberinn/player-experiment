@@ -600,6 +600,10 @@ pub struct PlayerSnapshot {
     #[ts(type = "number")]
     pub duration_ms: i64,
     pub volume: f32,
+    /// Silent, but not turned down: `volume` is still the level the rail shows
+    /// and the level unmuting returns to.
+    pub muted: bool,
+    pub repeat_one: bool,
 }
 
 /// Playhead ticks, emitted on `player://position` a few times a second.

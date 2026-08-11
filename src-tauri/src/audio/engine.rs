@@ -43,6 +43,10 @@ pub enum Command {
         position_ms: i64,
     },
     SetVolume(f32),
+    /// Silence without forgetting the level. See [`Engine::muted`].
+    SetMuted(bool),
+    /// Play the current track forever instead of advancing at its end.
+    SetRepeatOne(bool),
 }
 
 /// Something the owning thread should act on.
@@ -81,6 +85,8 @@ pub struct EngineState {
     pub position_ms: i64,
     pub duration_ms: i64,
     pub volume: f32,
+    pub muted: bool,
+    pub repeat_one: bool,
 }
 
 /// Fraction of a track that has to play before it counts as played.
@@ -105,13 +111,22 @@ pub struct Engine<S: AudioSink> {
     index: Option<usize>,
     status: PlaybackStatus,
     volume: f32,
+    /// Silence, held apart from a volume of zero.
+    ///
+    /// Two different intentions - "I have turned this down" and "shut up for a
+    /// moment" - and unmuting has to tell them apart, which it can only do if
+    /// the level it should come back to is still here. So the sink hears
+    /// [`Self::output_volume`] while `volume` keeps saying what the rail shows.
+    muted: bool,
+    /// Whether the end of the current track loops back to its start.
+    repeat_one: bool,
     /// Whether the current load has already been counted as played.
     counted: bool,
     last_position_ms: i64,
 }
 
 impl<S: AudioSink> Engine<S> {
-    pub fn new(sink: S, volume: f32) -> Self {
+    pub fn new(sink: S, volume: f32, muted: bool) -> Self {
         let volume = clamp_volume(volume);
         let mut engine = Self {
             sink,
@@ -119,11 +134,23 @@ impl<S: AudioSink> Engine<S> {
             index: None,
             status: PlaybackStatus::Stopped,
             volume,
+            muted,
+            repeat_one: false,
             counted: false,
             last_position_ms: 0,
         };
-        engine.sink.set_volume(volume);
+        let output = engine.output_volume();
+        engine.sink.set_volume(output);
         engine
+    }
+
+    /// What the sink is actually set to: the level, or silence while muted.
+    fn output_volume(&self) -> f32 {
+        if self.muted {
+            0.0
+        } else {
+            self.volume
+        }
     }
 
     pub fn state(&self) -> EngineState {
@@ -135,6 +162,8 @@ impl<S: AudioSink> Engine<S> {
             position_ms: self.position_ms(),
             duration_ms: self.current().map_or(0, |entry| entry.duration_ms),
             volume: self.volume,
+            muted: self.muted,
+            repeat_one: self.repeat_one,
         }
     }
 
@@ -149,50 +178,87 @@ impl<S: AudioSink> Engine<S> {
         i64::try_from(self.sink.position().as_millis()).unwrap_or(i64::MAX)
     }
 
+    /// Dispatch only: every arm is one line, so the behaviour of a command can
+    /// be read - and driven from a test - without picking it out of a match.
     pub fn handle(&mut self, command: Command) -> Vec<Event> {
         match command {
-            Command::SetQueue { entries, index } => {
-                if entries.is_empty() {
-                    return self.stop();
-                }
-                let index = index.min(entries.len() - 1);
-                self.queue = entries;
-                self.start(index)
-            }
-            Command::Toggle => match self.status {
-                PlaybackStatus::Playing => self.pause(),
-                PlaybackStatus::Paused => self.resume(),
-                // Nothing loaded but a queue remembered: pick up where the
-                // user left off rather than doing nothing.
-                PlaybackStatus::Stopped => {
-                    match self
-                        .index
-                        .or(if self.queue.is_empty() { None } else { Some(0) })
-                    {
-                        Some(index) => self.start(index),
-                        None => Vec::new(),
-                    }
-                }
-            },
+            Command::SetQueue { entries, index } => self.set_queue(entries, index),
+            Command::Toggle => self.toggle(),
             Command::Pause => self.pause(),
             Command::Resume => self.resume(),
             Command::Stop => self.stop(),
             Command::Next => self.step(1),
-            Command::Previous => {
-                if self.status != PlaybackStatus::Stopped
-                    && self.sink.position() >= PREVIOUS_RESTART_AFTER
-                {
-                    return self.seek(0);
-                }
-                self.step(-1)
-            }
+            Command::Previous => self.previous(),
             Command::Seek { position_ms } => self.seek(position_ms),
-            Command::SetVolume(volume) => {
-                self.volume = clamp_volume(volume);
-                self.sink.set_volume(self.volume);
-                vec![Event::StateChanged]
+            Command::SetVolume(volume) => self.set_volume(volume),
+            Command::SetMuted(muted) => self.set_muted(muted),
+            Command::SetRepeatOne(repeat) => self.set_repeat_one(repeat),
+        }
+    }
+
+    fn set_queue(&mut self, entries: Vec<QueueEntry>, index: usize) -> Vec<Event> {
+        if entries.is_empty() {
+            return self.stop();
+        }
+        let index = index.min(entries.len() - 1);
+        self.queue = entries;
+        self.start(index)
+    }
+
+    fn toggle(&mut self) -> Vec<Event> {
+        match self.status {
+            PlaybackStatus::Playing => self.pause(),
+            PlaybackStatus::Paused => self.resume(),
+            // Nothing loaded but a queue remembered: pick up where the user
+            // left off rather than doing nothing.
+            PlaybackStatus::Stopped => {
+                match self
+                    .index
+                    .or(if self.queue.is_empty() { None } else { Some(0) })
+                {
+                    Some(index) => self.start(index),
+                    None => Vec::new(),
+                }
             }
         }
+    }
+
+    fn previous(&mut self) -> Vec<Event> {
+        if self.status != PlaybackStatus::Stopped && self.sink.position() >= PREVIOUS_RESTART_AFTER
+        {
+            return self.seek(0);
+        }
+        self.step(-1)
+    }
+
+    fn set_volume(&mut self, volume: f32) -> Vec<Event> {
+        self.volume = clamp_volume(volume);
+        // Moving the rail is asking to hear something, so it lifts a mute
+        // rather than sliding silently under one. The alternative is a fill
+        // that follows the pointer over a player that stays silent, with
+        // nothing on screen saying why.
+        self.muted = false;
+        let output = self.output_volume();
+        self.sink.set_volume(output);
+        vec![Event::StateChanged]
+    }
+
+    fn set_muted(&mut self, muted: bool) -> Vec<Event> {
+        if self.muted == muted {
+            return Vec::new();
+        }
+        self.muted = muted;
+        let output = self.output_volume();
+        self.sink.set_volume(output);
+        vec![Event::StateChanged]
+    }
+
+    fn set_repeat_one(&mut self, repeat: bool) -> Vec<Event> {
+        if self.repeat_one == repeat {
+            return Vec::new();
+        }
+        self.repeat_one = repeat;
+        vec![Event::StateChanged]
     }
 
     /// Called on a timer: advances the queue when a track runs out and reports
@@ -211,7 +277,7 @@ impl<S: AudioSink> Engine<S> {
         }
 
         if self.sink.finished() {
-            events.extend(self.step(1));
+            events.extend(self.finished());
             return events;
         }
 
@@ -235,6 +301,21 @@ impl<S: AudioSink> Engine<S> {
         }
         self.counted = true;
         self.current().map(|entry| Event::Played(entry.track_id))
+    }
+
+    /// What a track running out of audio means.
+    ///
+    /// With repeat on it means this song again, from the top - `start` on the
+    /// same index rather than a seek to zero, because reloading is also what
+    /// clears `counted`, and **every loop is a play**: a song left on repeat
+    /// for an hour has been played, and recording that once would make Most
+    /// Played wrong in the case it matters most. `Next` is unaffected: asking
+    /// for the next song is not the same as reaching the end of this one.
+    fn finished(&mut self) -> Vec<Event> {
+        match (self.repeat_one, self.index) {
+            (true, Some(index)) => self.start(index),
+            _ => self.step(1),
+        }
     }
 
     /// Loads and plays `index`, skipping over files that will not open.
@@ -363,7 +444,7 @@ mod tests {
     }
 
     fn engine_with(count: i64) -> Engine<FakeSink> {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.handle(Command::SetQueue {
             entries: (1..=count).map(|id| entry(id, 200_000)).collect(),
             index: 0,
@@ -373,7 +454,7 @@ mod tests {
 
     #[test]
     fn setting_a_queue_plays_the_requested_index() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         let events = engine.handle(Command::SetQueue {
             entries: vec![entry(1, 1000), entry(2, 1000), entry(3, 1000)],
             index: 1,
@@ -391,7 +472,7 @@ mod tests {
 
     #[test]
     fn an_out_of_range_start_index_clamps_to_the_last_entry() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.handle(Command::SetQueue {
             entries: vec![entry(1, 1000), entry(2, 1000)],
             index: 99,
@@ -491,7 +572,7 @@ mod tests {
 
     #[test]
     fn seek_clamps_to_the_track_length() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.handle(Command::SetQueue {
             entries: vec![entry(1, 10_000)],
             index: 0,
@@ -510,7 +591,7 @@ mod tests {
 
     #[test]
     fn seek_while_stopped_does_nothing() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         assert_eq!(
             engine.handle(Command::Seek { position_ms: 100 }),
             Vec::new()
@@ -519,7 +600,7 @@ mod tests {
 
     #[test]
     fn volume_is_clamped_and_reaches_the_sink() {
-        let mut engine = Engine::new(FakeSink::default(), 0.5);
+        let mut engine = Engine::new(FakeSink::default(), 0.5, false);
 
         engine.handle(Command::SetVolume(4.2));
         assert_eq!(engine.state().volume, 1.0);
@@ -540,8 +621,139 @@ mod tests {
     }
 
     #[test]
+    fn muting_silences_the_sink_without_forgetting_the_level() {
+        let mut engine = engine_with(1);
+        engine.handle(Command::SetVolume(0.4));
+
+        engine.handle(Command::SetMuted(true));
+        assert_eq!(engine.sink.volume, 0.0, "the sink hears silence");
+        assert_eq!(engine.state().volume, 0.4, "the rail still says 40%");
+        assert!(engine.state().muted);
+
+        engine.handle(Command::SetMuted(false));
+        assert_eq!(engine.sink.volume, 0.4, "and 40% is what comes back");
+        assert!(!engine.state().muted);
+    }
+
+    #[test]
+    fn a_volume_of_zero_is_not_the_same_state_as_muted() {
+        // Turning it down and shutting it up are different intentions, and
+        // unmuting has to be able to tell them apart.
+        let mut engine = engine_with(1);
+        engine.handle(Command::SetVolume(0.0));
+        assert!(!engine.state().muted);
+
+        engine.handle(Command::SetMuted(true));
+        engine.handle(Command::SetMuted(false));
+        assert_eq!(engine.state().volume, 0.0, "silence, restored as silence");
+    }
+
+    #[test]
+    fn moving_the_rail_lifts_a_mute() {
+        let mut engine = engine_with(1);
+        engine.handle(Command::SetMuted(true));
+
+        engine.handle(Command::SetVolume(0.6));
+
+        assert!(!engine.state().muted);
+        assert_eq!(engine.sink.volume, 0.6);
+    }
+
+    #[test]
+    fn a_mute_survives_the_next_track() {
+        let mut engine = engine_with(2);
+        engine.handle(Command::SetMuted(true));
+        engine.handle(Command::Next);
+        assert!(engine.state().muted);
+        assert_eq!(engine.sink.volume, 0.0);
+    }
+
+    #[test]
+    fn muting_twice_reports_nothing_the_second_time() {
+        let mut engine = engine_with(1);
+        assert_eq!(
+            engine.handle(Command::SetMuted(true)),
+            vec![Event::StateChanged]
+        );
+        assert_eq!(engine.handle(Command::SetMuted(true)), Vec::new());
+        assert_eq!(
+            engine.handle(Command::SetRepeatOne(true)),
+            vec![Event::StateChanged]
+        );
+        assert_eq!(engine.handle(Command::SetRepeatOne(true)), Vec::new());
+    }
+
+    #[test]
+    fn an_engine_started_muted_is_silent_before_anything_plays() {
+        let engine = Engine::new(FakeSink::default(), 0.7, true);
+        assert_eq!(engine.sink.volume, 0.0);
+        assert_eq!(engine.state().volume, 0.7);
+        assert!(engine.state().muted);
+    }
+
+    #[test]
+    fn repeat_plays_the_same_track_again_instead_of_advancing() {
+        let mut engine = engine_with(3);
+        engine.handle(Command::SetRepeatOne(true));
+        engine.sink.exhausted = true;
+
+        engine.tick();
+
+        assert_eq!(engine.state().track_id, Some(1));
+        assert_eq!(engine.state().status, PlaybackStatus::Playing);
+        assert_eq!(engine.state().position_ms, 0);
+    }
+
+    #[test]
+    fn the_last_track_on_repeat_does_not_stop() {
+        // Without repeat this is where playback ends; with it, the queue having
+        // run out is not a reason to stop.
+        let mut engine = engine_with(1);
+        engine.handle(Command::SetRepeatOne(true));
+        engine.sink.exhausted = true;
+
+        engine.tick();
+        assert_eq!(engine.state().status, PlaybackStatus::Playing);
+    }
+
+    #[test]
+    fn every_loop_counts_as_a_play() {
+        // The point of the phase: an hour of one song on repeat is an hour of
+        // plays, not one. Most Played is the feature that would be wrong.
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 10_000)],
+            index: 0,
+        });
+        engine.handle(Command::SetRepeatOne(true));
+
+        for loops in 1..=3 {
+            engine.handle(Command::Seek { position_ms: 9_000 });
+            assert!(
+                engine.tick().contains(&Event::Played(7)),
+                "loop {loops} went uncounted"
+            );
+            // Which is what the end of a track looks like to the engine.
+            engine.sink.exhausted = true;
+            engine.tick();
+        }
+    }
+
+    #[test]
+    fn next_ignores_repeat() {
+        // Repeat is what the *end of a track* means, not what the button does:
+        // asking for the next song and reaching the end of this one are
+        // different requests.
+        let mut engine = engine_with(3);
+        engine.handle(Command::SetRepeatOne(true));
+
+        engine.handle(Command::Next);
+        assert_eq!(engine.state().track_id, Some(2));
+    }
+
+    #[test]
     fn a_play_is_counted_once_at_the_halfway_mark() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.handle(Command::SetQueue {
             entries: vec![entry(7, 10_000)],
             index: 0,
@@ -560,7 +772,7 @@ mod tests {
 
     #[test]
     fn a_track_of_unknown_length_is_never_counted() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.handle(Command::SetQueue {
             entries: vec![entry(7, 0)],
             index: 0,
@@ -574,7 +786,7 @@ mod tests {
 
     #[test]
     fn replaying_a_track_counts_it_again() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         let entries = vec![entry(7, 10_000)];
         engine.handle(Command::SetQueue {
             entries: entries.clone(),
@@ -632,7 +844,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_file_is_reported_and_the_engine_moves_on() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.sink.fail_load = true;
 
         let events = engine.handle(Command::SetQueue {
@@ -646,7 +858,7 @@ mod tests {
 
     #[test]
     fn a_run_of_unreadable_files_gives_up_rather_than_walking_the_library() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.sink.fail_load = true;
 
         engine.handle(Command::SetQueue {
@@ -660,7 +872,7 @@ mod tests {
 
     #[test]
     fn a_file_that_will_not_open_is_named_so_it_can_be_marked_missing() {
-        let mut engine = Engine::new(FakeSink::default(), 1.0);
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.sink.fail_load = true;
 
         let events = engine.handle(Command::SetQueue {

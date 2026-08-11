@@ -8,6 +8,10 @@ use rusqlite::{Connection, OptionalExtension};
 use crate::error::AppResult;
 
 pub const VOLUME: &str = "player.volume";
+/// Whether output is muted. Stored beside the volume rather than folded into
+/// it: a muted player still knows what level to come back to, and a stored
+/// zero would lose that.
+pub const MUTED: &str = "player.muted";
 pub const WINDOW_GEOMETRY: &str = "window.geometry";
 /// The library view's column layout; a playlist's own lives on its row.
 pub const COLUMNS: &str = "library.columns";
@@ -33,7 +37,7 @@ pub const PLAYLISTS_SEEDED: &str = "playlists.seeded";
 /// list a new credential key on a denylist leaks it; forgetting to list a new
 /// preference here merely omits it from an export, which nobody loses sleep
 /// over. Every future secret is excluded by default rather than by memory.
-const EXPORTABLE: &[&str] = &[VOLUME, WINDOW_GEOMETRY, ZOOM];
+const EXPORTABLE: &[&str] = &[VOLUME, MUTED, WINDOW_GEOMETRY, ZOOM];
 
 pub fn is_exportable(key: &str) -> bool {
     EXPORTABLE.contains(&key)
@@ -83,6 +87,15 @@ pub fn volume(conn: &Connection) -> AppResult<f32> {
         .unwrap_or(DEFAULT))
 }
 
+/// Whether the last session left the player muted.
+///
+/// Anything other than the two values this writes reads as unmuted: starting a
+/// player silent because of a corrupt setting is the worse of the two ways to
+/// be wrong.
+pub fn muted(conn: &Connection) -> AppResult<bool> {
+    Ok(get(conn, MUTED)?.as_deref() == Some("true"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,6 +136,25 @@ mod tests {
         let (_dir, conn) = conn();
         set(&conn, VOLUME, "0.25").unwrap();
         assert_eq!(volume(&conn).unwrap(), 0.25);
+    }
+
+    #[test]
+    fn muted_defaults_to_off_and_round_trips() {
+        let (_dir, conn) = conn();
+        assert!(!muted(&conn).unwrap());
+
+        set(&conn, MUTED, "true").unwrap();
+        assert!(muted(&conn).unwrap());
+
+        set(&conn, MUTED, "false").unwrap();
+        assert!(!muted(&conn).unwrap());
+    }
+
+    #[test]
+    fn a_corrupt_mute_starts_the_player_audible() {
+        let (_dir, conn) = conn();
+        set(&conn, MUTED, "yes please").unwrap();
+        assert!(!muted(&conn).unwrap());
     }
 
     #[test]

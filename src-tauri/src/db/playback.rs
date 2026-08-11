@@ -25,6 +25,8 @@ pub fn snapshot(conn: &Connection, state: &EngineState) -> AppResult<PlayerSnaps
         position_ms: state.position_ms,
         duration_ms: state.duration_ms,
         volume: state.volume,
+        muted: state.muted,
+        repeat_one: state.repeat_one,
     })
 }
 

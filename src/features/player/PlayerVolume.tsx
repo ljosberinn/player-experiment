@@ -13,7 +13,16 @@ import { usePlayerStore } from "./store";
  */
 export function PlayerVolume() {
   const volume = usePlayerStore((s) => s.volume);
+  const muted = usePlayerStore((s) => s.muted);
   const setVolume = usePlayerStore((s) => s.setVolume);
+  const toggleMute = usePlayerStore((s) => s.toggleMute);
 
-  return <VolumeControl volume={volume} onVolumeChange={(value) => void setVolume(value)} />;
+  return (
+    <VolumeControl
+      volume={volume}
+      muted={muted}
+      onVolumeChange={(value) => void setVolume(value)}
+      onToggleMute={() => void toggleMute()}
+    />
+  );
 }

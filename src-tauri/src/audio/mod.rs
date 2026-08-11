@@ -39,13 +39,13 @@ impl Player {
     ///
     /// `on_event` runs on that thread, so it must not block for long: it is
     /// the same thread that advances the queue.
-    pub fn spawn<S, F>(sink: S, volume: f32, mut on_event: F) -> Self
+    pub fn spawn<S, F>(sink: S, volume: f32, muted: bool, mut on_event: F) -> Self
     where
         S: AudioSink + 'static,
         F: FnMut(&Event, &EngineState) + Send + 'static,
     {
         let (commands, rx) = mpsc::channel::<Command>();
-        let mut engine = engine::Engine::new(sink, volume);
+        let mut engine = engine::Engine::new(sink, volume, muted);
         let state = Arc::new(Mutex::new(engine.state()));
         let shared = Arc::clone(&state);
 
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn commands_reach_the_engine_and_events_come_back() {
         let (tx, rx) = channel();
-        let player = Player::spawn(SilentSink::default(), 1.0, move |event, state| {
+        let player = Player::spawn(SilentSink::default(), 1.0, false, move |event, state| {
             let _ = tx.send((event.clone(), state.clone()));
         });
 
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn the_mirrored_state_tracks_the_engine() {
         let (tx, rx) = channel();
-        let player = Player::spawn(SilentSink::default(), 0.3, move |_, _| {
+        let player = Player::spawn(SilentSink::default(), 0.3, false, move |_, _| {
             let _ = tx.send(());
         });
 
@@ -153,5 +153,16 @@ mod tests {
         player.send(Command::SetVolume(0.9)).unwrap();
         rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert_eq!(player.state().volume, 0.9);
+    }
+
+    #[test]
+    fn a_player_started_muted_reports_itself_muted() {
+        // What a window opening after a restart asks for: the mute the last
+        // session left behind is in the state before any command arrives.
+        let player = Player::spawn(SilentSink::default(), 0.3, true, |_, _| {});
+
+        assert!(player.state().muted);
+        assert_eq!(player.state().volume, 0.3);
+        assert!(!player.state().repeat_one);
     }
 }
