@@ -83,13 +83,15 @@ describe("mute and repeat", () => {
     // there is something to come back to.
     expect((await snapshot()).volume).toBe(before.volume);
     // And the rail on screen still shows it rather than dropping to zero.
-    // Either the ARIA value or the input's own, because which of the two the
-    // slider part carries is Base UI's business rather than this suite's.
+    //
+    // `input[type=range]`, not `[role='slider']`, which is what the first
+    // version asked for and which matched nothing: Base UI's thumb renders a
+    // visually-hidden range input, and a range input's slider role is
+    // *implicit* - there is no role attribute for a CSS selector to find. It
+    // read as an empty string and failed as "the rail lost its value".
     const shown = await browser.execute(() => {
-      const rail = document.querySelector(".volume-slider [role='slider']");
-      return rail === null
-        ? ""
-        : (rail.getAttribute("aria-valuenow") ?? (rail as HTMLInputElement).value ?? "");
+      const rail = document.querySelector<HTMLInputElement>(".volume-slider input[type='range']");
+      return rail === null ? "" : (rail.getAttribute("aria-valuenow") ?? rail.value);
     });
     expect(shown).toBe(String(Math.round(before.volume * 100)));
 
