@@ -11,9 +11,14 @@ crash dialog — rendered at 1440×900 with every colour expressed in `oklch`.
 This document is the route from what is on `main` today to that design. It is a
 large sweep: the segmented tab bar is deleted, the transport moves out of the title
 bar, the library toolbar goes away, the product is renamed, and a colour ramp
-replaces the current one. Eleven phases, one branch and one pull request each, in
-the order given — later phases assume the earlier ones landed. The last of them is
-maintenance rather than design, and is the only one that could run at any time.
+replaces the current one. Eleven phases, one branch and one pull request each,
+broadly in the order given — the design phases assume the earlier design phases
+landed. Two of them are not design and are free to run whenever they are wanted:
+**41**, which already has, alongside 34; and **42**, the dependencies.
+
+Phases 32–37 have landed. Where one of them was built differently from what is
+written below, the section says so rather than being quietly rewritten — the
+reasoning that turned out to be wrong is the useful part.
 
 Phases 1–31 are in `PLAN.md`; this continues its numbering at 32. The last.fm work
 in `docs/PLAN-lastfm.md` is unaffected and can land before, after or between these.
@@ -238,16 +243,11 @@ it but *recomputing* it: on `library://changed`, debounced (250ms), because a sc
 emits that event far more often than a human can read a number. One reload of the
 playlist list, not one query per playlist per event.
 
-**The built-ins.** Two smart playlists exist out of the box:
-
-- **Recently Added** — sorted by `added_at` descending, limited to 100.
-- **Most Played** — `plays > 0`, sorted by `play_count` descending, limited to 100.
-
-Both are ordinary smart playlists seeded on first run: editable, renameable,
-deletable. Nothing about them is special-cased, which is only possible because of
-the next phase. **Top Rated is not among them** — there is no rating field in the
-schema and inventing one to satisfy a mockup label would be the tail wagging the
-dog. Custom smart playlists continue to work exactly as they do now.
+**The built-ins moved to phase 37.** They were planned here and could not land
+here: both are expressed as a sort plus a cutoff, and neither existed until the
+next phase built them. Deferring them was the right way round — the alternative
+was special-casing two playlists for one phase and then unpicking it. They are
+described where they were built.
 
 ---
 
@@ -287,9 +287,40 @@ match", which `min` cannot compute from the unlimited total. Putting the limit i
 the scope makes `count_tracks`, `library_stats` and `all_track_ids` correct with no
 call-site arithmetic at all — they already share `scope()`.
 
-The rule builder in `SmartPlaylistEditor` gains a footer row — *sorted by …
-descending, limited to … songs* — with both parts optional. The design's modal has
-the rule list already; this is one line beneath it.
+**The built-ins**, deferred from phase 36 because they are built out of exactly the
+two pieces above:
+
+- **Recently Added** — sorted by `added_at` descending, limited to 100.
+- **Most Played** — `plays > 0`, sorted by `play_count` descending, limited to 100.
+
+Both are ordinary smart playlists seeded on first run: editable, renameable,
+deletable, and special-cased nowhere. `plays > 0` is not redundant beside the
+cutoff — without it, a library with nothing played yet would show a hundred
+arbitrary songs under that heading. The guard is a `playlists.seeded` settings flag
+rather than a check for the playlists themselves, so deleting Most Played deletes
+it instead of getting it back at the next launch. Seeding runs from `lib.rs`'s
+`setup` rather than `Db::open`: which playlists a new library starts with is a
+product decision, not one the storage layer should hold. **Top Rated is not among
+them** — there is no rating field in the schema and inventing one to satisfy a
+mockup label would be the tail wagging the dog.
+
+The rule builder in `SmartPlaylistEditor` gains a footer. Planned as one sentence —
+*sorted by … descending, limited to … songs* — it was built as two rows, each with
+a checkbox: "sorted by nothing" and "limited to no songs" both have to be
+expressible, and a select whose first option is blank says that far less clearly
+than a box you tick. Ticking the cutoff supplies a sort if there is none and then
+holds it, because a limit with no sort is a hundred arbitrary songs; unticking it
+leaves the sort alone, which is still useful on its own.
+
+**Exports carry the order** alongside the filter, or a Most Played would export as
+`plays > 0` and read back as every song ever played. The key is omitted when there
+is no order, so every export written before this stays valid at the same
+`schemaVersion`. `docs/export-schema.md` documents the shape.
+
+`relevance` and `position` are **refused** as a smart sort rather than falling back
+the way `db::query` does. A silent fallback is right for a display order the user
+can see and change; here the sort decides which songs are in the playlist, and
+handing back a different hundred than the one asked for is not a detail.
 
 Bindings are regenerated (`npm run bindings`); CI fails if they are stale.
 
@@ -388,11 +419,26 @@ hosts total, which is the whole list of places this app may send the user.
 Because `rowMenuItems()` is shared with the Edit menu as of phase 34, these appear
 in both without further work.
 
----
+**The e2e will hit a driver limitation immediately.** This is the row's *context*
+menu, and the embedded driver delivers neither `contextmenu` nor `dblclick` through
+the Actions API — `element.click({ button: "right" })` opens nothing at all, which
+cost phase 37 a CI run to discover, after `element.doubleClick()` cost phase 31 one
+for the same reason. The remedy in both cases was to dispatch the event React is
+listening for; `e2e/specs/smart-playlists.test.ts` has the helper, and it passes the
+trigger's own coordinates because `ContextMenu.Trigger` derives the menu position
+from the event. Reach for that rather than rediscovering it. Driving the two
+submenus through the **Edit menu** instead is the other option, and tests the same
+`rowMenuItems()` — but not that a right-click reaches it.
 
 ---
 
 ## Phase 41 — Screenshots at a size somebody actually uses
+
+**Landed early, with phase 34 (#53).** It is numbered last and was built fourth:
+phase 34 was the first phase whose screenshots were the point of the review, and
+taking them at a laptop size would have wasted that. `e2e/viewport.ts` and its unit
+test are the result. Kept here rather than renumbered, because every pull request
+above refers to these numbers.
 
 The e2e suite photographs features into the pull request body (phase 29). Those
 photographs are currently taken at whatever the harness window happens to be —
@@ -502,7 +548,7 @@ one.
 | 34 | — | menu contents, disabled states, `rowMenuItems` reuse | open each menu; F5 rescans |
 | 35 | — | transport strip renders; sidebar nav switches views | screenshot of the new shell |
 | 36 | count-with-filter | collapse persistence, debounce | collapse, reload, still collapsed |
-| 37 | compiler emits ORDER BY/LIMIT; whitelist rejects unknown sort fields; injection attempts | editor round-trips sort and limit | create a limited smart playlist |
+| 37 | the cutoff decides membership and survives sorting, searching and a changing library; whitelist rejects unknown sort fields; the built-ins seed once and stay deleted | editor round-trips sort and limit; offers no sort the backend refuses | build a limited playlist, **sort it twice and get the same songs**, reopen it on its stored cutoff |
 | 38 | repeat loops and bumps `play_count` | mute restores the prior level | mute, repeat, reload |
 | 39 | median-cut over fixture images; palette cached and reused | blobs absent under reduced motion and when disabled | screenshot with a cover, and without |
 | 40 | — | URL construction incl. encoding; album-artist preference; disabled states | menu shows both submenus |
