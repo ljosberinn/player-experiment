@@ -108,8 +108,15 @@ pub fn run() {
             // a database should not be the thing that has an opinion about it.
             db.conn()
                 .and_then(|conn| db::playlists::seed_built_ins(&conn, now_seconds()))?;
-            let volume = db.conn().and_then(|conn| settings::volume(&conn))?;
-            app.manage(start_player(app.handle().clone(), db.clone(), volume));
+            let (volume, muted) = db
+                .conn()
+                .and_then(|conn| Ok((settings::volume(&conn)?, settings::muted(&conn)?)))?;
+            app.manage(start_player(
+                app.handle().clone(),
+                db.clone(),
+                volume,
+                muted,
+            ));
             app.manage(db);
             Ok(())
         })
@@ -182,6 +189,8 @@ pub fn run() {
             commands::player_previous,
             commands::player_seek,
             commands::player_set_volume,
+            commands::player_set_muted,
+            commands::player_set_repeat_one,
             commands::player_snapshot,
             commands::seed_synthetic_tracks,
             commands::e2e_provoke_panic,
@@ -198,22 +207,32 @@ pub fn run() {
 /// The sink is opened here so a machine with no audio device still gets a
 /// running app: playback commands then fail loudly instead of the window
 /// refusing to open. CI runners are exactly that machine.
-fn start_player(app: tauri::AppHandle, db: Db, volume: f32) -> Player {
+fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool) -> Player {
     // The e2e build can ask for a sink that succeeds without hardware. On the
     // runner the branch below would take the `NullSink` path, where every load
     // fails - so a test could never reach a playing row, which is exactly the
     // appearance the suite is there to check.
     #[cfg(feature = "wdio")]
     if e2e::var(e2e::SILENT_AUDIO).is_some() {
-        return Player::spawn(audio::sink::SilentSink::new(), volume, forward(app, db));
+        return Player::spawn(
+            audio::sink::SilentSink::new(),
+            volume,
+            muted,
+            forward(app, db),
+        );
     }
 
     match RodioSink::open() {
-        Ok(sink) => Player::spawn(sink, volume, forward(app, db)),
+        Ok(sink) => Player::spawn(sink, volume, muted, forward(app, db)),
         Err(message) => {
             let _ = app.emit("player://error", &message);
             // No forwarding: nothing can load, so there is no state to report.
-            Player::spawn(audio::sink::NullSink::new(message), volume, |_, _| {})
+            Player::spawn(
+                audio::sink::NullSink::new(message),
+                volume,
+                muted,
+                |_, _| {},
+            )
         }
     }
 }

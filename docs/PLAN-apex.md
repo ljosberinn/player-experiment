@@ -334,8 +334,24 @@ and the remembered level both persist across restarts, alongside `volume` in
 `settings`. Muted is a distinct state from volume 0 — dragging the slider to zero
 and pressing mute are different intentions and unmuting has to tell them apart.
 
+**Moving the rail lifts a mute**, which the plan did not say either way. The
+alternative — a fill that follows the pointer over a player that stays silent —
+is a control that appears broken, and every other player treats a drag as
+asking to hear something. The mute button is the only way back into the muted
+state.
+
 **Repeat one.** A single toggle: off, or this song forever. No repeat-all, no
 shuffle — no shuffle control has ever existed here and none is coming.
+
+It sits beside the volume rather than inside the transport pill: the pill is
+prev/play/next and the design draws it as three buttons, and repeat is a
+setting about what happens next rather than a thing to press now.
+
+**Repeat is not persisted**, unlike mute and the volume beside it. The plan
+asks for persistence of "the muted state and the remembered level" and says
+nothing about repeat, and an app that came back from a restart still looping
+one song would be a surprise: repeat is done to the song playing now, not to
+the player. It survives a webview reload, because it lives in the engine.
 
 The engine change is in the audio thread's end-of-track handling: with repeat on,
 `ended` seeks to zero and plays again instead of advancing the queue. **Each loop

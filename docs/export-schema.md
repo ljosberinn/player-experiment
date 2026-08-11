@@ -125,7 +125,10 @@ narrows the view.
 
 ## `settings[]`
 
-`{ "key": "player.volume", "value": "0.8" }` — app preferences only.
+`{ "key": "player.volume", "value": "0.8" }` — app preferences only. The keys
+on the allowlist today are `player.volume`, `player.muted`, `window.geometry`
+and `window.zoom`; a key not on it is absent rather than empty, so an export
+written before one was added stays valid.
 
 ## What is deliberately absent
 

@@ -12,4 +12,9 @@ import type { Track } from "./Track";
  * Position is deliberately *not* the reason this is emitted - that would mean
  * a track payload four times a second - see [`PlayerPosition`].
  */
-export type PlayerSnapshot = { status: PlaybackStatus, track: Track | null, queueIndex: number | null, queueLen: number, positionMs: number, durationMs: number, volume: number, };
+export type PlayerSnapshot = { status: PlaybackStatus, track: Track | null, queueIndex: number | null, queueLen: number, positionMs: number, durationMs: number, volume: number, 
+/**
+ * Silent, but not turned down: `volume` is still the level the rail shows
+ * and the level unmuting returns to.
+ */
+muted: boolean, repeatOne: boolean, };

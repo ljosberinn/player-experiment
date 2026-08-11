@@ -113,7 +113,7 @@ fn a_scanned_library_becomes_a_playable_queue() {
     // The scanner read a real duration out of each fixture.
     assert!(entries.iter().all(|entry| entry.duration_ms > 0));
 
-    let mut engine = Engine::new(TestSink::default(), 1.0);
+    let mut engine = Engine::new(TestSink::default(), 1.0, false);
     engine.handle(Command::SetQueue { entries, index: 0 });
 
     let state = engine.state();
@@ -129,7 +129,7 @@ fn the_queue_advances_through_the_library_and_then_stops() {
     let conn = harness.db.conn().unwrap();
     let entries = playback::queue_entries(&conn, &ids).expect("queue");
 
-    let mut engine = Engine::new(TestSink::default(), 1.0);
+    let mut engine = Engine::new(TestSink::default(), 1.0, false);
     engine.handle(Command::SetQueue { entries, index: 0 });
 
     for expected in &ids[1..] {
@@ -149,7 +149,7 @@ fn playing_half_a_track_counts_it_in_the_library() {
     let entries = playback::queue_entries(&conn, &ids).expect("queue");
     let duration_ms = entries[0].duration_ms;
 
-    let mut engine = Engine::new(TestSink::default(), 1.0);
+    let mut engine = Engine::new(TestSink::default(), 1.0, false);
     engine.handle(Command::SetQueue { entries, index: 0 });
     engine.handle(Command::Seek {
         position_ms: duration_ms / 2,
@@ -180,7 +180,7 @@ fn a_snapshot_carries_the_row_the_engine_only_knows_by_id() {
     let conn = harness.db.conn().unwrap();
     let entries = playback::queue_entries(&conn, &ids).expect("queue");
 
-    let mut engine = Engine::new(TestSink::default(), 0.4);
+    let mut engine = Engine::new(TestSink::default(), 0.4, false);
     engine.handle(Command::SetQueue { entries, index: 1 });
 
     let snapshot = playback::snapshot(&conn, &engine.state()).expect("snapshot");

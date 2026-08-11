@@ -8,23 +8,42 @@ import { Slider } from "@base-ui/react/slider";
  * move, so anything sharing a component with it re-renders at that rate.
  *
  * The glyph is three ascending bars, the tallest at partial opacity, exactly as
- * the design draws it. It is not a button yet: making it toggle mute is phase
- * 38, which is also where the muted state it would need comes from.
+ * the design draws it. Since phase 38 it is also the mute button: the bars go
+ * grey and a slash crosses them, and the rail beside it keeps showing the level
+ * unmuting will come back to rather than dropping to zero.
+ *
+ * `aria-pressed` rather than two different buttons, because it is one control
+ * in two states - and the label says what pressing it does now, which is what a
+ * screen reader announces after the state.
  */
 export function VolumeControl({
   volume,
+  muted = false,
   onVolumeChange,
+  onToggleMute,
 }: {
   volume: number;
+  muted?: boolean;
   onVolumeChange: (volume: number) => void;
+  onToggleMute?: () => void;
 }) {
   return (
-    <div className="volume">
-      <span className="volume-mark" aria-hidden="true">
+    /* The muted state is on the wrapper rather than the button alone: it dims
+       the rail's fill too, so the level on screen reads as the level that will
+       come back rather than the level being heard. */
+    <div className="volume" data-muted={muted ? "" : undefined}>
+      <button
+        type="button"
+        className="volume-mark"
+        aria-label={muted ? "Unmute" : "Mute"}
+        aria-pressed={muted}
+        disabled={!onToggleMute}
+        onClick={onToggleMute}
+      >
         <i />
         <i />
         <i />
-      </span>
+      </button>
 
       {/* `onValueChange`, unlike the scrubber's `onValueCommitted`: volume is
           meant to be heard as it moves, and setting it is a cheap write to the

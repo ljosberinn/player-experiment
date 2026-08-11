@@ -22,6 +22,7 @@ import { useScanStore } from "./features/library/scan";
 import { useLibraryStore, type ViewTab } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
+import { PlayerRepeat } from "./features/player/PlayerRepeat";
 import { PlayerScrubber } from "./features/player/PlayerScrubber";
 import { PlayerTransport } from "./features/player/PlayerTransport";
 import { PlayerVolume } from "./features/player/PlayerVolume";
@@ -352,6 +353,10 @@ export function App() {
         <div className="strip-gap" />
         <NowPlayingStatus ref={statusRef} />
         <div className="strip-gap" />
+        {/* Repeat sits with the volume rather than in the transport pill: the
+            pill is prev/play/next and nothing else, and repeat is a setting
+            about what happens next rather than a thing to press now. */}
+        <PlayerRepeat />
         <PlayerVolume />
         <SearchBox />
       </div>

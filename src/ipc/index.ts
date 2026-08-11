@@ -391,6 +391,21 @@ export function playerSetVolume(volume: number): Promise<void> {
   return invoke<void>("player_set_volume", { volume });
 }
 
+/**
+ * Silences output without touching the level.
+ *
+ * Muted is its own state rather than a volume of zero, so that unmuting can
+ * come back to the level the rail was at.
+ */
+export function playerSetMuted(muted: boolean): Promise<void> {
+  return invoke<void>("player_set_muted", { muted });
+}
+
+/** Loops the current song at its end instead of advancing the queue. */
+export function playerSetRepeatOne(repeat: boolean): Promise<void> {
+  return invoke<void>("player_set_repeat_one", { repeat });
+}
+
 /** The current state, for a window that started after playback did. */
 export function playerSnapshot(): Promise<PlayerSnapshot> {
   return invoke<PlayerSnapshot>("player_snapshot");

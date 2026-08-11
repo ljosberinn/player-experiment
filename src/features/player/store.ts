@@ -8,6 +8,8 @@ import {
   playerPlay,
   playerPrevious,
   playerSeek,
+  playerSetMuted,
+  playerSetRepeatOne,
   playerSetVolume,
   playerSnapshot,
   playerStop,
@@ -29,6 +31,8 @@ interface PlayerState {
   positionMs: number;
   durationMs: number;
   volume: number;
+  muted: boolean;
+  repeatOne: boolean;
   queueIndex: number | null;
   queueLen: number;
   error: string | null;
@@ -42,6 +46,8 @@ interface PlayerState {
   previous: () => Promise<void>;
   seek: (positionMs: number) => Promise<void>;
   setVolume: (volume: number) => Promise<void>;
+  toggleMute: () => Promise<void>;
+  toggleRepeatOne: () => Promise<void>;
   dismissError: () => void;
 }
 
@@ -51,6 +57,8 @@ const initial = {
   positionMs: 0,
   durationMs: 0,
   volume: 0.8,
+  muted: false,
+  repeatOne: false,
   queueIndex: null,
   queueLen: 0,
   error: null,
@@ -79,6 +87,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           track: snapshot.track,
           durationMs: snapshot.durationMs,
           volume: snapshot.volume,
+          muted: snapshot.muted,
+          repeatOne: snapshot.repeatOne,
           queueIndex: snapshot.queueIndex,
           queueLen: snapshot.queueLen,
           // A state change is a load, a seek or a stop; in all three the
@@ -100,6 +110,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         positionMs: snapshot.positionMs,
         durationMs: snapshot.durationMs,
         volume: snapshot.volume,
+        muted: snapshot.muted,
+        repeatOne: snapshot.repeatOne,
         queueIndex: snapshot.queueIndex,
         queueLen: snapshot.queueLen,
       });
@@ -129,9 +141,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setVolume: async (volume) => {
     const clamped = Math.max(0, Math.min(1, volume));
-    set({ volume: clamped });
+    // Muted goes with it: the backend lifts a mute when the rail moves, and
+    // the rail is the one control echoed locally, so the echo has to say the
+    // same thing or the fill would follow the pointer under a lit mute button
+    // until the next state event caught up.
+    set({ volume: clamped, muted: false });
     await run(set, () => playerSetVolume(clamped));
   },
+
+  // No echo, unlike volume: these are one click rather than a drag, so the
+  // state event they cause is the only thing that has to arrive.
+  toggleMute: () => run(set, () => playerSetMuted(!get().muted)),
+  toggleRepeatOne: () => run(set, () => playerSetRepeatOne(!get().repeatOne)),
 
   dismissError: () => set({ error: null }),
 }));
