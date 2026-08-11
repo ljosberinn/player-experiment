@@ -178,72 +178,87 @@ impl<S: AudioSink> Engine<S> {
         i64::try_from(self.sink.position().as_millis()).unwrap_or(i64::MAX)
     }
 
+    /// Dispatch only: every arm is one line, so the behaviour of a command can
+    /// be read - and driven from a test - without picking it out of a match.
     pub fn handle(&mut self, command: Command) -> Vec<Event> {
         match command {
-            Command::SetQueue { entries, index } => {
-                if entries.is_empty() {
-                    return self.stop();
-                }
-                let index = index.min(entries.len() - 1);
-                self.queue = entries;
-                self.start(index)
-            }
-            Command::Toggle => match self.status {
-                PlaybackStatus::Playing => self.pause(),
-                PlaybackStatus::Paused => self.resume(),
-                // Nothing loaded but a queue remembered: pick up where the
-                // user left off rather than doing nothing.
-                PlaybackStatus::Stopped => {
-                    match self
-                        .index
-                        .or(if self.queue.is_empty() { None } else { Some(0) })
-                    {
-                        Some(index) => self.start(index),
-                        None => Vec::new(),
-                    }
-                }
-            },
+            Command::SetQueue { entries, index } => self.set_queue(entries, index),
+            Command::Toggle => self.toggle(),
             Command::Pause => self.pause(),
             Command::Resume => self.resume(),
             Command::Stop => self.stop(),
             Command::Next => self.step(1),
-            Command::Previous => {
-                if self.status != PlaybackStatus::Stopped
-                    && self.sink.position() >= PREVIOUS_RESTART_AFTER
-                {
-                    return self.seek(0);
-                }
-                self.step(-1)
-            }
+            Command::Previous => self.previous(),
             Command::Seek { position_ms } => self.seek(position_ms),
-            Command::SetVolume(volume) => {
-                self.volume = clamp_volume(volume);
-                // Moving the rail is asking to hear something, so it lifts a
-                // mute rather than sliding silently under one. The alternative
-                // is a fill that follows the pointer over a player that stays
-                // silent, with nothing on screen saying why.
-                self.muted = false;
-                let output = self.output_volume();
-                self.sink.set_volume(output);
-                vec![Event::StateChanged]
-            }
-            Command::SetMuted(muted) => {
-                if self.muted == muted {
-                    return Vec::new();
+            Command::SetVolume(volume) => self.set_volume(volume),
+            Command::SetMuted(muted) => self.set_muted(muted),
+            Command::SetRepeatOne(repeat) => self.set_repeat_one(repeat),
+        }
+    }
+
+    fn set_queue(&mut self, entries: Vec<QueueEntry>, index: usize) -> Vec<Event> {
+        if entries.is_empty() {
+            return self.stop();
+        }
+        let index = index.min(entries.len() - 1);
+        self.queue = entries;
+        self.start(index)
+    }
+
+    fn toggle(&mut self) -> Vec<Event> {
+        match self.status {
+            PlaybackStatus::Playing => self.pause(),
+            PlaybackStatus::Paused => self.resume(),
+            // Nothing loaded but a queue remembered: pick up where the user
+            // left off rather than doing nothing.
+            PlaybackStatus::Stopped => {
+                match self
+                    .index
+                    .or(if self.queue.is_empty() { None } else { Some(0) })
+                {
+                    Some(index) => self.start(index),
+                    None => Vec::new(),
                 }
-                self.muted = muted;
-                let output = self.output_volume();
-                self.sink.set_volume(output);
-                vec![Event::StateChanged]
-            }
-            Command::SetRepeatOne(repeat) => {
-                if self.repeat_one == repeat {
-                    return Vec::new();
-                }
-                self.repeat_one = repeat;
-                vec![Event::StateChanged]
             }
         }
+    }
+
+    fn previous(&mut self) -> Vec<Event> {
+        if self.status != PlaybackStatus::Stopped && self.sink.position() >= PREVIOUS_RESTART_AFTER
+        {
+            return self.seek(0);
+        }
+        self.step(-1)
+    }
+
+    fn set_volume(&mut self, volume: f32) -> Vec<Event> {
+        self.volume = clamp_volume(volume);
+        // Moving the rail is asking to hear something, so it lifts a mute
+        // rather than sliding silently under one. The alternative is a fill
+        // that follows the pointer over a player that stays silent, with
+        // nothing on screen saying why.
+        self.muted = false;
+        let output = self.output_volume();
+        self.sink.set_volume(output);
+        vec![Event::StateChanged]
+    }
+
+    fn set_muted(&mut self, muted: bool) -> Vec<Event> {
+        if self.muted == muted {
+            return Vec::new();
+        }
+        self.muted = muted;
+        let output = self.output_volume();
+        self.sink.set_volume(output);
+        vec![Event::StateChanged]
+    }
+
+    fn set_repeat_one(&mut self, repeat: bool) -> Vec<Event> {
+        if self.repeat_one == repeat {
+            return Vec::new();
+        }
+        self.repeat_one = repeat;
+        vec![Event::StateChanged]
     }
 
     /// Called on a timer: advances the queue when a track runs out and reports
