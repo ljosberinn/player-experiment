@@ -59,6 +59,18 @@ A `--config` overlay **replaces** an array rather than extending it, so the
 overlay repeats `../LICENSE`. That is asserted too, because losing it would be
 just as silent.
 
+## The land job checks nothing out, and `gh` minds
+
+Dropping the checkout — there is nothing left to check out — took the
+repository context with it. `gh pr merge` infers the repository from a git
+remote, so with none it exits `fatal: not a git repository` **before** merging
+anything, and `--delete-branch` wants a local branch to remove as well. Seven
+green pull requests sat there while the workflow reported failure.
+
+`-R "$REPO"` for the merge, and the branch deleted through the API. The
+repository does not delete merged branches itself, so that second call is not
+optional.
+
 ## Decisions
 
 **The generator short-circuits on mtime.** A repeated local `tauri build` should

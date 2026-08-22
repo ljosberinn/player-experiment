@@ -43,6 +43,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
@@ -56,6 +57,11 @@ jobs:
             exit 0
           fi
 
-          # A squash, and the branch goes with it - the repository does not
-          # delete them itself.
-          gh pr merge "$pr" --squash --delete-branch
+          # `-R`, and the branch deleted through the API rather than with
+          # `--delete-branch`: this job checks nothing out, so `gh` has neither
+          # a remote to infer the repository from - it exits with "not a git
+          # repository" before it merges anything - nor a local branch to
+          # remove afterwards. The repository does not delete merged branches
+          # itself, so the second call is not optional.
+          gh pr merge "$pr" --squash -R "$REPO"
+          gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH"
