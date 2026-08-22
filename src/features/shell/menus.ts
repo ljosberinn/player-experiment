@@ -8,7 +8,10 @@ export interface Menu {
   disabled?: boolean;
 }
 
-/** Where Help points. Also the only host the opener capability allows. */
+/**
+ * Where Help points. One of the three hosts the opener capability allows, the
+ * other two being the sites a row can be looked up on (`externalLinks.ts`).
+ */
 export const REPOSITORY = "https://github.com/ljosberinn/player-experiment";
 
 /**

@@ -21,7 +21,11 @@
     "global-shortcut:allow-unregister",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/ljosberinn/*" }]
+      "allow": [
+        { "url": "https://github.com/ljosberinn/*" },
+        { "url": "https://www.last.fm/*" },
+        { "url": "https://www.discogs.com/*" }
+      ]
     }
   ]
 }

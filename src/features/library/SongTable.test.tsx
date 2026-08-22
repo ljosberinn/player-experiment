@@ -1,3 +1,4 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,10 @@ import { usePlaylistsStore } from "../playlists/store";
 import { columnsFor } from "./columns";
 import { SongTable } from "./SongTable";
 import { useLibraryStore } from "./store";
+
+// The row menu's lookup entries hand a URL to the opener plugin, which without
+// this reaches for a Tauri runtime that is not there.
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
@@ -550,6 +555,24 @@ describe("SongTable", () => {
       await user.click(await screen.findByRole("menuitem", { name: "Export 1 Song…" }));
 
       expect(onExport).toHaveBeenCalledWith([0]);
+    });
+
+    it("looks the row's artist up on the web", async () => {
+      const user = await openRowMenu();
+
+      // The keyboard route again, for the reason the playlist submenu takes
+      // it. Play, Edit, Add to Playlist, Export, Show in Explorer, then the
+      // lookups - separators are not stops.
+      await user.keyboard(
+        "{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}",
+      );
+      await user.click(await screen.findByRole("menuitem", { name: "Last.fm" }));
+
+      // The row's own artist, which is what proves the menu was handed the row
+      // under the pointer rather than the selection it happens to share.
+      await waitFor(() =>
+        expect(openUrl).toHaveBeenCalledWith("https://www.last.fm/music/Artist%200"),
+      );
     });
 
     it("does not open on a row whose page has not arrived", async () => {

@@ -35,6 +35,7 @@ import {
   pageIndexOf,
   pagesForRange,
   rowAt,
+  trackById,
 } from "./pageCache";
 import { applyClick, type ClickModifiers, emptySelection, type Selection } from "./selection";
 
@@ -149,6 +150,8 @@ interface LibraryState {
   closeGroup: () => Promise<void>;
   ensureRange: (startIndex: number, endIndex: number) => Promise<void>;
   rowAt: (rowIndex: number) => Track | null;
+  /** A cached row by id, for the menu bar, which knows a selection by id. */
+  trackById: (id: number) => Track | null;
   /** Types into the search box; the query itself is debounced. */
   setSearch: (search: string) => void;
   /** Runs the pending search now, for Enter. */
@@ -461,6 +464,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   rowAt: (rowIndex) => rowAt(get().pages, rowIndex),
+
+  trackById: (id) => trackById(get().pages, id),
 
   setSearch: (search) => {
     set({ searchInput: search });

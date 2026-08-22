@@ -13,6 +13,7 @@ const handlers = {
   onRemove: vi.fn(),
   onExport: vi.fn(),
   onReveal: vi.fn(),
+  onOpenUrl: vi.fn(),
 };
 
 function items(over: Partial<Parameters<typeof rowMenuItems>[0]> = {}) {
@@ -20,9 +21,23 @@ function items(over: Partial<Parameters<typeof rowMenuItems>[0]> = {}) {
     count: 1,
     playlists: [],
     openPlaylist: null,
+    track: { artist: "Blue Room", album: "Harbour", album_artist: null },
     ...handlers,
     ...over,
   });
+}
+
+/** One entry by label, narrowed past the separator case. */
+function entry(menu: ReturnType<typeof rowMenuItems>, label: string) {
+  const found = menu.find((item) => item.kind !== "separator" && item.label === label);
+  return found && found.kind !== "separator" ? found : undefined;
+}
+
+/** The entries of a submenu, separators dropped. */
+function submenuOf(menu: ReturnType<typeof rowMenuItems>, label: string) {
+  return (entry(menu, label)?.submenu ?? []).flatMap((item) =>
+    item.kind === "separator" ? [] : [item],
+  );
 }
 
 /** The labels of the actionable entries, separators dropped. */
@@ -93,6 +108,59 @@ describe("rowMenuItems", () => {
     expect(many && many.kind !== "separator" && many.disabled).toBe(true);
   });
 
+  it("offers both lookups on a row that names an artist and an album", () => {
+    expect(labels(items())).toContain("Open Artist on…");
+    expect(labels(items())).toContain("Open Album on…");
+    expect(submenuOf(items(), "Open Artist on…").map((one) => one.label)).toEqual([
+      "Last.fm",
+      "Discogs",
+    ]);
+  });
+
+  it("opens the artist's page, taking the album artist over the artist", () => {
+    const onOpenUrl = vi.fn();
+    const menu = items({
+      track: { artist: "Cascade", album: "Terrace", album_artist: "Various Artists" },
+      onOpenUrl,
+    });
+
+    submenuOf(menu, "Open Artist on…")[0]?.onSelect?.();
+    submenuOf(menu, "Open Album on…")[0]?.onSelect?.();
+
+    expect(onOpenUrl).toHaveBeenNthCalledWith(1, "https://www.last.fm/music/Various%20Artists");
+    expect(onOpenUrl).toHaveBeenNthCalledWith(
+      2,
+      "https://www.last.fm/music/Various%20Artists/Terrace",
+    );
+  });
+
+  it("leaves out the lookup for a tag the row does not carry", () => {
+    // Greyed out would be an entry offering to look up an artist that is not
+    // there, and unlike the playlist case there is no question it answers.
+    const noAlbum = labels(
+      items({ track: { artist: "Blue Room", album: null, album_artist: null } }),
+    );
+    expect(noAlbum).toContain("Open Artist on…");
+    expect(noAlbum).not.toContain("Open Album on…");
+
+    const untagged = labels(items({ track: { artist: null, album: null, album_artist: null } }));
+    expect(untagged).not.toContain("Open Artist on…");
+    expect(untagged).not.toContain("Open Album on…");
+  });
+
+  it("has no lookups without a row to name", () => {
+    // The menu bar's Edit menu with several rows selected: it acts on ids, and
+    // there is no single row whose artist this would be.
+    expect(labels(items({ track: null, count: 3 }))).not.toContain("Open Artist on…");
+  });
+
+  it("disables the lookups with more than one row selected", () => {
+    // Two rows are two artists, and picking one would be a guess at which.
+    expect(entry(items({ count: 2 }), "Open Artist on…")?.disabled).toBe(true);
+    expect(entry(items({ count: 2 }), "Open Album on…")?.disabled).toBe(true);
+    expect(entry(items({ count: 1 }), "Open Artist on…")?.disabled).toBe(false);
+  });
+
   it("wires each entry to its handler", () => {
     const onPlay = vi.fn();
     const onAddTo = vi.fn();
@@ -100,6 +168,7 @@ describe("rowMenuItems", () => {
       count: 1,
       playlists: [playlist(7, "Evening")],
       openPlaylist: null,
+      track: null,
       ...handlers,
       onPlay,
       onAddTo,
