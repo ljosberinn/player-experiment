@@ -6,7 +6,7 @@ current frontend coverage is well above it.
 | Layer | Tool | What |
 | --- | --- | --- |
 | Rust unit | `cargo test` | filter → SQL compilation (incl. injection attempts, depth cap), scan diffing, playlist position math, export shape, palette extraction, panic formatting |
-| Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, undo restores prior bytes, atomic write survives failure |
+| Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, undo restores prior bytes, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
@@ -19,6 +19,13 @@ own; the e2e suite writes six tracks over three artists into `e2e/.tmp` at spec
 time, chosen so title order and artist order interleave differently.
 
 ## What unit tests cannot see, and the guards that cover it
+
+**No test has a window**, so "the app stayed responsive during a long write" is
+checked one step short of that: `commands::tests` asserts the `blocking` helper
+runs its closure somewhere other than the thread that asked for it, which is the
+property a lost `spawn_blocking` would take away. That a readout *moves* rather
+than jumping at the end is a property of the numbers, and `tests/tagwrite.rs`
+asserts it over a generated 120-file batch.
 
 **jsdom applies no stylesheet** — no layout engine, no computed colour. Three
 defects shipped past 600 green tests for exactly that reason.

@@ -679,6 +679,32 @@ mod tests {
         assert!(crate::e2e_only("seed_synthetic_tracks").is_err());
     }
 
+    /// The whole point of `blocking`, in the only terms a test can check
+    /// without a window: the work does not happen on the thread that asked for
+    /// it. A command that lost its `spawn_blocking` would do its file I/O
+    /// inline here, on the caller - which in the app is the thread the IPC
+    /// runs on, and is why a 500-file write used to hold the window still.
+    #[test]
+    fn a_long_write_runs_off_the_thread_that_asked_for_it() {
+        // A thread-local rather than a thread id: it is false on every thread
+        // but the one that set it, whereas a thread id is only as unique as
+        // the ids of dead threads are unrecycled.
+        thread_local! {
+            static IS_CALLER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        IS_CALLER.with(|caller| caller.set(true));
+
+        let ran_on_the_caller = tauri::async_runtime::block_on(blocking("test", || {
+            Ok(IS_CALLER.with(std::cell::Cell::get))
+        }))
+        .unwrap();
+
+        assert!(
+            !ran_on_the_caller,
+            "the work ran on the thread that asked for it - `spawn_blocking` is gone"
+        );
+    }
+
     #[test]
     fn reports_the_crate_name_and_a_semver_version() {
         let info = app_info();
