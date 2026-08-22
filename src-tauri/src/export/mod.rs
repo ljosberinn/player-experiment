@@ -23,6 +23,7 @@ use crate::db::{playlists, query, settings};
 use crate::error::AppResult;
 use crate::model::{
     FilterGroup, PlaylistKind, SmartOrder, SortDirection, SortField, Track, TrackQuery,
+    WriteProgress,
 };
 
 /// Bumped only for a breaking change to the shape below.
@@ -165,9 +166,27 @@ pub struct ExportSetting {
 }
 
 /// Reads everything `scope` covers into one document.
-pub fn build(conn: &Connection, scope: &ExportScope, now: i64) -> AppResult<Export> {
+///
+/// `on_progress` is called as tracks are gathered - a closure rather than a
+/// Tauri handle, so the whole builder stays testable with no running app, the
+/// same shape [`crate::scan::scan`] uses.
+pub fn build(
+    conn: &Connection,
+    scope: &ExportScope,
+    now: i64,
+    mut on_progress: impl FnMut(WriteProgress),
+) -> AppResult<Export> {
+    // A count first, so the readout is a fraction rather than a rising number
+    // with nothing to measure it against. It is one more query against an
+    // index, next to a read of every row it counts.
+    let total = count_for(conn, scope)?;
+    on_progress(WriteProgress { done: 0, total });
+
     let (tracks, playlists) = match scope {
-        ExportScope::Library => (all_tracks(conn, None)?, all_playlists(conn)?),
+        ExportScope::Library => (
+            all_tracks(conn, None, total, &mut on_progress)?,
+            all_playlists(conn)?,
+        ),
         ExportScope::Selection { track_ids } => (
             // Through the same lookup the editor uses, so a selection naming
             // a track that has since gone exports what survives.
@@ -180,7 +199,7 @@ pub fn build(conn: &Connection, scope: &ExportScope, now: i64) -> AppResult<Expo
         ExportScope::Playlist { playlist_id } => {
             let playlist = playlists::get(conn, *playlist_id)?;
             (
-                all_tracks(conn, Some(*playlist_id))?,
+                all_tracks(conn, Some(*playlist_id), total, &mut on_progress)?,
                 playlist
                     .into_iter()
                     .map(|p| export_playlist(conn, &p))
@@ -188,6 +207,14 @@ pub fn build(conn: &Connection, scope: &ExportScope, now: i64) -> AppResult<Expo
             )
         }
     };
+
+    // The playlists and settings above report nothing, and serializing the
+    // document is still ahead - so the readout lands on its total here rather
+    // than stopping one page short.
+    on_progress(WriteProgress {
+        done: tracks.len() as u32,
+        total,
+    });
 
     Ok(Export {
         schema_version: SCHEMA_VERSION,
@@ -219,7 +246,12 @@ pub fn build(conn: &Connection, scope: &ExportScope, now: i64) -> AppResult<Expo
 ///
 /// An export of a playlist therefore contains exactly what the playlist view
 /// showed, in the same order, including a smart playlist's live evaluation.
-fn all_tracks(conn: &Connection, playlist_id: Option<i64>) -> AppResult<Vec<ExportTrack>> {
+fn all_tracks(
+    conn: &Connection,
+    playlist_id: Option<i64>,
+    total: u32,
+    on_progress: &mut impl FnMut(WriteProgress),
+) -> AppResult<Vec<ExportTrack>> {
     let mut tracks = Vec::new();
     let mut offset = 0;
     loop {
@@ -244,11 +276,44 @@ fn all_tracks(conn: &Connection, playlist_id: Option<i64>) -> AppResult<Vec<Expo
         )?;
         let count = page.len() as u32;
         tracks.extend(page.into_iter().map(ExportTrack::from));
+        // Per page rather than per track: a page is the unit of work here, and
+        // `MAX_LIMIT` rows arrive from SQLite in one go.
+        on_progress(WriteProgress {
+            done: tracks.len() as u32,
+            total,
+        });
         if count < query::MAX_LIMIT {
             return Ok(tracks);
         }
         offset += count;
     }
+}
+
+/// How many tracks `scope` covers, for the progress readout's denominator.
+///
+/// A selection is its own length - the ids are in hand, and counting them
+/// through the database would ask a question already answered.
+fn count_for(conn: &Connection, scope: &ExportScope) -> AppResult<u32> {
+    match scope {
+        ExportScope::Selection { track_ids } => Ok(track_ids.len() as u32),
+        ExportScope::Library => count_tracks_in(conn, None),
+        ExportScope::Playlist { playlist_id } => count_tracks_in(conn, Some(*playlist_id)),
+    }
+}
+
+fn count_tracks_in(conn: &Connection, playlist_id: Option<i64>) -> AppResult<u32> {
+    query::count_tracks(
+        conn,
+        &TrackQuery {
+            playlist_id,
+            sort_by: SortField::Path,
+            direction: SortDirection::Asc,
+            offset: 0,
+            limit: query::MAX_LIMIT,
+            search: None,
+            browse: None,
+        },
+    )
 }
 
 fn all_playlists(conn: &Connection) -> AppResult<Vec<ExportPlaylist>> {
@@ -342,7 +407,7 @@ mod tests {
         let playlist = playlists::create(&conn, "Mix", 5).unwrap();
         playlists::add_tracks(&mut conn, playlist.id, &[3, 1]).unwrap();
 
-        let export = build(&conn, &ExportScope::Library, 1_700_000_000).unwrap();
+        let export = build(&conn, &ExportScope::Library, 1_700_000_000, |_| {}).unwrap();
 
         assert_eq!(export.schema_version, SCHEMA_VERSION);
         assert_eq!(export.exported_at, 1_700_000_000);
@@ -366,7 +431,7 @@ mod tests {
         )
         .unwrap();
 
-        let export = build(&conn, &ExportScope::Library, 0).unwrap();
+        let export = build(&conn, &ExportScope::Library, 0, |_| {}).unwrap();
 
         // A membership list would be a lie the moment the library changed.
         assert_eq!(export.playlists[0].filter, Some(artist_is("Guitar")));
@@ -391,7 +456,7 @@ mod tests {
         };
         playlists::create_smart(&conn, "Most Played", &artist_is("Guitar"), &order, 0).unwrap();
 
-        let export = build(&conn, &ExportScope::Library, 0).unwrap();
+        let export = build(&conn, &ExportScope::Library, 0, |_| {}).unwrap();
 
         // Without this the filter alone would read back as every Guitar track
         // rather than the hundred most played of them.
@@ -414,6 +479,7 @@ mod tests {
                 track_ids: vec![3, 1],
             },
             0,
+            |_| {},
         )
         .unwrap();
 
@@ -442,6 +508,7 @@ mod tests {
                 playlist_id: playlist.id,
             },
             0,
+            |_| {},
         )
         .unwrap();
 
@@ -464,6 +531,7 @@ mod tests {
                 track_ids: vec![1, 9999],
             },
             0,
+            |_| {},
         )
         .unwrap();
 
@@ -478,7 +546,7 @@ mod tests {
         settings::set(&conn, "lastfm.session_key", "super-secret").unwrap();
         settings::set(&conn, "discogs.token", "also-secret").unwrap();
 
-        let json = to_json(&build(&conn, &ExportScope::Library, 0).unwrap()).unwrap();
+        let json = to_json(&build(&conn, &ExportScope::Library, 0, |_| {}).unwrap()).unwrap();
 
         // Asserted against the serialized bytes, not the struct: this is the
         // thing that actually leaves the machine.
@@ -497,7 +565,7 @@ mod tests {
         let (_dir, db) = seeded();
         let conn = db.conn().unwrap();
 
-        let json = to_json(&build(&conn, &ExportScope::Library, 0).unwrap()).unwrap();
+        let json = to_json(&build(&conn, &ExportScope::Library, 0, |_| {}).unwrap()).unwrap();
 
         // The schema is a contract; a rename here breaks somebody's script.
         for field in [
@@ -527,7 +595,7 @@ mod tests {
         conn.execute("UPDATE tracks SET cover_hash = 'abc' WHERE id = 1", [])
             .unwrap();
 
-        let json = to_json(&build(&conn, &ExportScope::Library, 0).unwrap()).unwrap();
+        let json = to_json(&build(&conn, &ExportScope::Library, 0, |_| {}).unwrap()).unwrap();
 
         // Not the bytes, and not the hash either: an export carries the
         // library's text and nothing that describes a picture.
@@ -545,7 +613,7 @@ mod tests {
         let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
         let conn = db.conn().unwrap();
 
-        let json = to_json(&build(&conn, &ExportScope::Library, 0).unwrap()).unwrap();
+        let json = to_json(&build(&conn, &ExportScope::Library, 0, |_| {}).unwrap()).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed["tracks"].as_array().unwrap().len(), 0);
@@ -570,7 +638,64 @@ mod tests {
 
         // The page cap applies to every query; an export that forgot to page
         // would silently stop at 1000 tracks.
-        let export = build(&conn, &ExportScope::Library, 0).unwrap();
+        let export = build(&conn, &ExportScope::Library, 0, |_| {}).unwrap();
         assert_eq!(export.tracks.len(), count as usize);
+    }
+
+    #[test]
+    fn progress_reaches_its_own_total_over_several_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let mut conn = db.conn().unwrap();
+        let count = query::MAX_LIMIT + 7;
+        let tx = conn.transaction().unwrap();
+        for index in 0..count {
+            tx.execute(
+                "INSERT INTO tracks (path, mtime, size, added_at) VALUES (?1, 1, 1, 0)",
+                [format!("/m/{index:05}.mp3")],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+
+        let mut seen: Vec<WriteProgress> = Vec::new();
+        build(&conn, &ExportScope::Library, 0, |p| seen.push(p)).unwrap();
+
+        // More than one page, so this is the paging path rather than a single
+        // report at the end.
+        assert!(seen.len() > 2, "only {} reports", seen.len());
+        assert_eq!(
+            seen[0],
+            WriteProgress {
+                done: 0,
+                total: count
+            }
+        );
+        // The denominator never moves, and the last report is the whole thing:
+        // a readout that stops at 1000 of 1007 looks like a failed export.
+        assert!(seen.iter().all(|p| p.total == count));
+        assert_eq!(seen.last().unwrap().done, count);
+    }
+
+    #[test]
+    fn a_selection_counts_the_ids_it_was_given() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        let mut seen: Vec<WriteProgress> = Vec::new();
+        build(
+            &conn,
+            &ExportScope::Selection {
+                track_ids: vec![3, 1],
+            },
+            0,
+            |p| seen.push(p),
+        )
+        .unwrap();
+
+        // The ids are in hand, so counting them through the database would ask
+        // a question that is already answered.
+        assert_eq!(seen.first().unwrap().total, 2);
+        assert_eq!(*seen.last().unwrap(), WriteProgress { done: 2, total: 2 });
     }
 }

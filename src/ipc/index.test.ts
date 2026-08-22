@@ -21,10 +21,12 @@ import {
   loadDynamicBackground,
   loadWindowGeometry,
   moveInPlaylist,
+  onExportProgress,
   onPlayerError,
   onPlayerPosition,
   onPlayerState,
   onScanProgress,
+  onTagWriteProgress,
   playerNext,
   playerPause,
   playerPlay,
@@ -132,6 +134,26 @@ describe("ipc", () => {
 
     expect(listenMock).toHaveBeenCalledWith("scan://progress", expect.any(Function));
     expect(handler).toHaveBeenCalledWith(progress);
+  });
+
+  it("subscribes the two long writes to their own channels", async () => {
+    const handler = vi.fn();
+    const progress = { done: 25, total: 500 };
+    listenMock.mockImplementation(async (_event, callback) => {
+      // biome-ignore lint/suspicious/noExplicitAny: exercising the listener the way Tauri calls it
+      (callback as any)({ payload: progress });
+      return () => {};
+    });
+
+    await onTagWriteProgress(handler);
+    await onExportProgress(handler);
+
+    // Separate channels because they are separate operations: a tag write and
+    // an export can be watched by different parts of the UI.
+    expect(listenMock).toHaveBeenCalledWith("tags://progress", expect.any(Function));
+    expect(listenMock).toHaveBeenCalledWith("export://progress", expect.any(Function));
+    expect(handler).toHaveBeenNthCalledWith(1, progress);
+    expect(handler).toHaveBeenNthCalledWith(2, progress);
   });
 
   it("asks for every matching id when selecting or queueing the whole view", async () => {

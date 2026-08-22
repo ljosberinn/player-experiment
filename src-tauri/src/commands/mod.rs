@@ -17,6 +17,26 @@ use crate::model::{
 };
 use crate::{crash, scan, tags};
 
+/// Progress channels for the two writes long enough to watch.
+const TAG_PROGRESS: &str = "tags://progress";
+const EXPORT_PROGRESS: &str = "export://progress";
+
+/// Runs `work` off the async runtime, naming the task if the thread dies.
+///
+/// Four commands do enough file I/O to freeze the window on the IPC thread -
+/// scanning, a tag write, its undo, and an export - and each one needs the
+/// same three lines around `spawn_blocking`. `what` appears only in the join
+/// failure, which is a panic in the worker: without it every such failure
+/// reads the same and says nothing about which one it was.
+async fn blocking<T: Send + 'static>(
+    what: &'static str,
+    work: impl FnOnce() -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| crate::error::AppError::Internal(format!("{what} task failed: {e}")))?
+}
+
 pub fn app_info() -> AppInfo {
     AppInfo {
         name: env!("CARGO_PKG_NAME").to_owned(),
@@ -51,7 +71,7 @@ pub fn list_watch_folders(db: State<'_, Db>) -> AppResult<Vec<String>> {
 /// async runtime via `spawn_blocking`.
 #[tauri::command]
 pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking("scan", move || {
         let db = app.state::<Db>();
         let mut conn = db.conn()?;
         scan::scan(&mut conn, |progress| {
@@ -60,7 +80,6 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
         })
     })
     .await
-    .map_err(|e| crate::error::AppError::Internal(format!("scan task failed: {e}")))?
 }
 
 #[tauri::command]
@@ -227,20 +246,38 @@ pub fn tracks_by_ids(db: State<'_, Db>, track_ids: Vec<i64>) -> AppResult<Vec<Tr
 }
 
 /// Applies one edit to every track named, reporting what it managed.
+///
+/// On a worker thread, streaming `tags://progress`: each file is a whole mp3
+/// copied and replaced, so 500 of them held the window still for as long as
+/// the batch took.
 #[tauri::command]
-pub fn write_tags(
-    db: State<'_, Db>,
+pub async fn write_tags(
+    app: tauri::AppHandle,
     track_ids: Vec<i64>,
     edit: TagEdit,
 ) -> AppResult<TagWriteSummary> {
-    let mut conn = db.conn()?;
-    tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds())
+    blocking("tag write", move || {
+        let db = app.state::<Db>();
+        let mut conn = db.conn()?;
+        tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds(), |p| {
+            // A dropped progress event is not worth failing a write over.
+            let _ = app.emit(TAG_PROGRESS, &p);
+        })
+    })
+    .await
 }
 
+/// Reverts the last edit, on a worker thread for the same reason.
 #[tauri::command]
-pub fn undo_tag_edit(db: State<'_, Db>) -> AppResult<TagWriteSummary> {
-    let mut conn = db.conn()?;
-    tags::write::undo_last(&mut conn)
+pub async fn undo_tag_edit(app: tauri::AppHandle) -> AppResult<TagWriteSummary> {
+    blocking("tag undo", move || {
+        let db = app.state::<Db>();
+        let mut conn = db.conn()?;
+        tags::write::undo_last(&mut conn, |p| {
+            let _ = app.emit(TAG_PROGRESS, &p);
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -266,17 +303,30 @@ pub fn suggest_tag_values(
 
 /// Writes an export to `path`, returning how many tracks it holds.
 ///
-/// The file is written whole rather than streamed: an export is megabytes at
-/// most, and a partial file left behind by a failure would look like a
-/// complete one.
+/// The file is still written whole rather than streamed: an export is
+/// megabytes at most, and a partial file left behind by a failure would look
+/// like a complete one. What moved is where that happens - the whole document
+/// is built and serialized on a worker thread, streaming `export://progress`,
+/// because building it in the command handler stopped the window at the moment
+/// the user picked a filename.
 #[tauri::command]
-pub fn export_library(db: State<'_, Db>, path: String, scope: ExportScope) -> AppResult<u32> {
-    let conn = db.conn()?;
-    let document = export::build(&conn, &scope, crate::now_seconds())?;
-    let count = document.tracks.len() as u32;
-    std::fs::write(&path, export::to_json(&document)?)
-        .map_err(|e| crate::error::AppError::io(&path, e))?;
-    Ok(count)
+pub async fn export_library(
+    app: tauri::AppHandle,
+    path: String,
+    scope: ExportScope,
+) -> AppResult<u32> {
+    blocking("export", move || {
+        let db = app.state::<Db>();
+        let conn = db.conn()?;
+        let document = export::build(&conn, &scope, crate::now_seconds(), |p| {
+            let _ = app.emit(EXPORT_PROGRESS, &p);
+        })?;
+        let count = document.tracks.len() as u32;
+        std::fs::write(&path, export::to_json(&document)?)
+            .map_err(|e| crate::error::AppError::io(&path, e))?;
+        Ok(count)
+    })
+    .await
 }
 
 /// Opens the OS file manager with one track selected.

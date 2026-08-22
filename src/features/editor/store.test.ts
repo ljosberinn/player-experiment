@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
-import { canUndoTagEdit, tracksByIds, undoTagEdit, writeTags } from "../../ipc";
+import { canUndoTagEdit, onTagWriteProgress, tracksByIds, undoTagEdit, writeTags } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { useEditorStore } from "./store";
 
 vi.mock("../../ipc", () => ({
+  onTagWriteProgress: vi.fn(async () => () => {}),
   tracksByIds: vi.fn(),
   writeTags: vi.fn(),
   undoTagEdit: vi.fn(),
@@ -57,12 +58,90 @@ const initialLibrary = useLibraryStore.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
+  useEditorStore.setState({
+    ...initialEditor,
+    tracks: null,
+    progress: null,
+    notice: null,
+    error: null,
+  });
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
   vi.mocked(canUndoTagEdit).mockResolvedValue(false);
 });
 
 describe("editor store", () => {
+  it("shows a fraction from the moment Save is pressed", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2)]);
+    await useEditorStore.getState().open([1, 2]);
+    let finish:
+      | ((summary: { written: number; failed: number; errors: string[] }) => void)
+      | undefined;
+    vi.mocked(writeTags).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const saving = useEditorStore.getState().save(edit);
+
+    // Not on the first event: the dialog has to go to work when the button is
+    // pressed, not when the first of 500 files lands.
+    expect(useEditorStore.getState().progress).toEqual({ done: 0, total: 2 });
+
+    finish?.({ written: 2, failed: 0, errors: [] });
+    await saving;
+
+    expect(useEditorStore.getState().progress).toBeNull();
+  });
+
+  it("clears the readout when a save fails, so the dialog is usable again", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([track(1)]);
+    await useEditorStore.getState().open([1]);
+    vi.mocked(writeTags).mockRejectedValue(new Error("locked"));
+
+    await useEditorStore.getState().save(edit);
+
+    expect(useEditorStore.getState().progress).toBeNull();
+    expect(useEditorStore.getState().tracks).not.toBeNull();
+  });
+
+  it("marks an undo as running before it knows how big it is", async () => {
+    let finish:
+      | ((summary: { written: number; failed: number; errors: string[] }) => void)
+      | undefined;
+    vi.mocked(undoTagEdit).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const undoing = useEditorStore.getState().undo();
+
+    // A total of zero, because only the backend knows how many rows the last
+    // batch held; the readout says "Reverting" until the first event.
+    expect(useEditorStore.getState().progress).toEqual({ done: 0, total: 0 });
+
+    finish?.({ written: 1, failed: 0, errors: [] });
+    await undoing;
+
+    expect(useEditorStore.getState().progress).toBeNull();
+  });
+
+  it("records progress from tag write events", async () => {
+    let emit: ((progress: { done: number; total: number }) => void) | undefined;
+    vi.mocked(onTagWriteProgress).mockImplementation(async (handler) => {
+      emit = handler;
+      return () => {};
+    });
+
+    await useEditorStore.getState().watch();
+    emit?.({ done: 25, total: 500 });
+
+    expect(useEditorStore.getState().progress).toEqual({ done: 25, total: 500 });
+  });
+
   it("loads the rows behind a selection rather than trusting the cache", async () => {
     vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2)]);
 

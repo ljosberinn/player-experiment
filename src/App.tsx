@@ -12,6 +12,7 @@ import { CrashNotice } from "./features/crash/CrashNotice";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
+import { useExportStore } from "./features/export/store";
 import { BrowseView } from "./features/library/BrowseView";
 import { resolveColumns } from "./features/library/columns";
 import { rowMenuItems } from "./features/library/rowMenu";
@@ -35,6 +36,7 @@ import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { exportSelectionLabel, menus, REPOSITORY } from "./features/shell/menus";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
+import { TaskProgress } from "./features/shell/TaskProgress";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
@@ -45,7 +47,7 @@ import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import { type AppInfo, exportLibrary, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
+import { type AppInfo, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
 
 /** What the heading over a browse view says. Songs has none - see below. */
 const VIEW_TITLES = { songs: "Songs", albums: "Albums", artists: "Artists", genres: "Genres" };
@@ -113,6 +115,8 @@ export function App() {
   const saveTags = useEditorStore((s) => s.save);
   const undoTags = useEditorStore((s) => s.undo);
   const refreshUndo = useEditorStore((s) => s.refreshUndo);
+  const tagProgress = useEditorStore((s) => s.progress);
+  const runExportTo = useExportStore((s) => s.run);
 
   const addFolder = useScanStore((s) => s.addFolder);
   const rescan = useScanStore((s) => s.rescan);
@@ -255,7 +259,7 @@ export function App() {
       if (path === null) {
         return;
       }
-      const count = await exportLibrary(path, choice.scope);
+      const count = await runExportTo(path, choice.scope);
       setToolbarNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
     } catch (cause) {
       setToolbarNotice(`Export failed: ${String(cause)}`);
@@ -402,6 +406,10 @@ export function App() {
               the ordinary case - but it stays mounted either way, because it
               is what subscribes to the progress events. */}
           <ScanBar />
+          {/* The other two writes long enough to watch: an export, and a tag
+              undo started from the Edit menu. Mounted unconditionally for the
+              same reason `ScanBar` is - it is what subscribes to them. */}
+          <TaskProgress />
 
           {/* Songs has no heading, deliberately: it is the view with 150k rows
               in it, and it is the one that can least afford to spend a third of
@@ -556,6 +564,7 @@ export function App() {
       {editorTracks ? (
         <TagEditor
           tracks={editorTracks}
+          progress={tagProgress}
           onSave={(edit) => void saveTags(edit)}
           onCancel={closeTagEditor}
           onPickCover={async () => {
