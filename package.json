@@ -19,8 +19,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_bindings",
-    "notices": "node scripts/notices.mjs",
-    "notices:check": "node scripts/notices.mjs --check"
+    "notices": "node scripts/notices.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

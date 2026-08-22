@@ -11,14 +11,11 @@ are required before merge:
 | `frontend` (ubuntu) | `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build` |
 | `rust` (windows) | `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`, and a check that committed bindings match the Rust types |
 | `cargo-deny` (ubuntu) | advisories, licences, sources, bans |
-| `notices` | `THIRD-PARTY-NOTICES.md` is current |
+| `notices` | the third-party notices can still be generated |
 | `e2e` (windows) | instrumented debug build plus the WebdriverIO suite |
 
 Caching is `Swatinem/rust-cache` plus the setup-node npm cache; a concurrency
 group cancels superseded runs.
-
-CI also has a `workflow_dispatch` trigger. It exists for one caller — see
-Dependabot below — and running it by hand does the same thing a push does.
 
 **Build warnings fail CI.** `vite.config.ts` turns every rollup warning into a
 thrown error. Silencing a specific `warning.code` with a comment is allowed —
@@ -37,19 +34,20 @@ red run points at one suspect. Two npm groups are the exception —
 installed one at a time: the first scheduled run opened four separate pull
 requests that each failed at `npm ci` with ERESOLVE.
 
-`.github/workflows/dependabot.yml` then lands them: it regenerates
-`THIRD-PARTY-NOTICES.md` — which Dependabot cannot, and which every update to a
-shipped package invalidates — and merges the pull request if every other check
-passed. Majors included; the gate is the same six checks either way.
+`.github/workflows/dependabot.yml` then lands them: green run on a
+`dependabot/*` branch → squash-merge. Majors included; the gate is the same six
+checks either way. It runs on `workflow_run` because a workflow triggered by
+Dependabot gets a read-only token — GitHub's rule, not a setting — and cannot
+merge anything, while a `workflow_run` workflow runs from the default branch
+with the repository's own token.
 
-It runs on `workflow_run`, because a workflow triggered by Dependabot gets a
-read-only token and cannot push. Its regenerated commit then needs checks of its
-own, since `main` requires all six and the ruleset has no bypass actors, and a
-push made with `GITHUB_TOKEN` starts no run — so it dispatches CI at the branch
-and leaves the merge to auto-merge. A required check cares which commit it ran
-on, not what triggered it. `npm ci` and the merge live in **separate jobs**: the
-install scripts of the packages being bumped must not be able to reach a token
-that can write. Phase 45 has the rest.
+It touches the branch in no other way, and that is the whole trick. Phase 45 had
+it regenerate `THIRD-PARTY-NOTICES.md` and push, because the drift check on that
+file failed on every update by construction. **A `GITHUB_TOKEN` push parks a
+`pull_request` run at `action_required` rather than starting one**, and a parked
+run blocks the merge by itself however green the rest is — the pull request sits
+at `BLOCKED` until somebody approves the parked run by hand. Phase 46 stopped
+committing the file, so there is nothing to push and nothing parks.
 
 ## Branches
 
@@ -81,6 +79,10 @@ and the GitHub release; nothing publishes while the PR sits there.
 - **Installers are unsigned**, settled at the start: local-only product, no code
   signing. SmartScreen warns on first run of each new version until reputation
   accrues. Nothing to fix.
-- `THIRD-PARTY-NOTICES.md` is generated (`npm run notices`) and bundled as an
-  installer resource alongside `LICENSE`. symphonia is MPL-2.0, so recipients
-  must be told where to get its source — that file is how.
+- `THIRD-PARTY-NOTICES.md` is bundled as an installer resource alongside
+  `LICENSE`. symphonia is MPL-2.0, so recipients must be told where to get its
+  source — that file is how. It is **generated, not committed**:
+  `beforeBuildCommand` runs `npm run notices`, so every bundle describes the
+  graph it is shipping. The generator skips its work when the file is newer than
+  both lockfiles, which is what keeps it out of the way of `tauri dev`;
+  `--force` overrides that, and CI passes it.

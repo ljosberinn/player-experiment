@@ -1,5 +1,12 @@
 # 45 — Dependabot lands its own updates
 
+> **Superseded in part by phase 46.** The regenerate-and-push half of this is
+> gone: one update landed through it, and the push it makes parks a
+> `pull_request` run at `action_required`, which blocks the merge until a human
+> approves it. Phase 46 stopped committing the notices file, which removes the
+> reason to push at all. What survives is the `workflow_run` shape, the gates,
+> and the grouping below.
+
 Phase 42 pointed Dependabot at npm, cargo and the actions, and the first
 scheduled run opened twelve pull requests at once. Eleven of them failed
 `notices` — including several whose only fault was that.
