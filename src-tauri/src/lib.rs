@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod export;
 pub mod model;
+pub mod palette;
 pub mod reveal;
 pub mod scan;
 pub mod smart;
@@ -173,6 +174,8 @@ pub fn run() {
             commands::save_zoom,
             commands::load_sidebar_sections,
             commands::save_sidebar_sections,
+            commands::load_dynamic_background,
+            commands::save_dynamic_background,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,

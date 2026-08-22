@@ -164,11 +164,29 @@
   box-sizing: border-box;
 }
 
+/* The window's base fill is on `html`, not on `body`, and that is load-bearing
+   rather than a preference.
+
+   The blob layer (phase 39) is a fixed child at `z-index: -1`. Nothing between
+   it and the root element makes a stacking context, so it paints in the root's
+   negative-z-index step - which comes *after* the root's own background and
+   *before* every in-flow block. A fill on `body` is one of those in-flow
+   blocks, so it painted over the blobs completely: the layer was there, the
+   colours were right, three gradients were live, and the window was flat. On
+   `html` the fill is the root background instead, and the layer lands between
+   it and the app.
+
+   `body` must therefore stay transparent. `App.css.test.ts` and the
+   `dynamic-background` e2e spec both assert it, because the failure is silent -
+   the feature simply stops being visible and every test still passes. */
+html {
+  background: var(--surface);
+}
+
 body {
   margin: 0;
   overflow: hidden;
   user-select: none;
-  background: var(--surface);
 }
 
 /* Native feel pass - the element-level half.
@@ -225,6 +243,145 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   height: 100vh;
+}
+
+/* ---------- the background that follows the music ---------- */
+
+/* Three blurred blobs of the playing cover's colours, behind the whole window.
+   Phase 39. `DynamicBackground` mounts this only when there is a palette and
+   the preference is on, so everything here is on the playing path rather than
+   the resting one.
+
+   The colours are registered rather than merely used. A custom property is a
+   token string by default and cannot be interpolated, so swapping one between
+   albums would cut; `syntax: "<color>"` makes it a real colour the transition
+   below can wash through. `transparent` as the initial value both keeps the
+   blobs invisible for the frame before React sets them and keeps this block
+   free of a literal colour - see the token rule at the top of the sheet. */
+@property --blob-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --blob-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --blob-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+/* `fixed` and `z-index: -1`: the layer paints above the window's own
+   background and below every element in flow, without `.app` having to become
+   a stacking context - which would put a containing block around a
+   150k-row virtualized table for the sake of decoration.
+
+   Oversized and centred, so that the rotation below never swings an edge into
+   view: a square of 140% turned about its middle still covers the viewport at
+   every angle.
+
+   `will-change` is the one hint worth giving here. The layer turns for a full
+   minute at a time under a blur, and without it the compositor re-rasterizes
+   that blur on every frame. */
+.dynamic-bg {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 140vmax;
+  height: 140vmax;
+  z-index: -1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: dynamic-bg-turn 60s linear infinite;
+  will-change: transform;
+  /* The wash when the album changes, from the design: a transition on the
+     colours themselves, so one record's palette bleeds into the next rather
+     than cutting. Declared here rather than on the blobs below because this is
+     the element React writes the properties on - the gradients inherit the
+     interpolated value frame by frame. Registered above, which is the only
+     reason any of it does anything. */
+  transition:
+    --blob-1 1.6s ease-in-out,
+    --blob-2 1.6s ease-in-out,
+    --blob-3 1.6s ease-in-out;
+}
+
+/* One turn a minute, from the design: slow enough that it reads as light
+   moving rather than as something animating, and continuous rather than eased
+   so there is no point in the minute where it visibly stops.
+
+   Rotation about the element's own middle, which is the viewport's middle -
+   the blobs are placed off-centre, so the whole field drifts. */
+@keyframes dynamic-bg-turn {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* The three blobs themselves, as one painted element rather than three.
+
+   Radial gradients in a single `background` shorthand: three children would be
+   three composited layers of blur for a result that is one wash, and the
+   gradients cannot bleed into each other any less by being separated.
+
+   **Positions are anchored to the viewport, not to this element.** That is the
+   whole reason for the `calc()`. The element is 140vmax so the rotation never
+   swings an edge into view, which makes it far larger than the window - so a
+   plain `at calc(50% - 28vw) calc(50% - 24vh)` is 22% across *the box*, not across the window, and lands
+   somewhere else entirely. It put the third blob 320px below the bottom of a
+   1080-tall window, where it was never once visible, and left the other two
+   clipping the top edge. `50%` of this element is the middle of the window, so
+   `calc(50% - 28vw)` is the design's 22% across, and it stays right at any
+   size or aspect ratio where a percentage of the box cannot.
+
+   Radii in `vmax` for the same reason. The offsets are the design's own
+   placement expressed as a distance from the centre: 22%, 78% and 52% across
+   become -28vw, +28vw and +2vw; 26%, 32% and 82% down become -24vh, -18vh and
+   +32vh.
+
+   The stops are the design's - full colour at the centre, gone by 70%, so each
+   blob is a soft disc rather than a ring with an edge. Opacities are the 7-10%
+   the design states, largest and most opaque first, which is why the palette
+   arrives ordered by prominence: the layer is at 0.1, and the second and third
+   blobs are mixed down to 80% and 70% of that.
+
+   `ellipse` with two equal measurements rather than `circle`, which is what
+   this said first and which is invalid: a circle's radius may be a length but
+   not a percentage, so the browser dropped the whole `background` and the layer
+   painted nothing.
+
+   `blur` on top of gradients that are already soft: it is what turns three
+   discs into one field, and it is why the layer is oversized. */
+.dynamic-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 48vmax 48vmax at calc(50% - 28vw) calc(50% - 24vh),
+      var(--blob-1) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 44vmax 44vmax at calc(50% + 28vw) calc(50% - 18vh),
+      color-mix(in oklab, var(--blob-2) 80%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 42vmax 42vmax at calc(50% + 2vw) calc(50% + 32vh),
+      color-mix(in oklab, var(--blob-3) 70%, transparent) 0%,
+      transparent 70%
+    );
+  opacity: 0.1;
+  filter: blur(60px);
 }
 
 /* The strip along the very top of the window, from the design: full accent at
@@ -1245,10 +1402,20 @@ input[type="radio"] {
 
 /* ---------- song table ---------- */
 
+/* No fill of its own, and that is the point.
+   
+   This is the element that tiles the whole content pane, so an opaque fill here
+   is an opaque fill over the entire window - which is what it was, and what hid
+   the phase 39 blob layer completely. The measured colour across the pane was
+   exactly `--surface`, to the last channel, while the layer sat behind it with
+   the right colours and three live gradients.
+   
+   `.content` already carries `--content-wash` for this pane; a second fill
+   underneath it was only ever redundant. Every panel that makes up the window
+   is a veil, per phase 35 - see the translucent half of the token block. */
 .song-body {
   flex: 1;
   overflow: auto;
-  background: var(--surface);
 }
 
 /* Real table markup, laid out as blocks so rows can be absolutely positioned
@@ -1434,6 +1601,20 @@ th.status {
   .row-status.playing .wave {
     animation: none;
     opacity: 1;
+  }
+
+  /* A minute-long loop of moving colour behind text is exactly what this query
+     is for. The blobs stay - they are colour rather than motion, and they are
+     what the design is - but they stop turning, and the wash between albums
+     goes with the turn: a 1.6s crossfade is still motion.
+
+     The checkbox in Settings is the switch for the colour itself, and it is
+     deliberately independent of this. Someone who wants no animation has not
+     necessarily asked for no colour. */
+  .dynamic-bg {
+    animation: none;
+    transition: none;
+    will-change: auto;
   }
 }
 

@@ -18,6 +18,7 @@ import {
   libraryStats,
   listPlaylists,
   listWatchFolders,
+  loadDynamicBackground,
   loadWindowGeometry,
   moveInPlaylist,
   onPlayerError,
@@ -40,6 +41,7 @@ import {
   removeFromPlaylist,
   renamePlaylist,
   type SmartOrder,
+  saveDynamicBackground,
   saveWindowGeometry,
   scanLibrary,
   setPlaylistFilter,
@@ -160,6 +162,19 @@ describe("ipc", () => {
       invokeMock.mockResolvedValue(null);
       await expect(loadWindowGeometry()).resolves.toBeNull();
       expect(invokeMock).toHaveBeenCalledWith("load_window_geometry");
+    });
+
+    it("round-trips the dynamic background as a bool, not a string", async () => {
+      // Unlike the geometry above, Rust reads this one: it is on the export
+      // allowlist. A "false" that arrived as the string would be truthy on
+      // the way back and the checkbox would refuse to stay off.
+      invokeMock.mockResolvedValue(undefined);
+      await saveDynamicBackground(false);
+      expect(invokeMock).toHaveBeenCalledWith("save_dynamic_background", { enabled: false });
+
+      invokeMock.mockResolvedValue(false);
+      await expect(loadDynamicBackground()).resolves.toBe(false);
+      expect(invokeMock).toHaveBeenCalledWith("load_dynamic_background");
     });
   });
 

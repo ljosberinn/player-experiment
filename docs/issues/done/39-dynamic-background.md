@@ -1,7 +1,6 @@
 # 39 — The background that follows the music
 
-**In review — PR #62**, branch `phase-39-dynamic-background`. Recorded here
-because the work is built; the phase is not closed until that merges.
+Merged in #62.
 
 Three blurred radial blobs behind everything, taking their colours from the cover
 of what is playing.

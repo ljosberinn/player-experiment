@@ -49,12 +49,14 @@ const HOVER_ALLOWED = [
 /**
  * Selectors that may move.
  *
- * One entry, and it should stay that way. The playing indicator's motion *is*
+ * Two entries, and it should stay that way. The playing indicator's motion *is*
  * the state rather than decoration on a state change, which is the line phase
- * 13 drew; see phase 16. The reduced-motion fallback below is not
- * optional for anything on this list.
+ * 13 drew; see phase 16. The background that follows the music (phase
+ * 39) is the second: its turn is the feature, not a flourish on a state change,
+ * and it carries no information a static version would lose. The reduced-motion
+ * fallback below is not optional for anything on this list.
  */
-const ANIMATION_ALLOWED = [".row-status.playing .wave"];
+const ANIMATION_ALLOWED = [".row-status.playing .wave", ".dynamic-bg"];
 
 /**
  * `oklch(L C H)` to linear sRGB, then to WCAG relative luminance.
@@ -144,12 +146,114 @@ describe("the stylesheet", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("stops the one animation it allows under reduced motion", () => {
+  it("stops every animation it allows under reduced motion", () => {
     // An exception that ignores the OS setting is not an exception, it is the
     // rule phase 13 removed coming back through a side door.
     const reduced = css.slice(css.indexOf("prefers-reduced-motion"));
 
     expect(reduced).toMatch(/\.row-status\.playing\s+\.wave\s*\{[^}]*animation:\s*none/);
+    // The background stops turning *and* stops washing between albums: a
+    // 1.6s crossfade is motion too.
+    expect(reduced).toMatch(/\.dynamic-bg\s*\{[^}]*animation:\s*none/);
+    expect(reduced).toMatch(/\.dynamic-bg\s*\{[^}]*transition:\s*none/);
+  });
+
+  it("registers the blob colours so they can be transitioned", () => {
+    // A custom property is an uninterpolatable token string unless it is
+    // registered with a syntax. Without these three `@property` blocks the
+    // transition above parses, applies and does nothing, and the wash between
+    // albums silently becomes a cut - which is the kind of failure nobody
+    // notices for a year.
+    for (const name of ["--blob-1", "--blob-2", "--blob-3"]) {
+      // `endsWith` rather than equality: `rules()` sweeps up whatever
+      // precedes the brace, comments included, into the selector.
+      const declared = all.find((rule) => rule.selector.endsWith(`@property ${name}`));
+      const block = declared?.body ?? "";
+
+      expect(block, `${name} is not registered`).toMatch(/syntax:\s*"<color>"/);
+      // Inherited, because the gradients that read them are on a pseudo-element
+      // of the div React writes them to.
+      expect(block).toMatch(/inherits:\s*true/);
+    }
+  });
+
+  it("gives every pane that tiles the window a veil rather than a fill", () => {
+    // The bug this exists for, and it cost three attempts to find. `.song-body`
+    // is the scroll container that fills the whole content pane, and it carried
+    // an opaque `--surface`. The blob layer behind it was present, correct and
+    // completely invisible: the pane measured exactly [18, 15, 12] - `--surface`
+    // to the last channel - everywhere, in every screenshot.
+    //
+    // Every panel that makes up the window is a veil since phase 35. A fill on
+    // any of them is an opaque sheet over the whole window, so the rule is
+    // checked rather than remembered.
+    const PANES = [".body", ".content", ".song-body", ".sidebar", ".titlebar", ".transport-strip"];
+
+    for (const pane of PANES) {
+      const rule = all.find((entry) => entry.selector.trim().endsWith(pane));
+      const declared = /background:\s*var\((--[\w-]+)\)/.exec(rule?.body ?? "");
+      if (declared === null) {
+        // No fill at all is the safest answer and needs no alpha.
+        continue;
+      }
+
+      // A veil carries an alpha; `oklch(L C H / A)` is how the token block
+      // writes one. An opaque token here is the defect.
+      expect(token(String(declared[1]).replace(/^--/, "")), `${pane} is opaque`).toContain("/");
+    }
+  });
+
+  it("keeps the window's base fill off the element that would hide the blobs", () => {
+    // The defect this exists for, and it is worth stating in full because
+    // every other test passed while it was live: the blob layer is a fixed
+    // child at `z-index: -1`, so it paints in the root's negative-z-index step
+    // - after the root background, before every in-flow block. `body` is an
+    // in-flow block. A fill on it covered the layer completely, and the two
+    // e2e screenshots of "with artwork" and "without artwork" came out
+    // pixel-identical in the content area.
+    const html = all.find((rule) => /^html$/m.test(rule.selector.trim()));
+    const body = all.filter((rule) => /^body$/m.test(rule.selector.trim()));
+
+    expect(html?.body).toMatch(/background:\s*var\(--surface\)/);
+    for (const rule of body) {
+      expect(rule.body, "a background on `body` hides the blob layer").not.toMatch(/background/);
+    }
+  });
+
+  it("anchors the blob positions to the window, not to the layer", () => {
+    // The layer is 140vmax so the rotation never swings an edge into view,
+    // which makes it much larger than the window. A position written as a bare
+    // percentage is therefore a percentage of *the layer*: the design's third
+    // blob at "82% down" landed 320px below the bottom of a 1080-tall window
+    // and was never once visible, and the other two only clipped the top edge.
+    // Measured coverage of the pane went from 35-44% to 83-97% once these were
+    // expressed as offsets from the centre instead.
+    const layer = all.find((rule) => rule.selector.trim().endsWith(".dynamic-bg::before"));
+    const positions = [...(layer?.body ?? "").matchAll(/\bat\s+([^,]+?)\s*,/g)].map((match) =>
+      (match[1] ?? "").trim(),
+    );
+
+    expect(positions).toHaveLength(3);
+    for (const position of positions) {
+      // `50%` of the layer is the middle of the window whatever its size, so an
+      // offset from there is the one form that survives a resize.
+      expect(position, `${position} is not anchored to the window`).toMatch(
+        /calc\(\s*50%\s*[-+][^)]*v[wh]\s*\)\s+calc\(\s*50%\s*[-+][^)]*v[wh]\s*\)/,
+      );
+    }
+  });
+
+  it("sizes every radial gradient a way the syntax allows", () => {
+    // `radial-gradient(circle 34% ...)` is invalid: a circle's radius may be a
+    // length, never a percentage. The engine drops the whole `background`
+    // declaration, so the blob layer renders and paints nothing - and it is
+    // silent, because a stylesheet has no way to complain. `ellipse 34% 34%`
+    // is the same shape on a square element and is legal.
+    const offenders = [...css.matchAll(/radial-gradient\(\s*circle\s+[\d.]+%/g)].map(
+      (match) => match[0],
+    );
+
+    expect(offenders).toEqual([]);
   });
 
   it("keeps the row markers visible on the selected row", () => {
@@ -229,6 +333,13 @@ describe("the stylesheet", () => {
     const declared = new Set(
       [...tokenBlock.matchAll(/(--[\w-]+):/g)].map(([, name]) => name as string),
     );
+    // The blob colours are the one exception, and a deliberate one: they hold
+    // whatever the playing cover turned out to be, so their value comes from
+    // React and their *declaration* is the `@property` block that makes them
+    // interpolable. Registered is declared.
+    for (const [, name] of css.matchAll(/@property\s+(--[\w-]+)/g)) {
+      declared.add(name as string);
+    }
     const used = new Set([...css.matchAll(/var\((--[\w-]+)/g)].map(([, name]) => name as string));
 
     // Guards the guard: a regex that matched nothing would compare empty sets.

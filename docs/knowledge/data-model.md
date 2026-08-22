@@ -11,7 +11,7 @@ edit a shipped one.
 | 3 | `tag_undo` — one row per track per edit, grouped by `batch_id` |
 | 4 | `tracks.missing_since` + a **partial** index |
 | 5 | `tag_values` — the distinct values a library uses, for autocompletion |
-| 6 | `covers.palette` — the dominant colours of a cover (arrives with #62) |
+| 6 | `covers.palette` — the dominant colours of a cover |
 
 ## One query, narrowed
 

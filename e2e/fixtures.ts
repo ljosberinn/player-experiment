@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { deflateSync } from "node:zlib";
 
 /**
  * A small library of real, playable mp3 files, built at test time.
@@ -15,6 +16,63 @@ import { dirname, join } from "node:path";
  * them, `lofty` reads these tags, and the rows under test are whatever came
  * back out of SQLite.
  */
+
+/**
+ * A PNG of `colours`, one pixel per column, built by hand.
+ *
+ * Hand-built for the same reason the mp3s are: no encoder dependency, no
+ * binary in git, no licence question. A PNG is four chunks and a CRC, which is
+ * less code than pulling in a library to write four chunks and a CRC.
+ *
+ * It exists so that phase 39 has something real to look at. The palette
+ * extractor decodes whatever `lofty` hands it, so a fixture whose artwork is
+ * the string "not an image" - which is what the file beside these tracks is -
+ * proves only the failure path.
+ */
+function png(colours: ReadonlyArray<readonly [number, number, number]>): Buffer {
+  // One scanline: the mandatory filter byte, then three bytes a pixel.
+  const raw = Buffer.concat([Buffer.from([0x00]), Buffer.from(colours.flat())]);
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(colours.length, 0);
+  ihdr.writeUInt32BE(1, 4);
+  // 8 bits a channel, colour type 2 (truecolour), the only compression,
+  // filter and interlace methods PNG defines.
+  ihdr.set([8, 2, 0, 0, 0], 8);
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+/** One PNG chunk: length, type, payload, CRC over type and payload. */
+function chunk(type: string, payload: Buffer): Buffer {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(payload.length, 0);
+  head.write(type, 4, "latin1");
+
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type, "latin1"), payload])), 0);
+
+  return Buffer.concat([head, payload, crc]);
+}
+
+/** CRC-32, the reflected polynomial PNG and zip both use. */
+function crc32(bytes: Buffer): number {
+  let remainder = 0xffffffff;
+  for (const byte of bytes) {
+    remainder ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      // The polynomial, reflected: 0xedb88320. Computed rather than tabulated -
+      // the largest input here is a few dozen bytes.
+      remainder = remainder & 1 ? (remainder >>> 1) ^ 0xedb88320 : remainder >>> 1;
+    }
+  }
+  return (remainder ^ 0xffffffff) >>> 0;
+}
 
 /** One frame of silent MPEG-1 Layer III, 128 kbps, 44.1 kHz, mono. */
 function silentFrame(): Buffer {
@@ -70,6 +128,7 @@ function id3(meta: TrackFixture): Buffer {
     textFrame("TCON", meta.genre),
     textFrame("TYER", String(meta.year)),
     textFrame("TRCK", String(meta.trackNo)),
+    ...(meta.cover === undefined ? [] : [apic(png(meta.cover))]),
   ]);
 
   const header = Buffer.concat([
@@ -79,6 +138,25 @@ function id3(meta: TrackFixture): Buffer {
   ]);
 
   return Buffer.concat([header, frames]);
+}
+
+/** An ID3v2.3 attached picture: a front cover, with no description. */
+function apic(image: Buffer): Buffer {
+  const payload = Buffer.concat([
+    // Latin-1 text encoding, then the MIME type and an empty description, each
+    // terminated the way v2.3 wants them, with the picture type between.
+    Buffer.from([0x00]),
+    Buffer.from("image/png\u0000", "latin1"),
+    Buffer.from([0x03]),
+    Buffer.from([0x00]),
+    image,
+  ]);
+
+  const header = Buffer.alloc(10);
+  header.write("APIC", 0, "latin1");
+  header.writeUInt32BE(payload.length, 4);
+
+  return Buffer.concat([header, payload]);
 }
 
 export interface TrackFixture {
@@ -95,7 +173,28 @@ export interface TrackFixture {
   frames: number;
   /** What the Time column should read once the scanner has measured it. */
   time: string;
+  /**
+   * Embedded artwork, as the colours of a one-pixel-tall PNG. Absent for most
+   * of the library on purpose: the background that follows the music has to be
+   * seen both arriving and going away, and a library where every album has a
+   * cover can only show the first half.
+   */
+  cover?: ReadonlyArray<readonly [number, number, number]>;
 }
+
+/**
+ * The artwork on *Harbour*, and the only artwork in the fixture library.
+ *
+ * Three colours far enough apart that the three blobs they become are
+ * distinguishable from each other in a screenshot at a tenth of opacity - a
+ * palette of three near-identical blues would photograph as one wash and prove
+ * nothing about the extraction.
+ */
+const HARBOUR_COVER = [
+  [196, 64, 32],
+  [32, 96, 176],
+  [224, 208, 160],
+] as const;
 
 /**
  * Six tracks, three albums, three artists.
@@ -107,6 +206,9 @@ export interface TrackFixture {
  * nothing.
  *
  * Durations are all different, so the Time column cannot pass by coincidence.
+ *
+ * One album carries embedded artwork and two do not, which is what lets phase
+ * 39's background be seen both arriving and going away.
  */
 export const LIBRARY: TrackFixture[] = [
   {
@@ -120,6 +222,7 @@ export const LIBRARY: TrackFixture[] = [
     trackNo: 1,
     frames: 44,
     time: "0:01",
+    cover: HARBOUR_COVER,
   },
   {
     file: "Blue Room/Harbour/02 Beacon.mp3",
@@ -132,6 +235,7 @@ export const LIBRARY: TrackFixture[] = [
     trackNo: 2,
     frames: 82,
     time: "0:02",
+    cover: HARBOUR_COVER,
   },
   {
     file: "Cascade/Terrace/01 Drift.mp3",

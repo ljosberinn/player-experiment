@@ -161,6 +161,7 @@ beforeEach(async () => {
   vi.mocked(playerSnapshot).mockResolvedValue({
     status: "stopped",
     track: null,
+    palette: null,
     queueIndex: null,
     queueLen: 0,
     positionMs: 0,
@@ -755,6 +756,7 @@ describe("App playback", () => {
     vi.mocked(playerSnapshot).mockResolvedValue({
       status: "playing",
       track: track(1),
+      palette: null,
       queueIndex: 1,
       queueLen: 3,
       positionMs: 30_000,

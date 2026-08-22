@@ -83,7 +83,7 @@ Each of these cost real time once. They are here so they cost it once.
 - A Python here-doc turning `\b` into a literal backspace made a guard match
   nothing and pass vacuously. Prove a new guard red.
 
-## Colour extraction (arrives with #62)
+## Colour extraction
 
 Median cut splits a box at its median **pixel**, so an album cover that is 70%
 near-black spends two of three boxes on near-black and averages everything bright

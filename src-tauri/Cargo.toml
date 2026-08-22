@@ -35,6 +35,10 @@ walkdir = "2"
 rayon = "1"
 lofty = "0.24"
 sha2 = "0.10"
+# Cover decoding only, for the palette behind the window. Decoders for the two
+# formats embedded artwork is actually in - the default feature set pulls in a
+# dozen more, plus rayon and a TIFF stack, for covers nobody ships.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # Output only: `playback` pulls cpal, `mp3` routes decoding through symphonia.
 # The formats we do not ingest are left off so their decoders are not linked.
 rodio = { version = "0.22", default-features = false, features = ["playback", "mp3"] }
