@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
  *
  * It is a blunt instrument on purpose: it parses top-level rules and looks at
  * declarations. Anything it cannot see through (a nested media query, a value
- * built from a variable) is out of its reach, and the checklist in PLAN.md
- * remains the real specification.
+ * built from a variable) is out of its reach, and the native-feel rules in
+ * docs/knowledge/frontend.md remain the real specification.
  */
 const root = process.cwd().replaceAll("\\", "/");
 const css = readFileSync(`${root}/src/App.css`, "utf8");
@@ -38,7 +38,7 @@ const all = rules(css);
 /** Selectors that may legitimately light up under the pointer. */
 const HOVER_ALLOWED = [
   // Every Windows title bar highlights these; not doing so reads as broken
-  // rather than as native. Called out in PLAN.md phase 13.
+  // rather than as native. Called out in phase 13.
   ".window-buttons",
   // `.context-item` used to be here: a menu's active entry follows the
   // pointer by definition. Phase 24 removed the need for the exception rather
@@ -51,7 +51,7 @@ const HOVER_ALLOWED = [
  *
  * Two entries, and it should stay that way. The playing indicator's motion *is*
  * the state rather than decoration on a state change, which is the line phase
- * 13 drew; see PLAN.md phase 16. The background that follows the music (phase
+ * 13 drew; see phase 16. The background that follows the music (phase
  * 39) is the second: its turn is the feature, not a flourish on a state change,
  * and it carries no information a static version would lose. The reduced-motion
  * fallback below is not optional for anything on this list.

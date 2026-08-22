@@ -13,7 +13,7 @@
 //! **Why a box split, and where this differs from the plan.** The picture is
 //! being reduced to three blurred blobs at under a tenth of full opacity, so
 //! precision is not the point - the same cover producing the same three
-//! colours every time is. `docs/PLAN-apex.md` phase 39 asked for median cut on
+//! colours every time is. Phase 39's plan asked for median cut on
 //! those grounds, and it is the wrong one of the two deterministic box splits
 //! for this: median cut divides a box at its *median pixel*, so three boxes
 //! hold a third of the pixels each. An album cover that is 70% near-black -
