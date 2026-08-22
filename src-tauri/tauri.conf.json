@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "identifier": "dev.ljosberinn.apex",
   "build": {
-    "beforeDevCommand": "npm run notices && npm run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run notices && npm run build",
     "frontendDist": "../dist"
@@ -43,8 +43,7 @@
     ],
     "createUpdaterArtifacts": true,
     "resources": [
-      "../LICENSE",
-      "../THIRD-PARTY-NOTICES.md"
+      "../LICENSE"
     ],
     "licenseFile": "../LICENSE"
   },

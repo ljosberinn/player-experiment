@@ -84,5 +84,11 @@ and the GitHub release; nothing publishes while the PR sits there.
   source — that file is how. It is **generated, not committed**:
   `beforeBuildCommand` runs `npm run notices`, so every bundle describes the
   graph it is shipping. The generator skips its work when the file is newer than
-  both lockfiles, which is what keeps it out of the way of `tauri dev`;
-  `--force` overrides that, and CI passes it.
+  both lockfiles; `--force` overrides that, and CI passes it.
+- Because it is generated, it is listed in `src-tauri/tauri.release.conf.json`
+  and **not** in the base config: `tauri-build` fails the *compile* when a
+  resource path does not exist, so listing it in the base would mean no
+  `cargo test` or `cargo clippy` without generating it first. The release job
+  passes that overlay with `--config`. A `--config` overlay replaces an array
+  rather than extending it, so the overlay repeats `../LICENSE` too, and
+  `src/notices.test.ts` asserts all of that still holds.

@@ -33,14 +33,43 @@ with **zero** npm packages in it. Finding that out during a release build is
 finding it out too late. What it can no longer do is fail merely because a
 dependency moved.
 
+## The resource had to move out of the base config
+
+The first attempt just gitignored the file and left it listed under
+`bundle.resources`. CI answered immediately:
+
+```
+error: failed to run custom build command for `apex v0.3.0`
+  resource path `..\THIRD-PARTY-NOTICES.md` doesn't exist
+```
+
+`tauri-build` validates the resource list in a **build script**, so it is not a
+bundling-time check — it fails `cargo test`, `cargo clippy`, everything. A glob
+does not help: `../THIRD-PARTY-NOTICES*.md` fails the same way with "path not
+found or didn't match any files".
+
+So the base config no longer lists it, and `src-tauri/tauri.release.conf.json`
+does; the release job passes it with `--config`. That leaves exactly one way to
+ship out of compliance — a release build that forgets the overlay — which
+`src/notices.test.ts` now fails on. The other half needs no test: the overlay
+names a literal path, so a bundler that gets there without the file errors out
+rather than quietly producing an installer with no notices in it.
+
+A `--config` overlay **replaces** an array rather than extending it, so the
+overlay repeats `../LICENSE`. That is asserted too, because losing it would be
+just as silent.
+
 ## Decisions
 
-**The generator short-circuits on mtime.** `beforeBuildCommand` runs before
-`tauri dev` as well as before a bundle, and reading three hundred crate
-manifests on every dev start is a wait for an answer that has not changed. If
-the output is newer than both `package-lock.json` and `src-tauri/Cargo.lock`,
-it exits. `--force` skips the question; CI passes it, and a release build gets
-it via a fresh checkout where the file does not exist at all.
+**The generator short-circuits on mtime.** A repeated local `tauri build` should
+not re-read three hundred crate manifests for an answer that has not changed. If
+the output is newer than both `package-lock.json` and `src-tauri/Cargo.lock`, it
+exits. `--force` skips the question; CI passes it, and a release build gets a
+fresh checkout where the file does not exist at all.
+
+**`beforeDevCommand` does not generate it.** Nothing in a dev run needs it now
+that the base config does not list it, and a dev start should not wait on
+`cargo metadata`.
 
 **Both lockfiles, because either ecosystem moving invalidates the file.**
 
