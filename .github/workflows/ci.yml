@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  # For a commit that needs checks and cannot get them any other way. A push
+  # made with GITHUB_TOKEN starts no workflow run, so the notices commit
+  # `dependabot.yml` puts on a Dependabot branch would otherwise sit there
+  # uncheckable and unmergeable. A dispatch is exempt from that rule, and the
+  # checks it produces land on the commit like any other.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

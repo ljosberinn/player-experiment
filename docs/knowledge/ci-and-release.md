@@ -17,9 +17,8 @@ are required before merge:
 Caching is `Swatinem/rust-cache` plus the setup-node npm cache; a concurrency
 group cancels superseded runs.
 
-`.github/dependabot.yml` watches npm, cargo and `github-actions` weekly. Patches
-and minors arrive batched per ecosystem; majors are opened one at a time, so a
-red run points at one suspect.
+CI also has a `workflow_dispatch` trigger. It exists for one caller — see
+Dependabot below — and running it by hand does the same thing a push does.
 
 **Build warnings fail CI.** `vite.config.ts` turns every rollup warning into a
 thrown error. Silencing a specific `warning.code` with a comment is allowed —
@@ -28,6 +27,26 @@ there is one accepted exception, scoped to cycles entirely inside
 
 **Inspecting state:** `gh` is installed and authenticated. `gh pr checks <n>`,
 `gh run list --branch <b>`, `gh run watch <id>`, `gh run view <id> --log-failed`.
+
+## Dependabot
+
+`.github/dependabot.yml` watches npm, cargo and `github-actions` weekly. Patches
+and minors arrive batched per ecosystem; majors are opened one at a time, so a
+red run points at one suspect.
+
+`.github/workflows/dependabot.yml` then lands them: it regenerates
+`THIRD-PARTY-NOTICES.md` — which Dependabot cannot, and which every update to a
+shipped package invalidates — and merges the pull request if every other check
+passed. Majors included; the gate is the same six checks either way.
+
+It runs on `workflow_run`, because a workflow triggered by Dependabot gets a
+read-only token and cannot push. Its regenerated commit then needs checks of its
+own, since `main` requires all six and the ruleset has no bypass actors, and a
+push made with `GITHUB_TOKEN` starts no run — so it dispatches CI at the branch
+and leaves the merge to auto-merge. A required check cares which commit it ran
+on, not what triggered it. `npm ci` and the merge live in **separate jobs**: the
+install scripts of the packages being bumped must not be able to reach a token
+that can write. Phase 45 has the rest.
 
 ## Branches
 
