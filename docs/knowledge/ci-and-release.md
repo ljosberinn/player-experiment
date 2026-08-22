@@ -17,6 +17,10 @@ are required before merge:
 Caching is `Swatinem/rust-cache` plus the setup-node npm cache; a concurrency
 group cancels superseded runs.
 
+`.github/dependabot.yml` watches npm, cargo and `github-actions` weekly. Patches
+and minors arrive batched per ecosystem; majors are opened one at a time, so a
+red run points at one suspect.
+
 **Build warnings fail CI.** `vite.config.ts` turns every rollup warning into a
 thrown error. Silencing a specific `warning.code` with a comment is allowed —
 there is one accepted exception, scoped to cycles entirely inside

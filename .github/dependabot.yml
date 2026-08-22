@@ -1,0 +1,42 @@
+version: 2
+
+# Phase 42. Nothing watched the dependencies before this, which is why a
+# scaffold-era package nobody imported survived to phase 42.
+#
+# Patches and minors arrive batched per ecosystem, because a red run on a
+# grouped update is cheap to bisect by hand and twenty separate pull requests
+# a week are not. Majors are opened one at a time for the opposite reason: a
+# red run has to point at one suspect.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
