@@ -70,6 +70,9 @@ export const config: WebdriverIO.Config = {
     // reaches the backend and comes back. It reloads the webview too.
     "./specs/transport.test.ts",
     "./specs/library.test.ts",
+    // After `library` too, and for the same reason: there is no row to
+    // right-click in an empty table.
+    "./specs/row-menu.test.ts",
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.
     "./specs/smart-playlists.test.ts",

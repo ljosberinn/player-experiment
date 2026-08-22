@@ -1,4 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { ContextMenu } from "../../components/ui/ContextMenu";
@@ -157,6 +158,10 @@ export function SongTable({
                   count: menu.trackIds.length,
                   playlists,
                   openPlaylist: playlists.find((one) => one.id === playlistId) ?? null,
+                  // The row under the pointer, whatever else is selected: it
+                  // is the one the lookup entries name, and the menu disables
+                  // them unless it is the only row.
+                  track: rowAt(menu.rowIndex),
                   onPlay: () => onActivate?.(menu.rowIndex),
                   onGetInfo: () => void openEditor(menu.trackIds),
                   onAddTo: (id) => void addTracks(id, menu.trackIds),
@@ -165,6 +170,9 @@ export function SongTable({
                   // One id: the menu disables this entry unless exactly one row
                   // is selected, so there is no question of which file to show.
                   onReveal: () => void revealTrack(menu.trackIds[0] as number),
+                  // Nothing to report on failure: the browser either opened or
+                  // it did not, and the user can see which.
+                  onOpenUrl: (url) => void openUrl(url).catch(() => {}),
                 })
           }
         >

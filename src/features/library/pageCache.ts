@@ -54,6 +54,24 @@ export function rowAt(cached: PageState, rowIndex: number): Track | null {
 }
 
 /**
+ * A cached row by id, or `null` when no cached page holds it.
+ *
+ * A scan of the cache rather than an index: it answers for the menu bar, which
+ * knows a selection by id and has no row under a pointer to start from, and it
+ * is asked once per menu build over at most a few thousand cached rows. An id
+ * selected by `Select All` may not be cached at all, which is what `null` says.
+ */
+export function trackById(cached: PageState, id: number): Track | null {
+  for (const rows of cached.values()) {
+    const found = rows.find((track) => track.id === id);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
  * Drops pages far from the viewport so memory stays flat during a long scroll
  * through a large library.
  */

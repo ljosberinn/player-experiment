@@ -9,6 +9,7 @@ import {
   pageIndexOf,
   pagesForRange,
   rowAt,
+  trackById,
 } from "./pageCache";
 
 function track(id: number): Track {
@@ -82,6 +83,23 @@ describe("rowAt", () => {
 
   it("returns null for a row whose page has not arrived, so the table can render a placeholder", () => {
     expect(rowAt(new Map(), 42)).toBeNull();
+  });
+});
+
+describe("trackById", () => {
+  it("finds a row in whichever cached page holds it", () => {
+    const cached: PageState = new Map([
+      [0, page(0)],
+      [3, page(3)],
+    ]);
+
+    expect(trackById(cached, PAGE_SIZE * 3 + 7)?.id).toBe(PAGE_SIZE * 3 + 7);
+  });
+
+  it("returns null for an id no cached page holds", () => {
+    // Select All selects ids the cache has never seen, and the menu bar asks
+    // about them anyway.
+    expect(trackById(new Map([[0, page(0)]]), PAGE_SIZE * 9)).toBeNull();
   });
 });
 

@@ -100,6 +100,10 @@ export function App() {
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
   const addTracks = usePlaylistsStore((s) => s.addTracks);
   const selection = useLibraryStore((s) => s.selection);
+  // Reads the page cache when the menu is built rather than subscribing to it:
+  // the Edit menu is rebuilt when the selection changes, and the row a
+  // selection of one names is the row that was just clicked.
+  const trackById = useLibraryStore((s) => s.trackById);
   const editorTracks = useEditorStore((s) => s.tracks);
   const canUndoTags = useEditorStore((s) => s.canUndo);
   const tagNotice = useEditorStore((s) => s.notice);
@@ -314,6 +318,9 @@ export function App() {
             count: selectedIds.length,
             playlists,
             openPlaylist: currentPlaylist,
+            // Only with exactly one row selected is there a row to look up,
+            // and only then is it cached to be found by id.
+            track: selectedIds.length === 1 ? trackById(selectedIds[0] as number) : null,
             // By id rather than by row index: the menu bar has no row under a
             // pointer to start from, and the selection is what it acts on.
             onPlay: () => void play(selectedIds, 0),
@@ -326,6 +333,7 @@ export function App() {
             },
             onExport: () => void runExport(exportChoice(selectedIds, null)),
             onReveal: () => void revealTrack(selectedIds[0] as number),
+            onOpenUrl: (url) => void openUrl(url).catch(() => {}),
           }),
     onAddFolder: () => void addFolder(),
     onRescan: () => void rescan(),

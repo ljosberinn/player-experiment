@@ -1,5 +1,9 @@
 import type { MenuItem } from "../../components/ui/ContextMenu";
-import type { Playlist } from "../../ipc";
+import type { Playlist, Track } from "../../ipc";
+import { albumLinks, artistLinks, linkArtist } from "./externalLinks";
+
+/** What the lookup entries need off a row; the rest of a `Track` is irrelevant. */
+export type LinkableTrack = Pick<Track, "artist" | "album_artist" | "album">;
 
 /**
  * What the right-click menu on a song row offers.
@@ -12,24 +16,32 @@ export function rowMenuItems({
   count,
   playlists,
   openPlaylist,
+  track,
   onPlay,
   onGetInfo,
   onAddTo,
   onRemove,
   onExport,
   onReveal,
+  onOpenUrl,
 }: {
   /** How many rows the action applies to. */
   count: number;
   playlists: Playlist[];
   /** The playlist being viewed, if any. */
   openPlaylist: Playlist | null;
+  /**
+   * The row the lookup entries name, or null when there is none to name -
+   * several rows selected from the menu bar, or a page that has not arrived.
+   */
+  track: LinkableTrack | null;
   onPlay: () => void;
   onGetInfo: () => void;
   onAddTo: (playlistId: number) => void;
   onRemove: () => void;
   onExport: () => void;
   onReveal: () => void;
+  onOpenUrl: (url: string) => void;
 }): MenuItem[] {
   const songs = `${count} Song${count === 1 ? "" : "s"}`;
 
@@ -72,6 +84,53 @@ export function rowMenuItems({
       onSelect: onReveal,
     },
   );
+
+  const lookups = lookupItems(track, count, onOpenUrl);
+  if (lookups.length > 0) {
+    items.push({ kind: "separator" }, ...lookups);
+  }
+
+  return items;
+}
+
+/**
+ * Where to look this row up, out on the web.
+ *
+ * Absent rather than greyed when the tag is empty: an entry offering to look
+ * up an artist the row does not name has nothing behind it, and unlike the
+ * playlist case there is no question it would answer. Disabled with several
+ * rows selected, because two rows are two artists and picking one would be a
+ * guess at which - the same rule "Show in Explorer" follows.
+ */
+function lookupItems(
+  track: LinkableTrack | null,
+  count: number,
+  onOpenUrl: (url: string) => void,
+): MenuItem[] {
+  if (track === null) {
+    return [];
+  }
+
+  const artist = linkArtist(track);
+  const album = (track.album ?? "").trim();
+  const items: MenuItem[] = [];
+  const submenu = (links: { label: string; url: string }[]): MenuItem[] =>
+    links.map((link) => ({ label: link.label, onSelect: () => onOpenUrl(link.url) }));
+
+  if (artist !== "") {
+    items.push({
+      label: "Open Artist on…",
+      disabled: count !== 1,
+      submenu: submenu(artistLinks(artist)),
+    });
+  }
+  if (album !== "") {
+    items.push({
+      label: "Open Album on…",
+      disabled: count !== 1,
+      submenu: submenu(albumLinks(artist, album)),
+    });
+  }
 
   return items;
 }
