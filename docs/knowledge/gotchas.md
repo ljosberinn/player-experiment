@@ -77,9 +77,14 @@ Each of these cost real time once. They are here so they cost it once.
   `import '@wdio/tauri-plugin'` and `app.withGlobalTauri` costs 5 seconds per
   WebDriver command — a `WARN` the suite continues past, with everything green.
   A passing suite can hide a broken assumption; only the wall clock showed it.
-- **`@wdio/native-utils` is pinned via `overrides` to 2.5.0** because
-  `@wdio/tauri-service@1.2.0` imports a symbol from the 2.4.0 it pins. Drop the
-  override once upstream repins.
+- **The `@wdio/native-utils` override is gone** (phase 42).
+  `@wdio/tauri-service@1.2.0` pinned 2.4.0 and imported a symbol only 2.5.0 had,
+  so an `overrides` entry forced 2.5.0; 1.3.0 pins 2.6.0 itself and the override
+  now only holds the tree back.
+- **`@wdio/tauri-service` pins `@wdio/globals` exactly**, so raising the root
+  floor past that pin is an `ERESOLVE`, not a resolution. Since 1.3.0 pins
+  9.29.1 while `@wdio/local-runner@9.31.x` wants 9.31.1, the two coexist as
+  separate copies and the root floor stays where the service put it.
 - A Python here-doc turning `\b` into a literal backspace made a guard match
   nothing and pass vacuously. Prove a new guard red.
 

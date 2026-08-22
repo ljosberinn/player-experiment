@@ -25,7 +25,7 @@ it is out of date. Do not edit it by hand.
 | BSD-3-Clause/MIT | 1 |
 | CC0-1.0 OR MIT-0 OR Apache-2.0 | 1 |
 | ISC | 2 |
-| MIT | 83 |
+| MIT | 81 |
 | MIT OR Apache-2.0 | 165 |
 | MIT OR Apache-2.0 OR Zlib | 4 |
 | MIT OR Zlib OR Apache-2.0 | 1 |
@@ -402,28 +402,26 @@ the Rust crates, from crates.io at the exact version given.
 | [zune-core](https://github.com/etemesi254/zune-image) | 0.5.3 | MIT OR Apache-2.0 OR Zlib | [30](#licence-text-30), [193](#licence-text-193), [194](#licence-text-194) |
 | [zune-jpeg](https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg) | 0.5.15 | MIT OR Apache-2.0 OR Zlib | [30](#licence-text-30), [193](#licence-text-193), [194](#licence-text-194) |
 | [@babel/runtime](https://github.com/babel/babel.git) | 7.29.7 | MIT | [195](#licence-text-195) |
-| [@base-ui/react](git+https://github.com/mui/base-ui.git) | 1.6.0 | MIT | [196](#licence-text-196) |
-| [@base-ui/utils](git+https://github.com/mui/base-ui.git) | 0.3.1 | MIT | [196](#licence-text-196) |
+| [@base-ui/react](git+https://github.com/mui/base-ui.git) | 1.7.0 | MIT | [196](#licence-text-196) |
+| [@base-ui/utils](git+https://github.com/mui/base-ui.git) | 0.3.2 | MIT | [196](#licence-text-196) |
 | [@floating-ui/core](https://github.com/floating-ui/floating-ui.git) | 1.8.0 | MIT | [197](#licence-text-197) |
 | [@floating-ui/dom](https://github.com/floating-ui/floating-ui.git) | 1.8.0 | MIT | [197](#licence-text-197) |
 | [@floating-ui/react-dom](https://github.com/floating-ui/floating-ui.git) | 2.1.9 | MIT | [197](#licence-text-197) |
 | [@floating-ui/utils](https://github.com/floating-ui/floating-ui.git) | 0.2.12 | MIT | [197](#licence-text-197) |
 | [@fontsource/space-grotesk](git+https://github.com/fontsource/font-files.git) | 5.3.0 | OFL-1.1 | [198](#licence-text-198) |
-| [@tanstack/react-table](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [199](#licence-text-199) |
-| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.9 | MIT | [200](#licence-text-200) |
-| [@tanstack/table-core](https://github.com/TanStack/table.git) | 8.21.3 | MIT | [199](#licence-text-199) |
-| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.7 | MIT | [200](#licence-text-200) |
+| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.9 | MIT | [199](#licence-text-199) |
+| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.7 | MIT | [199](#licence-text-199) |
 | [@tauri-apps/api](git+https://github.com/tauri-apps/tauri.git) | 2.11.1 | Apache-2.0 OR MIT | — |
 | [@tauri-apps/plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2.7.2 | MIT OR Apache-2.0 | [156](#licence-text-156) |
 | [@tauri-apps/plugin-global-shortcut](https://github.com/tauri-apps/plugins-workspace) | 2.3.2 | MIT OR Apache-2.0 | [156](#licence-text-156) |
 | [@tauri-apps/plugin-opener](https://github.com/tauri-apps/plugins-workspace) | 2.5.4 | MIT OR Apache-2.0 | [156](#licence-text-156) |
 | [@tauri-apps/plugin-updater](https://github.com/tauri-apps/plugins-workspace) | 2.10.1 | MIT OR Apache-2.0 | [156](#licence-text-156) |
-| [react](https://github.com/react/react.git) | 19.2.8 | MIT | [201](#licence-text-201) |
-| [react-dom](https://github.com/react/react.git) | 19.2.8 | MIT | [201](#licence-text-201) |
-| [reselect](https://github.com/reduxjs/reselect.git) | 5.2.0 | MIT | [202](#licence-text-202) |
-| [scheduler](https://github.com/facebook/react.git) | 0.27.0 | MIT | [201](#licence-text-201) |
-| [use-sync-external-store](https://github.com/facebook/react.git) | 1.6.0 | MIT | [201](#licence-text-201) |
-| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.14 | MIT | [203](#licence-text-203) |
+| [react](https://github.com/react/react.git) | 19.2.8 | MIT | [200](#licence-text-200) |
+| [react-dom](https://github.com/react/react.git) | 19.2.8 | MIT | [200](#licence-text-200) |
+| [reselect](https://github.com/reduxjs/reselect.git) | 5.3.0 | MIT | [201](#licence-text-201) |
+| [scheduler](https://github.com/facebook/react.git) | 0.27.0 | MIT | [200](#licence-text-200) |
+| [use-sync-external-store](https://github.com/facebook/react.git) | 1.6.0 | MIT | [200](#licence-text-200) |
+| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.14 | MIT | [202](#licence-text-202) |
 
 ## Licence texts
 
@@ -12643,7 +12641,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ```text
 MIT License
 
-Copyright (c) 2016 Tanner Linsley
+Copyright (c) 2021-present Tanner Linsley
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -12669,32 +12667,6 @@ SOFTWARE.
 ```text
 MIT License
 
-Copyright (c) 2021-present Tanner Linsley
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### Licence text 201
-
-```text
-MIT License
-
 Copyright (c) Meta Platforms, Inc. and affiliates.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -12716,7 +12688,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 202
+### Licence text 201
 
 ```text
 The MIT License (MIT)
@@ -12742,7 +12714,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Licence text 203
+### Licence text 202
 
 ```text
 MIT License
