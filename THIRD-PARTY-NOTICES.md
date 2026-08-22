@@ -184,7 +184,7 @@ the Rust crates, from crates.io at the exact version given.
 | [keyboard-types](https://github.com/pyfisch/keyboard-types) | 0.7.0 | MIT OR Apache-2.0 | [8](#licence-text-8), [98](#licence-text-98) |
 | [lazy_static](https://github.com/rust-lang-nursery/lazy-static.rs) | 1.5.0 | MIT OR Apache-2.0 | [8](#licence-text-8), [99](#licence-text-99) |
 | [libc](https://github.com/rust-lang/libc) | 0.2.189 | MIT OR Apache-2.0 | [7](#licence-text-7), [100](#licence-text-100) |
-| [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.38.1 | MIT | [101](#licence-text-101) |
+| [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.38.2 | MIT | [101](#licence-text-101) |
 | [litemap](https://github.com/unicode-org/icu4x) | 0.8.2 | Unicode-3.0 | [87](#licence-text-87) |
 | [lock_api](https://github.com/Amanieu/parking_lot) | 0.4.14 | MIT OR Apache-2.0 | [8](#licence-text-8), [102](#licence-text-102) |
 | [lofty](https://github.com/Serial-ATA/lofty-rs) | 0.24.0 | MIT OR Apache-2.0 | — |
@@ -241,7 +241,7 @@ the Rust crates, from crates.io at the exact version given.
 | [rfd](https://github.com/PolyMeilex/rfd) | 0.16.0 | MIT | [127](#licence-text-127) |
 | [ring](https://github.com/briansmith/ring) | 0.17.14 | Apache-2.0 AND ISC | [128](#licence-text-128), [129](#licence-text-129), [130](#licence-text-130) |
 | [rodio](https://github.com/RustAudio/rodio) | 0.22.2 | MIT OR Apache-2.0 | [58](#licence-text-58), [131](#licence-text-131) |
-| [rusqlite](https://github.com/rusqlite/rusqlite) | 0.40.1 | MIT | [101](#licence-text-101) |
+| [rusqlite](https://github.com/rusqlite/rusqlite) | 0.40.2 | MIT | [101](#licence-text-101) |
 | [rustc_version](https://github.com/djc/rustc-version-rs) | 0.4.1 | MIT OR Apache-2.0 | [8](#licence-text-8), [102](#licence-text-102) |
 | [rustc-hash](https://github.com/rust-lang/rustc-hash) | 2.1.3 | Apache-2.0 OR MIT | [7](#licence-text-7), [3](#licence-text-3) |
 | [rustls](https://github.com/rustls/rustls) | 0.23.43 | Apache-2.0 OR ISC OR MIT | [8](#licence-text-8), [83](#licence-text-83), [84](#licence-text-84) |
@@ -309,9 +309,9 @@ the Rust crates, from crates.io at the exact version given.
 | [tendril](https://github.com/servo/html5ever) | 0.5.1 | MIT OR Apache-2.0 | [8](#licence-text-8), [159](#licence-text-159) |
 | [termcolor](https://github.com/BurntSushi/termcolor) | 1.4.1 | Unlicense OR MIT | [4](#licence-text-4), [5](#licence-text-5) |
 | [thiserror](https://github.com/dtolnay/thiserror) | 1.0.69 | MIT OR Apache-2.0 | [7](#licence-text-7), [3](#licence-text-3) |
-| [thiserror](https://github.com/dtolnay/thiserror) | 2.0.19 | MIT OR Apache-2.0 | [7](#licence-text-7), [3](#licence-text-3) |
+| [thiserror](https://github.com/dtolnay/thiserror) | 2.0.20 | MIT OR Apache-2.0 | [7](#licence-text-7), [3](#licence-text-3) |
 | [thiserror-impl](https://github.com/dtolnay/thiserror) | 1.0.69 | MIT OR Apache-2.0 | [7](#licence-text-7), [3](#licence-text-3) |
-| [thiserror-impl](https://github.com/dtolnay/thiserror) | 2.0.19 | MIT OR Apache-2.0 | [7](#licence-text-7), [3](#licence-text-3) |
+| [thiserror-impl](https://github.com/dtolnay/thiserror) | 2.0.20 | MIT OR Apache-2.0 | [7](#licence-text-7), [3](#licence-text-3) |
 | [time](https://github.com/time-rs/time) | 0.3.55 | MIT OR Apache-2.0 | [58](#licence-text-58), [160](#licence-text-160) |
 | [time-core](https://github.com/time-rs/time) | 0.1.9 | MIT OR Apache-2.0 | [58](#licence-text-58), [160](#licence-text-160) |
 | [time-macros](https://github.com/time-rs/time) | 0.2.32 | MIT OR Apache-2.0 | [58](#licence-text-58), [160](#licence-text-160) |
