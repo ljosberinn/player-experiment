@@ -18,6 +18,22 @@ updates:
         update-types:
           - minor
           - patch
+      # Two exceptions to "one major per pull request", because these cannot
+      # be installed one at a time: `@vitejs/plugin-react@6` requires
+      # `vite@^8`, and `@vitest/coverage-v8` pins its `vitest` exactly. The
+      # first run opened them separately and all four failed at `npm ci` with
+      # ERESOLVE - a red run pointing at nothing.
+      #
+      # Below the batch group, so a minor bump of any of them still arrives
+      # batched; only a major reaches these.
+      vite:
+        patterns:
+          - vite
+          - "@vitejs/*"
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
 
   - package-ecosystem: cargo
     directory: /src-tauri

@@ -1,0 +1,188 @@
+name: Dependabot
+
+# Dependabot cannot regenerate THIRD-PARTY-NOTICES.md, so every update that
+# touches a shipped dependency opens a pull request guaranteed to fail the one
+# check about the file it just invalidated. This workflow regenerates it and
+# merges what is green.
+#
+# `workflow_run` rather than `pull_request`: a workflow triggered by Dependabot
+# gets a read-only token and cannot push, while a `workflow_run` workflow runs
+# from the default branch with the repository's own token and can.
+#
+# The commit it pushes then needs a green run of its own - `main` requires all
+# six checks and the ruleset has no bypass actors - and a push made with
+# GITHUB_TOKEN starts no workflow run. Hence the `workflow_dispatch` trigger on
+# the CI workflow: a dispatch is exempt from that rule, and a required check
+# cares which commit it ran on rather than what triggered it. The merge is left
+# to auto-merge rather than waited on, so this costs seconds rather than the
+# length of an e2e run.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+# One at a time. Two of these landing at once is two pull requests both
+# rewriting package-lock.json, and the loser has to be rebased anyway.
+concurrency:
+  group: dependabot-land
+
+jobs:
+  # Split from the job that pushes on purpose. Regenerating the notices means
+  # `npm ci`, which runs the install scripts of the very packages this update
+  # is bumping. Those scripts must not be able to reach a token that can write
+  # to the repository, so this job is read-only and hands its result over as an
+  # artifact; the job that can push installs nothing.
+  regenerate:
+    name: regenerate notices
+    # `actor` and not just the branch name: anyone with push access can create
+    # a branch called `dependabot/…`, and this workflow merges what it is
+    # pointed at.
+    if: >
+      github.event.workflow_run.event == 'pull_request'
+      && startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+      && github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      landable: ${{ steps.gate.outputs.landable }}
+      stale: ${{ steps.gate.outputs.stale }}
+      pr: ${{ steps.gate.outputs.pr }}
+    steps:
+      - name: Decide whether this is landable
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          jobs=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate \
+            --jq '.jobs[] | [.name, .conclusion] | @tsv')
+          echo "$jobs"
+
+          # Everything except `notices` has to have passed: an update that
+          # fails a test is an update for a human. `notices` is the one this
+          # workflow exists to fix.
+          failed=$(echo "$jobs" | awk -F'\t' '$1 != "notices" && $2 != "success" && $2 != "skipped" { print $1 }')
+          if [ -n "$failed" ]; then
+            echo "Not landable - these did not pass: $failed"
+            echo "landable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          stale=true
+          if [ -z "$(echo "$jobs" | awk -F'\t' '$1 == "notices" && $2 != "success" { print $1 }')" ]; then
+            stale=false
+          fi
+
+          # Found through the commit rather than the branch: a run whose branch
+          # has moved on since is a run about a commit nobody is looking at,
+          # and merging on its word would merge code that never ran.
+          pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+            --jq '[.[] | select(.state == "open" and .head.sha == env.HEAD_SHA)] | .[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "No open pull request whose head is $HEAD_SHA."
+            echo "landable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "landable=true" >> "$GITHUB_OUTPUT"
+          echo "stale=$stale" >> "$GITHUB_OUTPUT"
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: steps.gate.outputs.stale == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        if: steps.gate.outputs.stale == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.gate.outputs.stale == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.gate.outputs.stale == 'true'
+        with:
+          workspaces: src-tauri
+          # The same key and the same reasoning as the CI job this mirrors:
+          # nothing here compiles, so the registry is the only part worth
+          # restoring.
+          shared-key: notices-metadata
+          cache-targets: false
+      - run: npm ci --omit=dev
+        if: steps.gate.outputs.stale == 'true'
+      - run: npm run notices
+        if: steps.gate.outputs.stale == 'true'
+      - uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.stale == 'true'
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.md
+          retention-days: 1
+
+  land:
+    name: land
+    needs: regenerate
+    if: needs.regenerate.outputs.landable == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        if: needs.regenerate.outputs.stale == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+      - uses: actions/download-artifact@v7
+        if: needs.regenerate.outputs.stale == 'true'
+        with:
+          name: third-party-notices
+
+      - name: Commit the notices and ask CI for a run on them
+        if: needs.regenerate.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          # The branch may have moved since CI ran - a rebase, or a second
+          # update pushed onto it. Landing then would land a commit no run
+          # covered.
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "::error::the branch moved past $HEAD_SHA since CI ran"
+            exit 1
+          fi
+
+          # The notices job failed and yet the file it checks is already right,
+          # so it failed at something other than drift - which is not a thing
+          # to merge past.
+          if git diff --quiet -- THIRD-PARTY-NOTICES.md; then
+            echo "::error::the notices job failed but the notices are current"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: regenerate the third-party notices" -- THIRD-PARTY-NOTICES.md
+          git push origin "HEAD:$BRANCH"
+          gh workflow run ci.yml --ref "$BRANCH"
+
+      # Two spellings of the same intent. `--auto` waits for the run asked for
+      # above; without it there is nothing to wait for, and auto-merge refuses
+      # a pull request that is already clean.
+      - name: Merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.regenerate.outputs.pr }}
+          AUTO: ${{ needs.regenerate.outputs.stale == 'true' && '--auto' || '' }}
+        # A squash, so the bump and its notices arrive as one commit, and the
+        # branch goes with it - the repository does not delete them itself.
+        run: gh pr merge "$PR" --squash --delete-branch $AUTO
