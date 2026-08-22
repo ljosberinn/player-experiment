@@ -1384,10 +1384,20 @@ input[type="radio"] {
 
 /* ---------- song table ---------- */
 
+/* No fill of its own, and that is the point.
+   
+   This is the element that tiles the whole content pane, so an opaque fill here
+   is an opaque fill over the entire window - which is what it was, and what hid
+   the phase 39 blob layer completely. The measured colour across the pane was
+   exactly `--surface`, to the last channel, while the layer sat behind it with
+   the right colours and three live gradients.
+   
+   `.content` already carries `--content-wash` for this pane; a second fill
+   underneath it was only ever redundant. Every panel that makes up the window
+   is a veil, per phase 35 - see the translucent half of the token block. */
 .song-body {
   flex: 1;
   overflow: auto;
-  background: var(--surface);
 }
 
 /* Real table markup, laid out as blocks so rows can be absolutely positioned

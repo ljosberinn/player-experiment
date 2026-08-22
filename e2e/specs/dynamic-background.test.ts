@@ -50,6 +50,57 @@ function asComputed([r, g, b]: readonly [number, number, number]): string {
 }
 
 /**
+ * Everything painting an opaque fill over a point in the empty content pane.
+ *
+ * The check that would have found this feature's real defect on the first run,
+ * and did not exist for three attempts. The blob layer sits at the very back of
+ * the window, so *anything* opaque drawn over the pane erases it - and erases it
+ * silently: the layer is still in the DOM with the right colours and three live
+ * gradients, and every assertion about it still passes.
+ *
+ * `elementsFromPoint` rather than a list of selectors, deliberately. A named
+ * list only catches the panes someone thought of; this catches a fill wherever
+ * it comes from - a new wrapper, an inline style, a rule added next year.
+ *
+ * `html` is excluded: it is where the window's base fill belongs, and it paints
+ * behind the layer rather than over it.
+ */
+function opaqueOver(xFraction: number, yFraction: number): Promise<string[]> {
+  return browser.execute(
+    (fx: number, fy: number) => {
+      const alphaOf = (colour: string): number => {
+        if (colour === "" || colour === "transparent" || colour === "rgba(0, 0, 0, 0)") {
+          return 0;
+        }
+        // `oklch(L C H / A)` and `rgba(r, g, b, a)` are the two notations the
+        // engine hands back for a fill with an alpha; anything else is opaque.
+        const slash = /\/\s*([\d.]+)\s*\)/.exec(colour);
+        if (slash !== null) {
+          return Number(slash[1]);
+        }
+        const rgba = /^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)/.exec(colour);
+        return rgba === null ? 1 : Number(rgba[1]);
+      };
+
+      const x = Math.round(window.innerWidth * fx);
+      const y = Math.round(window.innerHeight * fy);
+
+      return document
+        .elementsFromPoint(x, y)
+        .filter((element) => element !== document.documentElement)
+        .filter((element) => alphaOf(getComputedStyle(element).backgroundColor) === 1)
+        .map((element) => {
+          const name = element.tagName.toLowerCase();
+          const classes = String(element.className || "");
+          return `${name}${classes === "" ? "" : `.${classes.split(/\s+/).join(".")}`}`;
+        });
+    },
+    xFraction,
+    yFraction,
+  );
+}
+
+/**
  * Plays the track whose title is `title`.
  *
  * The same real-click-then-dispatched-dblclick that `library.test.ts` explains
@@ -185,6 +236,16 @@ describe("the background that follows the music", () => {
     expect(stack.html).not.toBe("rgba(0, 0, 0, 0)");
     // Oversized for the rotation, so no edge swings into view mid-turn.
     expect(stack.covers).toBe(true);
+
+    // And the assertion that actually matters, because the two above were both
+    // true while the feature was invisible: nothing opaque is drawn over the
+    // pane. There were two occluders, `body` and `.song-body`, and fixing only
+    // the first changed 342 pixels out of two million - which read as "the fix
+    // did nothing" rather than "there is another one".
+    //
+    // Sampled low in the pane, below the last row: a row is opaque by design
+    // and would be a legitimate hit.
+    expect(await opaqueOver(0.6, 0.8)).toEqual([]);
 
     await capture("dynamic-background-with-cover");
   });

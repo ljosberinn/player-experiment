@@ -177,6 +177,32 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("gives every pane that tiles the window a veil rather than a fill", () => {
+    // The bug this exists for, and it cost three attempts to find. `.song-body`
+    // is the scroll container that fills the whole content pane, and it carried
+    // an opaque `--surface`. The blob layer behind it was present, correct and
+    // completely invisible: the pane measured exactly [18, 15, 12] - `--surface`
+    // to the last channel - everywhere, in every screenshot.
+    //
+    // Every panel that makes up the window is a veil since phase 35. A fill on
+    // any of them is an opaque sheet over the whole window, so the rule is
+    // checked rather than remembered.
+    const PANES = [".body", ".content", ".song-body", ".sidebar", ".titlebar", ".transport-strip"];
+
+    for (const pane of PANES) {
+      const rule = all.find((entry) => entry.selector.trim().endsWith(pane));
+      const declared = /background:\s*var\((--[\w-]+)\)/.exec(rule?.body ?? "");
+      if (declared === null) {
+        // No fill at all is the safest answer and needs no alpha.
+        continue;
+      }
+
+      // A veil carries an alpha; `oklch(L C H / A)` is how the token block
+      // writes one. An opaque token here is the defect.
+      expect(token(String(declared[1]).replace(/^--/, "")), `${pane} is opaque`).toContain("/");
+    }
+  });
+
   it("keeps the window's base fill off the element that would hide the blobs", () => {
     // The defect this exists for, and it is worth stating in full because
     // every other test passed while it was live: the blob layer is a fixed
