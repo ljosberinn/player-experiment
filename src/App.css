@@ -164,11 +164,29 @@
   box-sizing: border-box;
 }
 
+/* The window's base fill is on `html`, not on `body`, and that is load-bearing
+   rather than a preference.
+
+   The blob layer (phase 39) is a fixed child at `z-index: -1`. Nothing between
+   it and the root element makes a stacking context, so it paints in the root's
+   negative-z-index step - which comes *after* the root's own background and
+   *before* every in-flow block. A fill on `body` is one of those in-flow
+   blocks, so it painted over the blobs completely: the layer was there, the
+   colours were right, three gradients were live, and the window was flat. On
+   `html` the fill is the root background instead, and the layer lands between
+   it and the app.
+
+   `body` must therefore stay transparent. `App.css.test.ts` and the
+   `dynamic-background` e2e spec both assert it, because the failure is silent -
+   the feature simply stops being visible and every test still passes. */
+html {
+  background: var(--surface);
+}
+
 body {
   margin: 0;
   overflow: hidden;
   user-select: none;
-  background: var(--surface);
 }
 
 /* Native feel pass - the element-level half.

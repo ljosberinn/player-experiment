@@ -177,6 +177,23 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("keeps the window's base fill off the element that would hide the blobs", () => {
+    // The defect this exists for, and it is worth stating in full because
+    // every other test passed while it was live: the blob layer is a fixed
+    // child at `z-index: -1`, so it paints in the root's negative-z-index step
+    // - after the root background, before every in-flow block. `body` is an
+    // in-flow block. A fill on it covered the layer completely, and the two
+    // e2e screenshots of "with artwork" and "without artwork" came out
+    // pixel-identical in the content area.
+    const html = all.find((rule) => /^html$/m.test(rule.selector.trim()));
+    const body = all.filter((rule) => /^body$/m.test(rule.selector.trim()));
+
+    expect(html?.body).toMatch(/background:\s*var\(--surface\)/);
+    for (const rule of body) {
+      expect(rule.body, "a background on `body` hides the blob layer").not.toMatch(/background/);
+    }
+  });
+
   it("sizes every radial gradient a way the syntax allows", () => {
     // `radial-gradient(circle 34% ...)` is invalid: a circle's radius may be a
     // length, never a percentage. The engine drops the whole `background`

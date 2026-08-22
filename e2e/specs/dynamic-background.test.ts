@@ -160,6 +160,32 @@ describe("the background that follows the music", () => {
     expect(gradients).toContain("radial-gradient");
     expect(gradients.match(/radial-gradient/g)).toHaveLength(3);
 
+    // And that nothing is painted on top of them. The layer is a fixed child
+    // at `z-index: -1`, which puts it in the root's negative-z-index step -
+    // after the root background, before every in-flow block. `body` is an
+    // in-flow block, so a fill there covers the layer completely. It did: the
+    // "with artwork" and "without artwork" screenshots came back
+    // pixel-identical across the whole content area while all three
+    // assertions above passed.
+    const stack = await browser.execute(() => ({
+      html: getComputedStyle(document.documentElement).backgroundColor,
+      body: getComputedStyle(document.body).backgroundColor,
+      covers: (() => {
+        const rect = document.querySelector(".dynamic-bg")?.getBoundingClientRect();
+        return rect === undefined
+          ? false
+          : rect.left <= 0 &&
+              rect.top <= 0 &&
+              rect.right >= window.innerWidth &&
+              rect.bottom >= window.innerHeight;
+      })(),
+    }));
+
+    expect(stack.body).toBe("rgba(0, 0, 0, 0)");
+    expect(stack.html).not.toBe("rgba(0, 0, 0, 0)");
+    // Oversized for the rotation, so no edge swings into view mid-turn.
+    expect(stack.covers).toBe(true);
+
     await capture("dynamic-background-with-cover");
   });
 
