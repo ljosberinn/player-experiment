@@ -18,7 +18,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::model::{CoverEdit, TagEdit, TagWriteSummary};
+use crate::model::{CoverEdit, TagEdit, TagWriteSummary, WriteProgress};
 use crate::tags::{hash_bytes, Cover};
 
 /// Cover art larger than this is refused.
@@ -26,6 +26,15 @@ use crate::tags::{hash_bytes, Cover};
 /// The bytes live in the database and travel through the `cover://` handler;
 /// a 40 MB scan of an LP sleeve would bloat both for no visible gain.
 const MAX_COVER_BYTES: usize = 12 * 1024 * 1024;
+
+/// How many files are written between progress emissions.
+///
+/// Coarser than it looks like it should be. A tag write is a copy-and-replace
+/// of a whole mp3, so one file is milliseconds rather than microseconds -
+/// emitting per file would put hundreds of events a second on the IPC channel
+/// to move a readout by a pixel. `scan` chunks at 200 for the same reason and
+/// is doing much cheaper work per item.
+const PROGRESS_INTERVAL: usize = 25;
 
 /// Everything an edit can change, as it was before the edit.
 ///
@@ -337,8 +346,13 @@ pub fn apply(
     track_ids: &[i64],
     edit: &TagEdit,
     now: i64,
+    mut on_progress: impl FnMut(WriteProgress),
 ) -> AppResult<TagWriteSummary> {
     let resolved = resolve(edit)?;
+    let total = track_ids.len() as u32;
+    // Before the first file, so a dialog showing this has a fraction to draw
+    // rather than a blank while the first write is in flight.
+    on_progress(WriteProgress { done: 0, total });
     // A batch id groups one user action, so undo restores all of it at once.
     let batch_id = now
         .checked_mul(1000)
@@ -348,23 +362,33 @@ pub fn apply(
     let mut written: Vec<(i64, PathBuf, TagSnapshot)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
 
-    for &track_id in track_ids {
+    for (index, &track_id) in track_ids.iter().enumerate() {
         let path: Option<String> = conn
             .query_row("SELECT path FROM tracks WHERE id = ?1", [track_id], |row| {
                 row.get(0)
             })
             .optional()?;
-        let Some(path) = path.map(PathBuf::from) else {
-            continue;
-        };
 
-        // Snapshot before writing, so undo has something to restore even if
-        // the write half-succeeds.
-        match snapshot(&path).and_then(|before| write_file(&path, &resolved).map(|()| before)) {
-            Ok(before) => written.push((track_id, path, before)),
-            Err(error) => failures.push(error.to_string()),
+        if let Some(path) = path.map(PathBuf::from) {
+            // Snapshot before writing, so undo has something to restore even
+            // if the write half-succeeds.
+            match snapshot(&path).and_then(|before| write_file(&path, &resolved).map(|()| before)) {
+                Ok(before) => written.push((track_id, path, before)),
+                Err(error) => failures.push(error.to_string()),
+            }
+        }
+
+        // Counted against every id asked for, not just the ones that turned
+        // out to have a row - otherwise a selection naming rows a rescan has
+        // since removed would leave the readout short of its own total.
+        let done = index as u32 + 1;
+        if (done as usize).is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(WriteProgress { done, total });
         }
     }
+    // The database work below is one transaction and reports nothing, so the
+    // readout would otherwise stop short of its total and stay there.
+    on_progress(WriteProgress { done: total, total });
 
     let tx = conn.transaction()?;
     for (track_id, path, before) in &written {
@@ -398,7 +422,10 @@ pub fn apply(
 /// Undo is itself an edit - it writes files - but it is deliberately *not*
 /// journalled: a redo stack invites the "undo, edit, undo" confusion, and one
 /// level of certainty is worth more here than two levels of guessing.
-pub fn undo_last(conn: &mut Connection) -> AppResult<TagWriteSummary> {
+pub fn undo_last(
+    conn: &mut Connection,
+    mut on_progress: impl FnMut(WriteProgress),
+) -> AppResult<TagWriteSummary> {
     let batch_id: Option<i64> = conn
         .query_row("SELECT max(batch_id) FROM tag_undo", [], |row| row.get(0))
         .optional()?
@@ -422,7 +449,10 @@ pub fn undo_last(conn: &mut Connection) -> AppResult<TagWriteSummary> {
     let mut restored: Vec<(i64, PathBuf)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
 
-    for (track_id, path, json) in entries {
+    let total = entries.len() as u32;
+    on_progress(WriteProgress { done: 0, total });
+
+    for (index, (track_id, path, json)) in entries.into_iter().enumerate() {
         let path = PathBuf::from(path);
         let before: TagSnapshot = match serde_json::from_str(&json) {
             Ok(snapshot) => snapshot,
@@ -447,7 +477,13 @@ pub fn undo_last(conn: &mut Connection) -> AppResult<TagWriteSummary> {
             Ok(()) => restored.push((track_id, path)),
             Err(error) => failures.push(error.to_string()),
         }
+
+        let done = index as u32 + 1;
+        if (done as usize).is_multiple_of(PROGRESS_INTERVAL) {
+            on_progress(WriteProgress { done, total });
+        }
     }
+    on_progress(WriteProgress { done: total, total });
 
     let tx = conn.transaction()?;
     for (track_id, path) in &restored {

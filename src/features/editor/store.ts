@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import {
   canUndoTagEdit,
+  onTagWriteProgress,
   type TagEdit,
   type Track,
   tracksByIds,
   undoTagEdit,
+  type WriteProgress,
   writeTags,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
@@ -14,6 +16,14 @@ interface EditorState {
   tracks: Track[] | null;
   /** Whether there is an edit to take back. */
   canUndo: boolean;
+  /**
+   * How far the write in flight has got, or null when none is.
+   *
+   * The dialog stays open while it runs. It used to sit there frozen, which
+   * for 500 files was indistinguishable from a hung window - the whole reason
+   * the write moved off the IPC thread.
+   */
+  progress: WriteProgress | null;
   notice: string | null;
   error: string | null;
 
@@ -26,6 +36,8 @@ interface EditorState {
   undo: () => Promise<void>;
   /** Reads whether an undo is available, for enabling the control. */
   refreshUndo: () => Promise<void>;
+  /** Subscribes to `tags://progress`; returns its own teardown. */
+  watch: () => Promise<() => void>;
 }
 
 /**
@@ -49,6 +61,7 @@ function describe(
 export const useEditorStore = create<EditorState>((set, get) => ({
   tracks: null,
   canUndo: false,
+  progress: null,
   notice: null,
   error: null,
 
@@ -76,6 +89,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (tracks === null) {
       return;
     }
+    // Set here rather than on the first event, so the dialog goes to work the
+    // moment Save is pressed instead of when the first file lands.
+    set({ progress: { done: 0, total: tracks.length } });
     try {
       const summary = await writeTags(
         tracks.map((track) => track.id),
@@ -88,10 +104,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // The dialog stays open so a rejected edit can be corrected rather than
       // retyped.
       set({ error: String(cause) });
+    } finally {
+      set({ progress: null });
     }
   },
 
   undo: async () => {
+    // An undo has no dialog and knows its size only once the backend reports
+    // it, so the readout starts as a bare "Reverting" rather than a fraction.
+    set({ progress: { done: 0, total: 0 } });
     try {
       const summary = await undoTagEdit();
       set({ notice: describe("Reverted", summary) });
@@ -99,6 +120,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       await useLibraryStore.getState().refresh();
     } catch (cause) {
       set({ error: String(cause) });
+    } finally {
+      set({ progress: null });
     }
   },
 
@@ -109,5 +132,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // Not worth surfacing: the worst case is a control that stays disabled.
       set({ canUndo: false });
     }
+  },
+
+  watch: async () => {
+    // Unconditional: the only source of these events is a command this store
+    // started, and both of them clear `progress` when they finish. Where it is
+    // drawn is the renderer's business - the dialog while it is open, the
+    // content header for an undo started from the Edit menu.
+    return onTagWriteProgress((progress) => set({ progress }));
   },
 }));

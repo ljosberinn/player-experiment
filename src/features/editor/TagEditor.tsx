@@ -1,7 +1,14 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
 import { TagCombobox } from "../../components/ui/TagCombobox";
-import { type CoverEdit, coverUrl, type TagEdit, type TagValueField, type Track } from "../../ipc";
+import {
+  type CoverEdit,
+  coverUrl,
+  type TagEdit,
+  type TagValueField,
+  type Track,
+  type WriteProgress,
+} from "../../ipc";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
 
 /**
@@ -13,11 +20,20 @@ import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } f
  */
 export function TagEditor({
   tracks,
+  progress,
   onSave,
   onCancel,
   onPickCover,
 }: {
   tracks: Track[];
+  /**
+   * How far the save has got, or null when none is running.
+   *
+   * The dialog stays open across the write - a batch of 500 files is one mp3
+   * rewritten after another, and a dialog that sits there saying nothing while
+   * that happens is indistinguishable from a hung window.
+   */
+  progress?: WriteProgress | null;
   onSave: (edit: TagEdit) => void;
   onCancel: () => void;
   /** Opens the OS picker; resolves to a path, or null if dismissed. */
@@ -26,8 +42,9 @@ export function TagEditor({
   const [draft, setDraft] = useState<Draft>({});
   const [cover, setCover] = useState<CoverEdit | null>(null);
 
+  const saving = progress != null;
   const problem = numericProblem(draft);
-  const canSave = problem === null && hasChanges(draft, cover);
+  const canSave = problem === null && hasChanges(draft, cover) && !saving;
   const commonCover = tracks.every((track) => track.cover_hash === tracks[0]?.cover_hash)
     ? (tracks[0]?.cover_hash ?? null)
     : null;
@@ -40,7 +57,9 @@ export function TagEditor({
     <Dialog.Root
       open
       onOpenChange={(open) => {
-        if (!open) {
+        // A write in flight cannot be called off - files are already on disk -
+        // so Escape and the backdrop stop closing the dialog while one runs.
+        if (!open && !saving) {
           onCancel();
         }
       }}
@@ -126,18 +145,20 @@ export function TagEditor({
           ) : null}
 
           <p className="modal-summary">
-            {tracks.length === 1
-              ? "Blank a field to clear it."
-              : "Only the fields you change are written; the rest are left as they are."}
+            {saving
+              ? `Writing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
+              : tracks.length === 1
+                ? "Blank a field to clear it."
+                : "Only the fields you change are written; the rest are left as they are."}
           </p>
 
           <div className="modal-actions">
-            <Dialog.Close render={<button type="button" />}>Cancel</Dialog.Close>
+            <Dialog.Close render={<button type="button" disabled={saving} />}>Cancel</Dialog.Close>
             {/* A submit button, so Enter anywhere in the form saves - and does
                 nothing when the form cannot be saved, without a key handler
                 having to decide which elements to keep its hands off. */}
             <button type="submit" className="primary" disabled={!canSave}>
-              Save
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </Dialog.Popup>

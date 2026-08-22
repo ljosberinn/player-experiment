@@ -32,6 +32,7 @@ import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
 import type { Track } from "./bindings/Track";
 import type { TrackQuery } from "./bindings/TrackQuery";
+import type { WriteProgress } from "./bindings/WriteProgress";
 
 export type {
   AppInfo,
@@ -66,6 +67,7 @@ export type {
   TagWriteSummary,
   Track,
   TrackQuery,
+  WriteProgress,
 };
 
 /**
@@ -195,7 +197,11 @@ export function saveDynamicBackground(enabled: boolean): Promise<void> {
   return invoke<void>("save_dynamic_background", { enabled });
 }
 
-/** Writes an export to `path`, resolving to how many tracks it holds. */
+/**
+ * Writes an export to `path`, resolving to how many tracks it holds.
+ *
+ * Runs on a worker thread; follow it with {@link onExportProgress}.
+ */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });
 }
@@ -245,7 +251,11 @@ export function tracksByIds(trackIds: number[]): Promise<Track[]> {
   return invoke<Track[]>("tracks_by_ids", { trackIds });
 }
 
-/** Applies one edit to every track named, reporting what it managed. */
+/**
+ * Applies one edit to every track named, reporting what it managed.
+ *
+ * Runs on a worker thread; follow it with {@link onTagWriteProgress}.
+ */
 export function writeTags(trackIds: number[], edit: TagEdit): Promise<TagWriteSummary> {
   return invoke<TagWriteSummary>("write_tags", { trackIds, edit });
 }
@@ -351,6 +361,23 @@ export function moveInPlaylist(
 
 export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {
   return listen<ScanProgress>("scan://progress", (event) => handler(event.payload));
+}
+
+/**
+ * How far a tag write or its undo has got.
+ *
+ * One channel for both: they write the same files the same way, and a dialog
+ * watching one has no reason to distinguish.
+ */
+export function onTagWriteProgress(
+  handler: (progress: WriteProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<WriteProgress>("tags://progress", (event) => handler(event.payload));
+}
+
+/** How far an export has got gathering the tracks it will write. */
+export function onExportProgress(handler: (progress: WriteProgress) => void): Promise<UnlistenFn> {
+  return listen<WriteProgress>("export://progress", (event) => handler(event.payload));
 }
 
 /**

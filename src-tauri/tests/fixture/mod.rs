@@ -93,6 +93,33 @@ pub fn write_mp3(path: &Path, frames: usize, meta: &Meta) {
         .expect("write tags");
 }
 
+/// `count` interchangeable mp3s under `root/bulk`, for the tests whose subject
+/// is the size of a batch rather than what is in it.
+///
+/// Ten frames apiece: real enough to scan and to rewrite, small enough that a
+/// few hundred of them cost a few hundred kilobytes of temp directory.
+pub fn bulk(root: &Path, count: usize) -> Vec<PathBuf> {
+    (0..count)
+        .map(|index| {
+            let path = root.join(format!("bulk/{index:04}.mp3"));
+            write_mp3(
+                &path,
+                10,
+                &Meta {
+                    title: Some(BULK_TITLE),
+                    artist: Some(BULK_TITLE),
+                    ..Default::default()
+                },
+            );
+            path
+        })
+        .collect()
+}
+
+/// What every file `bulk` writes is titled, so a test can ask for the batch
+/// back out of the library by name.
+pub const BULK_TITLE: &str = "Bulk";
+
 /// A small library: two artists, three albums, one untagged file.
 pub fn library(root: &Path) -> Vec<PathBuf> {
     const COVER_A: &[u8] = b"cover-bytes-for-tokyo";

@@ -657,6 +657,19 @@ pub struct ScanProgress {
     pub done: bool,
 }
 
+/// How far a long write has got, emitted while one is running.
+///
+/// One type for two channels - `tags://progress` and `export://progress` -
+/// because a progress readout is a fraction and neither has anything else to
+/// say. What each is counting is the channel's business, not the payload's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct WriteProgress {
+    pub done: u32,
+    pub total: u32,
+}
+
 /// The totals behind a view, for the footer.
 ///
 /// `duration_ms` and `bytes` are `i64` rather than `u32`: a library of tens of
