@@ -35,12 +35,22 @@ function track(overrides: Partial<Track> = {}): Track {
   };
 }
 
-function open(tracks: Track[], pickedCover: string | null = null) {
+function open(
+  tracks: Track[],
+  pickedCover: string | null = null,
+  progress: { done: number; total: number } | null = null,
+) {
   const onSave = vi.fn();
   const onCancel = vi.fn();
   const onPickCover = vi.fn(async () => pickedCover);
   render(
-    <TagEditor tracks={tracks} onSave={onSave} onCancel={onCancel} onPickCover={onPickCover} />,
+    <TagEditor
+      tracks={tracks}
+      progress={progress}
+      onSave={onSave}
+      onCancel={onCancel}
+      onPickCover={onPickCover}
+    />,
   );
   return { onSave, onCancel, onPickCover, user: userEvent.setup() };
 }
@@ -342,5 +352,41 @@ describe("the suggestion list phase 18 brought with it", () => {
     // Title, Comment, Track Number and Disc Number are per-song by nature.
     expect(screen.getByLabelText("Comment")).toHaveRole("textbox");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  describe("while the write is running", () => {
+    it("says how far it has got, where the summary line was", () => {
+      open([track()], null, { done: 120, total: 500 });
+
+      // The dialog stays up across the write now, and a dialog that says
+      // nothing while it does is indistinguishable from a hung window.
+      expect(
+        screen.getByText(`Writing ${(120).toLocaleString()} of ${(500).toLocaleString()}…`),
+      ).toBeInTheDocument();
+    });
+
+    it("stops offering Save and Cancel", () => {
+      open([track()], null, { done: 1, total: 2 });
+
+      // Files are already on disk; there is nothing left to call off.
+      expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    });
+
+    it("does not close on Escape", async () => {
+      const { onCancel, user } = open([track()], null, { done: 1, total: 2 });
+
+      await user.keyboard("{Escape}");
+
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it("closes on Escape again once the write is over", async () => {
+      const { onCancel, user } = open([track()]);
+
+      await user.keyboard("{Escape}");
+
+      expect(onCancel).toHaveBeenCalled();
+    });
   });
 });

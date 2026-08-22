@@ -47,6 +47,12 @@ enum. It emits `player://position` (throttled ~4/s), `player://state`,
 `player://ended`, `player://error`. Scanning runs on a `rayon` pool and emits
 `scan://progress` and `library://changed`. Neither ever blocks a command handler.
 
+**Every write long enough to notice runs on a worker thread**, through
+`commands::blocking`, and reports on a channel of its own: a scan on
+`scan://progress`, a tag edit and its undo on `tags://progress`, an export on
+`export://progress`. The domain functions take an `on_progress` closure rather
+than a Tauri handle, so each stays testable with no running app.
+
 - **The play queue is a list of ids sent to Rust**, not a view the backend
   re-derives: `player_play` takes the ordered ids of the current view plus the
   activated index, and paths are looked up backend-side, so a queue cannot carry

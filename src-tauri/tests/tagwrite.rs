@@ -17,6 +17,12 @@ struct Harness {
 }
 
 fn harness() -> Harness {
+    harness_with_bulk(0)
+}
+
+/// The same library plus `bulk` interchangeable files, for the tests whose
+/// subject is a batch too long to sit through.
+fn harness_with_bulk(bulk: usize) -> Harness {
     let dir = tempfile::tempdir().expect("tempdir");
     let music = dir.path().join("music");
     std::fs::create_dir_all(&music).unwrap();
@@ -25,6 +31,7 @@ fn harness() -> Harness {
     let conn = db.conn().unwrap();
     scan::add_watch_folder(&conn, &music).expect("add watch folder");
     fixture::library(&music);
+    fixture::bulk(&music, bulk);
 
     let mut conn = db.conn().unwrap();
     scan::scan(&mut conn, |_| {}).expect("scan");
@@ -34,6 +41,51 @@ fn harness() -> Harness {
         music,
         db,
     }
+}
+
+/// Every id `fixture::bulk` put in the library, in a stable order.
+fn bulk_ids(db: &Db) -> Vec<i64> {
+    let conn = db.conn().unwrap();
+    let mut statement = conn
+        .prepare("SELECT id FROM tracks WHERE title = ?1 ORDER BY path")
+        .unwrap();
+    let ids = statement
+        .query_map([fixture::BULK_TITLE], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<i64>>();
+    ids
+}
+
+/// The properties a readout has to have for a user to trust it: it starts at
+/// nothing, it never goes backwards or past its own total, it arrives, and it
+/// gets there in steps rather than in one jump at the end.
+fn assert_reports_as_it_goes(seen: &[apex_lib::model::WriteProgress], total: u32) {
+    assert!(
+        seen.len() > 2,
+        "only {} reports for {total} files - a readout that moves once is a readout that does not move",
+        seen.len()
+    );
+    assert_eq!(seen.first().unwrap().done, 0);
+    assert_eq!(seen.last().unwrap().done, total);
+    assert!(seen.iter().all(|p| p.total == total), "{seen:?}");
+
+    let mut largest_step = 0;
+    for pair in seen.windows(2) {
+        let step = pair[1].done.checked_sub(pair[0].done).unwrap_or_else(|| {
+            panic!(
+                "the readout went backwards: {:?} then {:?}",
+                pair[0], pair[1]
+            )
+        });
+        largest_step = largest_step.max(step);
+    }
+    // No single step covers a quarter of the batch, which is what "it moves
+    // smoothly rather than in one jump at the end" means in a number.
+    assert!(
+        largest_step <= total / 4,
+        "one step covered {largest_step} of {total}: {seen:?}"
+    );
 }
 
 fn id_of(db: &Db, title: &str) -> i64 {
@@ -92,6 +144,7 @@ fn a_write_round_trips_through_the_file_and_into_the_library() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -124,6 +177,7 @@ fn a_field_the_edit_does_not_mention_survives_untouched() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -154,6 +208,7 @@ fn an_empty_value_clears_the_field_rather_than_writing_an_empty_one() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -177,6 +232,7 @@ fn one_edit_covers_a_whole_selection() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -211,11 +267,12 @@ fn undo_puts_every_field_of_a_batch_back() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
     assert!(write::can_undo(&conn).unwrap());
 
-    let summary = write::undo_last(&mut conn).unwrap();
+    let summary = write::undo_last(&mut conn, |_| {}).unwrap();
 
     assert_eq!((summary.written, summary.failed), (2, 0));
     for (index, &track) in tracks.iter().enumerate() {
@@ -246,9 +303,10 @@ fn undo_clears_a_field_the_edit_had_added() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
-    write::undo_last(&mut conn).unwrap();
+    write::undo_last(&mut conn, |_| {}).unwrap();
 
     // Restoring "what was there" has to include restoring "nothing".
     assert_eq!(tags::read(&path_of(&h.db, track)).unwrap().comment, None);
@@ -277,6 +335,7 @@ fn undo_goes_back_one_batch_at_a_time() {
             ..edit()
         },
         1,
+        |_| {},
     )
     .unwrap();
     write::apply(
@@ -287,16 +346,17 @@ fn undo_goes_back_one_batch_at_a_time() {
             ..edit()
         },
         2,
+        |_| {},
     )
     .unwrap();
 
-    write::undo_last(&mut conn).unwrap();
+    write::undo_last(&mut conn, |_| {}).unwrap();
     assert_eq!(
         tags::read(&path_of(&h.db, track)).unwrap().genre.as_deref(),
         Some("First")
     );
 
-    write::undo_last(&mut conn).unwrap();
+    write::undo_last(&mut conn, |_| {}).unwrap();
     assert_eq!(
         tags::read(&path_of(&h.db, track)).unwrap().genre.as_deref(),
         Some("Post Shoegaze"),
@@ -310,7 +370,7 @@ fn undoing_with_nothing_to_undo_says_so() {
     let mut conn = h.db.conn().unwrap();
 
     assert!(!write::can_undo(&conn).unwrap());
-    assert!(write::undo_last(&mut conn).is_err());
+    assert!(write::undo_last(&mut conn, |_| {}).is_err());
 }
 
 #[test]
@@ -338,6 +398,7 @@ fn cover_art_can_be_replaced_and_removed_and_put_back() {
             ..edit()
         },
         1,
+        |_| {},
     )
     .unwrap();
 
@@ -353,6 +414,7 @@ fn cover_art_can_be_replaced_and_removed_and_put_back() {
             ..edit()
         },
         2,
+        |_| {},
     )
     .unwrap();
     assert!(tags::read(&path_of(&h.db, track)).unwrap().cover.is_none());
@@ -360,7 +422,7 @@ fn cover_art_can_be_replaced_and_removed_and_put_back() {
 
     // Undoing the removal has to find the bytes again, which is why `covers`
     // is never pruned.
-    write::undo_last(&mut conn).unwrap();
+    write::undo_last(&mut conn, |_| {}).unwrap();
     assert_eq!(
         tags::read(&path_of(&h.db, track))
             .unwrap()
@@ -388,6 +450,7 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -399,7 +462,7 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
         "one bad file must not undo the good ones"
     );
     // And the failure is not in the journal, so undo will not try to restore it.
-    write::undo_last(&mut conn).unwrap();
+    write::undo_last(&mut conn, |_| {}).unwrap();
     assert_eq!(
         tags::read(&path_of(&h.db, good)).unwrap().genre.as_deref(),
         Some("Post Shoegaze")
@@ -420,6 +483,7 @@ fn a_write_leaves_no_temporary_files_behind() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -450,6 +514,7 @@ fn the_written_file_is_still_a_playable_mp3() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
@@ -477,6 +542,7 @@ fn a_rescan_after_an_edit_finds_nothing_to_do() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
     let summary = scan::scan(&mut conn, |_| {}).unwrap();
@@ -507,6 +573,7 @@ fn an_unparseable_number_is_refused_before_anything_is_written() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap_err();
 
@@ -532,10 +599,67 @@ fn editing_a_track_the_library_no_longer_has_is_skipped_not_fatal() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
     assert_eq!((summary.written, summary.failed), (1, 0));
+}
+
+#[test]
+fn progress_starts_at_zero_and_lands_on_the_count_it_was_asked_for() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    // Includes an id the library does not have, because the readout counts
+    // what it was asked to do rather than what it found to do - otherwise a
+    // selection naming a removed row stops short of its own total.
+    let ids = [id_of(&h.db, "Maki"), 9999];
+
+    let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
+    let summary = write::apply(
+        &mut conn,
+        &ids,
+        &TagEdit {
+            genre: set("Ambient"),
+            ..edit()
+        },
+        0,
+        |p| seen.push(p),
+    )
+    .unwrap();
+
+    assert_eq!(summary.written, 1);
+    assert_eq!(seen.first().unwrap().done, 0);
+    assert!(seen.iter().all(|p| p.total == 2));
+    assert_eq!(seen.last().unwrap().done, 2);
+}
+
+#[test]
+fn an_undo_reports_progress_too() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Maki");
+
+    write::apply(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Ambient"),
+            ..edit()
+        },
+        0,
+        |_| {},
+    )
+    .unwrap();
+
+    let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
+    write::undo_last(&mut conn, |p| seen.push(p)).unwrap();
+
+    // An undo writes files exactly as an edit does, so a dialog watching one
+    // has to be able to watch the other.
+    assert_eq!(seen.first().unwrap().done, 0);
+    assert_eq!(seen.last().unwrap().done, 1);
+    assert!(seen.iter().all(|p| p.total == 1));
 }
 
 /// The scanner has to keep seeing the file as unchanged, which only holds if
@@ -555,9 +679,77 @@ fn the_file_keeps_its_name_and_place() {
             ..edit()
         },
         0,
+        |_| {},
     )
     .unwrap();
 
     assert!(Path::new(&path).exists());
     assert_eq!(path_of(&h.db, track), path);
+}
+
+/// The batch the manual check used to be: large enough that the progress
+/// interval fires several times, small enough to stay a test.
+const BULK: usize = 120;
+
+/// Standing in for "edit a few hundred files and watch the readout", which
+/// needed a few hundred files nobody has in a checkout.
+#[test]
+fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
+    let h = harness_with_bulk(BULK);
+    let mut conn = h.db.conn().unwrap();
+    let ids = bulk_ids(&h.db);
+    assert_eq!(ids.len(), BULK);
+
+    let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
+    let summary = write::apply(
+        &mut conn,
+        &ids,
+        &TagEdit {
+            genre: set("Bulk Edited"),
+            ..edit()
+        },
+        0,
+        |p| seen.push(p),
+    )
+    .unwrap();
+
+    assert_eq!((summary.written, summary.failed), (BULK as u32, 0));
+    assert_reports_as_it_goes(&seen, BULK as u32);
+    // The files, not just the count: a readout that reaches its total over a
+    // batch that did not land is the failure this is here to catch.
+    for id in [ids[0], ids[BULK / 2], ids[BULK - 1]] {
+        assert_eq!(
+            tags::read(&path_of(&h.db, id)).unwrap().genre.as_deref(),
+            Some("Bulk Edited")
+        );
+    }
+}
+
+/// An undo of the same batch. It writes every one of those files again, so it
+/// is the same wait and needs the same readout - and reports it where a save
+/// cannot, since an undo has no dialog of its own.
+#[test]
+fn an_undo_of_a_long_batch_reports_all_the_way_along_too() {
+    let h = harness_with_bulk(BULK);
+    let mut conn = h.db.conn().unwrap();
+    let ids = bulk_ids(&h.db);
+
+    write::apply(
+        &mut conn,
+        &ids,
+        &TagEdit {
+            genre: set("Bulk Edited"),
+            ..edit()
+        },
+        0,
+        |_| {},
+    )
+    .unwrap();
+
+    let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
+    let summary = write::undo_last(&mut conn, |p| seen.push(p)).unwrap();
+
+    assert_eq!((summary.written, summary.failed), (BULK as u32, 0));
+    assert_reports_as_it_goes(&seen, BULK as u32);
+    assert_eq!(tags::read(&path_of(&h.db, ids[0])).unwrap().genre, None);
 }

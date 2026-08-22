@@ -49,6 +49,8 @@ vi.mock("./ipc", () => ({
   addWatchFolder: vi.fn(),
   scanLibrary: vi.fn(),
   onScanProgress: vi.fn(async () => () => {}),
+  onTagWriteProgress: vi.fn(async () => () => {}),
+  onExportProgress: vi.fn(async () => () => {}),
   onLibraryChanged: vi.fn(async () => () => {}),
   coverUrl: vi.fn((hash: string) => `cover-url:${hash}`),
   onPlayerState: vi.fn(async () => () => {}),
