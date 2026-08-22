@@ -28,10 +28,18 @@ if (typeof window !== "undefined" && runtime.PointerEvent === undefined) {
     }
   }
   runtime.PointerEvent = PointerEventPolyfill;
+}
 
-  // Capture is a no-op here - there is no pointer to capture - but every
-  // pointer-driven component calls them, so they are defined once rather than
-  // stubbed in each test file.
+/**
+ * Pointer capture, which jsdom implements in no version.
+ *
+ * Outside the block above on purpose. jsdom 30 added `PointerEvent` and did
+ * not add these, so gating them on the polyfill made every component that
+ * captures a pointer throw the moment the event was real - a header drag, a
+ * column resize. There is no pointer to capture either way, so they are
+ * no-ops; what matters is that they exist.
+ */
+if (typeof window !== "undefined") {
   Element.prototype.setPointerCapture ??= () => {};
   Element.prototype.releasePointerCapture ??= () => {};
   Element.prototype.hasPointerCapture ??= () => false;
