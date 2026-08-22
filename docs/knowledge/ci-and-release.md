@@ -32,7 +32,10 @@ there is one accepted exception, scoped to cycles entirely inside
 
 `.github/dependabot.yml` watches npm, cargo and `github-actions` weekly. Patches
 and minors arrive batched per ecosystem; majors are opened one at a time, so a
-red run points at one suspect.
+red run points at one suspect. Two npm groups are the exception —
+`vite` + `@vitejs/*` and `vitest` + `@vitest/*` — because those cannot be
+installed one at a time: the first scheduled run opened four separate pull
+requests that each failed at `npm ci` with ERESOLVE.
 
 `.github/workflows/dependabot.yml` then lands them: it regenerates
 `THIRD-PARTY-NOTICES.md` — which Dependabot cannot, and which every update to a

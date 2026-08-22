@@ -48,6 +48,20 @@ seconds instead of an e2e run.
 - Majors included. The gate is the same six checks either way, and one of them
   is a real e2e run against a real build.
 
+## Two majors that cannot arrive alone
+
+The same first run opened `vite@8`, `@vitejs/plugin-react@6`, `vitest@4` and
+`@vitest/coverage-v8@4` as four pull requests, and all four failed at `npm ci`
+with `ERESOLVE` — plugin-react 6 requires vite `^8`, and coverage-v8 pins its
+vitest exactly. Four red runs pointing at nothing, which is the opposite of
+what one-major-per-pull-request is for.
+
+`vite` + `@vitejs/*` and `vitest` + `@vitest/*` are now groups. They sit below
+the batch group, so a minor bump of any of them still arrives batched and only
+a major reaches them. Taken together the four are green locally — typecheck,
+Biome, 805 tests and a production build; vite 8 builds through rolldown, and
+the warnings-are-errors handler survives it.
+
 ## The install never sees the write token
 
 Regenerating means `npm ci`, which runs the install scripts of the very
