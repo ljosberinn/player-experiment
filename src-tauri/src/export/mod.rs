@@ -11,7 +11,7 @@
 //! excluded: any setting not on the allowlist in [`crate::db::settings`],
 //! which is what keeps credentials out.
 //!
-//! The shape is documented for consumers in `docs/export-schema.md`. Changing
+//! The shape is documented for consumers in `docs/knowledge/export-schema.md`. Changing
 //! anything here means changing that too.
 
 use serde::Serialize;

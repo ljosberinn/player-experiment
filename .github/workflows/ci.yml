@@ -219,7 +219,7 @@ jobs:
       # The instrumentation is behind the `wdio` cargo feature and its
       # capability comes from a --config overlay, so a normal build ships
       # neither. That overlay also sets `withGlobalTauri`, which the service
-      # needs on every command - see PLAN.md, "e2e wall time".
+      # needs on every command - see docs/knowledge/gotchas.md, "Toolchain".
       - name: Build app (debug, e2e-instrumented)
         if: needs.changes.outputs.code == 'true'
         env:
