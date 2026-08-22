@@ -75,8 +75,15 @@ describe("the row menu", () => {
   });
 
   afterEach(async () => {
-    // A menu left open would take the next test down with it.
-    await browser.keys("Escape");
+    // A menu left open would take the next test down with it - and one Escape
+    // is not enough, because an open submenu takes the first one and leaves
+    // its parent standing. That is what failed here on the first CI run.
+    for (let escapes = 0; escapes < 3; escapes++) {
+      if (!(await browser.$("//*[@role='menu']").isExisting())) {
+        return;
+      }
+      await browser.keys("Escape");
+    }
     await browser.$("//*[@role='menu']").waitForExist({ timeout: 10_000, reverse: true });
   });
 
