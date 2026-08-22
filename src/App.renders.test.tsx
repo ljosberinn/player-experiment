@@ -45,6 +45,7 @@ vi.mock("./ipc", () => ({
   playerSnapshot: vi.fn(async () => ({
     status: "stopped",
     track: null,
+    palette: null,
     positionMs: 0,
     durationMs: 0,
     volume: 0.8,

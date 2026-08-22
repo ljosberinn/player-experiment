@@ -1,4 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
 
@@ -10,14 +11,21 @@ import { useZoomStore } from "./zoomStore";
  * opposite choice - and the reason it is worth stating - is the crash notice,
  * which is an `AlertDialog` precisely because it must be acknowledged.
  *
- * Interface zoom is its only contents, and it is the same control the status
+ * Interface zoom was its only contents, and it is the same control the status
  * bar carries. That is deliberate rather than an oversight: the design puts
  * Settings in the Edit menu and the stepper in the corner, and both write the
  * same store. A setting reachable two ways is not a setting duplicated.
+ *
+ * The dynamic background joins it in phase 39. It is the one thing in the app
+ * that draws attention without being asked to, so it is the one thing that
+ * needs a switch - and it belongs here rather than in a menu, because it is a
+ * preference the user sets once rather than a command.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const factor = useZoomStore((s) => s.factor);
   const step = useZoomStore((s) => s.step);
+  const dynamicBackground = useDynamicBackgroundStore((s) => s.enabled);
+  const setDynamicBackground = useDynamicBackgroundStore((s) => s.set);
 
   return (
     <Dialog.Root
@@ -59,6 +67,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 +
               </button>
             </span>
+          </div>
+
+          {/* A native checkbox rather than a Base UI switch: it is a plain
+              on/off preference in a dialog, which is what the platform control
+              is for, and `<label>` gives it its own hit target and name
+              without a `role` or an `aria-label`. */}
+          <div className="settings-row">
+            <label htmlFor="dynamic-background">Colour From Album Art</label>
+            <input
+              id="dynamic-background"
+              type="checkbox"
+              checked={dynamicBackground}
+              onChange={(event) => void setDynamicBackground(event.target.checked)}
+            />
           </div>
 
           <div className="modal-actions">

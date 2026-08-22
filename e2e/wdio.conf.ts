@@ -73,6 +73,10 @@ export const config: WebdriverIO.Config = {
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.
     "./specs/smart-playlists.test.ts",
+    // After `library` too: it needs a real cover, embedded in a real mp3, to
+    // extract colours from - and before `virtualization`, whose hundred and
+    // fifty thousand synthetic rows have no artwork at all.
+    "./specs/dynamic-background.test.ts",
     // Last but one, and it has to be after the rest: it puts a hundred and
     // fifty thousand rows in the shared library and nothing before it would
     // recognise the place afterwards.

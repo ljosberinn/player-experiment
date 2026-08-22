@@ -31,6 +31,8 @@ import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { DynamicBackground } from "./features/shell/DynamicBackground";
+import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { exportSelectionLabel, menus, REPOSITORY } from "./features/shell/menus";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
@@ -57,6 +59,7 @@ export function App() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const zoomFactor = useZoomStore((s) => s.factor);
   const stepZoom = useZoomStore((s) => s.step);
+  const loadDynamicBg = useDynamicBackgroundStore((s) => s.load);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
   const installUpdate = useUpdaterStore((s) => s.install);
@@ -143,6 +146,14 @@ export function App() {
     // that after the first query would mean querying twice on every launch.
     void loadColumns().then(() => refresh());
   }, [loadColumns, refresh]);
+
+  useEffect(() => {
+    // Not awaited alongside the layout above: nothing waits on it. The
+    // background is on by default and there is nothing playing yet, so the
+    // worst a slow read can do is turn the blobs off a moment after the first
+    // paint of a window that has none.
+    void loadDynamicBg();
+  }, [loadDynamicBg]);
 
   useEffect(() => {
     // `connect` resolves to its own teardown, which may land after unmount.
@@ -334,6 +345,11 @@ export function App() {
 
   return (
     <div className="app">
+      {/* Behind everything, and outside the flex flow: the cover's colours,
+          blurred, turning once a minute. Renders nothing at all when there is
+          no artwork playing or the preference is off. */}
+      <DynamicBackground />
+
       {/* The title bar carries the product identity and nothing else now: the
           mark, the menus, the version and the window buttons. Everything that
           used to ride on it is in the strip below, which is what the design

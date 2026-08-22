@@ -294,13 +294,7 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
     let metadata = std::fs::metadata(path).map_err(|e| AppError::io(path.display(), e))?;
 
     let cover_hash = match &tags.cover {
-        Some(cover) => {
-            conn.execute(
-                "INSERT OR IGNORE INTO covers (hash, mime, bytes) VALUES (?1, ?2, ?3)",
-                rusqlite::params![cover.hash, cover.mime, cover.bytes],
-            )?;
-            Some(cover.hash.clone())
-        }
+        Some(cover) => Some(crate::db::covers::store(conn, cover)?),
         None => None,
     };
 

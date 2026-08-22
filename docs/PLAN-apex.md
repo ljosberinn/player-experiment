@@ -16,7 +16,7 @@ broadly in the order given — the design phases assume the earlier design phase
 landed. Two of them are not design and are free to run whenever they are wanted:
 **41**, which already has, alongside 34; and **42**, the dependencies.
 
-Phases 32–37 have landed. Where one of them was built differently from what is
+Phases 32–39 have landed. Where one of them was built differently from what is
 written below, the section says so rather than being quietly rewritten — the
 reasoning that turned out to be wrong is the useful part.
 
@@ -381,6 +381,19 @@ have to be talked into allowing.
   reduced to three blurred blobs at 10% opacity, so precision is not the point;
   determinism and speed are. It is a pure function over pixels, so it unit-tests
   against fixture images with no database and no Tauri runtime.
+
+  **Built as a midpoint split instead.** Median cut divides a box at its median
+  *pixel*, so three boxes hold a third of the pixels each — and an album cover
+  that is 70% near-black, which is a great many of them, therefore spends two of
+  its three boxes on near-black and averages everything bright into the third.
+  Two blobs the same colour and one made of mud. Splitting at the midpoint of the
+  widest channel's *range* divides by colour rather than by population: the darks
+  fall one side, the accents the other, and the second split separates the
+  accents. Both stated reasons — determinism and speed — hold either way. Boxes
+  are ordered by pixel count afterwards, so the dominant colour still comes
+  first. `src-tauri/src/palette.rs` says the same at the top, and
+  `a_cover_that_is_mostly_one_colour_does_not_spend_two_blobs_on_it` is the test
+  that decided it.
 - Near-greyscale covers produce near-greyscale blobs, which is correct: the design's
   own sample data has one (`rgb(64,64,64)`, `rgb(112,96,96)`, `rgb(224,224,224)`).
 
@@ -389,7 +402,12 @@ state rather than a new event — the frontend already learns what is playing, a
 the colours are a property of that.
 
 **Animation.** Three blurred radial blobs behind everything, at 7–10% opacity, over
-the base surface. Two behaviours:
+the base surface. Their positions are the design's, but expressed as offsets from
+the centre of the window (`calc(50% - 28vw)`) rather than as percentages: the
+layer has to be far larger than the window so the rotation never swings an edge
+into view, so a percentage is a percentage *of the layer* and lands somewhere
+else. Written the naive way first, and the third blob spent its whole life below
+the bottom of the window. Two behaviours:
 
 - a **360° rotation once per minute**, one continuous turn;
 - a **blend when the album changes** — a ~1.6s transition on the colours, so moving
@@ -401,6 +419,12 @@ Nothing playing, or a track with no cover, means the default scheme with no blob
 loop of moving colour behind text is exactly what that query is for. A checkbox in
 the Settings dialog turns the whole thing off independently, persisted in settings.
 The design carries the same idea as its `dynamicBackground` prop.
+
+The table below says "blobs absent under reduced motion", which contradicts the
+paragraph above it. The paragraph won: reduced motion stops the turn and the
+1.6s wash between albums, and leaves the colours. Someone who asked for no
+animation has not asked for no colour. The checkbox is the switch for the colour,
+and the two are deliberately independent.
 
 ---
 

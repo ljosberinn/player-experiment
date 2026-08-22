@@ -346,11 +346,7 @@ fn store_cover(conn: &Connection, tags: &TrackTags) -> AppResult<Option<String>>
     let Some(cover) = &tags.cover else {
         return Ok(None);
     };
-    conn.execute(
-        "INSERT OR IGNORE INTO covers (hash, mime, bytes) VALUES (?1, ?2, ?3)",
-        rusqlite::params![cover.hash, cover.mime, cover.bytes],
-    )?;
-    Ok(Some(cover.hash.clone()))
+    Ok(Some(crate::db::covers::store(conn, cover)?))
 }
 
 fn file_stats(path: &Path) -> (i64, i64) {
