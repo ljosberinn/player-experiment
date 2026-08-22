@@ -409,8 +409,8 @@ the Rust crates, from crates.io at the exact version given.
 | [@floating-ui/react-dom](https://github.com/floating-ui/floating-ui.git) | 2.1.9 | MIT | [197](#licence-text-197) |
 | [@floating-ui/utils](https://github.com/floating-ui/floating-ui.git) | 0.2.12 | MIT | [197](#licence-text-197) |
 | [@fontsource/space-grotesk](git+https://github.com/fontsource/font-files.git) | 5.3.0 | OFL-1.1 | [198](#licence-text-198) |
-| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.9 | MIT | [199](#licence-text-199) |
-| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.7 | MIT | [199](#licence-text-199) |
+| [@tanstack/react-virtual](git+https://github.com/TanStack/virtual.git) | 3.14.10 | MIT | [199](#licence-text-199) |
+| [@tanstack/virtual-core](git+https://github.com/TanStack/virtual.git) | 3.17.8 | MIT | [199](#licence-text-199) |
 | [@tauri-apps/api](git+https://github.com/tauri-apps/tauri.git) | 2.11.1 | Apache-2.0 OR MIT | — |
 | [@tauri-apps/plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 2.7.2 | MIT OR Apache-2.0 | [156](#licence-text-156) |
 | [@tauri-apps/plugin-global-shortcut](https://github.com/tauri-apps/plugins-workspace) | 2.3.2 | MIT OR Apache-2.0 | [156](#licence-text-156) |
@@ -421,7 +421,7 @@ the Rust crates, from crates.io at the exact version given.
 | [reselect](https://github.com/reduxjs/reselect.git) | 5.3.0 | MIT | [201](#licence-text-201) |
 | [scheduler](https://github.com/facebook/react.git) | 0.27.0 | MIT | [200](#licence-text-200) |
 | [use-sync-external-store](https://github.com/facebook/react.git) | 1.6.0 | MIT | [200](#licence-text-200) |
-| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.14 | MIT | [202](#licence-text-202) |
+| [zustand](git+https://github.com/pmndrs/zustand.git) | 5.0.15 | MIT | [202](#licence-text-202) |
 
 ## Licence texts
 
