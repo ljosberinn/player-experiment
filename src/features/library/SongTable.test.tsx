@@ -666,6 +666,57 @@ describe("SongTable", () => {
       expect(onReorder).toHaveBeenLastCalledWith([2, 3], 1);
     });
 
+    /**
+     * The page cache as it looks once a nudge down has come back: the row the
+     * block passed is now in front of it. `moveTracks` refreshes rather than
+     * patching, but the effect on the cache is this.
+     */
+    function asIfTheMoveLanded(ids: number[]) {
+      const pages = new Map(useLibraryStore.getState().pages);
+      const rows = [...(pages.get(0) as Track[])];
+      const first = rows.findIndex((row) => row.id === ids[0]);
+      const [passed] = rows.splice(first + ids.length, 1);
+      rows.splice(first, 0, passed as Track);
+      pages.set(0, rows);
+      useLibraryStore.setState({ pages });
+    }
+
+    it("held down, keeps asking for the same place until the view catches up", async () => {
+      const onReorder = vi.fn();
+      await withSelection([2, 3], { onReorder });
+
+      // Key repeat: several keydowns land before the first move's refresh
+      // does, so the cache still shows the block where it started.
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+
+      // The same insertion index each time, which resolves to where the block
+      // already is. A handler that counted its own presses instead would ask
+      // for 5, 7 and 9 and fling the block three places for one that landed.
+      expect(onReorder.mock.calls).toEqual([
+        [[2, 3], 5],
+        [[2, 3], 5],
+        [[2, 3], 5],
+      ]);
+      // And the rows that moved are still the selected ones, so the next
+      // repeat acts on them rather than on whatever took their old index.
+      expect([...useLibraryStore.getState().selection.ids]).toEqual([2, 3]);
+    });
+
+    it("walks one place further for each repeat the view does catch up with", async () => {
+      const onReorder = vi.fn();
+      await withSelection([2, 3], { onReorder });
+
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+      expect(onReorder).toHaveBeenLastCalledWith([2, 3], 5);
+
+      asIfTheMoveLanded([2, 3]);
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+
+      expect(onReorder).toHaveBeenLastCalledWith([2, 3], 6);
+    });
+
     it("refuses to nudge a scattered selection", async () => {
       const onReorder = vi.fn();
       await withSelection([1, 3], { onReorder });
