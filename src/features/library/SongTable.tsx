@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ContextMenu } from "../../components/ui/ContextMenu";
 import { revealTrack } from "../../ipc";
 import { useEditorStore } from "../editor/store";
+import { isTypingTarget } from "../player/shortcuts";
 import {
   dropIndexFor,
   hasTrackIds,
@@ -12,9 +13,11 @@ import {
   setDragImage,
   setTrackIds,
 } from "../playlists/drag";
+import { nudgeTarget } from "../playlists/reorder";
 import { usePlaylistsStore } from "../playlists/store";
 import { ColumnHeader } from "./ColumnHeader";
 import type { ColumnDef } from "./columns";
+import { rowIndicesOf } from "./pageCache";
 import { RowStatusCell } from "./RowStatusCell";
 import { rowMenuItems } from "./rowMenu";
 import { isSelected } from "./selection";
@@ -23,6 +26,8 @@ import { useLibraryStore } from "./store";
 const ROW_HEIGHT = 26;
 /** Rows rendered beyond the viewport, so a fast flick shows content not gaps. */
 const OVERSCAN = 12;
+/** How far in from a row's left edge a keyboard-opened menu is anchored. */
+const MENU_INSET = 8;
 
 /**
  * How far down the row the pointer is.
@@ -122,6 +127,95 @@ export function SongTable({
       void ensureRange(firstIndex, lastIndex);
     }
   }, [ensureRange, firstIndex, lastIndex, total, queryToken]);
+
+  /**
+   * The keyboard routes into the two things a pointer had to itself: the row
+   * menu, and reordering a playlist.
+   *
+   * On the window rather than on a row, because neither has a row focused when
+   * it is wanted - Ctrl+A and a click in the sidebar both leave focus off the
+   * table, and the selection they leave behind is exactly what these act on.
+   * State is read through `getState` for the same reason `useSelectionShortcuts`
+   * does: the listener is bound once and must not see a selection from the
+   * render it was created in.
+   */
+  useEffect(() => {
+    /**
+     * Opens the row menu on `rowIndex` by handing the trigger the event it
+     * owns.
+     *
+     * A synthesized `contextmenu` rather than a second way in: `ContextMenu`
+     * derives its position from that event, and the row's own handler decides
+     * which rows the menu acts on. Both of those would have to be duplicated
+     * by any route that opened the menu directly, and the duplicate is what
+     * would drift.
+     */
+    const openMenuAt = (rowIndex: number) => {
+      virtualizer.scrollToIndex(rowIndex);
+      // The row may not be mounted: the selection can sit outside the window
+      // after a scroll, and the scroll above only renders it on the next frame.
+      requestAnimationFrame(() => {
+        const row = scrollRef.current?.querySelector<HTMLTableRowElement>(
+          `tr[aria-rowindex="${rowIndex + 1}"]`,
+        );
+        if (!row) {
+          return;
+        }
+        // Focused first, so closing the menu returns the keyboard to the row
+        // it was opened on rather than to the body.
+        row.focus();
+        const rect = row.getBoundingClientRect();
+        row.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + MENU_INSET,
+            clientY: rect.top + rect.height / 2,
+          }),
+        );
+      });
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A row handles its own keys first, and a text field keeps all of them.
+      if (event.defaultPrevented || isTypingTarget(event.target)) {
+        return;
+      }
+
+      // Windows opens a context menu with the Menu key or Shift+F10, and the
+      // second exists because not every keyboard has the first.
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        const { selection } = useLibraryStore.getState();
+        if (selection.ids.size === 0 || selection.anchorIndex === null) {
+          return;
+        }
+        event.preventDefault();
+        openMenuAt(selection.anchorIndex);
+        return;
+      }
+
+      // Alt rather than a bare arrow: bare arrows are the player's seek and
+      // volume keys, and `shortcutFor` drops anything with a modifier - so an
+      // Alt chord cannot collide with them by construction.
+      if (!onReorder || !event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
+        return;
+      }
+      const { selection, pages, total: rowCount } = useLibraryStore.getState();
+      const indices = rowIndicesOf(pages, selection.ids);
+      if (indices === null) {
+        return;
+      }
+      const target = nudgeTarget(indices, event.key === "ArrowUp" ? "up" : "down", rowCount);
+      if (target === null) {
+        return;
+      }
+      event.preventDefault();
+      onReorder([...selection.ids], target);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onReorder, virtualizer]);
 
   return (
     <div className="song-body" ref={scrollRef} data-testid="song-scroll">

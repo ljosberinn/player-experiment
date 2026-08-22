@@ -15,6 +15,11 @@ import { capture } from "../screenshot";
  * browser on the runner, which is a side effect a test suite has no business
  * having - the same line `menus.test.ts` draws around Help.
  *
+ * Phase 43 added the keyboard route here too, for the same reason the pointer
+ * one is here: the shortcut hands the trigger a *synthesized* `contextmenu`,
+ * and whether Base UI opens on one of those is a question only a real webview
+ * answers.
+ *
  * Runs after `library.test.ts`, which is what puts songs in the shared
  * library: an empty table has no row to right-click.
  */
@@ -49,6 +54,29 @@ async function openRowMenu(): Promise<void> {
   await browser
     .$("//*[@role='menu'][@aria-label='Song actions']")
     .waitForExist({ timeout: 10_000, timeoutMsg: "the row menu never opened" });
+}
+
+/**
+ * Presses Shift+F10, by dispatching the event rather than pressing.
+ *
+ * `browser.keys(["Shift", "F10"])` was tried first and the page never saw a
+ * keydown - F10 activates a window menu on Windows, and it is swallowed before
+ * the webview. That is the same class of gap as the missing `contextmenu` and
+ * `dblclick` above, and it has the same remedy.
+ *
+ * What survives the substitution is the part worth testing here: the shortcut
+ * synthesizes the `contextmenu` event `ContextMenu.Trigger` owns, and whether
+ * a *synthesized* one opens a Base UI menu is a question only a real webview
+ * answers. `SongTable.test.tsx` proves the shortcut fires; jsdom cannot prove
+ * the menu hears it. What is now uncovered anywhere is whether the OS delivers
+ * the physical key, which is the same gap the media keys already have.
+ */
+async function pressShiftF10(): Promise<void> {
+  await browser.execute(() => {
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true }),
+    );
+  });
 }
 
 /**
@@ -111,6 +139,19 @@ describe("the row menu", () => {
     expect(await itemsOf("Open Artist on…")).toEqual(["Last.fm", "Discogs"]);
 
     await capture("row-menu-open-artist-on");
+  });
+
+  it("opens on Shift+F10, with no pointer involved at all", async () => {
+    // Selected by clicking, because the shortcut acts on the selection and
+    // there is no keyboard route to one that does not go through this.
+    await browser.$("tr.song-row").click();
+    await browser.waitUntil(async () => await browser.$("tr.song-row.selected").isExisting());
+
+    await pressShiftF10();
+
+    await browser
+      .$("//*[@role='menu'][@aria-label='Song actions']")
+      .waitForExist({ timeout: 10_000, timeoutMsg: "Shift+F10 never opened the row menu" });
   });
 
   it("offers the album lookup only where the row has one", async () => {

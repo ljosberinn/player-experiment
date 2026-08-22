@@ -9,6 +9,7 @@ import {
   pageIndexOf,
   pagesForRange,
   rowAt,
+  rowIndicesOf,
   trackById,
 } from "./pageCache";
 
@@ -100,6 +101,27 @@ describe("trackById", () => {
     // Select All selects ids the cache has never seen, and the menu bar asks
     // about them anyway.
     expect(trackById(new Map([[0, page(0)]]), PAGE_SIZE * 9)).toBeNull();
+  });
+});
+
+describe("rowIndicesOf", () => {
+  it("places every selected id at its row index, in order", () => {
+    const cached: PageState = new Map([
+      [0, page(0)],
+      [1, page(1)],
+    ]);
+
+    expect(rowIndicesOf(cached, new Set([PAGE_SIZE + 2, 5]))).toEqual([5, PAGE_SIZE + 2]);
+  });
+
+  it("returns null when one selected id is not cached, rather than moving the rest", () => {
+    const cached: PageState = new Map([[0, page(0)]]);
+
+    expect(rowIndicesOf(cached, new Set([1, PAGE_SIZE * 9]))).toBeNull();
+  });
+
+  it("has no indices for an empty selection", () => {
+    expect(rowIndicesOf(new Map([[0, page(0)]]), new Set())).toEqual([]);
   });
 });
 
