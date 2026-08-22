@@ -402,7 +402,12 @@ state rather than a new event — the frontend already learns what is playing, a
 the colours are a property of that.
 
 **Animation.** Three blurred radial blobs behind everything, at 7–10% opacity, over
-the base surface. Two behaviours:
+the base surface. Their positions are the design's, but expressed as offsets from
+the centre of the window (`calc(50% - 28vw)`) rather than as percentages: the
+layer has to be far larger than the window so the rotation never swings an edge
+into view, so a percentage is a percentage *of the layer* and lands somewhere
+else. Written the naive way first, and the third blob spent its whole life below
+the bottom of the window. Two behaviours:
 
 - a **360° rotation once per minute**, one continuous turn;
 - a **blend when the album changes** — a ~1.6s transition on the colours, so moving

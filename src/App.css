@@ -332,17 +332,31 @@ input[type="radio"] {
    three composited layers of blur for a result that is one wash, and the
    gradients cannot bleed into each other any less by being separated.
 
+   **Positions are anchored to the viewport, not to this element.** That is the
+   whole reason for the `calc()`. The element is 140vmax so the rotation never
+   swings an edge into view, which makes it far larger than the window - so a
+   plain `at calc(50% - 28vw) calc(50% - 24vh)` is 22% across *the box*, not across the window, and lands
+   somewhere else entirely. It put the third blob 320px below the bottom of a
+   1080-tall window, where it was never once visible, and left the other two
+   clipping the top edge. `50%` of this element is the middle of the window, so
+   `calc(50% - 28vw)` is the design's 22% across, and it stays right at any
+   size or aspect ratio where a percentage of the box cannot.
+
+   Radii in `vmax` for the same reason. The offsets are the design's own
+   placement expressed as a distance from the centre: 22%, 78% and 52% across
+   become -28vw, +28vw and +2vw; 26%, 32% and 82% down become -24vh, -18vh and
+   +32vh.
+
    The stops are the design's - full colour at the centre, gone by 70%, so each
    blob is a soft disc rather than a ring with an edge. Opacities are the 7-10%
    the design states, largest and most opaque first, which is why the palette
    arrives ordered by prominence: the layer is at 0.1, and the second and third
    blobs are mixed down to 80% and 70% of that.
 
-   `ellipse` with two equal percentages rather than `circle`, which is what
+   `ellipse` with two equal measurements rather than `circle`, which is what
    this said first and which is invalid: a circle's radius may be a length but
    not a percentage, so the browser dropped the whole `background` and the layer
-   painted nothing. The element is square - 140vmax each way - so equal
-   percentages of its width and height are a circle anyway.
+   painted nothing.
 
    `blur` on top of gradients that are already soft: it is what turns three
    discs into one field, and it is why the layer is oversized. */
@@ -351,14 +365,18 @@ input[type="radio"] {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 34% 34% at 22% 26%, var(--blob-1) 0%, transparent 70%),
     radial-gradient(
-      ellipse 30% 30% at 78% 32%,
+      ellipse 48vmax 48vmax at calc(50% - 28vw) calc(50% - 24vh),
+      var(--blob-1) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 44vmax 44vmax at calc(50% + 28vw) calc(50% - 18vh),
       color-mix(in oklab, var(--blob-2) 80%, transparent) 0%,
       transparent 70%
     ),
     radial-gradient(
-      ellipse 28% 28% at 52% 82%,
+      ellipse 42vmax 42vmax at calc(50% + 2vw) calc(50% + 32vh),
       color-mix(in oklab, var(--blob-3) 70%, transparent) 0%,
       transparent 70%
     );

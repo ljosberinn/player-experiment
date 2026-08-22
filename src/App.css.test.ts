@@ -220,6 +220,29 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("anchors the blob positions to the window, not to the layer", () => {
+    // The layer is 140vmax so the rotation never swings an edge into view,
+    // which makes it much larger than the window. A position written as a bare
+    // percentage is therefore a percentage of *the layer*: the design's third
+    // blob at "82% down" landed 320px below the bottom of a 1080-tall window
+    // and was never once visible, and the other two only clipped the top edge.
+    // Measured coverage of the pane went from 35-44% to 83-97% once these were
+    // expressed as offsets from the centre instead.
+    const layer = all.find((rule) => rule.selector.trim().endsWith(".dynamic-bg::before"));
+    const positions = [...(layer?.body ?? "").matchAll(/\bat\s+([^,]+?)\s*,/g)].map((match) =>
+      (match[1] ?? "").trim(),
+    );
+
+    expect(positions).toHaveLength(3);
+    for (const position of positions) {
+      // `50%` of the layer is the middle of the window whatever its size, so an
+      // offset from there is the one form that survives a resize.
+      expect(position, `${position} is not anchored to the window`).toMatch(
+        /calc\(\s*50%\s*[-+][^)]*v[wh]\s*\)\s+calc\(\s*50%\s*[-+][^)]*v[wh]\s*\)/,
+      );
+    }
+  });
+
   it("sizes every radial gradient a way the syntax allows", () => {
     // `radial-gradient(circle 34% ...)` is invalid: a circle's radius may be a
     // length, never a percentage. The engine drops the whole `background`
