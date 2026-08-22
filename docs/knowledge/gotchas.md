@@ -85,6 +85,11 @@ Each of these cost real time once. They are here so they cost it once.
   floor past that pin is an `ERESOLVE`, not a resolution. Since 1.3.0 pins
   9.29.1 while `@wdio/local-runner@9.31.x` wants 9.31.1, the two coexist as
   separate copies and the root floor stays where the service put it.
+- **The driver swallows Shift+F10 as well.** F10 activates a window menu on
+  Windows and never reaches the webview, so `browser.keys(["Shift", "F10"])`
+  produces no keydown at all - the same class of gap as `contextmenu` and
+  `dblclick`, with the same remedy: dispatch the event the page listens for.
+  Found by a CI run, because the assertion passes locally in jsdom.
 - A Python here-doc turning `\b` into a literal backspace made a guard match
   nothing and pass vacuously. Prove a new guard red.
 

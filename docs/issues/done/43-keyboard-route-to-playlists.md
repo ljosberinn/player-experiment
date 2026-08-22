@@ -55,3 +55,11 @@ case, and it is also a move with no meaning.
   one part jsdom cannot vouch for is whether Base UI opens on a *synthesized*
   `contextmenu`; the component test proves the shortcut fires, not that the
   menu hears it.
+
+The e2e case pressed the keys for real at first and CI proved it could not:
+**the driver swallows Shift+F10**, because F10 activates a window menu on
+Windows and never reaches the webview. It dispatches the keydown instead — the
+same remedy `contextmenu` and `dblclick` already needed, and the chain from the
+keydown down is what the test was for. What is now uncovered anywhere is
+whether the OS delivers the physical key, which is the gap the media keys
+already have.

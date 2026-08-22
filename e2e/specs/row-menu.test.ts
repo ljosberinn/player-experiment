@@ -57,6 +57,29 @@ async function openRowMenu(): Promise<void> {
 }
 
 /**
+ * Presses Shift+F10, by dispatching the event rather than pressing.
+ *
+ * `browser.keys(["Shift", "F10"])` was tried first and the page never saw a
+ * keydown - F10 activates a window menu on Windows, and it is swallowed before
+ * the webview. That is the same class of gap as the missing `contextmenu` and
+ * `dblclick` above, and it has the same remedy.
+ *
+ * What survives the substitution is the part worth testing here: the shortcut
+ * synthesizes the `contextmenu` event `ContextMenu.Trigger` owns, and whether
+ * a *synthesized* one opens a Base UI menu is a question only a real webview
+ * answers. `SongTable.test.tsx` proves the shortcut fires; jsdom cannot prove
+ * the menu hears it. What is now uncovered anywhere is whether the OS delivers
+ * the physical key, which is the same gap the media keys already have.
+ */
+async function pressShiftF10(): Promise<void> {
+  await browser.execute(() => {
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true }),
+    );
+  });
+}
+
+/**
  * The labels inside an open menu.
  *
  * Trimmed of the submenu arrow, which is a `<span>` inside the trigger and so
@@ -119,13 +142,12 @@ describe("the row menu", () => {
   });
 
   it("opens on Shift+F10, with no pointer involved at all", async () => {
-    // The one part of the keyboard route jsdom cannot vouch for. The shortcut
-    // synthesizes the `contextmenu` event `ContextMenu.Trigger` owns, and
-    // whether a synthesized one actually opens the menu is a question about
-    // Base UI in real WebView2 - `SongTable.test.tsx` proves the shortcut
-    // fires, not that the menu hears it.
+    // Selected by clicking, because the shortcut acts on the selection and
+    // there is no keyboard route to one that does not go through this.
     await browser.$("tr.song-row").click();
-    await browser.keys(["Shift", "F10"]);
+    await browser.waitUntil(async () => await browser.$("tr.song-row.selected").isExisting());
+
+    await pressShiftF10();
 
     await browser
       .$("//*[@role='menu'][@aria-label='Song actions']")

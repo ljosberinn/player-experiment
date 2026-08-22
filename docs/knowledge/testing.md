@@ -69,8 +69,9 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   one command the suite drives itself, because WebDriver cannot answer an OS
   folder picker. Everything after is the app's own path.
 - **The driver delivers neither `contextmenu` nor `dblclick`** through the
-  Actions API. Dispatch the event React listens for, with the trigger's own
-  coordinates; `e2e/specs/smart-playlists.test.ts` has the helper.
+  Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
+  React listens for, with the trigger's own coordinates;
+  `e2e/specs/smart-playlists.test.ts` has the helper.
 - **Screenshots are taken, never compared** (`e2e/screenshot.ts`), pushed to the
   `ci/screenshots` branch and spliced into the PR body by
   `scripts/screenshots.mjs`. Nothing flakes, nothing is committed. `capture()`
@@ -88,4 +89,6 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 - OS-level drag gestures. This gap let a whole feature ship broken once: anything
   depending on one needs a manual check on a real build.
 - "Sound actually came out." Decoding is covered; output is manual.
-- Whether the OS delivers a media key to an unfocused window.
+- Whether the OS delivers a media key to an unfocused window, or Shift+F10 and
+  the Menu key to a focused one. The shortcut behind them is covered from a
+  dispatched keydown down; the key press itself is not reachable from here.
