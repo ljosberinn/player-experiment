@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.4.0](https://github.com/ljosberinn/player-experiment/compare/v0.3.0...v0.4.0) (2026-08-22)
+
+
+### Features
+
+* a background that takes its colour from the record ([#62](https://github.com/ljosberinn/player-experiment/issues/62)) ([f3a4256](https://github.com/ljosberinn/player-experiment/commit/f3a425656df46507ecc60be1c8c91f88edfae278))
+* a menu bar, and a toolbar that is gone ([#53](https://github.com/ljosberinn/player-experiment/issues/53)) ([335eaf3](https://github.com/ljosberinn/player-experiment/commit/335eaf3a724600de1b9b4d5e352e561261b6b3b0))
+* a mute that remembers, and a song that repeats ([#61](https://github.com/ljosberinn/player-experiment/issues/61)) ([6fee8b8](https://github.com/ljosberinn/player-experiment/commit/6fee8b8824f19cc5863edce12a83f8336bc3b49a))
+* look a song's artist or album up on the web ([#64](https://github.com/ljosberinn/player-experiment/issues/64)) ([bda15de](https://github.com/ljosberinn/player-experiment/commit/bda15deaf428f44d4db1db93637812a4d81c46f1))
+* sidebar sections that fold, and counts that keep up ([#56](https://github.com/ljosberinn/player-experiment/issues/56)) ([210de25](https://github.com/ljosberinn/player-experiment/commit/210de2500b23d0d15f8c915df65a42c91efd4174))
+* smart playlists that hold the top hundred ([#58](https://github.com/ljosberinn/player-experiment/issues/58)) ([1ccf8ae](https://github.com/ljosberinn/player-experiment/commit/1ccf8ae5e1d6fd9aff827c727c42bf12b90c39cf))
+* **tags:** suggest values the library already uses ([#39](https://github.com/ljosberinn/player-experiment/issues/39)) ([bf0c0aa](https://github.com/ljosberinn/player-experiment/commit/bf0c0aa29488677d71fb3308922939701f2527ab))
+* the Apex palette, dark only ([#52](https://github.com/ljosberinn/player-experiment/issues/52)) ([9922e12](https://github.com/ljosberinn/player-experiment/commit/9922e122d3a50408664b763bedbfe6d2682d986e))
+* the player is called Apex ([#51](https://github.com/ljosberinn/player-experiment/issues/51)) ([5bc7276](https://github.com/ljosberinn/player-experiment/commit/5bc72765bd56cc73d59f814ce7e57affb268c6c4))
+* the transport strip, and the sidebar chooses the view ([#55](https://github.com/ljosberinn/player-experiment/issues/55)) ([16e629a](https://github.com/ljosberinn/player-experiment/commit/16e629a03ef8f8f78df758c4bffa767eece993e7))
+* write panics down, say so on the next launch, and photograph the notice ([#46](https://github.com/ljosberinn/player-experiment/issues/46)) ([18d9f37](https://github.com/ljosberinn/player-experiment/commit/18d9f379bc7db4c6b4189ae82dd47561e9ee0239))
+
+
+### Performance
+
+* **ui:** keep the playhead, volume and search out of the song table ([#38](https://github.com/ljosberinn/player-experiment/issues/38)) ([017051f](https://github.com/ljosberinn/player-experiment/commit/017051ffacd1c1ab0e5826fdb5039148456b6723))
+
+
+### Documentation
+
+* draft the last.fm plan, and correct two premises behind it ([#47](https://github.com/ljosberinn/player-experiment/issues/47)) ([0f4f9f9](https://github.com/ljosberinn/player-experiment/commit/0f4f9f9e7d18bb820b8a823d0d41b23ea2fb2434))
+* main is protected server-side now, so stop saying it is not ([#43](https://github.com/ljosberinn/player-experiment/issues/43)) ([c64e6f5](https://github.com/ljosberinn/player-experiment/commit/c64e6f584751aff6e490ea4f50b0ddaf98fc93cb))
+* plan the move onto the Apex design ([#50](https://github.com/ljosberinn/player-experiment/issues/50)) ([8066043](https://github.com/ljosberinn/player-experiment/commit/8066043653c42e61ef3833b545ae5f8b220bd3cb))
+* say what phase 37 actually built, and where 36 and 41 really went ([#60](https://github.com/ljosberinn/player-experiment/issues/60)) ([d7735dc](https://github.com/ljosberinn/player-experiment/commit/d7735dc1c05a1bc0ba13e423df7760ac4205e935))
+* split the plan into knowledge, issues and plans ([#63](https://github.com/ljosberinn/player-experiment/issues/63)) ([b058962](https://github.com/ljosberinn/player-experiment/commit/b0589627c4451858c3738138d9579800f53c062d))
+
 ## [0.3.0](https://github.com/ljosberinn/player-experiment/compare/v0.2.0...v0.3.0) (2026-08-03)
 
 
