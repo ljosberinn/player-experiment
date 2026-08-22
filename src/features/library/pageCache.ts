@@ -72,6 +72,31 @@ export function trackById(cached: PageState, id: number): Track | null {
 }
 
 /**
+ * The row indices a set of selected ids sit at, or null when any of them is
+ * not in a cached page.
+ *
+ * All-or-nothing on purpose. The caller reorders a playlist by index, and a
+ * partial answer would move some of a selection and leave the rest - so an id
+ * the cache cannot place has to stop the whole move rather than shrink it.
+ * `Select All` over a large playlist is exactly that case, and it is also a
+ * move with no meaning.
+ */
+export function rowIndicesOf(cached: PageState, ids: ReadonlySet<number>): number[] | null {
+  const indices: number[] = [];
+  for (const [page, rows] of cached) {
+    rows.forEach((track, offset) => {
+      if (ids.has(track.id)) {
+        indices.push(page * PAGE_SIZE + offset);
+      }
+    });
+  }
+  if (indices.length !== ids.size) {
+    return null;
+  }
+  return indices.sort((left, right) => left - right);
+}
+
+/**
  * Drops pages far from the viewport so memory stays flat during a long scroll
  * through a large library.
  */

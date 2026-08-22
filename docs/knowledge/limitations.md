@@ -18,8 +18,10 @@ Known, decided, and not scheduled. Anything with work attached lives in
   reporting "added 6 of 10" is the better answer.
 - **`covers` is never pruned.** Undo depends on old artwork still being there.
 - **The undo journal is unbounded** — one row per track per edit, forever.
-- **Dragging is mouse-only.** Removing from a playlist has Delete; reordering has
-  no keyboard route.
+- **Dragging is mouse-only**, but nothing behind it is any more: the Menu key
+  opens the row menu on the selection, Alt+Arrow nudges it within a playlist,
+  and Delete removes from one. What has no keyboard route is the gesture, not
+  the actions.
 - **The frameless window is not covered end to end** — the e2e build pins
   `decorations: true` or the embedded driver never sees the webview.
 - **e2e cannot perform an OS drag**, and no test asserts that sound came out or
