@@ -1,0 +1,29 @@
+# Accepted limitations
+
+Known, decided, and not scheduled. Anything with work attached lives in
+[issues/upcoming/](../issues/upcoming/) instead.
+
+- **No folder drag-and-drop ingest.** `dragDropEnabled` must stay `false` for
+  in-app dragging to work at all, and Tauri v2 cannot toggle it at runtime.
+  Adding music is a folder picker. Settled by the user: the daily gesture beats
+  the occasional one. Revisit only if Tauri gains a runtime toggle.
+- **No crash reporting off the machine.** A local panic log covers the failure
+  class; a network reporter contradicts the product.
+- **Installers are unsigned.** SmartScreen warns on first run of each version.
+- **mp3 only.** The schema and `lofty` both allow flac/m4a later with no
+  migration.
+- **No gapless playback.** The engine keeps the door open; nothing uses it.
+- **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
+- **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
+  reporting "added 6 of 10" is the better answer.
+- **`covers` is never pruned.** Undo depends on old artwork still being there.
+- **The undo journal is unbounded** — one row per track per edit, forever.
+- **Dragging is mouse-only.** Removing from a playlist has Delete; reordering has
+  no keyboard route.
+- **The frameless window is not covered end to end** — the e2e build pins
+  `decorations: true` or the embedded driver never sees the webview.
+- **e2e cannot perform an OS drag**, and no test asserts that sound came out or
+  that the OS delivers a media key to an unfocused window.
+- **`npm audit` reports a dev-only advisory** in `serialize-javascript` via the
+  `@wdio/*` chain. Production dependencies are clean; not force-fixing.
+- **Statistics is shipped dimmed and inert**, as the design draws it.

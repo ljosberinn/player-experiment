@@ -2,8 +2,12 @@
 
 A local-only desktop music player for large mp3 libraries.
 
-The layout began as an echo of iTunes 11 and is moving onto a design of its own —
-see [docs/PLAN-apex.md](docs/PLAN-apex.md) for what changes and in what order.
+The layout began as an echo of iTunes 11 and has moved onto a design of its own —
+see [docs/knowledge/design.md](docs/knowledge/design.md).
+
+[docs/](docs/) holds the rest: [knowledge/](docs/knowledge/) for how this
+codebase works, [issues/](docs/issues/) for what is and is not done, and
+[plans/](docs/plans/) for work still being designed.
 
 Tauri v2 (Rust core) + React 19 / TypeScript / Vite.
 

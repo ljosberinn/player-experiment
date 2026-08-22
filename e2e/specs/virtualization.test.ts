@@ -4,7 +4,7 @@ import { invoke } from "../invoke";
 /**
  * The claim the whole design rests on, checked against the real engine.
  *
- * `PLAN.md` opens with it: a library of tens of thousands of tracks must stay
+ * The premise: a library of tens of thousands of tracks must stay
  * fast, and the way that is achieved is that **the DOM never holds the
  * library**. SQLite pages it, TanStack Virtual renders about forty rows, and
  * the count comes from a separate `COUNT(*)` so the scrollbar is right without

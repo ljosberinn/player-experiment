@@ -106,7 +106,7 @@ export function menus({
       ],
     },
     // Present, empty and unopenable. This is where last.fm lands
-    // (docs/PLAN-lastfm.md); shipping the empty menu now means the bar does not
+    // (docs/plans/lastfm.md); shipping the empty menu now means the bar does not
     // change shape when it arrives.
     { label: "Account", items: [], disabled: true },
     {

@@ -1,7 +1,7 @@
 /* The palette.
    =========================================================================
    One hue - 55, a warm orange-brown - stated in `oklch`, from the Apex design
-   (docs/PLAN-apex.md, phase 33). Two rules hold this block together:
+   (docs/knowledge/design.md, phase 33). Two rules hold this block together:
 
    **Every colour in the app is defined here and nowhere else.** No rule below
    writes a literal. That is not tidiness: it is the only reason restoring a
@@ -175,7 +175,7 @@ body {
    -------------------------------------------------------------------------
    Up here beside the reset rather than at the end: these are bare element
    selectors, and a component rule like `.modal-field input` declared earlier
-   would quietly win over them. See PLAN.md phase 13. */
+   would quietly win over them. See phase 13. */
 
 /* The window never scrolls or bounces as a document. Rubber-banding at the end
    of the song list is the single most webby thing a desktop list can do. */
@@ -1409,7 +1409,7 @@ th.status {
 
 /* The deliberate exception to the global `animation: none`. Here the motion is
    the state - it is what separates the playing row from the selected one -
-   rather than decoration on a state change. See PLAN.md phase 16. */
+   rather than decoration on a state change. See phase 16. */
 .row-status.playing .wave {
   animation: speaker-wave 1.2s ease-in-out infinite;
   transform-origin: 8px 8px;
