@@ -17,9 +17,18 @@ pub fn snapshot(conn: &Connection, state: &EngineState) -> AppResult<PlayerSnaps
         Some(id) => track_by_id(conn, id)?,
         None => None,
     };
+    // One extra lookup per state change - a load, a seek or a stop - rather
+    // than a join on the track query, which `COLUMNS` feeds for every paged
+    // row in the table as well. The palette is wanted for one track at a time
+    // and never for a row in a list.
+    let palette = match track.as_ref().and_then(|t| t.cover_hash.as_deref()) {
+        Some(hash) => crate::db::covers::palette(conn, hash)?,
+        None => None,
+    };
     Ok(PlayerSnapshot {
         status: state.status,
         track,
+        palette,
         queue_index: state.queue_index,
         queue_len: state.queue_len,
         position_ms: state.position_ms,

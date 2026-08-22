@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  type Colour,
   onPlayerError,
   onPlayerPosition,
   onPlayerState,
@@ -28,6 +29,12 @@ import {
 interface PlayerState {
   status: PlaybackStatus;
   track: Track | null;
+  /**
+   * The playing cover's three dominant colours, or null for silence, no
+   * artwork, or a cover the backend could not read. All three mean the same
+   * thing to the background: draw no blobs.
+   */
+  palette: Colour[] | null;
   positionMs: number;
   durationMs: number;
   volume: number;
@@ -54,6 +61,7 @@ interface PlayerState {
 const initial = {
   status: "stopped" as PlaybackStatus,
   track: null,
+  palette: null,
   positionMs: 0,
   durationMs: 0,
   volume: 0.8,
@@ -85,6 +93,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         set({
           status: snapshot.status,
           track: snapshot.track,
+          palette: snapshot.palette,
           durationMs: snapshot.durationMs,
           volume: snapshot.volume,
           muted: snapshot.muted,
@@ -107,6 +116,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({
         status: snapshot.status,
         track: snapshot.track,
+        palette: snapshot.palette,
         positionMs: snapshot.positionMs,
         durationMs: snapshot.durationMs,
         volume: snapshot.volume,

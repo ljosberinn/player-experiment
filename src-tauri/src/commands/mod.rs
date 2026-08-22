@@ -362,6 +362,27 @@ pub fn save_sidebar_sections(db: State<'_, Db>, sections_json: String) -> AppRes
     settings::set(&conn, settings::SIDEBAR, &sections_json)
 }
 
+/// Whether the cover-coloured background is on.
+///
+/// A bool rather than the opaque string the sidebar and column layouts use:
+/// there is one thing to say here, and Rust has to read it anyway for the
+/// export allowlist to mean anything.
+#[tauri::command]
+pub fn load_dynamic_background(db: State<'_, Db>) -> AppResult<bool> {
+    let conn = db.conn()?;
+    settings::dynamic_background(&conn)
+}
+
+#[tauri::command]
+pub fn save_dynamic_background(db: State<'_, Db>, enabled: bool) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(
+        &conn,
+        settings::DYNAMIC_BACKGROUND,
+        if enabled { "true" } else { "false" },
+    )
+}
+
 #[tauri::command]
 pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {
     let conn = db.conn()?;

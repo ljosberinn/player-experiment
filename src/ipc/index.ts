@@ -4,6 +4,7 @@ import type { AppInfo } from "./bindings/AppInfo";
 import type { BrowseFilter } from "./bindings/BrowseFilter";
 import type { BrowseGroup } from "./bindings/BrowseGroup";
 import type { BrowseKind } from "./bindings/BrowseKind";
+import type { Colour } from "./bindings/Colour";
 import type { Combinator } from "./bindings/Combinator";
 import type { CoverEdit } from "./bindings/CoverEdit";
 import type { CrashReport } from "./bindings/CrashReport";
@@ -37,6 +38,7 @@ export type {
   BrowseFilter,
   BrowseGroup,
   BrowseKind,
+  Colour,
   Combinator,
   CoverEdit,
   CrashReport,
@@ -176,6 +178,21 @@ export function loadSidebarSections(): Promise<string | null> {
 
 export function saveSidebarSections(sectionsJson: string): Promise<void> {
   return invoke<void>("save_sidebar_sections", { sectionsJson });
+}
+
+/**
+ * Whether the background takes its colours from the playing cover.
+ *
+ * A bool rather than the opaque strings above, because Rust reads this one:
+ * it is on the export allowlist, so the backend has to know what it means.
+ * Unset reads as on - the design draws the blobs.
+ */
+export function loadDynamicBackground(): Promise<boolean> {
+  return invoke<boolean>("load_dynamic_background");
+}
+
+export function saveDynamicBackground(enabled: boolean): Promise<void> {
+  return invoke<void>("save_dynamic_background", { enabled });
 }
 
 /** Writes an export to `path`, resolving to how many tracks it holds. */

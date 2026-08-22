@@ -578,6 +578,19 @@ pub enum PlaybackStatus {
     Paused,
 }
 
+/// One colour extracted from a cover, sRGB, 0-255 per channel.
+///
+/// Three channels rather than a CSS string: the frontend composes these into
+/// `rgb()` itself, and a string would put a rendering decision in Rust and
+/// make the value untestable as a colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Colour {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
 /// Everything the UI needs to render the transport, emitted on
 /// `player://state` whenever any of it changes.
 ///
@@ -592,6 +605,17 @@ pub enum PlaybackStatus {
 pub struct PlayerSnapshot {
     pub status: PlaybackStatus,
     pub track: Option<Track>,
+    /// The playing cover's three dominant colours, for the background that
+    /// follows the music.
+    ///
+    /// Carried on the snapshot rather than on its own event: the frontend
+    /// already learns what is playing here, and the colours are a property of
+    /// that rather than news of their own. `None` for silence, for a track
+    /// with no artwork, and for a cover stored before the palette column
+    /// existed and not seen since - all three mean the same thing downstream,
+    /// which is the default scheme with no blobs. Always three entries when
+    /// present; see [`crate::palette`].
+    pub palette: Option<Vec<Colour>>,
     #[ts(type = "number | null")]
     pub queue_index: Option<u32>,
     pub queue_len: u32,

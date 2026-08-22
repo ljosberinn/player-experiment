@@ -49,12 +49,14 @@ const HOVER_ALLOWED = [
 /**
  * Selectors that may move.
  *
- * One entry, and it should stay that way. The playing indicator's motion *is*
+ * Two entries, and it should stay that way. The playing indicator's motion *is*
  * the state rather than decoration on a state change, which is the line phase
- * 13 drew; see PLAN.md phase 16. The reduced-motion fallback below is not
- * optional for anything on this list.
+ * 13 drew; see PLAN.md phase 16. The background that follows the music (phase
+ * 39) is the second: its turn is the feature, not a flourish on a state change,
+ * and it carries no information a static version would lose. The reduced-motion
+ * fallback below is not optional for anything on this list.
  */
-const ANIMATION_ALLOWED = [".row-status.playing .wave"];
+const ANIMATION_ALLOWED = [".row-status.playing .wave", ".dynamic-bg"];
 
 /**
  * `oklch(L C H)` to linear sRGB, then to WCAG relative luminance.
@@ -144,12 +146,48 @@ describe("the stylesheet", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("stops the one animation it allows under reduced motion", () => {
+  it("stops every animation it allows under reduced motion", () => {
     // An exception that ignores the OS setting is not an exception, it is the
     // rule phase 13 removed coming back through a side door.
     const reduced = css.slice(css.indexOf("prefers-reduced-motion"));
 
     expect(reduced).toMatch(/\.row-status\.playing\s+\.wave\s*\{[^}]*animation:\s*none/);
+    // The background stops turning *and* stops washing between albums: a
+    // 1.6s crossfade is motion too.
+    expect(reduced).toMatch(/\.dynamic-bg\s*\{[^}]*animation:\s*none/);
+    expect(reduced).toMatch(/\.dynamic-bg\s*\{[^}]*transition:\s*none/);
+  });
+
+  it("registers the blob colours so they can be transitioned", () => {
+    // A custom property is an uninterpolatable token string unless it is
+    // registered with a syntax. Without these three `@property` blocks the
+    // transition above parses, applies and does nothing, and the wash between
+    // albums silently becomes a cut - which is the kind of failure nobody
+    // notices for a year.
+    for (const name of ["--blob-1", "--blob-2", "--blob-3"]) {
+      // `endsWith` rather than equality: `rules()` sweeps up whatever
+      // precedes the brace, comments included, into the selector.
+      const declared = all.find((rule) => rule.selector.endsWith(`@property ${name}`));
+      const block = declared?.body ?? "";
+
+      expect(block, `${name} is not registered`).toMatch(/syntax:\s*"<color>"/);
+      // Inherited, because the gradients that read them are on a pseudo-element
+      // of the div React writes them to.
+      expect(block).toMatch(/inherits:\s*true/);
+    }
+  });
+
+  it("sizes every radial gradient a way the syntax allows", () => {
+    // `radial-gradient(circle 34% ...)` is invalid: a circle's radius may be a
+    // length, never a percentage. The engine drops the whole `background`
+    // declaration, so the blob layer renders and paints nothing - and it is
+    // silent, because a stylesheet has no way to complain. `ellipse 34% 34%`
+    // is the same shape on a square element and is legal.
+    const offenders = [...css.matchAll(/radial-gradient\(\s*circle\s+[\d.]+%/g)].map(
+      (match) => match[0],
+    );
+
+    expect(offenders).toEqual([]);
   });
 
   it("keeps the row markers visible on the selected row", () => {
@@ -229,6 +267,13 @@ describe("the stylesheet", () => {
     const declared = new Set(
       [...tokenBlock.matchAll(/(--[\w-]+):/g)].map(([, name]) => name as string),
     );
+    // The blob colours are the one exception, and a deliberate one: they hold
+    // whatever the playing cover turned out to be, so their value comes from
+    // React and their *declaration* is the `@property` block that makes them
+    // interpolable. Registered is declared.
+    for (const [, name] of css.matchAll(/@property\s+(--[\w-]+)/g)) {
+      declared.add(name as string);
+    }
     const used = new Set([...css.matchAll(/var\((--[\w-]+)/g)].map(([, name]) => name as string));
 
     // Guards the guard: a regex that matched nothing would compare empty sets.

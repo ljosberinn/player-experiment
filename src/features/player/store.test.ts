@@ -61,6 +61,7 @@ function snapshot(overrides: Partial<PlayerSnapshot> = {}): PlayerSnapshot {
   return {
     status: "playing",
     track: track(1),
+    palette: null,
     queueIndex: 0,
     queueLen: 3,
     positionMs: 0,
@@ -99,6 +100,7 @@ beforeEach(() => {
   usePlayerStore.setState({
     status: "stopped",
     track: null,
+    palette: null,
     positionMs: 0,
     durationMs: 0,
     volume: 0.8,
@@ -323,6 +325,25 @@ describe("mute and repeat", () => {
     expect(state.repeatOne).toBe(true);
     // Muted is not a volume of zero: the rail still shows what comes back.
     expect(state.volume).toBe(0.4);
+  });
+
+  it("carries the playing cover's palette, from the snapshot and from an event", async () => {
+    const palette = [
+      { r: 64, g: 64, b: 64 },
+      { r: 112, g: 96, b: 96 },
+      { r: 224, g: 224, b: 224 },
+    ];
+    vi.mocked(playerSnapshot).mockResolvedValue(snapshot({ palette }));
+
+    const handlers = captureListeners();
+    await usePlayerStore.getState().connect();
+
+    expect(usePlayerStore.getState().palette).toEqual(palette);
+
+    // And it clears again on the next track, rather than the last album's
+    // colours outliving it.
+    handlers.state?.(snapshot({ palette: null }));
+    expect(usePlayerStore.getState().palette).toBeNull();
   });
 
   it("reports a failing toggle instead of swallowing it", async () => {

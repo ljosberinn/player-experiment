@@ -24,6 +24,11 @@ pub const SIDEBAR: &str = "sidebar.sections";
 /// Unix seconds of the most recent crash the user has dismissed. Deliberately
 /// not exportable: it describes this machine's history, not the library.
 pub const CRASH_SEEN: &str = "crash.seen";
+/// Whether the background takes its colours from the playing cover.
+///
+/// On unless it has been turned off - the design draws the blobs, so their
+/// absence is the departure that has to be stored rather than their presence.
+pub const DYNAMIC_BACKGROUND: &str = "appearance.dynamicBackground";
 /// Set once the built-in smart playlists have been created. A flag rather than
 /// a check for the playlists themselves, so deleting Most Played deletes it
 /// instead of asking for it back on the next launch.
@@ -37,7 +42,7 @@ pub const PLAYLISTS_SEEDED: &str = "playlists.seeded";
 /// list a new credential key on a denylist leaks it; forgetting to list a new
 /// preference here merely omits it from an export, which nobody loses sleep
 /// over. Every future secret is excluded by default rather than by memory.
-const EXPORTABLE: &[&str] = &[VOLUME, MUTED, WINDOW_GEOMETRY, ZOOM];
+const EXPORTABLE: &[&str] = &[VOLUME, MUTED, WINDOW_GEOMETRY, ZOOM, DYNAMIC_BACKGROUND];
 
 pub fn is_exportable(key: &str) -> bool {
     EXPORTABLE.contains(&key)
@@ -94,6 +99,15 @@ pub fn volume(conn: &Connection) -> AppResult<f32> {
 /// be wrong.
 pub fn muted(conn: &Connection) -> AppResult<bool> {
     Ok(get(conn, MUTED)?.as_deref() == Some("true"))
+}
+
+/// Whether the cover-coloured background is on.
+///
+/// Unset means on, which is the design's default, and so does anything other
+/// than the explicit "false" this writes: a corrupt setting should leave the
+/// app looking the way it is drawn rather than quietly plainer.
+pub fn dynamic_background(conn: &Connection) -> AppResult<bool> {
+    Ok(get(conn, DYNAMIC_BACKGROUND)?.as_deref() != Some("false"))
 }
 
 #[cfg(test)]
@@ -181,6 +195,25 @@ mod tests {
         // folding its sidebar or resizing its columns.
         assert!(!is_exportable(SIDEBAR));
         assert!(!is_exportable(COLUMNS));
+        // Taste rather than geometry, and so on the other side of that line -
+        // it travels with the library the way the volume and the zoom do.
+        assert!(is_exportable(DYNAMIC_BACKGROUND));
+    }
+
+    #[test]
+    fn the_dynamic_background_is_on_until_it_is_turned_off() {
+        let (_dir, conn) = conn();
+        assert!(dynamic_background(&conn).unwrap());
+
+        set(&conn, DYNAMIC_BACKGROUND, "false").unwrap();
+        assert!(!dynamic_background(&conn).unwrap());
+
+        set(&conn, DYNAMIC_BACKGROUND, "true").unwrap();
+        assert!(dynamic_background(&conn).unwrap());
+
+        // And a value neither of those, which must not turn the design off.
+        set(&conn, DYNAMIC_BACKGROUND, "maybe").unwrap();
+        assert!(dynamic_background(&conn).unwrap());
     }
 
     #[test]

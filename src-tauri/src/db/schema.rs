@@ -195,4 +195,25 @@ INSERT INTO tag_values (field, value, uses)
     WHERE year IS NOT NULL AND trim(CAST(year AS TEXT)) <> ''
     GROUP BY CAST(year AS TEXT);
 "#,
+    // 6 - the colours a cover is made of
+    //
+    // For the background that follows the music: three dominant colours per
+    // cover, extracted once when the bytes are stored and read back with the
+    // player snapshot. See `crate::palette` for how they are found and
+    // `db::covers` for when.
+    //
+    // JSON rather than three integer columns, or nine. The value is opaque to
+    // SQL - nothing filters, sorts or aggregates on a colour - and one text
+    // column is one thing to migrate if the palette ever grows a fourth entry.
+    //
+    // No backfill, unlike migration 5. The rename in phase 32 orphaned every
+    // existing data directory, so in practice every install starts with an
+    // empty `covers`; a database carried over from before simply has null
+    // palettes, and each cover gets one the next time a scan or a tag write
+    // sees it. Decoding every cover in a large library inside a migration -
+    // which runs in one transaction, before the window is shown - is the wrong
+    // trade for artwork the user may never play.
+    r#"
+ALTER TABLE covers ADD COLUMN palette TEXT;
+"#,
 ];
