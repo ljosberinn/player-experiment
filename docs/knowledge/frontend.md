@@ -75,3 +75,13 @@ absences are what nobody notices coming back — hence the guards in
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.
+- **The row menu's keyboard route synthesizes a `contextmenu` event** rather
+  than opening the menu directly, because `ContextMenu.Trigger` derives the
+  position from that event and the row's own handler decides which rows the
+  menu acts on. Both would otherwise be duplicated, and the duplicate is what
+  drifts.
+- **Alt+Arrow nudges a selection within a playlist.** Bare arrows are seek and
+  volume, and `shortcutFor` drops any key pressed with a modifier — so an Alt
+  chord cannot collide with them by construction. A scattered selection is
+  refused rather than collapsed into a block the way a drop would: a drop shows
+  where it is going first, a nudge does not, and a reorder has no undo.

@@ -15,6 +15,11 @@ import { capture } from "../screenshot";
  * browser on the runner, which is a side effect a test suite has no business
  * having - the same line `menus.test.ts` draws around Help.
  *
+ * Phase 43 added the keyboard route here too, for the same reason the pointer
+ * one is here: the shortcut hands the trigger a *synthesized* `contextmenu`,
+ * and whether Base UI opens on one of those is a question only a real webview
+ * answers.
+ *
  * Runs after `library.test.ts`, which is what puts songs in the shared
  * library: an empty table has no row to right-click.
  */
@@ -111,6 +116,20 @@ describe("the row menu", () => {
     expect(await itemsOf("Open Artist on…")).toEqual(["Last.fm", "Discogs"]);
 
     await capture("row-menu-open-artist-on");
+  });
+
+  it("opens on Shift+F10, with no pointer involved at all", async () => {
+    // The one part of the keyboard route jsdom cannot vouch for. The shortcut
+    // synthesizes the `contextmenu` event `ContextMenu.Trigger` owns, and
+    // whether a synthesized one actually opens the menu is a question about
+    // Base UI in real WebView2 - `SongTable.test.tsx` proves the shortcut
+    // fires, not that the menu hears it.
+    await browser.$("tr.song-row").click();
+    await browser.keys(["Shift", "F10"]);
+
+    await browser
+      .$("//*[@role='menu'][@aria-label='Song actions']")
+      .waitForExist({ timeout: 10_000, timeoutMsg: "Shift+F10 never opened the row menu" });
   });
 
   it("offers the album lookup only where the row has one", async () => {

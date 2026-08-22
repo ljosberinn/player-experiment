@@ -595,4 +595,105 @@ describe("SongTable", () => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
   });
+
+  describe("the keyboard routes", () => {
+    /** Renders a loaded table with `ids` selected and `anchorIndex` set. */
+    async function withSelection(
+      ids: number[],
+      props: Partial<Parameters<typeof SongTable>[0]> = {},
+    ) {
+      render(<SongTable columns={columns} {...props} />);
+      await useLibraryStore.getState().refresh();
+      await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+      useLibraryStore.setState({
+        selection: { ids: new Set(ids), anchorIndex: ids[0] ?? null },
+      });
+    }
+
+    it("opens the row menu on the selection without a pointer", async () => {
+      await withSelection([1]);
+
+      // The Menu key, from wherever focus happens to be - Ctrl+A and a click
+      // in the sidebar both leave it off the table.
+      fireEvent.keyDown(window, { key: "ContextMenu" });
+
+      expect(await screen.findByRole("menu", { name: "Song actions" })).toBeInTheDocument();
+    });
+
+    it("opens it on Shift+F10 too, for keyboards with no Menu key", async () => {
+      await withSelection([1]);
+
+      fireEvent.keyDown(window, { key: "F10", shiftKey: true });
+
+      expect(await screen.findByRole("menu", { name: "Song actions" })).toBeInTheDocument();
+    });
+
+    it("acts on the whole selection, not just the row it opened on", async () => {
+      await withSelection([1, 2, 3]);
+
+      fireEvent.keyDown(window, { key: "ContextMenu" });
+
+      expect(await screen.findByRole("menuitem", { name: /Edit 3 Songs/ })).toBeInTheDocument();
+    });
+
+    it("has no menu to open with nothing selected", async () => {
+      await withSelection([]);
+
+      fireEvent.keyDown(window, { key: "ContextMenu" });
+
+      await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    });
+
+    it("nudges the selection up and down inside a playlist", async () => {
+      const onReorder = vi.fn();
+      await withSelection([1], { onReorder });
+
+      fireEvent.keyDown(window, { key: "ArrowUp", altKey: true });
+      expect(onReorder).toHaveBeenLastCalledWith([1], 0);
+
+      // Not 2: the index is read against the list including the moved row, so
+      // `last + 1` is where it already is.
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+      expect(onReorder).toHaveBeenLastCalledWith([1], 3);
+    });
+
+    it("moves a contiguous block as one", async () => {
+      const onReorder = vi.fn();
+      await withSelection([2, 3], { onReorder });
+
+      fireEvent.keyDown(window, { key: "ArrowUp", altKey: true });
+
+      expect(onReorder).toHaveBeenLastCalledWith([2, 3], 1);
+    });
+
+    it("refuses to nudge a scattered selection", async () => {
+      const onReorder = vi.fn();
+      await withSelection([1, 3], { onReorder });
+
+      // The backend would gather them into one block, which a drag shows you
+      // beforehand and a nudge does not.
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+
+      expect(onReorder).not.toHaveBeenCalled();
+    });
+
+    it("does not nudge in a view with no order of its own", async () => {
+      const onReorder = vi.fn();
+      // No `onReorder`, the same condition a drop already checks.
+      await withSelection([1]);
+
+      fireEvent.keyDown(window, { key: "ArrowDown", altKey: true });
+
+      expect(onReorder).not.toHaveBeenCalled();
+    });
+
+    it("leaves a bare arrow alone, because that is the player's volume", async () => {
+      const onReorder = vi.fn();
+      await withSelection([1], { onReorder });
+
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+
+      expect(onReorder).not.toHaveBeenCalled();
+    });
+  });
 });
