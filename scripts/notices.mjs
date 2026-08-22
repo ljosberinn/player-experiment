@@ -9,10 +9,11 @@
  * the source of the MPL-covered files. A released installer that carries none
  * of this is out of compliance no matter how permissive the licences are.
  *
- * Run with `npm run notices`. CI re-runs it and fails if the result differs,
- * the same drift check the generated ts-rs bindings get - a notices file is
- * only useful if it describes the current dependency set rather than the one
- * from whenever somebody last remembered.
+ * The output is **not** committed. It runs from `beforeBuildCommand`, so every
+ * bundle generates it from the graph that bundle is shipping - which is the
+ * thing a notices file has to describe. Committing it meant describing the
+ * graph as of whenever somebody last remembered, backed by a drift check that
+ * every dependency update was then guaranteed to fail.
  *
  * # What is included, and why it over-includes
  *
@@ -32,12 +33,15 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const OUTPUT = join(root, "THIRD-PARTY-NOTICES.md");
+
+/** What the answer is derived from, and so what makes an existing one stale. */
+const LOCKFILES = [join(root, "package-lock.json"), join(root, "src-tauri", "Cargo.lock")];
 
 /** Licence files ship under many names; these are the ones actually seen. */
 const LICENSE_FILE = /^(LICENSE|LICENCE|COPYING|NOTICE)([-.].*)?$/i;
@@ -76,11 +80,10 @@ function licenseTexts(directory) {
   const found = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (entry.isFile() && LICENSE_FILE.test(entry.name)) {
-      // Normalised to LF. `.gitattributes` commits this repo's files as LF, so
-      // a licence text that happens to ship with CRLF would be written one way,
-      // committed another, and regenerate differently on the next run - which
-      // would fail the CI drift check on a clean checkout with nothing actually
-      // stale. Also strips a UTF-8 BOM, for the same reason.
+      // Normalised to LF, and a UTF-8 BOM stripped, so that the same
+      // dependency set renders the same file on every platform: a licence text
+      // that happens to ship with CRLF is the one thing here that varies by
+      // where it was checked out.
       const text = readFileSync(join(directory, entry.name), "utf8")
         .replace(/^﻿/, "")
         .replaceAll("\r\n", "\n")
@@ -263,6 +266,28 @@ function render(packages) {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+/**
+ * Whether an existing file already answers for the current lockfiles.
+ *
+ * This runs from `beforeBuildCommand`, so it is in front of every `tauri dev`
+ * as well as every bundle, and reading three hundred crate manifests on each
+ * one is a wait for an answer that has not changed. Both lockfiles are checked
+ * because a dependency of either ecosystem moves it. `--force` skips the
+ * question, which is what CI and a release want.
+ */
+function alreadyCurrent() {
+  if (process.argv.includes("--force") || !existsSync(OUTPUT)) {
+    return false;
+  }
+  const generated = statSync(OUTPUT).mtimeMs;
+  return LOCKFILES.every((lock) => !existsSync(lock) || statSync(lock).mtimeMs <= generated);
+}
+
+if (alreadyCurrent()) {
+  console.log("THIRD-PARTY-NOTICES.md is newer than both lockfiles; nothing to do.");
+  process.exit(0);
+}
+
 const crates = cargoPackages();
 const npm = npmPackages();
 
@@ -288,18 +313,5 @@ for (const [ecosystem, found] of [
 }
 
 const packages = [...crates, ...npm];
-const rendered = render(packages);
-
-if (process.argv.includes("--check")) {
-  const current = existsSync(OUTPUT) ? readFileSync(OUTPUT, "utf8") : "";
-  if (current !== rendered) {
-    console.error(
-      "THIRD-PARTY-NOTICES.md is out of date - run 'npm run notices' and commit the result.",
-    );
-    process.exit(1);
-  }
-  console.log(`THIRD-PARTY-NOTICES.md is current (${packages.length} packages).`);
-} else {
-  writeFileSync(OUTPUT, rendered);
-  console.log(`Wrote THIRD-PARTY-NOTICES.md for ${packages.length} packages.`);
-}
+writeFileSync(OUTPUT, render(packages));
+console.log(`Wrote THIRD-PARTY-NOTICES.md for ${packages.length} packages.`);
