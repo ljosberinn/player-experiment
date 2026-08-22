@@ -193,8 +193,8 @@ the Rust crates, from crates.io at the exact version given.
 | [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.38.1 | MIT | [106](#licence-text-106) |
 | [litemap](https://github.com/unicode-org/icu4x) | 0.8.2 | Unicode-3.0 | [92](#licence-text-92) |
 | [lock_api](https://github.com/Amanieu/parking_lot) | 0.4.14 | MIT OR Apache-2.0 | [8](#licence-text-8), [107](#licence-text-107) |
-| [lofty](https://github.com/Serial-ATA/lofty-rs) | 0.24.0 | MIT OR Apache-2.0 | — |
-| [lofty_attr](https://github.com/Serial-ATA/lofty-rs) | 0.12.0 | MIT OR Apache-2.0 | — |
+| [lofty](https://github.com/Serial-ATA/lofty-rs) | 0.25.1 | MIT OR Apache-2.0 | — |
+| [lofty_attr](https://github.com/Serial-ATA/lofty-rs) | 0.13.0 | MIT OR Apache-2.0 | — |
 | [log](https://github.com/rust-lang/log) | 0.4.33 | MIT OR Apache-2.0 | [8](#licence-text-8), [15](#licence-text-15) |
 | [markup5ever](https://github.com/servo/html5ever) | 0.38.0 | MIT OR Apache-2.0 | [8](#licence-text-8), [81](#licence-text-81) |
 | [memchr](https://github.com/BurntSushi/memchr) | 2.8.3 | Unlicense OR MIT | [4](#licence-text-4), [5](#licence-text-5) |
