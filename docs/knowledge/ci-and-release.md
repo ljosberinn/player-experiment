@@ -17,8 +17,9 @@ are required before merge:
 Caching is `Swatinem/rust-cache` plus the setup-node npm cache; a concurrency
 group cancels superseded runs.
 
-**Build warnings fail CI.** `vite.config.ts` turns every rollup warning into a
-thrown error. Silencing a specific `warning.code` with a comment is allowed —
+**Build warnings fail CI.** `vite.config.ts` turns every bundler warning into a
+thrown error — rolldown's since vite 8, rollup's before it; the `onwarn` hook is
+the same either way. Silencing a specific `warning.code` with a comment is allowed —
 there is one accepted exception, scoped to cycles entirely inside
 `node_modules` — loosening it back to the default handler is not.
 

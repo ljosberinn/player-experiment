@@ -7,7 +7,7 @@
 | [issues/done/](issues/done/) | Closed work, one file per phase — what shipped and the decisions that still bind the code. |
 | [plans/](plans/) | Drafts for work too large to state as an issue. |
 
-Phases are numbered 1–42 and the numbers are permanent: pull requests, commit
+Phases are numbered 1–46 and the numbers are permanent: pull requests, commit
 messages and code comments refer to them. New work continues the sequence.
 
 `done/` records merged and cut phases alike — a phase that was cut carries the
