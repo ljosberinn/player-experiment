@@ -78,11 +78,15 @@ describe("PlaylistSidebar", () => {
     expect(screen.getByRole("button", { name: "Focus" })).toHaveTextContent("9");
   });
 
-  it("says how to start one when there are none", async () => {
+  it("says nothing at all when there are none", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([]);
     render(<PlaylistSidebar />);
 
-    expect(await screen.findByText(/Drag songs here/)).toBeInTheDocument();
+    // The section keeps its heading and its +; the instruction under it is
+    // what went, so an empty Playlists section renders no list and no prose.
+    expect(await screen.findByRole("button", { name: "New playlist" })).toBeInTheDocument();
+    expect(screen.queryByText(/Drag songs here/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Playlists" })).not.toBeInTheDocument();
   });
 
   it("switches the view to the playlist that was clicked", async () => {

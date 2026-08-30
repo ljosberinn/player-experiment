@@ -144,13 +144,13 @@ export function TagEditor({
             </p>
           ) : null}
 
-          <p className="modal-summary">
-            {saving
-              ? `Writing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
-              : tracks.length === 1
-                ? "Blank a field to clear it."
+          {saving || tracks.length > 1 ? (
+            <p className="modal-summary">
+              {saving
+                ? `Writing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
                 : "Only the fields you change are written; the rest are left as they are."}
-          </p>
+            </p>
+          ) : null}
 
           <div className="modal-actions">
             <Dialog.Close render={<button type="button" disabled={saving} />}>Cancel</Dialog.Close>

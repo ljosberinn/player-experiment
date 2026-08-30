@@ -54,8 +54,14 @@ export function groupId(group: BrowseGroup): string {
   return `${group.key ?? ""}${UNIT_SEPARATOR}${group.secondary ?? ""}`;
 }
 
-/** "12 songs", and the year when there is one. */
+/**
+ * "12 songs", and the year when there is one.
+ *
+ * Zero is not one: `parse_year` used to accept any four-digit run, so a `0000`
+ * date tag is stored as a real year, and rows scanned before it was fixed keep
+ * theirs until somebody rescans.
+ */
 export function groupMeta(group: BrowseGroup): string {
   const songs = `${group.trackCount} ${group.trackCount === 1 ? "song" : "songs"}`;
-  return group.year === null ? songs : `${group.year} · ${songs}`;
+  return group.year === null || group.year === 0 ? songs : `${group.year} · ${songs}`;
 }

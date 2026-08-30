@@ -70,4 +70,10 @@ describe("browse labels", () => {
   it("shows the year when the group has one", () => {
     expect(groupMeta(group({ trackCount: 12, year: 2012 }))).toBe("2012 · 12 songs");
   });
+
+  it("treats a year of zero as no year", () => {
+    // Rows scanned before the parser rejected `0000` keep their zero until
+    // somebody rescans, so the guard here is the half that shows up today.
+    expect(groupMeta(group({ trackCount: 12, year: 0 }))).toBe("12 songs");
+  });
 });

@@ -12,6 +12,37 @@ export function formatDuration(ms: number): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const WEEK = 7 * DAY;
+const YEAR = 365 * DAY;
+
+/**
+ * A total play time in the largest unit that still reads as a quantity.
+ *
+ * Every rung holds until the next unit reaches two of itself, so the number
+ * never drops below 2.0 on a switch and a large library reports "3.4 weeks"
+ * rather than four digits of hours.
+ *
+ * No months: a month has no fixed length, so weeks step straight to years.
+ */
+function formatSpan(totalMs: number): string {
+  if (totalMs < HOUR) {
+    return `${Math.round(totalMs / MINUTE)} minutes`;
+  }
+  if (totalMs < 2 * DAY) {
+    return `${(totalMs / HOUR).toFixed(1)} hours`;
+  }
+  if (totalMs < 2 * WEEK) {
+    return `${(totalMs / DAY).toFixed(1)} days`;
+  }
+  if (totalMs < YEAR) {
+    return `${(totalMs / WEEK).toFixed(1)} weeks`;
+  }
+  return `${(totalMs / YEAR).toFixed(1)} years`;
+}
+
 /**
  * "237 songs, 19.2 hours, 2.27 GB" - the footer line from iTunes.
  *
@@ -25,11 +56,8 @@ export function formatLibrarySummary(count: number, totalMs: number, bytes?: num
   }
 
   const songs = `${count.toLocaleString()} ${count === 1 ? "song" : "songs"}`;
-  const hours = totalMs / 3_600_000;
-  const duration =
-    hours >= 1 ? `${hours.toFixed(1)} hours` : `${Math.round(totalMs / 60_000)} minutes`;
 
-  const parts = [songs, duration];
+  const parts = [songs, formatSpan(totalMs)];
   // Zero is a real answer for duration - a library of empty files - but for
   // size it means the scanner has not recorded one, and "0 MB" beside 237
   // songs reads as a bug rather than as a fact.
