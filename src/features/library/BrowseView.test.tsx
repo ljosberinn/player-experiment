@@ -214,6 +214,22 @@ describe("BrowseView", () => {
     expect(rowsIn(container)).not.toHaveLength(0);
   });
 
+  it("measures the container that appears after the empty state", () => {
+    stubLayout(600, 800);
+    useLibraryStore.setState({ groups: [], groupsLoading: false });
+
+    const { container } = render(<BrowseView kind="albums" />);
+    expect(screen.getByText("No songs yet")).toBeInTheDocument();
+
+    act(() => {
+      useLibraryStore.setState({ groups: groups(8) });
+    });
+
+    // 800px fits four tiles, so eight albums are two rows. Eight rows would
+    // mean the grid never measured the container it only just grew.
+    expect(rowsIn(container)).toHaveLength(2);
+  });
+
   it("stripes the artist and genre lists by data index", () => {
     useLibraryStore.setState({ groups: groups(5) });
 

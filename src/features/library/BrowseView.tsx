@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { type BrowseGroup, type BrowseKind, coverUrl } from "../../ipc";
 import { formatDuration } from "../../lib/format";
 import { groupId, groupMeta, groupSubtitle, groupTitle } from "./browse";
@@ -37,8 +37,12 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   // the first measurement and the grid never reflowed with the window.
   const [width, setWidth] = useState(0);
 
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
+  // Attached through a ref callback rather than a mount effect: until the first
+  // groups arrive the view renders the empty state, so the scroll container is
+  // not in the DOM on mount and an effect keyed to mount would measure nothing
+  // and never run again.
+  const attachScroll = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
     if (element === null) {
       return;
     }
@@ -47,7 +51,10 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
     setWidth(element.clientWidth);
     const observer = new ResizeObserver(() => setWidth(element.clientWidth));
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      scrollRef.current = null;
+    };
   }, []);
 
   // One column for the lists; for the grid, however many tiles fit. Falls back
@@ -92,7 +99,7 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   }
 
   return (
-    <div className="song-body browse-body" ref={scrollRef} data-testid="browse-scroll">
+    <div className="song-body browse-body" ref={attachScroll} data-testid="browse-scroll">
       {/* A labelled section rather than role="list": the virtualizer needs a
           row wrapper between the container and each item, which breaks the
           list/listitem relationship a screen reader relies on, and claiming it
