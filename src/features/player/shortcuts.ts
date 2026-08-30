@@ -61,3 +61,19 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   }
   return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
+
+/**
+ * Whether the element under the keypress handles `shortcut` itself.
+ *
+ * A slider thumb focuses a visually hidden `<input type="range">`, so the
+ * scrubber and the volume rail read as text fields to `isTypingTarget`. They
+ * do own the arrows - they move on them, and a bare arrow reaching the player
+ * as well would drag the rail and seek at once - but Space does nothing to a
+ * slider, and play/pause has to keep working after a drag leaves one focused.
+ */
+export function targetOwns(target: EventTarget | null, shortcut: PlayerShortcut): boolean {
+  if (target instanceof HTMLInputElement && target.type === "range") {
+    return shortcut !== "toggle";
+  }
+  return isTypingTarget(target);
+}
