@@ -1,4 +1,5 @@
 import type { ViewTab } from "../../features/library/store";
+import { Icon } from "../icons/Icon";
 
 /**
  * The LIBRARY section of the source list: Songs, Albums, Artists, Genres.
@@ -13,6 +14,9 @@ import type { ViewTab } from "../../features/library/store";
  * movement between its tabs, which would have been wrong the moment these sat in
  * a list next to the playlists - the arrows have to walk the whole sidebar.
  */
+/** The sidebar's icon box, which `.sidebar-icon` sizes to match. */
+const ICON_SIZE = 15;
+
 const VIEWS: { id: ViewTab; label: string }[] = [
   { id: "songs", label: "Songs" },
   { id: "albums", label: "Albums" },
@@ -40,10 +44,7 @@ export function LibraryNav({
               aria-current={view.id === active ? "page" : undefined}
               onClick={() => onSelect(view.id)}
             >
-              {/* Drawn in CSS from the class alone: three rules for Songs, a
-                  2x2 grid for Albums, a disc for Artists, a diamond for Genres,
-                  as the design has them. */}
-              <span className={`sidebar-icon icon-${view.id}`} aria-hidden="true" />
+              <Icon name={view.id} size={ICON_SIZE} className="sidebar-icon" />
               <span className="sidebar-label">{view.label}</span>
             </button>
           </li>
@@ -55,7 +56,7 @@ export function LibraryNav({
             design asks for. */}
         <li>
           <button type="button" className="sidebar-item" disabled title="Not available yet">
-            <span className="sidebar-icon icon-statistics" aria-hidden="true" />
+            <Icon name="statistics" size={ICON_SIZE} className="sidebar-icon" />
             <span className="sidebar-label">Statistics</span>
           </button>
         </li>

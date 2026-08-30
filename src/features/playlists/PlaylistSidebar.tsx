@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "../../components/icons/Icon";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { ContextMenu } from "../../components/ui/ContextMenu";
 import { SidebarSection } from "../../components/ui/SidebarSection";
@@ -188,9 +189,11 @@ export function PlaylistSidebar({
           onClick={() => void showPlaylist(playlist.id)}
           onDoubleClick={() => startRename(playlist.id)}
         >
-          <span className="sidebar-icon" aria-hidden="true">
-            {playlist.kind === "smart" ? "⚙" : "≡"}
-          </span>
+          <Icon
+            name={playlist.kind === "smart" ? "smart-playlist" : "playlist"}
+            size={15}
+            className="sidebar-icon"
+          />
           <span className="sidebar-label">{playlist.name}</span>
           <span className="sidebar-count">{playlist.trackCount}</span>
         </button>

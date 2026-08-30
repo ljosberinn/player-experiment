@@ -1,3 +1,5 @@
+import { Icon } from "../icons/Icon";
+
 /**
  * The prev / play / next pill.
  *
@@ -5,10 +7,10 @@
  * accent and larger than its neighbours - the design's most prominent control,
  * and since phase 35 the leftmost thing on the transport strip.
  *
- * The glyphs are drawn in CSS rather than set as text. The previous version used
- * the geometric-shapes block (&#9664;&#9654;) and inherited whichever font on the
- * machine happened to carry them, at whatever size and baseline that font chose.
- * Three rectangles and three triangles are cheaper to get exactly right.
+ * The glyphs come from the icon set, filled. They were drawn in CSS - three
+ * rectangles and three triangles - which was right against the alternative at
+ * the time, text in whichever font on the machine carried the geometric-shapes
+ * block. It is not right against a library the rest of the chrome now uses.
  *
  * Handlers are optional and a button without one disables itself, so the chrome
  * can never show a control that silently does nothing.
@@ -33,7 +35,7 @@ export function Transport({
         disabled={!onPrevious}
         onClick={onPrevious}
       >
-        <span className="icon-prev" aria-hidden="true" />
+        <Icon name="previous" size={18} />
       </button>
 
       <button
@@ -43,7 +45,7 @@ export function Transport({
         disabled={!onPlayPause}
         onClick={onPlayPause}
       >
-        <span className={playing ? "icon-pause" : "icon-play"} aria-hidden="true" />
+        <Icon name={playing ? "pause" : "play"} size={22} />
       </button>
 
       <button
@@ -53,7 +55,7 @@ export function Transport({
         disabled={!onNext}
         onClick={onNext}
       >
-        <span className="icon-next" aria-hidden="true" />
+        <Icon name="next" size={18} />
       </button>
     </div>
   );

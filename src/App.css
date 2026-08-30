@@ -635,63 +635,6 @@ input[type="radio"] {
   cursor: default;
 }
 
-/* The glyphs, drawn rather than set. Three rectangles and three triangles: a
-   border trick makes each triangle, which is cheaper to get exactly right than
-   whichever font on the machine happens to carry the geometric-shapes block. */
-.icon-prev,
-.icon-next,
-.icon-pause {
-  display: flex;
-  align-items: center;
-  gap: 2.5px;
-}
-
-.icon-prev::before,
-.icon-next::after {
-  content: "";
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-}
-
-.icon-prev::before {
-  border-right: 9px solid currentcolor;
-}
-
-.icon-next::after {
-  border-left: 9px solid currentcolor;
-}
-
-.icon-prev::after,
-.icon-next::before {
-  content: "";
-  width: 2.5px;
-  height: 13px;
-  border-radius: 1px;
-  background: currentcolor;
-}
-
-.icon-play {
-  /* Optically centred: a triangle's visual centre is left of its bounding
-     box, so a circle-centred one reads as sitting too far back. */
-  margin-left: 2px;
-  border-top: 7.5px solid transparent;
-  border-bottom: 7.5px solid transparent;
-  border-left: 11px solid currentcolor;
-}
-
-.icon-pause {
-  gap: 4px;
-}
-
-.icon-pause::before,
-.icon-pause::after {
-  content: "";
-  width: 4px;
-  height: 15px;
-  border-radius: 1px;
-  background: currentcolor;
-}
-
 /* ---------- playhead and volume ---------- */
 
 .scrubber {
@@ -728,61 +671,26 @@ input[type="radio"] {
   gap: 8px;
 }
 
-/* Three ascending bars, the tallest half-lit. Not a level meter: it is the mute
-   button as of phase 38, which is why it is a `button` with a hit area rather
-   than the 12px of glyph the design draws. The bars stay exactly where they
-   were - the padding grows outward. */
+/* The speaker, and the mute button since phase 38 - which is why it is a
+   `button` with a hit area rather than the 12px of glyph the design draws. */
 .volume-mark {
-  position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 12px;
-  padding: 6px 5px;
+  align-items: center;
+  padding: 4px 5px;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--accent);
   cursor: default;
-  box-sizing: content-box;
 }
 
-.volume-mark i {
-  width: 2px;
-  background: currentcolor;
-}
-
-.volume-mark i:nth-child(1) {
-  height: 6px;
-}
-
-.volume-mark i:nth-child(2) {
-  height: 9px;
-}
-
-.volume-mark i:nth-child(3) {
-  height: 12px;
-  opacity: 0.5;
-}
-
-/* Muted: the bars go the colour of everything else that is switched off, and a
-   slash crosses them. Two signals rather than one, because "the amber bars are
-   grey now" is only readable against the memory of what they looked like a
-   moment ago - and is no signal at all to anyone who cannot tell the two
-   apart. The slash is the thing that says it on its own. */
+/* Muted: the icon goes the colour of everything else that is switched off, and
+   it carries a slash of its own. Two signals rather than one, because "the
+   amber speaker is grey now" is only readable against the memory of what it
+   looked like a moment ago - and is no signal at all to anyone who cannot tell
+   the two apart. The slash is the thing that says it on its own. */
 .volume-mark[aria-pressed="true"] {
   color: var(--dim);
-}
-
-.volume-mark[aria-pressed="true"]::after {
-  content: "";
-  position: absolute;
-  inset-inline: 2px;
-  top: 50%;
-  height: 1.5px;
-  border-radius: 1px;
-  background: currentcolor;
-  rotate: -30deg;
 }
 
 .volume-slider {
@@ -1137,70 +1045,11 @@ input[type="radio"] {
   cursor: default;
 }
 
-/* The four library icons, drawn from the class alone: three rules for Songs, a
-   2x2 grid for Albums, a disc for Artists, a diamond for Genres, ascending
-   bars for Statistics. `currentcolor` throughout, so each one dims with its
-   label when the row is not the open view. */
-/* A 13px box that centres whatever is in it. The playlist rows put a text
-   glyph here, and no glyph the sidebar uses is in the UI font, so Windows
-   substitutes one whose baseline is not the row's - centring the box ignores
-   the substitute's baseline rather than inheriting it. The drawn icons below
-   are empty elements and are unaffected. */
+/* The icon carries its own size; this only stops the row squeezing it. The
+   alignment fix that used to live here went with the text glyphs it existed
+   for - an svg has no baseline for a substituted font to get wrong. */
 .sidebar-icon {
   flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 13px;
-  height: 13px;
-  font-size: 13px;
-  line-height: 1;
-}
-
-/* Rectangles, so each is a stack of `linear-gradient` slabs rather than a
-   nest of pseudo-elements: a gradient layer can be placed and sized exactly,
-   and there can be as many as the shape needs instead of the two an element
-   gets. `currentcolor` is what makes them free. */
-
-/* Three rules, the last three-quarters wide - a list rather than a hamburger. */
-.icon-songs {
-  height: 11px;
-  background:
-    linear-gradient(currentcolor 0 0) 0 0 / 100% 2px no-repeat,
-    linear-gradient(currentcolor 0 0) 0 4.5px / 100% 2px no-repeat,
-    linear-gradient(currentcolor 0 0) 0 9px / 70% 2px no-repeat;
-}
-
-.icon-albums {
-  width: 12px;
-  height: 12px;
-  background:
-    linear-gradient(currentcolor 0 0) 0 0 / 5px 5px no-repeat,
-    linear-gradient(currentcolor 0 0) 7px 0 / 5px 5px no-repeat,
-    linear-gradient(currentcolor 0 0) 0 7px / 5px 5px no-repeat,
-    linear-gradient(currentcolor 0 0) 7px 7px / 5px 5px no-repeat;
-}
-
-.icon-artists {
-  border-radius: 50%;
-  background: currentcolor;
-  opacity: 0.85;
-}
-
-.icon-genres {
-  width: 11px;
-  height: 11px;
-  background: currentcolor;
-  opacity: 0.85;
-  transform: rotate(45deg);
-}
-
-.icon-statistics {
-  height: 11px;
-  background:
-    linear-gradient(currentcolor 0 0) 0 100% / 2.5px 5px no-repeat,
-    linear-gradient(currentcolor 0 0) 4px 100% / 2.5px 8px no-repeat,
-    linear-gradient(currentcolor 0 0) 8px 100% / 2.5px 11px no-repeat;
 }
 
 .sidebar-label {
