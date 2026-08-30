@@ -53,6 +53,9 @@ Each of these cost real time once. They are here so they cost it once.
   that measures its container throws on mount without it. A test that wants a
   resize stubs the size and fires the callback itself; pass an empty array, or
   `@tanstack/virtual-core`'s own observer reads `entries[0]` of `undefined`.
+- **No `Range.getBoundingClientRect`.** jsdom declares none at all, so it cannot
+  even be spied on. The setup file installs one returning zeros; a test with an
+  opinion about a measured width stubs it.
 - Base UI portals to `document.body` — query through `screen`, not the container.
 
 ## CSS

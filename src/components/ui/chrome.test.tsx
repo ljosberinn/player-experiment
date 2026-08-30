@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { VOLUME_STEP } from "../../features/player/shortcuts";
 import type { Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { LibraryNav } from "./LibraryNav";
@@ -200,6 +201,56 @@ describe("VolumeControl", () => {
 
     expect(screen.getByRole("button", { name: "Mute" })).toBeDisabled();
   });
+
+  it("moves the volume a step per wheel notch over the rail", () => {
+    const onVolumeChange = vi.fn();
+    const { container } = render(
+      <VolumeControl volume={0.5} onVolumeChange={onVolumeChange} onToggleMute={() => {}} />,
+    );
+    const rail = container.querySelector(".volume");
+    if (rail === null) {
+      throw new Error("no volume wrapper to scroll over");
+    }
+
+    fireEvent.wheel(rail, { deltaY: -100 });
+    expect(onVolumeChange).toHaveBeenLastCalledWith(0.5 + VOLUME_STEP);
+
+    fireEvent.wheel(rail, { deltaY: 100 });
+    expect(onVolumeChange).toHaveBeenLastCalledWith(0.5 - VOLUME_STEP);
+  });
+
+  it("keeps the wheel inside the rail's range", () => {
+    const onVolumeChange = vi.fn();
+    const { container, rerender } = render(
+      <VolumeControl volume={1} onVolumeChange={onVolumeChange} onToggleMute={() => {}} />,
+    );
+    const rail = container.querySelector(".volume");
+    if (rail === null) {
+      throw new Error("no volume wrapper to scroll over");
+    }
+
+    fireEvent.wheel(rail, { deltaY: -100 });
+    expect(onVolumeChange).toHaveBeenLastCalledWith(1);
+
+    rerender(<VolumeControl volume={0} onVolumeChange={onVolumeChange} onToggleMute={() => {}} />);
+    fireEvent.wheel(rail, { deltaY: 100 });
+    expect(onVolumeChange).toHaveBeenLastCalledWith(0);
+  });
+
+  it("ignores a horizontal wheel, which is not a volume gesture", () => {
+    const onVolumeChange = vi.fn();
+    const { container } = render(
+      <VolumeControl volume={0.5} onVolumeChange={onVolumeChange} onToggleMute={() => {}} />,
+    );
+    const rail = container.querySelector(".volume");
+    if (rail === null) {
+      throw new Error("no volume wrapper to scroll over");
+    }
+
+    fireEvent.wheel(rail, { deltaY: 0, deltaX: -100 });
+
+    expect(onVolumeChange).not.toHaveBeenCalled();
+  });
 });
 
 describe("RepeatButton", () => {
@@ -268,13 +319,28 @@ describe("Scrubber", () => {
 });
 
 describe("NowPlaying", () => {
-  it("says so when nothing is playing", () => {
-    // Rather than disappearing. It is the widest thing on the strip, and a box
-    // that arrived with the first song would shove the volume and the search
-    // field sideways at the moment of pressing play.
+  it("is hidden rather than absent when nothing is playing", () => {
+    // Hidden, not removed. It is the widest thing on the strip, and a box that
+    // arrived with the first song would shove the volume and the search field
+    // sideways at the moment of pressing play.
     render(<NowPlaying track={null} />);
 
-    expect(screen.getByText("Nothing playing")).toBeInTheDocument();
+    expect(screen.getByText("Nothing playing")).not.toBeVisible();
+    expect(screen.getByTestId("now-playing")).toBeInTheDocument();
+  });
+
+  it("reveals what is playing on a double-click, and only when there is one", async () => {
+    const onReveal = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(<NowPlaying track={null} onReveal={onReveal} />);
+
+    await user.dblClick(screen.getByTestId("now-playing"));
+    expect(onReveal).not.toHaveBeenCalled();
+
+    rerender(<NowPlaying track={track()} onReveal={onReveal} />);
+    await user.dblClick(screen.getByTestId("now-playing"));
+
+    expect(onReveal).toHaveBeenCalledOnce();
   });
 
   it("shows title, artist and album for the current track", () => {

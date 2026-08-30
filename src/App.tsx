@@ -42,6 +42,7 @@ import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
+import { useWindowTitle } from "./features/shell/useWindowTitle";
 import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
 import { viewSummary } from "./features/shell/viewSummary";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
@@ -191,6 +192,9 @@ export function App() {
   useNativeFeel();
   useUpdater();
   useWindowGeometry();
+  // Alt+Tab and the taskbar, which are the only places a decorationless
+  // window's title shows.
+  useWindowTitle();
 
   useEffect(() => {
     if (toolbarNotice === null) {
@@ -447,7 +451,7 @@ export function App() {
             </p>
           ) : total === 0 ? (
             <p className="empty-state">
-              No songs yet. Use <strong>Add Folder…</strong> to point Apex at your music.
+              No songs yet. Use <strong>Add Folders…</strong> to point Apex at your music.
             </p>
           ) : (
             <SongTable

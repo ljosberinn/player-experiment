@@ -90,12 +90,16 @@ vi.mock("./ipc", () => ({
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
 }));
+// Hoisted so a test can assert on it: the factory below builds a fresh window
+// object per call, and a `vi.fn()` created in there is unreachable from here.
+const { setTitle } = vi.hoisted(() => ({ setTitle: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     minimize: vi.fn(),
     toggleMaximize: vi.fn(),
     close: vi.fn(),
     startDragging: vi.fn(),
+    setTitle,
     isMaximized: vi.fn(async () => false),
     outerPosition: vi.fn(async () => ({ x: 0, y: 0 })),
     outerSize: vi.fn(async () => ({ width: 1200, height: 800 })),
@@ -198,7 +202,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText(/No songs yet/)).toBeInTheDocument();
-    // The empty state names File ▸ Add Folder…, so the menu has to carry it.
+    // The empty state names File ▸ Add Folders…, so the menu has to carry it.
     expect(
       within(screen.getByRole("menubar")).getByRole("menuitem", { name: "File" }),
     ).toBeInTheDocument();
@@ -246,7 +250,8 @@ describe("App", () => {
     await screen.findByText("5 songs, 50 minutes, 214 MB");
 
     expect(screen.queryByText("5 songs, 50 minutes")).not.toBeInTheDocument();
-    expect(screen.getByText("Nothing playing")).toBeInTheDocument();
+    // The box keeps its place on the strip; only its contents are hidden.
+    expect(screen.getByText("Nothing playing")).not.toBeVisible();
   });
 
   it("totals what is on screen rather than the whole library", async () => {
@@ -375,11 +380,11 @@ describe("App", () => {
 
   it("adds the chosen folder and scans it", async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    vi.mocked(open).mockResolvedValue("D:/Music");
+    vi.mocked(open).mockResolvedValue(["D:/Music"]);
     render(<App />);
     const user = userEvent.setup();
 
-    await chooseFromMenu(user, "File", "Add Folder…");
+    await chooseFromMenu(user, "File", "Add Folders…");
 
     await waitFor(() => expect(addWatchFolderMock).toHaveBeenCalledWith("D:/Music"));
     expect(scanLibraryMock).toHaveBeenCalled();
@@ -389,7 +394,7 @@ describe("App", () => {
     render(<App />);
     const user = userEvent.setup();
 
-    await chooseFromMenu(user, "File", "Add Folder…");
+    await chooseFromMenu(user, "File", "Add Folders…");
 
     await waitFor(() => expect(addWatchFolderMock).not.toHaveBeenCalled());
     expect(scanLibraryMock).not.toHaveBeenCalled();
@@ -446,6 +451,28 @@ describe("App playback", () => {
     if (waitForRows) {
       await screen.findByText("Track 1");
     }
+  }
+
+  /**
+   * Puts a track in the snapshot the player store connects with.
+   *
+   * Through the snapshot rather than `setState` after render: `connect` runs on
+   * mount and writes the snapshot over whatever is there, so a track set before
+   * it resolves is gone by the time anything can assert on it.
+   */
+  function playing(current: ReturnType<typeof track>) {
+    vi.mocked(playerSnapshot).mockResolvedValue({
+      status: "playing",
+      track: current,
+      palette: null,
+      queueIndex: 0,
+      queueLen: 3,
+      positionMs: 0,
+      durationMs: 200_000,
+      volume: 0.8,
+      muted: false,
+      repeatOne: false,
+    });
   }
 
   function track(index: number) {
@@ -786,6 +813,40 @@ describe("App playback", () => {
     await waitFor(() => expect(display).toHaveTextContent("Track 1"));
     expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("30000");
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  });
+
+  it("names what is playing in the window title, and stops when it stops", async () => {
+    // The window has no decorations, so this shows only in Alt+Tab and the
+    // taskbar - which is the point of it.
+    playing(track(1));
+    await renderWithLibrary({ waitForRows: false });
+
+    await waitFor(() => expect(setTitle).toHaveBeenLastCalledWith("Apex — Track 1 — Artist"));
+
+    act(() => {
+      usePlayerStore.setState({ track: null, status: "stopped" });
+    });
+    await waitFor(() => expect(setTitle).toHaveBeenLastCalledWith("Apex"));
+  });
+
+  it("opens what is playing in the library when its box is double-clicked", async () => {
+    const user = userEvent.setup();
+    playing(track(1));
+    await renderWithLibrary({ waitForRows: false });
+
+    const display = await screen.findByTestId("now-playing");
+    await waitFor(() => expect(display).toHaveTextContent("Track 1"));
+
+    await user.dblClick(display);
+
+    // The fixture's tracks carry an artist and no album, so the artist is the
+    // group they belong to.
+    await waitFor(() => expect(useLibraryStore.getState().tab).toBe("artists"));
+    expect(useLibraryStore.getState().browse).toEqual({
+      kind: "artists",
+      key: "Artist",
+      secondary: null,
+    });
   });
 });
 

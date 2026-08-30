@@ -81,7 +81,7 @@ describe("application shell", () => {
     // In the File menu since phase 34, where every action that used to sit on
     // the toolbar now lives.
     await openMenu("File");
-    expect(await itemsOf("File")).toEqual(["Add Folder…", "Rescan"]);
+    expect(await itemsOf("File")).toEqual(["Add Folders…", "Rescan"]);
     await closeMenu();
   });
 

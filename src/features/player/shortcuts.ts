@@ -2,7 +2,7 @@ import type { PlayerShortcut } from "./types";
 
 /** How far the arrow keys move the playhead. */
 export const SEEK_STEP_MS = 5_000;
-/** How much the arrow keys move the volume. */
+/** How much the arrow keys, and the wheel over the rail, move the volume. */
 export const VOLUME_STEP = 0.05;
 
 /**

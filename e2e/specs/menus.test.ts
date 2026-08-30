@@ -63,7 +63,7 @@ describe("the menu bar", () => {
 
     // No missing songs in a freshly seeded library, so no third entry - which
     // is the conditional this menu exists to get right.
-    expect(await itemsOf("File")).toEqual(["Add Folder…", "Rescan"]);
+    expect(await itemsOf("File")).toEqual(["Add Folders…", "Rescan"]);
   });
 
   it("opens Edit on what a right-click offers, plus what it does not", async () => {

@@ -185,6 +185,15 @@ interface LibraryState {
   showTab: (tab: ViewTab) => Promise<void>;
   /** Drills into one album, artist or genre from the open browse tab. */
   openGroup: (group: BrowseGroup) => Promise<void>;
+  /**
+   * Opens the album a track belongs to, its artist if it has no album, and
+   * Songs if it has neither.
+   *
+   * Its own action rather than a tab change followed by `openGroup`: that pair
+   * would refresh twice, and `openGroup` returns early on the Songs tab, so
+   * the order that avoids the no-op is the order that queries twice.
+   */
+  showTrackGroup: (track: Track) => Promise<void>;
   /** Returns from a drill-in to the group list. */
   closeGroup: () => Promise<void>;
   /** Moves the view to `entry` and stores `history` with it. Internal. */
@@ -469,6 +478,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
   },
 
+  showTrackGroup: async (track) => {
+    await pushEntry(entryForTrack(track));
+  },
+
   closeGroup: async () => {
     const { tab, browse, playlistId } = get();
     if (browse === null) {
@@ -662,6 +675,42 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Where a track lives in the library: its album, else its artist, else Songs.
+ *
+ * The two tag rules are the browse query's, restated here because this builds
+ * the filter that query will be given: an empty tag is an absent one, and the
+ * album artist names the group where there is one, so a compilation opens as
+ * the compilation rather than as the track's own artist.
+ *
+ * The playlist goes: revealing what is playing means finding it in the
+ * library, and a playlist the song is not in cannot show it.
+ */
+function entryForTrack(track: Track): HistoryEntry {
+  const album = tagged(track.album);
+  const artist = tagged(track.album_artist) ?? tagged(track.artist);
+
+  if (album !== null) {
+    return {
+      tab: "albums",
+      browse: { kind: "albums", key: album, secondary: artist },
+      playlistId: null,
+    };
+  }
+  if (artist !== null) {
+    return {
+      tab: "artists",
+      browse: { kind: "artists", key: artist, secondary: null },
+      playlistId: null,
+    };
+  }
+  return { tab: "songs", browse: null, playlistId: null };
+}
+
+function tagged(value: string | null): string | null {
+  return value === null || value.trim() === "" ? null : value;
+}
 
 /**
  * Records `entry` and applies it.

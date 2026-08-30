@@ -23,6 +23,11 @@ classes that already exist.
   copy would be a second number to keep in step. Change one, change both.
 - `headerBounds()` queries `th[data-column]`: the status column has no id and
   counting it offsets every drag-to-reorder drop index.
+- **Double-clicking a divider fits the column to the rows on screen**, measured
+  with a `Range` over each cell's contents — the cells clip with `ellipsis`, and
+  a clipped element's `scrollWidth` omits the padding on the overflowing side.
+  Visible rows only: the widest value in a 150k-row column is neither in the DOM
+  nor cheap to ask for, so fitting is deliberately not idempotent.
 
 ## The browse views
 
@@ -84,6 +89,18 @@ absences are what nobody notices coming back — hence the guards in
   an album lands in track order rather than in whatever order it was left in.
   The history itself lives in the library store, because a second store holding
   a copy of those three fields would drift out of step with them.
+- The **OS window title** follows the player: `Apex — <title> — <artist>`, back
+  to `Apex` when nothing is playing. With `decorations: false` it is invisible
+  in the app and shows only in Alt+Tab and the taskbar, which is where it is
+  wanted. `tauri.conf.json` still sets the idle title for the first frame.
+- `NowPlaying` is **hidden, not absent**, when nothing is playing: it is the
+  widest thing on a fixed strip, and a box arriving with the first song would
+  shove the volume and the search field sideways. Double-clicking it opens the
+  track's album, or its artist, through one store action that writes `tab` and
+  `browse` together and refreshes once.
+- The volume rail takes the **wheel** through a non-passive `addEventListener`.
+  React attaches `wheel` passively, so `preventDefault` in an `onWheel` prop
+  does nothing but log a warning while the page scrolls anyway.
 - Zoom is **webview zoom**, not CSS, so CSS pixel coordinates and `ROW_HEIGHT`
   are unaffected. Applied before the window is shown, rounded to one decimal on
   every path, and a rejected zoom is not persisted.

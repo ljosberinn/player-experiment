@@ -51,14 +51,14 @@ describe("the menu bar", () => {
 
   describe("File", () => {
     it("offers only adding and rescanning while nothing is missing", () => {
-      expect(labels(menu("File").items)).toEqual(["Add Folder…", "Rescan"]);
+      expect(labels(menu("File").items)).toEqual(["Add Folders…", "Rescan"]);
     });
 
     it("offers to remove missing songs only when some are", () => {
       // A permanent entry for a condition that in a library whose drives are
       // all plugged in never holds is one more thing to read past.
       expect(labels(menu("File", { missingCount: 3 }).items)).toEqual([
-        "Add Folder…",
+        "Add Folders…",
         "Rescan",
         "---",
         "Remove 3 Missing Songs…",

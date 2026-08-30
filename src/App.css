@@ -910,9 +910,10 @@ input[type="radio"] {
 /* ---------- now playing ---------- */
 
 /* Cover art and two lines, in the middle of the strip. No fixed height: the
-   contents are the same shape whether or not a song is playing, which is the
-   whole reason the idle state says "Nothing playing" rather than disappearing
-   and taking 44px of the strip with it. */
+   contents are the same shape whether or not a song is playing, which is what
+   lets the idle state be hidden rather than absent - `visibility` on the box
+   keeps its 44px instead of letting the volume and the search field slide
+   sideways the moment a song starts. */
 .now-playing {
   display: flex;
   align-items: center;
