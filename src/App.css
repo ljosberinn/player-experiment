@@ -725,12 +725,6 @@ input[type="radio"] {
   opacity: 0.4;
 }
 
-/* The 1 inside the loop. Here rather than as an attribute on the element,
-   because `var()` in an SVG presentation attribute does not resolve. */
-.repeat-button text {
-  font-family: var(--font-numeric);
-}
-
 /* ---------- sliders ---------- */
 
 /* Both sliders are the same three parts - a rail, a filled indicator and a

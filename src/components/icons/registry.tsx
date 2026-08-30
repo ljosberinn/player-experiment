@@ -4,6 +4,7 @@ import { MusicNotesIcon } from "@phosphor-icons/react/MusicNotes";
 import { PauseIcon } from "@phosphor-icons/react/Pause";
 import { PlayIcon } from "@phosphor-icons/react/Play";
 import { PlaylistIcon } from "@phosphor-icons/react/Playlist";
+import { RepeatOnceIcon } from "@phosphor-icons/react/RepeatOnce";
 import { SkipBackIcon } from "@phosphor-icons/react/SkipBack";
 import { SkipForwardIcon } from "@phosphor-icons/react/SkipForward";
 import { SpeakerSimpleHighIcon } from "@phosphor-icons/react/SpeakerSimpleHigh";
@@ -40,6 +41,7 @@ export type IconName =
   | "play"
   | "pause"
   | "next"
+  | "repeat-one"
   | "volume"
   | "volume-muted"
   | "playlist"
@@ -62,6 +64,9 @@ export const ICONS: Record<IconName, Glyph> = {
   play: (props) => <PlayIcon weight="fill" {...props} />,
   pause: (props) => <PauseIcon weight="fill" {...props} />,
   next: (props) => <SkipForwardIcon weight="fill" {...props} />,
+  // Regular, not filled: it is a loop of strokes, and the numeral inside it
+  // closes up at heavier weights.
+  "repeat-one": (props) => <RepeatOnceIcon {...props} />,
   volume: (props) => <SpeakerSimpleHighIcon weight="fill" {...props} />,
   // Carries the slash itself, which the drawn version needed a pseudo-element
   // for. The grey is still the button's, so both signals survive the swap.
