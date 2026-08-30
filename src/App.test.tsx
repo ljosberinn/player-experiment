@@ -268,6 +268,18 @@ describe("App", () => {
     expect(await screen.findByText("2 songs, 10 minutes, 9 MB")).toBeInTheDocument();
   });
 
+  it("names the tab properly in the drill-in breadcrumb", async () => {
+    // The id is lowercase, so interpolating it read "All genres".
+    useLibraryStore.setState({
+      tab: "genres",
+      browse: { kind: "genres", key: "Shoegaze", secondary: null },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "‹ All Genres" })).toBeInTheDocument();
+  });
+
   it("shows the app version in the footer", async () => {
     render(<App />);
 
