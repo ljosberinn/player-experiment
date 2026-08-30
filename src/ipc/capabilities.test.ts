@@ -23,6 +23,7 @@ const REQUIRED: ReadonlyArray<{ call: RegExp; permission: string }> = [
   { call: /\.maximize\s*\(/, permission: "core:window:allow-maximize" },
   { call: /\.setPosition\s*\(/, permission: "core:window:allow-set-position" },
   { call: /\.setSize\s*\(/, permission: "core:window:allow-set-size" },
+  { call: /\.setTitle\s*\(/, permission: "core:window:allow-set-title" },
   { call: /\.minimize\s*\(/, permission: "core:window:allow-minimize" },
   { call: /\.toggleMaximize\s*\(/, permission: "core:window:allow-toggle-maximize" },
   { call: /\.close\s*\(/, permission: "core:window:allow-close" },
