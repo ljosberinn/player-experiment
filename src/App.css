@@ -1033,6 +1033,60 @@ input[type="radio"] {
   color: var(--sidebar-text);
 }
 
+/* Back and forward, along the sidebar's top edge. Its own row rather than a
+   member of the 24px column gap: it belongs to the whole sidebar rather than
+   to the section under it, so it sits tighter to the top than a section would
+   and keeps the full gap below itself. */
+.history-nav {
+  display: flex;
+  gap: 2px;
+  margin-top: -6px;
+  padding: 0 6px;
+}
+
+.history-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  cursor: default;
+}
+
+/* Both directions are empty on launch, and one of them stays empty for most of
+   a session. Dimmed rather than hidden: a control that comes and goes moves
+   the one beside it. */
+.history-button:disabled {
+  color: var(--faint);
+}
+
+/* A chevron, drawn as two borders on a rotated square - the same trick the
+   disclosure triangle uses, open rather than filled because these point the
+   way rather than announcing a state. `currentcolor`, so it dims with the
+   button. */
+.history-chevron {
+  width: 6px;
+  height: 6px;
+  border-bottom: 1.5px solid currentcolor;
+  border-left: 1.5px solid currentcolor;
+  /* Half a stroke back towards the centre: rotating a square about its middle
+     leaves the visible corner off-centre in the box. */
+  margin-right: 2px;
+  transform: rotate(45deg);
+}
+
+.history-forward .history-chevron {
+  margin-right: 0;
+  margin-left: 2px;
+  transform: rotate(-135deg);
+}
+
 .sidebar-title {
   margin: 0;
   padding: 0 10px 9px;

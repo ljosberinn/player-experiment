@@ -15,12 +15,13 @@ import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { useExportStore } from "./features/export/store";
 import { BrowseView } from "./features/library/BrowseView";
 import { resolveColumns } from "./features/library/columns";
+import { HistoryNav } from "./features/library/HistoryNav";
 import { rowMenuItems } from "./features/library/rowMenu";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
 import { useScanStore } from "./features/library/scan";
-import { useLibraryStore, type ViewTab } from "./features/library/store";
+import { useLibraryStore, VIEW_TITLES } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
 import { PlayerRepeat } from "./features/player/PlayerRepeat";
@@ -37,6 +38,7 @@ import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundSto
 import { exportSelectionLabel, menus, REPOSITORY } from "./features/shell/menus";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
 import { TaskProgress } from "./features/shell/TaskProgress";
+import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
@@ -48,9 +50,6 @@ import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
-
-/** What the heading over a browse view says. Songs has none - see below. */
-const VIEW_TITLES = { songs: "Songs", albums: "Albums", artists: "Artists", genres: "Genres" };
 
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
@@ -79,7 +78,6 @@ export function App() {
   const loadColumns = useLibraryStore((s) => s.loadColumns);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
-  const showPlaylist = useLibraryStore((s) => s.showPlaylist);
   const search = useLibraryStore((s) => s.search);
   // The field itself lives in `SearchBox`; this is for the empty-state's way
   // out of a search that found nothing. An action, so it never changes.
@@ -183,6 +181,8 @@ export function App() {
   usePlayerShortcuts();
   // F5, which is the library half of the keyboard rather than the transport.
   useLibraryShortcuts();
+  // Back and forward: the mouse's side buttons and Alt+arrows.
+  useHistoryShortcuts();
   // The window-scoped bindings above stay as they are; this adds the four
   // media keys that have to work while the app is behind something else.
   useGlobalMediaKeys();
@@ -264,21 +264,6 @@ export function App() {
     } catch (cause) {
       setToolbarNotice(`Export failed: ${String(cause)}`);
     }
-  };
-
-  /**
-   * Opens one of the four library views from the sidebar.
-   *
-   * Two steps rather than one because the sidebar merged two controls that used
-   * to be separate: picking Songs while a playlist is open has to leave the
-   * playlist as well as choose the view, which is what the tab bar above the
-   * table never had to do.
-   */
-  const showLibraryView = async (view: ViewTab) => {
-    if (playlistId !== null) {
-      await showPlaylist(null);
-    }
-    await showTab(view);
   };
 
   /** Double-click or Enter on a row: queue the whole view, start at that row. */
@@ -391,12 +376,15 @@ export function App() {
 
       <div className="body">
         <Sidebar>
+          {/* Above the library views because it acts on all of them, and on
+              the playlists below them. */}
+          <HistoryNav />
           <LibraryNav
             // Nothing in the library section is current while a playlist is
             // open: the playlist is what the content pane is showing, and two
             // highlighted rows would be two answers to one question.
             active={playlistId === null ? tab : null}
-            onSelect={(view) => void showLibraryView(view)}
+            onSelect={(view) => void showTab(view)}
           />
           <PlaylistSidebar onExport={(playlist) => void runExport(exportChoice([], playlist))} />
         </Sidebar>

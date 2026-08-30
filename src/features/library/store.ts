@@ -28,6 +28,17 @@ import {
   visibleSort,
 } from "./columns";
 import {
+  currentEntry,
+  forgetPlaylist as dropPlaylistEntries,
+  goBack,
+  goForward,
+  type History,
+  type HistoryEntry,
+  historyAt,
+  record as recordEntry,
+  sameView,
+} from "./history";
+import {
   evictFarPages,
   missingPages,
   PAGE_SIZE,
@@ -54,6 +65,20 @@ export const SEARCH_DEBOUNCE_MS = 200;
  * grouping rather than something that has to be mapped onto one.
  */
 export type ViewTab = "songs" | BrowseKind;
+
+/**
+ * What each view is called, wherever one has to be named.
+ *
+ * Beside the type rather than in `App.tsx`, which used to own it: the history
+ * arrows name their destination in a tooltip, and two lists of the same four
+ * words would be two things to keep in step.
+ */
+export const VIEW_TITLES: Record<ViewTab, string> = {
+  songs: "Songs",
+  albums: "Albums",
+  artists: "Artists",
+  genres: "Genres",
+};
 
 interface LibraryState {
   /** Total rows matching the current query; drives the scrollbar. */
@@ -114,6 +139,14 @@ interface LibraryState {
    * Without this, a slow first search overwrites the results of a later one.
    */
   queryToken: number;
+  /**
+   * Where the user has been, and where they are in it.
+   *
+   * Here rather than in a store of its own: a second store holding a copy of
+   * `tab`, `browse` and `playlistId` would drift out of step with the ones the
+   * view actually reads.
+   */
+  history: History;
 
   /** Reloads the count and drops cached pages; call after any query change. */
   refresh: () => Promise<void>;
@@ -142,12 +175,26 @@ interface LibraryState {
   loadColumns: () => Promise<void>;
   /** Stores a column change and re-queries if it moved the sort. Internal. */
   applyColumns: (config: ColumnConfig) => Promise<void>;
-  /** Opens one of the four tabs, dropping any drill-in the last one had. */
+  /**
+   * Opens one of the four library views, leaving any playlist that is open.
+   *
+   * Both halves, because the sidebar merged the two controls: picking Songs
+   * while a playlist is showing has to leave the playlist as well as choose
+   * the view.
+   */
   showTab: (tab: ViewTab) => Promise<void>;
   /** Drills into one album, artist or genre from the open browse tab. */
   openGroup: (group: BrowseGroup) => Promise<void>;
   /** Returns from a drill-in to the group list. */
   closeGroup: () => Promise<void>;
+  /** Moves the view to `entry` and stores `history` with it. Internal. */
+  applyEntry: (entry: HistoryEntry, history: History) => Promise<void>;
+  /** Returns to the previously visited view. Does nothing at the start. */
+  back: () => Promise<void>;
+  /** Undoes a `back`. Does nothing once the history has been branched. */
+  forward: () => Promise<void>;
+  /** Drops a deleted playlist's entries, so back cannot land on one. */
+  forgetPlaylist: (playlistId: number) => void;
   ensureRange: (startIndex: number, endIndex: number) => Promise<void>;
   rowAt: (rowIndex: number) => Track | null;
   /** A cached row by id, for the menu bar, which knows a selection by id. */
@@ -186,6 +233,39 @@ function defaultSortFor(playlistId: number | null): SortField {
   return playlistId === null ? "artist" : "position";
 }
 
+/**
+ * The sort a view opens in.
+ *
+ * Derived from the entry rather than stored in it. Storing it would mean going
+ * back into an album landed in whatever order the previous visit happened to
+ * end in - artist, say, which inside one album says nothing - instead of the
+ * order the view is for.
+ */
+function sortForEntry(
+  state: LibraryState,
+  entry: HistoryEntry,
+  crossesPlaylist: boolean,
+): Partial<LibraryState> {
+  const opensIn: SortField =
+    entry.browse !== null && entry.tab === "albums" ? "trackNo" : defaultSortFor(entry.playlistId);
+
+  // A search does not survive a playlist change, so a move that crosses one is
+  // never the searching case however the box looked a moment ago.
+  const searching = !crossesPlaylist && state.search.trim() !== "";
+  if (!searching) {
+    return { sortBy: opensIn, direction: "asc", sortBeforeSearch: null };
+  }
+  // A column chosen during the search is an explicit override; there is
+  // nothing left to restore and nothing to re-point.
+  if (state.sortBy !== "relevance") {
+    return {};
+  }
+  // Relevance ranking survives the move - the term is still on screen and
+  // still the question being asked - but clearing the box now lands in the
+  // natural order of the view being entered rather than the one being left.
+  return { sortBeforeSearch: { sortBy: opensIn, direction: "asc" } };
+}
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
   stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0 },
@@ -206,6 +286,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   loading: false,
   error: null,
   queryToken: 0,
+  // Seeded with the view the app opens in, so the first navigation has
+  // somewhere to go back to.
+  history: historyAt({ tab: "songs", browse: null, playlistId: null }),
 
   dismissError: () => set({ error: null }),
 
@@ -288,31 +371,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   showPlaylist: async (playlistId) => {
+    // Clicking the playlist that is already open is a no-op rather than a
+    // hidden way out of a drill-in, the same rule the browse tabs follow.
     if (get().playlistId === playlistId) {
       return;
     }
-    // Changing source resets the view rather than carrying the old sort and
-    // search across: a search typed against the library is rarely the one you
-    // want against a playlist, and the sorts are not even the same set - only
-    // a playlist has a position to order by.
-    runSearch.cancel();
-    set({
-      playlistId,
-      searchInput: "",
-      search: "",
-      sortBy: defaultSortFor(playlistId),
-      direction: "asc",
-      sortBeforeSearch: null,
-      selection: emptySelection,
-      // A playlist's albums are not the library's, and the album that was open
-      // is unlikely to be in it. Both are rebuilt by the refresh below.
-      browse: null,
-      groups: [],
-    });
-    // The layout belongs to the view, so it is reloaded rather than carried:
-    // a playlist may have its own, and it may move the sort.
-    await get().loadColumns();
-    await get().refresh();
+    // A playlist's albums are not the library's, and the album that was open
+    // is unlikely to be in it, so the drill-in goes with the source.
+    await pushEntry({ tab: get().tab, browse: null, playlistId });
   },
 
   loadColumns: async () => {
@@ -377,43 +443,102 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   showTab: async (tab) => {
-    if (get().tab === tab) {
+    // Clicking the open tab again is a no-op, not a hidden way out of a
+    // drill-in - the breadcrumb is what leads out of one. Inside a playlist it
+    // is not a no-op even for the same tab: the playlist is what has to go.
+    if (get().tab === tab && get().playlistId === null) {
       return;
     }
     // The search survives a tab change, unlike a playlist change: "everything
     // matching «bear»" is a question you might want answered as songs and then
     // as albums, and re-typing it to switch view would be the annoying part.
-    set({
-      tab,
-      browse: null,
-      groups: [],
-      selection: emptySelection,
-    });
-    await get().refresh();
+    await pushEntry({ tab, browse: null, playlistId: null });
   },
 
   openGroup: async (group) => {
-    const { tab } = get();
+    const { tab, playlistId } = get();
+    // Songs has no groups to drill into. The guard is here rather than in
+    // `applyEntry`, which has to be able to set a tab and a filter at once.
     if (tab === "songs") {
       return;
     }
-    set({
+    await pushEntry({
+      tab,
       browse: { kind: tab, key: group.key, secondary: group.secondary },
-      selection: emptySelection,
-      // An album reads in its own order rather than the library's default of
-      // artist, which inside one album says nothing.
-      sortBy: tab === "albums" ? "trackNo" : "artist",
-      direction: "asc",
+      playlistId,
     });
-    await get().refresh();
   },
 
   closeGroup: async () => {
-    if (get().browse === null) {
+    const { tab, browse, playlistId } = get();
+    if (browse === null) {
       return;
     }
-    set({ browse: null, selection: emptySelection, sortBy: "artist" });
+    await pushEntry({ tab, browse: null, playlistId });
+  },
+
+  applyEntry: async (entry, history) => {
+    const state = get();
+    // Every navigation lands here, including the ones that only look like a
+    // no-op - clicking the open tab, or a back that would not move.
+    if (sameView({ tab: state.tab, browse: state.browse, playlistId: state.playlistId }, entry)) {
+      return;
+    }
+
+    const crossesPlaylist = state.playlistId !== entry.playlistId;
+    if (crossesPlaylist) {
+      // A search typed against the library is rarely the one you want against
+      // a playlist, and the sorts are not even the same set - only a playlist
+      // has a position to order by.
+      runSearch.cancel();
+    }
+
+    // One `set` for all of it, and one `refresh` after: every field here is
+    // written today by an action that refreshes on its own, so replaying a
+    // state by calling those actions would query once per field.
+    set({
+      history,
+      tab: entry.tab,
+      browse: entry.browse,
+      playlistId: entry.playlistId,
+      selection: emptySelection,
+      // Kept where they still describe the view - a drill-in and the list it
+      // came from share one group list - and cleared otherwise, so a browse
+      // tab cannot show the previous tab's groups while its own are in flight.
+      groups: state.tab === entry.tab && !crossesPlaylist ? state.groups : [],
+      ...sortForEntry(state, entry, crossesPlaylist),
+      ...(crossesPlaylist ? { searchInput: "", search: "", sortBeforeSearch: null } : {}),
+    });
+
+    if (crossesPlaylist) {
+      // The layout belongs to the view, so it is reloaded rather than carried:
+      // a playlist may have its own, and it may move the sort. Only across a
+      // boundary, because columns are stored per playlist and nowhere else.
+      await get().loadColumns();
+    }
     await get().refresh();
+  },
+
+  back: async () => {
+    const moved = goBack(get().history);
+    const entry = moved === null ? null : currentEntry(moved);
+    if (moved === null || entry === null) {
+      return;
+    }
+    await get().applyEntry(entry, moved);
+  },
+
+  forward: async () => {
+    const moved = goForward(get().history);
+    const entry = moved === null ? null : currentEntry(moved);
+    if (moved === null || entry === null) {
+      return;
+    }
+    await get().applyEntry(entry, moved);
+  },
+
+  forgetPlaylist: (playlistId) => {
+    set((state) => ({ history: dropPlaylistEntries(state.history, playlistId) }));
   },
 
   ensureRange: async (startIndex, endIndex) => {
@@ -537,6 +662,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Records `entry` and applies it.
+ *
+ * What every navigation but back and forward does, and the reason `applyEntry`
+ * takes the history to store rather than a flag: those two have already moved
+ * the index and must not push.
+ */
+async function pushEntry(entry: HistoryEntry): Promise<void> {
+  const state = useLibraryStore.getState();
+  await state.applyEntry(entry, recordEntry(state.history, entry));
+}
 
 /**
  * Applies a committed search term.
