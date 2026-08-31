@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowseGroup } from "../../ipc";
 import { BrowseView } from "./BrowseView";
 import { useLibraryStore } from "./store";
@@ -54,11 +54,44 @@ function stubLayout(height = 600, width = 320) {
   });
 }
 
+/**
+ * The observer callbacks the view has registered, so a test can resize.
+ *
+ * The setup file's `ResizeObserver` never calls back - jsdom has no layout for
+ * it to report - so a test that wants a resize has to stub the size and then
+ * fire the callback itself.
+ */
+let resizes: Array<(entries: unknown[]) => void> = [];
+
 beforeEach(() => {
   vi.restoreAllMocks();
   stubLayout();
+  resizes = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: (entries: unknown[]) => void) {
+        resizes.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   useLibraryStore.setState({ ...initial, groups: [], groupsLoading: false, search: "" });
 });
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function groups(count: number): BrowseGroup[] {
+  return Array.from({ length: count }, (_, index) => group({ key: `Group ${index}` }));
+}
+
+function rowsIn(container: HTMLElement): Element[] {
+  return [...container.querySelectorAll(".browse-row")];
+}
 
 describe("BrowseView", () => {
   it("labels an album with its title, artist and totals", () => {
@@ -137,6 +170,90 @@ describe("BrowseView", () => {
     useLibraryStore.setState({ groups: [], search: "zzz" });
     rerender(<BrowseView kind="albums" />);
     expect(screen.getByText(/No results for/)).toBeInTheDocument();
+  });
+
+  it("reflows the album grid when the container changes width", () => {
+    useLibraryStore.setState({ groups: groups(8) });
+    stubLayout(600, 200);
+
+    const { container } = render(<BrowseView kind="albums" />);
+
+    // 200px fits one 178px tile.
+    expect(rowsIn(container)).toHaveLength(8);
+
+    stubLayout(600, 800);
+    act(() => {
+      for (const resize of resizes) {
+        resize([]);
+      }
+    });
+
+    // 800px fits four, so the same eight albums are two rows.
+    expect(rowsIn(container)).toHaveLength(2);
+  });
+
+  it("keeps the album at the top of the view there across a reflow", () => {
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, 800);
+
+    const { container } = render(<BrowseView kind="albums" />);
+    const scroll = screen.getByTestId("browse-scroll");
+    // Four columns, so row 5 starts at group 20.
+    scroll.scrollTop = 5 * 235;
+
+    stubLayout(600, 400);
+    act(() => {
+      for (const resize of resizes) {
+        resize([]);
+      }
+    });
+
+    // Two columns now, and group 20 is row 10. Without the correction the
+    // offset would still say row 5, which is group 10 under the new width.
+    expect(scroll.scrollTop).toBe(10 * 235);
+    expect(rowsIn(container)).not.toHaveLength(0);
+  });
+
+  it("measures the container that appears after the empty state", () => {
+    stubLayout(600, 800);
+    useLibraryStore.setState({ groups: [], groupsLoading: false });
+
+    const { container } = render(<BrowseView kind="albums" />);
+    expect(screen.getByText("No songs yet")).toBeInTheDocument();
+
+    act(() => {
+      useLibraryStore.setState({ groups: groups(8) });
+    });
+
+    // 800px fits four tiles, so eight albums are two rows. Eight rows would
+    // mean the grid never measured the container it only just grew.
+    expect(rowsIn(container)).toHaveLength(2);
+  });
+
+  it("stripes the artist and genre lists by data index", () => {
+    useLibraryStore.setState({ groups: groups(5) });
+
+    const { container } = render(<BrowseView kind="artists" />);
+
+    // Parity of the row's place in the data, not of its place in the DOM: the
+    // DOM holds the visible window, which slides as the list scrolls.
+    expect(rowsIn(container).map((row) => row.classList.contains("odd"))).toEqual([
+      false,
+      true,
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it("leaves the album grid unstriped", () => {
+    useLibraryStore.setState({ groups: groups(5) });
+
+    const { container } = render(<BrowseView kind="albums" />);
+
+    // Tiles, not rows. A band of colour behind every other line of covers is
+    // striping the layout rather than the data.
+    expect(rowsIn(container).some((row) => row.classList.contains("odd"))).toBe(false);
   });
 
   it("says nothing while the groups are still loading", () => {

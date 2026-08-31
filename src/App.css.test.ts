@@ -448,6 +448,21 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("lets the caption buttons paint over the title bar's own separator", () => {
+    // The close button's red hover fill runs into the corner of the window, so
+    // it has to reach the bar's bottom edge. A `border-bottom` sits outside the
+    // content box the buttons fill, which left a line of `--chrome-border`
+    // across the red; an inset shadow is inside it and paints below children.
+    const titlebar = all.find((one) => one.selector.trim().endsWith(".titlebar"));
+
+    expect(titlebar?.body).not.toMatch(/border-bottom/);
+    expect(titlebar?.body).toMatch(/box-shadow:\s*inset 0 -1px 0/);
+
+    const button = all.find((one) => one.selector.trim() === ".window-buttons button");
+
+    expect(button?.body).toMatch(/[^-]height:\s*36px/);
+  });
+
   it("blurs behind every translucent panel of chrome", () => {
     // The panels are veils rather than fills so that phase 39's cover colours
     // can drift behind them. A veil with no blur under it is just a slightly

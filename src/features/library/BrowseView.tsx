@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { type BrowseGroup, type BrowseKind, coverUrl } from "../../ipc";
 import { formatDuration } from "../../lib/format";
 import { groupId, groupMeta, groupSubtitle, groupTitle } from "./browse";
@@ -32,10 +32,34 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isGrid = kind === "albums";
+  // Measured into state rather than read off the ref during render: a ref read
+  // is whatever the last commit left there, so the column count was fixed at
+  // the first measurement and the grid never reflowed with the window.
+  const [width, setWidth] = useState(0);
+
+  // Attached through a ref callback rather than a mount effect: until the first
+  // groups arrive the view renders the empty state, so the scroll container is
+  // not in the DOM on mount and an effect keyed to mount would measure nothing
+  // and never run again.
+  const attachScroll = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
+    if (element === null) {
+      return;
+    }
+    // `clientWidth`, not the entry's `contentRect`: the tiles lay out inside
+    // the padding box, and the box the observer reports excludes the padding.
+    setWidth(element.clientWidth);
+    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      scrollRef.current = null;
+    };
+  }, []);
+
   // One column for the lists; for the grid, however many tiles fit. Falls back
   // to a single column before the first measurement, which is corrected on the
   // same frame rather than being visible.
-  const width = scrollRef.current?.clientWidth ?? 0;
   const columns = isGrid ? Math.max(1, Math.floor(width / TILE_WIDTH)) : 1;
   const rowCount = Math.ceil(groups.length / columns);
 
@@ -45,6 +69,24 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
     estimateSize: () => (isGrid ? TILE_HEIGHT : LIST_ROW_HEIGHT),
     overscan: OVERSCAN,
   });
+
+  // A resize changes how many groups a row holds without changing how tall a
+  // row is, so the scroll offset survives it while the data under it does not:
+  // the same pixel is now a different album. Re-anchor on the group that was at
+  // the top, and drop the size cache, whose entries are keyed by a row index
+  // that no longer means the same thing.
+  const columnsRef = useRef(columns);
+  useLayoutEffect(() => {
+    const previous = columnsRef.current;
+    columnsRef.current = columns;
+    const element = scrollRef.current;
+    if (previous === columns || element === null) {
+      return;
+    }
+    const topGroup = Math.floor(element.scrollTop / TILE_HEIGHT) * previous;
+    element.scrollTop = Math.floor(topGroup / columns) * TILE_HEIGHT;
+    virtualizer.measure();
+  }, [columns, virtualizer]);
 
   if (!loading && groups.length === 0) {
     return (
@@ -57,7 +99,7 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   }
 
   return (
-    <div className="song-body browse-body" ref={scrollRef} data-testid="browse-scroll">
+    <div className="song-body browse-body" ref={attachScroll} data-testid="browse-scroll">
       {/* A labelled section rather than role="list": the virtualizer needs a
           row wrapper between the container and each item, which breaks the
           list/listitem relationship a screen reader relies on, and claiming it
@@ -74,7 +116,10 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
           return (
             <div
               key={row.key}
-              className="browse-row"
+              // Parity of the data index, not `:nth-child`: the rows are
+              // virtualized and absolutely positioned, so the DOM holds the
+              // window rather than the list. Lists only - the grid is tiles.
+              className={!isGrid && row.index % 2 === 1 ? "browse-row odd" : "browse-row"}
               style={{ height: row.size, transform: `translateY(${row.start}px)` }}
             >
               {inRow.map((group) => (

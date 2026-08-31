@@ -421,7 +421,7 @@ export function App() {
             // itself: clicking Albums again while inside an album should be a
             // no-op, not a hidden back button.
             <button type="button" className="browse-back" onClick={() => void closeGroup()}>
-              ‹ All {tab}
+              ‹ All {VIEW_TITLES[tab]}
             </button>
           ) : null}
 

@@ -77,6 +77,10 @@ export const config: WebdriverIO.Config = {
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.
     "./specs/row-menu.test.ts",
+    // After `library` too: a grid with no albums in it has no column count,
+    // and a list with no rows cannot alternate. Resizes the window and puts it
+    // back, so it has to be somewhere the size it borrows is the default one.
+    "./specs/browse-layout.test.ts",
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.
     "./specs/smart-playlists.test.ts",

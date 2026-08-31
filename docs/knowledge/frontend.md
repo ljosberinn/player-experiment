@@ -24,6 +24,20 @@ classes that already exist.
 - `headerBounds()` queries `th[data-column]`: the status column has no id and
   counting it offsets every drag-to-reorder drop index.
 
+## The browse views
+
+- Albums is a grid, artists and genres are lists, and both are virtualized **by
+  row**: the column count comes from the container width, so the two are
+  computed together.
+- The width is measured into state through a `ResizeObserver`. A ref read during
+  render is whatever the last commit left there, which is how the grid came to
+  be fixed at its first measurement.
+- A reflow keeps the row height and changes what a row holds, so the scroll
+  offset survives it pointing at a different album. `BrowseView` re-anchors on
+  the group that was at the top and drops the virtualizer's size cache.
+- Lists stripe by **data index**, not `:nth-child` — the rows are absolutely
+  positioned, so DOM order is the visible window rather than the list.
+
 ## Where a subscription lives is the perf lever
 
 `positionMs` (4/s), `volume` (per pointer move) and `searchInput` (per keystroke)

@@ -49,6 +49,10 @@ Each of these cost real time once. They are here so they cost it once.
 - **No `PointerEvent`.** `fireEvent.pointerMove(el, {clientX})` delivers `null`
   and every pointer-driven component looks broken while being correct in a
   browser. The test setup installs a `MouseEvent` subclass.
+- **No `ResizeObserver`.** The setup file installs an inert one — a component
+  that measures its container throws on mount without it. A test that wants a
+  resize stubs the size and fires the callback itself; pass an empty array, or
+  `@tanstack/virtual-core`'s own observer reads `entries[0]` of `undefined`.
 - Base UI portals to `document.body` — query through `screen`, not the container.
 
 ## CSS

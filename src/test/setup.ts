@@ -45,6 +45,24 @@ if (typeof window !== "undefined") {
   Element.prototype.hasPointerCapture ??= () => false;
 }
 
+/**
+ * `ResizeObserver`, which jsdom implements in no version.
+ *
+ * A stub that observes nothing rather than a working one: jsdom has no layout,
+ * so every element it could report is 0x0 and no callback would ever have
+ * anything to say. What the components need is for the constructor to exist -
+ * the browse grid measures its container through one, and without this the
+ * whole view throws on mount.
+ */
+if (typeof window !== "undefined") {
+  const runtimeWithObserver = globalThis as { ResizeObserver?: unknown };
+  runtimeWithObserver.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
