@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { columnDropIndex, DRAG_THRESHOLD_PX, draggedWidth, isDrag } from "./columnDrag";
+import {
+  CELL_PADDING_PX,
+  columnDropIndex,
+  DRAG_THRESHOLD_PX,
+  draggedWidth,
+  fittedWidth,
+  isDrag,
+} from "./columnDrag";
 
 describe("telling a header click from a header drag", () => {
   it("treats a small movement as a click, not a drag", () => {
@@ -57,5 +64,22 @@ describe("dragging a divider", () => {
     // A zero-width column is indistinguishable from a hidden one, except that
     // there is no divider left to drag it back out with.
     expect(draggedWidth(200, 500, 100, 40)).toBe(40);
+  });
+});
+
+describe("fitting a column to its contents", () => {
+  it("takes the widest of them, plus the padding a cell carries", () => {
+    expect(fittedWidth([40, 180, 96], 40)).toBe(180 + CELL_PADDING_PX);
+  });
+
+  it("rounds up, because a width rounded down clips what it measured", () => {
+    expect(fittedWidth([180.2], 40)).toBe(Math.ceil(180.2 + CELL_PADDING_PX));
+  });
+
+  it("never goes below the minimum a column can be dragged to", () => {
+    // An empty column - every visible row's value is blank - still has to keep
+    // a divider wide enough to grab.
+    expect(fittedWidth([], 40)).toBe(40);
+    expect(fittedWidth([0], 40)).toBe(40);
   });
 });

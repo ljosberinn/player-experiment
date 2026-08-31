@@ -448,6 +448,19 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("pads a header and a cell by the same amount a fitted width assumes", () => {
+    // `CELL_PADDING_PX` in `columnDrag.ts` is what double-clicking a divider
+    // adds to the widest text it measured. It is one number for both because
+    // both are 12px a side; change either here and the fit clips or gaps.
+    for (const selector of [".song-header-cell", ".song-cell"]) {
+      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+
+      expect(rule?.body, `${selector} should state its padding`).toMatch(
+        /padding:\s*\S+\s+12px\s*;/,
+      );
+    }
+  });
+
   it("lets the caption buttons paint over the title bar's own separator", () => {
     // The close button's red hover fill runs into the corner of the window, so
     // it has to reach the bar's bottom edge. A `border-bottom` sits outside the

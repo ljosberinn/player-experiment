@@ -67,6 +67,16 @@ export function formatLibrarySummary(count: number, totalMs: number, bytes?: num
   return parts.join(", ");
 }
 
+/**
+ * The last segment of a path, for a track with no title tag.
+ *
+ * Splits on both separators: paths come from the scanner as the OS gave them,
+ * and a library imported from another machine can carry either.
+ */
+export function fileNameOf(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
 /** Bytes as the human-facing unit, matching the sizes shown in the footer. */
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) {

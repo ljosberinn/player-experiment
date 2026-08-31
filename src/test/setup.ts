@@ -63,6 +63,28 @@ if (typeof window !== "undefined") {
   };
 }
 
+/**
+ * `Range.getBoundingClientRect`, which jsdom declares nowhere.
+ *
+ * Zero, like every other rect jsdom reports - it lays nothing out. It exists so
+ * that measuring code does not throw, and so that a test with an opinion about
+ * a width has something to spy on.
+ */
+if (typeof window !== "undefined") {
+  Range.prototype.getBoundingClientRect ??= () =>
+    ({
+      width: 0,
+      height: 0,
+      top: 0,
+      left: 0,
+      bottom: 0,
+      right: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();

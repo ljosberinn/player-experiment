@@ -27,6 +27,8 @@ function Harness() {
       <input aria-label="Search" />
       {/* biome-ignore lint/a11y/useSemanticElements: standing in for a table row */}
       <div role="row" tabIndex={0} aria-label="Row" />
+      {/* Standing in for a slider thumb, which focuses a hidden range input. */}
+      <input type="range" aria-label="Seek" />
     </>
   );
 }
@@ -79,6 +81,15 @@ describe("usePlayerShortcuts", () => {
     await userEvent.keyboard(" ");
 
     expect(store.toggle).toHaveBeenCalledOnce();
+  });
+
+  it("still toggles while a slider has focus, leaving it the arrows", async () => {
+    screen.getByLabelText("Seek").focus();
+    await userEvent.keyboard(" ");
+    expect(store.toggle).toHaveBeenCalledOnce();
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(store.seek).not.toHaveBeenCalled();
   });
 
   it("leaves keys it does not own to the app", async () => {

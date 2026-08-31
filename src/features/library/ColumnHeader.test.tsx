@@ -123,6 +123,56 @@ describe("resizing a column", () => {
     expect(resizeColumn).toHaveBeenCalledWith("title", started + 80);
   });
 
+  it("fits the column to what is on screen when the divider is double-clicked", () => {
+    // jsdom lays nothing out, so the measurement is stubbed: ten pixels a
+    // character, which makes the expected answer arithmetic rather than magic.
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function (this: Range) {
+      const text = this.startContainer.textContent ?? "";
+      return { width: text.length * 10 } as DOMRect;
+    });
+    const resizeColumn = vi.fn(async () => undefined);
+    useLibraryStore.setState({ resizeColumn });
+
+    const config = { ids: ["title", "artist"] as const, widths: {} };
+    useLibraryStore.setState({ columns: { ids: [...config.ids], widths: {} } });
+    render(
+      <table>
+        <thead>
+          <ColumnHeader
+            columns={resolveColumns({ ids: [...config.ids], widths: {} })}
+            sortBy="artist"
+            direction="asc"
+            onSort={vi.fn()}
+          />
+        </thead>
+        <tbody>
+          <tr>
+            <td className="song-cell" data-column="title">
+              short
+            </td>
+            <td className="song-cell" data-column="artist">
+              ignored, it is another column
+            </td>
+          </tr>
+          <tr>
+            <td className="song-cell" data-column="title">
+              the longest title on screen
+            </td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+
+    fireEvent.doubleClick(screen.getByTestId("resize-title"));
+
+    // 27 characters at ten pixels, plus the 24px of padding a cell carries.
+    // The header, "Title", is narrower and does not decide it.
+    expect(resizeColumn).toHaveBeenCalledWith(
+      "title",
+      "the longest title on screen".length * 10 + 24,
+    );
+  });
+
   it("does not start a reorder as well", () => {
     const moveColumn = vi.fn(async () => undefined);
     const resizeColumn = vi.fn(async () => undefined);

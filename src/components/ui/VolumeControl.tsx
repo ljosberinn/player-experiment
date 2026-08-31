@@ -1,4 +1,6 @@
 import { Slider } from "@base-ui/react/slider";
+import { useEffect, useRef } from "react";
+import { VOLUME_STEP } from "../../features/player/shortcuts";
 
 /**
  * The speaker glyph and the volume rail, at the right of the transport strip.
@@ -27,11 +29,40 @@ export function VolumeControl({
   onVolumeChange: (volume: number) => void;
   onToggleMute?: () => void;
 }) {
+  const wrapper = useRef<HTMLDivElement>(null);
+  // Read through a ref so the listener below can be registered once. Volume
+  // reports on every pointer move, and re-binding a DOM listener at that rate
+  // is exactly the cost this component was split out to avoid.
+  const latest = useRef({ volume, onVolumeChange });
+  latest.current = { volume, onVolumeChange };
+
+  useEffect(() => {
+    const element = wrapper.current;
+    if (element === null) {
+      return;
+    }
+    // A listener rather than an `onWheel` prop: React attaches `wheel`
+    // passively, so `preventDefault` inside the prop does nothing but log a
+    // warning while the content behind the strip scrolls anyway.
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) {
+        return;
+      }
+      event.preventDefault();
+      const { volume: current, onVolumeChange: report } = latest.current;
+      const next = current + (event.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP);
+      report(Math.max(0, Math.min(1, next)));
+    };
+
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, []);
+
   return (
     /* The muted state is on the wrapper rather than the button alone: it dims
        the rail's fill too, so the level on screen reads as the level that will
        come back rather than the level being heard. */
-    <div className="volume" data-muted={muted ? "" : undefined}>
+    <div className="volume" ref={wrapper} data-muted={muted ? "" : undefined}>
       <button
         type="button"
         className="volume-mark"

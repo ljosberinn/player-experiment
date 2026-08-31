@@ -19,7 +19,7 @@ export interface ScanState {
   progress: ScanProgress | null;
   busy: boolean;
   error: string | null;
-  /** Asks for a folder, adds it, and scans. Does nothing if the user cancels. */
+  /** Asks for folders, adds them, and scans. Does nothing if the user cancels. */
   addFolder: () => Promise<void>;
   rescan: () => Promise<void>;
   dismissError: () => void;
@@ -38,11 +38,16 @@ export const useScanStore = create<ScanState>((set, get) => ({
     }
     set({ error: null });
     try {
-      const selected = await open({ directory: true, multiple: false, title: "Add music folder" });
-      if (typeof selected !== "string") {
+      const selected = await open({ directory: true, multiple: true, title: "Add music folders" });
+      if (!Array.isArray(selected) || selected.length === 0) {
         return;
       }
-      await addWatchFolder(selected);
+      for (const folder of selected) {
+        await addWatchFolder(folder);
+      }
+      // One scan after the loop, not one per folder: a scan walks every watched
+      // folder, so scanning per addition would walk the first one again for
+      // each of the rest.
       await get().rescan();
     } catch (cause) {
       set({ error: String(cause) });

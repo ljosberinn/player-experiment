@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTypingTarget, shortcutFor } from "./shortcuts";
+import { isTypingTarget, shortcutFor, targetOwns } from "./shortcuts";
 
 describe("shortcutFor", () => {
   it.each([
@@ -49,5 +49,32 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget(document.createElement("tr"))).toBe(false);
     expect(isTypingTarget(document.createElement("button"))).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
+  });
+});
+
+describe("targetOwns", () => {
+  function range() {
+    const input = document.createElement("input");
+    input.type = "range";
+    return input;
+  }
+
+  it("leaves a slider the arrows it moves on", () => {
+    expect(targetOwns(range(), "seekForward")).toBe(true);
+    expect(targetOwns(range(), "volumeUp")).toBe(true);
+  });
+
+  it("lets play/pause through a focused slider", () => {
+    expect(targetOwns(range(), "toggle")).toBe(false);
+  });
+
+  it("leaves every shortcut to a text field", () => {
+    expect(targetOwns(document.createElement("input"), "toggle")).toBe(true);
+    expect(targetOwns(document.createElement("textarea"), "toggle")).toBe(true);
+  });
+
+  it("claims nothing on an ordinary element", () => {
+    expect(targetOwns(document.createElement("tr"), "toggle")).toBe(false);
+    expect(targetOwns(null, "seekForward")).toBe(false);
   });
 });

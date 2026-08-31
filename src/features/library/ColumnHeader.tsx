@@ -2,7 +2,7 @@ import type React from "react";
 import { useRef, useState } from "react";
 import { ContextMenu, type MenuItem } from "../../components/ui/ContextMenu";
 import type { SortDirection, SortField } from "../../ipc";
-import { columnDropIndex, draggedWidth, isDrag } from "./columnDrag";
+import { columnDropIndex, draggedWidth, fittedWidth, isDrag } from "./columnDrag";
 import { ALL_COLUMNS, type ColumnDef, MIN_COLUMN_WIDTH } from "./columns";
 import { STATUS_COLUMN_WIDTH } from "./rowStatus";
 import { useLibraryStore } from "./store";
@@ -14,6 +14,19 @@ interface HeaderDrag {
   startX: number;
   moved: boolean;
   dropIndex: number;
+}
+
+/**
+ * How wide the contents of one cell are laid out, ignoring any clipping.
+ *
+ * A `Range` over the contents rather than the element's own box: the box is
+ * the column width, and `scrollWidth` on a clipped element omits the padding
+ * on the overflowing side.
+ */
+function contentWidth(cell: Element): number {
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  return range.getBoundingClientRect().width;
 }
 
 /** A divider drag, with the width it started from. */
@@ -143,6 +156,31 @@ export function ColumnHeader({
     setResize(null);
   };
 
+  /**
+   * Double-click on a divider: widen or narrow the column to fit what is in it.
+   *
+   * Measured with a `Range` over each cell's contents rather than read off
+   * `scrollWidth`: the cells clip with `text-overflow: ellipsis`, and a
+   * clipped element's scroll width leaves out the padding on the far side.
+   */
+  const onResizeDoubleClick = (event: React.MouseEvent<HTMLElement>, id: SortField) => {
+    event.stopPropagation();
+    const row = rowRef.current;
+    const table = row?.closest("table");
+    if (row === null || table == null) {
+      return;
+    }
+
+    const header = row.querySelector(`th[data-column="${id}"] .song-header-cell`);
+    const cells = table.querySelectorAll(`td.song-cell[data-column="${id}"]`);
+    const contents = [...(header === null ? [] : [header]), ...cells].map(contentWidth);
+
+    // The drag in progress, if any, is abandoned rather than committed - a
+    // double-click is two presses, and the first left a `resize` behind.
+    setResize(null);
+    void resizeColumn(id, fittedWidth(contents, MIN_COLUMN_WIDTH));
+  };
+
   const menuItems: MenuItem[] = [
     ...ALL_COLUMNS.map((column) => ({
       // A check rather than a checkbox: the menu is a list of columns, and the
@@ -211,12 +249,14 @@ export function ColumnHeader({
                   and announcing one per column would bury the headers. Column
                   width is reachable from the keyboard only in the sense that
                   it does not need to be - nothing is unreachable without it. */}
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle for a width, not a control - a keyboard route to it would announce a divider per column to bury the headers, and nothing is unreachable without one. */}
             <span
               className="column-resizer"
               data-testid={`resize-${column.id}`}
               onPointerDown={(event) => onResizePointerDown(event, column)}
               onPointerMove={onResizePointerMove}
               onPointerUp={onResizePointerUp}
+              onDoubleClick={(event) => onResizeDoubleClick(event, column.id)}
             />
           </th>
         );

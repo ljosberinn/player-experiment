@@ -62,7 +62,7 @@ export function menus({
   onOpenRepository: () => void;
 }): Menu[] {
   const file: MenuItem[] = [
-    { label: "Add Folder…", onSelect: onAddFolder },
+    { label: "Add Folders…", onSelect: onAddFolder },
     { label: "Rescan", onSelect: onRescan },
   ];
 

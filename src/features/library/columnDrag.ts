@@ -56,3 +56,27 @@ export function columnDropIndex(
 export function draggedWidth(startWidth: number, startX: number, x: number, min: number): number {
   return Math.max(min, startWidth + (x - startX));
 }
+
+/**
+ * The horizontal padding a header and a cell each carry, which a fitted width
+ * has to make room for on top of the text itself.
+ *
+ * One number for both because `.song-header-cell` and `.song-cell` are both
+ * `12px` a side. See `App.css`; a guard there keeps them in step.
+ */
+export const CELL_PADDING_PX = 24;
+
+/**
+ * The width that fits the widest of `contents`.
+ *
+ * **Visible rows only**, which is the whole compromise: the table is
+ * virtualized and a library runs to six figures, so the widest value in a
+ * column is neither in the DOM nor cheap to ask the database for. The
+ * consequence is that fitting is not idempotent - scroll, fit again, and the
+ * width changes. That is the accepted behaviour rather than a defect.
+ *
+ * Rounded up, because a width rounded down clips the character it measured.
+ */
+export function fittedWidth(contents: readonly number[], min: number): number {
+  return Math.max(min, Math.ceil(Math.max(0, ...contents) + CELL_PADDING_PX));
+}

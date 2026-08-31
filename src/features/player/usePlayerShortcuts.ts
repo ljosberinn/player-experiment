@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isTypingTarget, SEEK_STEP_MS, shortcutFor, VOLUME_STEP } from "./shortcuts";
+import { SEEK_STEP_MS, shortcutFor, targetOwns, VOLUME_STEP } from "./shortcuts";
 import { usePlayerStore } from "./store";
 
 /**
@@ -12,11 +12,8 @@ import { usePlayerStore } from "./store";
 export function usePlayerShortcuts(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isTypingTarget(event.target)) {
-        return;
-      }
       const shortcut = shortcutFor(event);
-      if (!shortcut) {
+      if (!shortcut || targetOwns(event.target, shortcut)) {
         return;
       }
 

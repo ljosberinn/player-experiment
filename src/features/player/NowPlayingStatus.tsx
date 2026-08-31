@@ -1,5 +1,6 @@
 import type React from "react";
 import { NowPlaying } from "../../components/ui/NowPlaying";
+import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "./store";
 
 /**
@@ -22,6 +23,17 @@ export function NowPlayingStatus({
   ref: React.Ref<HTMLDivElement>;
 }) {
   const track = usePlayerStore((s) => s.track);
+  const showTrackGroup = useLibraryStore((s) => s.showTrackGroup);
 
-  return <NowPlaying ref={ref} track={track} />;
+  return (
+    <NowPlaying
+      ref={ref}
+      track={track}
+      onReveal={() => {
+        if (track !== null) {
+          void showTrackGroup(track);
+        }
+      }}
+    />
+  );
 }

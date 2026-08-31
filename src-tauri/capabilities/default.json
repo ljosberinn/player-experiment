@@ -13,6 +13,7 @@
     "core:window:allow-maximize",
     "core:window:allow-set-position",
     "core:window:allow-set-size",
+    "core:window:allow-set-title",
     "dialog:allow-open",
     "dialog:allow-save",
     "updater:default",

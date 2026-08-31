@@ -384,6 +384,9 @@ export function SongTable({
                 {columns.map((column) => (
                   <td
                     key={column.id}
+                    // Named so the header can find a column's cells to measure
+                    // when a divider is double-clicked to fit it.
+                    data-column={column.id}
                     className={`song-cell${column.align === "right" ? " right" : ""}`}
                     style={{ width: column.width }}
                   >

@@ -36,13 +36,26 @@ beforeEach(async () => {
 describe("the scan store", () => {
   it("adds the chosen folder and scans it", async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    vi.mocked(open).mockResolvedValue("D:/Music");
+    vi.mocked(open).mockResolvedValue(["D:/Music"]);
 
     await useScanStore.getState().addFolder();
 
     expect(addWatchFolder).toHaveBeenCalledWith("D:/Music");
     expect(scanLibrary).toHaveBeenCalled();
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("adds every folder chosen and scans once for the lot", async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    vi.mocked(open).mockResolvedValue(["D:/Music", "E:/Archive", "F:/Live"]);
+
+    await useScanStore.getState().addFolder();
+
+    expect(addWatchFolder).toHaveBeenCalledTimes(3);
+    expect(addWatchFolder).toHaveBeenLastCalledWith("F:/Live");
+    // A scan walks every watched folder, so one per addition would walk the
+    // first of them three times over.
+    expect(scanLibrary).toHaveBeenCalledOnce();
   });
 
   it("does nothing at all when the folder picker is dismissed", async () => {
@@ -74,7 +87,7 @@ describe("the scan store", () => {
 
   it("refuses to add a folder while a scan is running", async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    vi.mocked(open).mockResolvedValue("D:/Music");
+    vi.mocked(open).mockResolvedValue(["D:/Music"]);
     useScanStore.setState({ busy: true });
 
     await useScanStore.getState().addFolder();
