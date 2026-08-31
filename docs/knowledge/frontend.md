@@ -49,15 +49,26 @@ classes that already exist.
 each re-rendered the whole tree while read at the top of `App`. Each moved into a
 component that subscribes on its own behalf — `NowPlayingStatus`,
 `PlayerTransport`, `SearchBox`. `App.renders.test.tsx` counts renders, because a
-count is exact where a wall-clock budget on a CI runner is noise.
+count is exact where a wall-clock budget on a CI runner is noise. It counts the
+menu bar and the transport for the opposite reason as well: a subscription cut
+too far leaves a menu describing a selection that has moved on.
 
-`App.tsx` is the composition and nothing else: the content pane, the status
-bar, the menu bar's contents and each modal read their own stores from
-`LibraryPane`, `StatusBar`, `useAppMenus` and a host component per dialog. What
-is left at the top is the tree, the launch effects and the one transient notice
-the shell itself owns.
+`App.tsx` is the composition and nothing else: the content pane, the status bar,
+the sidebar's library section, the menu bar and each modal read their own stores
+from `LibraryPane`, `StatusBar`, `LibraryNavHost`, `AppMenuBar` and a host
+component per dialog. What is left at the top is the tree and the launch effects.
 
-**File splitting delivers nothing here; a component boundary does.**
+**File splitting delivers nothing here; a component boundary does.** A hook
+subscribes on behalf of whoever calls it, so moving `useAppMenus` into its own
+file changed nothing: read from `App`, the *selection* it builds the Edit menu
+from re-rendered the whole tree on every click and on every row a shift-drag
+crossed. `AppMenuBar` is the boundary that fixed it, and the same applies to the
+notice above the table (`ContentNotice`) and the sidebar highlight
+(`LibraryNavHost`). Two smaller cuts follow from the same rule: `useAppMenus`
+selects `stats.missing` rather than `stats`, which a scan rewrites as it goes,
+and the shell's own transient message lives in `shell/noticeStore.ts` rather
+than in `App` state, where announcing an export re-rendered the table twice.
+
 `memo(SongTable)` was deliberately not taken — the table subscribes to the
 selection itself, so the one frequent update re-renders it regardless.
 

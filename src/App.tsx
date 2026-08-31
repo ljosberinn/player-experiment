@@ -1,8 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { LibraryNav } from "./components/ui/LibraryNav";
-import { MenuBar } from "./components/ui/MenuBar";
 import { Sidebar } from "./components/ui/Sidebar";
 import { TitleBar } from "./components/ui/TitleBar";
 import { CrashNotice } from "./features/crash/CrashNotice";
@@ -11,6 +9,7 @@ import { TagEditorHost } from "./features/editor/TagEditorHost";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { useExportStore } from "./features/export/store";
 import { HistoryNav } from "./features/library/HistoryNav";
+import { LibraryNavHost } from "./features/library/LibraryNavHost";
 import { LibraryPane } from "./features/library/LibraryPane";
 import { RemoveMissingDialog } from "./features/library/RemoveMissingDialog";
 import { SearchBox } from "./features/library/SearchBox";
@@ -25,13 +24,13 @@ import { usePlayerStore } from "./features/player/store";
 import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
-import { NOTICE_MS } from "./features/playlists/store";
 import { AppErrorPopover } from "./features/shell/AppErrorPopover";
+import { AppMenuBar } from "./features/shell/AppMenuBar";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
+import { useNoticeStore } from "./features/shell/noticeStore";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
 import { StatusBar } from "./features/shell/StatusBar";
-import { useAppMenus } from "./features/shell/useAppMenus";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
@@ -43,7 +42,6 @@ import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, getAppInfo, onLibraryChanged } from "./ipc";
 
 export function App() {
-  const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   /** What the error popover points at: the box that says what is playing. */
@@ -53,13 +51,11 @@ export function App() {
 
   const loadColumns = useLibraryStore((s) => s.loadColumns);
   const refresh = useLibraryStore((s) => s.refresh);
-  const tab = useLibraryStore((s) => s.tab);
-  const showTab = useLibraryStore((s) => s.showTab);
-  const playlistId = useLibraryStore((s) => s.playlistId);
 
   const connect = usePlayerStore((s) => s.connect);
   const refreshUndo = useEditorStore((s) => s.refreshUndo);
   const runExportTo = useExportStore((s) => s.run);
+  const showNotice = useNoticeStore((s) => s.show);
 
   useEffect(() => {
     // The layout first: it can move the sort off a hidden column, and doing
@@ -108,14 +104,6 @@ export function App() {
   // Alt+Tab and the taskbar, which are the only places a decorationless
   // window's title shows.
   useWindowTitle();
-
-  useEffect(() => {
-    if (toolbarNotice === null) {
-      return;
-    }
-    const timer = setTimeout(() => setToolbarNotice(null), NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [toolbarNotice]);
 
   useEffect(() => {
     void refreshUndo();
@@ -169,17 +157,11 @@ export function App() {
         return;
       }
       const count = await runExportTo(path, choice.scope);
-      setToolbarNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
+      showNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
     } catch (cause) {
-      setToolbarNotice(`Export failed: ${String(cause)}`);
+      showNotice(`Export failed: ${String(cause)}`);
     }
   };
-
-  const appMenus = useAppMenus({
-    onExport: (choice) => void runExport(choice),
-    onRemoveMissing: () => setConfirmRemoveMissing(true),
-    onSettings: () => setShowSettings(true),
-  });
 
   return (
     <div className="app">
@@ -193,7 +175,11 @@ export function App() {
           used to ride on it is in the strip below, which is what the design
           draws and what gives the menus the left edge to themselves. */}
       <TitleBar version={appInfo?.version ?? null}>
-        <MenuBar menus={appMenus} />
+        <AppMenuBar
+          onExport={(choice) => void runExport(choice)}
+          onRemoveMissing={() => setConfirmRemoveMissing(true)}
+          onSettings={() => setShowSettings(true)}
+        />
       </TitleBar>
 
       {/* Each of these subscribes to its own store values rather than taking
@@ -220,17 +206,11 @@ export function App() {
           {/* Above the library views because it acts on all of them, and on
               the playlists below them. */}
           <HistoryNav />
-          <LibraryNav
-            // Nothing in the library section is current while a playlist is
-            // open: the playlist is what the content pane is showing, and two
-            // highlighted rows would be two answers to one question.
-            active={playlistId === null ? tab : null}
-            onSelect={(view) => void showTab(view)}
-          />
+          <LibraryNavHost />
           <PlaylistSidebar onExport={(playlist) => void runExport(exportChoice([], playlist))} />
         </Sidebar>
 
-        <LibraryPane toolbarNotice={toolbarNotice} onExport={(choice) => void runExport(choice)} />
+        <LibraryPane onExport={(choice) => void runExport(choice)} />
       </div>
 
       {/* Beside the other dialogs rather than in the content flow: it is an
@@ -252,7 +232,7 @@ export function App() {
         <RemoveMissingDialog
           onClose={() => setConfirmRemoveMissing(false)}
           onRemoved={(removed) =>
-            setToolbarNotice(`Removed ${removed} missing song${removed === 1 ? "" : "s"}.`)
+            showNotice(`Removed ${removed} missing song${removed === 1 ? "" : "s"}.`)
           }
         />
       ) : null}

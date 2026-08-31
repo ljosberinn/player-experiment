@@ -1,8 +1,11 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { useEditorStore } from "./features/editor/store";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
+import { usePlaylistsStore } from "./features/playlists/store";
+import { useNoticeStore } from "./features/shell/noticeStore";
 
 /**
  * What wakes up when one value changes.
@@ -114,7 +117,7 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) })
  * asked to render at all, and a stub answers that without depending on how
  * React attributes time. The real components are exercised by their own tests.
  */
-const renders = { songTable: 0, playlistSidebar: 0, browseView: 0 };
+const renders = { songTable: 0, playlistSidebar: 0, browseView: 0, menuBar: 0, transport: 0 };
 
 vi.mock("./features/library/SongTable", () => ({
   SongTable: () => {
@@ -134,6 +137,30 @@ vi.mock("./features/library/BrowseView", () => ({
   BrowseView: () => {
     renders.browseView += 1;
     return <div />;
+  },
+}));
+
+/**
+ * Counted for the opposite reason to the others: the menu bar *must* wake up
+ * for the things its items depend on, so this is the guard against fixing a
+ * wasteful render by cutting off a subscription something needs.
+ */
+/**
+ * The chrome that has nothing to do with the library at all. Counted because
+ * navigating between views is the one frequent update left that reaches the
+ * top of the tree, and the transport is what it has no business touching.
+ */
+vi.mock("./features/player/PlayerTransport", () => ({
+  PlayerTransport: () => {
+    renders.transport += 1;
+    return <div />;
+  },
+}));
+
+vi.mock("./components/ui/MenuBar", () => ({
+  MenuBar: () => {
+    renders.menuBar += 1;
+    return <nav />;
   },
 }));
 
@@ -165,9 +192,16 @@ async function mounted() {
     await Promise.resolve();
   });
 
+  reset();
+}
+
+/** Back to zero, so only what a test does afterwards is counted. */
+function reset() {
   renders.songTable = 0;
   renders.playlistSidebar = 0;
   renders.browseView = 0;
+  renders.menuBar = 0;
+  renders.transport = 0;
 }
 
 /**
@@ -182,9 +216,7 @@ function expectTableMounted() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  renders.songTable = 0;
-  renders.playlistSidebar = 0;
-  renders.browseView = 0;
+  reset();
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map(), error: null });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0, error: null });
 });
@@ -278,5 +310,134 @@ describe("what typing in the search box re-renders", () => {
     expectTableMounted();
     expect(renders.songTable).toBe(0);
     expect(renders.playlistSidebar).toBe(0);
+  });
+});
+
+describe("what selecting rows re-renders", () => {
+  /** A click on row `index`, as the store writes it. */
+  function select(ids: number[], anchorIndex: number) {
+    act(() => {
+      useLibraryStore.setState({ selection: { ids: new Set(ids), anchorIndex } });
+    });
+  }
+
+  it("leaves the playlist sidebar alone", async () => {
+    await mounted();
+
+    select([1], 0);
+
+    expectTableMounted();
+    expect(renders.playlistSidebar).toBe(0);
+  });
+
+  it("stays flat while a shift-drag grows the range", async () => {
+    await mounted();
+
+    // One store write per row the pointer crosses, which is what a shift-drag
+    // down a long table costs.
+    for (let row = 1; row <= 200; row += 1) {
+      select(
+        Array.from({ length: row }, (_, index) => index + 1),
+        0,
+      );
+    }
+
+    expectTableMounted();
+    expect(renders.playlistSidebar).toBe(0);
+    expect(renders.browseView).toBe(0);
+  });
+
+  it("still rebuilds the menu bar, whose Edit items are the selection", async () => {
+    await mounted();
+
+    select([1], 0);
+
+    expect(renders.menuBar).toBe(1);
+  });
+});
+
+describe("what a library refresh re-renders", () => {
+  it("leaves the menus alone when only the totals moved", async () => {
+    await mounted();
+
+    // A scan writes the totals repeatedly as it goes. The only thing the menu
+    // bar takes from the stats is the missing count, which decides whether
+    // Remove Missing Songs is offered.
+    act(() => {
+      useLibraryStore.setState({
+        stats: { tracks: 12_000, durationMs: 5_000, bytes: 900, missing: 0 },
+      });
+    });
+
+    expect(renders.menuBar).toBe(0);
+  });
+
+  it("rebuilds the menus when a file goes missing", async () => {
+    await mounted();
+
+    act(() => {
+      useLibraryStore.setState({
+        stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 3 },
+      });
+    });
+
+    expect(renders.menuBar).toBe(1);
+  });
+});
+
+describe("what a transient notice re-renders", () => {
+  it("leaves the song table alone when a playlist reports what it did", async () => {
+    await mounted();
+
+    act(() => {
+      usePlaylistsStore.setState({ notice: "Added 3 songs to Road Trip." });
+    });
+
+    expectTableMounted();
+    expect(renders.songTable).toBe(0);
+  });
+
+  it("leaves the song table alone when a tag write reports what it did", async () => {
+    await mounted();
+
+    act(() => {
+      useEditorStore.setState({ notice: "Saved 2 songs." });
+    });
+
+    expectTableMounted();
+    expect(renders.songTable).toBe(0);
+  });
+
+  it("leaves the song table alone when the shell reports an export", async () => {
+    await mounted();
+
+    act(() => {
+      useNoticeStore.getState().show("Exported 3 songs.");
+    });
+
+    expectTableMounted();
+    expect(renders.songTable).toBe(0);
+  });
+});
+
+describe("what moving between views re-renders", () => {
+  it("leaves the transport alone when the library view changes", async () => {
+    await mounted();
+
+    act(() => {
+      useLibraryStore.setState({ tab: "albums" });
+    });
+
+    expect(renders.transport).toBe(0);
+  });
+
+  it("leaves the transport alone when a playlist is opened", async () => {
+    await mounted();
+
+    act(() => {
+      useLibraryStore.setState({ playlistId: 7 });
+    });
+
+    expect(renders.transport).toBe(0);
   });
 });

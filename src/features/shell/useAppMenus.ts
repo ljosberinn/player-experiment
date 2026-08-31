@@ -27,7 +27,9 @@ export function useAppMenus({
   onRemoveMissing: () => void;
   onSettings: () => void;
 }): Menu[] {
-  const stats = useLibraryStore((s) => s.stats);
+  // The count, not the whole stats object: a scan rewrites the totals as it
+  // goes, and only this one decides whether Remove Missing Songs is offered.
+  const missingCount = useLibraryStore((s) => s.stats.missing);
   const playlistId = useLibraryStore((s) => s.playlistId);
   const selection = useLibraryStore((s) => s.selection);
   // Reads the page cache when the menu is built rather than subscribing to it:
@@ -48,7 +50,7 @@ export function useAppMenus({
   const selectedIds = [...selection.ids];
 
   return menus({
-    missingCount: stats.missing,
+    missingCount,
     canUndoTags,
     hasExportTarget: selectedIds.length > 0 || currentPlaylist !== null,
     exportSelectionLabel: exportSelectionLabel(selectedIds.length, currentPlaylist?.name ?? null),

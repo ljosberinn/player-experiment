@@ -4,6 +4,7 @@ import { type ExportChoice, exportChoice } from "../export/scope";
 import { usePlayerStore } from "../player/store";
 import { NOTICE_MS, usePlaylistsStore } from "../playlists/store";
 import { useCurrentPlaylist } from "../playlists/useCurrentPlaylist";
+import { useNoticeStore } from "../shell/noticeStore";
 import { TaskProgress } from "../shell/TaskProgress";
 import { BrowseView } from "./BrowseView";
 import { resolveColumns } from "./columns";
@@ -18,28 +19,10 @@ import { useLibraryStore, VIEW_TITLES } from "./store";
  * the same reason the transport strip does - the shell would otherwise
  * re-render everything down to the song table whenever any of them changed.
  */
-export function LibraryPane({
-  toolbarNotice,
-  onExport,
-}: {
-  /** The shell's own transient message, shown alongside the stores' own. */
-  toolbarNotice: string | null;
-  onExport: (choice: ExportChoice) => void;
-}) {
+export function LibraryPane({ onExport }: { onExport: (choice: ExportChoice) => void }) {
   const tab = useLibraryStore((s) => s.tab);
   const browse = useLibraryStore((s) => s.browse);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
-  const notice = usePlaylistsStore((s) => s.notice);
-  const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
-  const tagNotice = useEditorStore((s) => s.notice);
-
-  useEffect(() => {
-    if (notice === null) {
-      return;
-    }
-    const timer = setTimeout(dismissNotice, NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [notice, dismissNotice]);
 
   return (
     <main className="content">
@@ -63,11 +46,7 @@ export function LibraryPane({
         </div>
       ) : null}
 
-      {notice || tagNotice || toolbarNotice ? (
-        <p className="content-notice" role="status">
-          {notice ?? tagNotice ?? toolbarNotice}
-        </p>
-      ) : null}
+      <ContentNotice />
 
       {browse !== null ? (
         // The way back out of a drill-in. A breadcrumb rather than the tab
@@ -80,6 +59,47 @@ export function LibraryPane({
 
       <LibraryBody onExport={onExport} />
     </main>
+  );
+}
+
+/**
+ * Whatever the last action wants to say, for a moment.
+ *
+ * Its own component so that saying it does not re-render the rows underneath:
+ * a tag write or a drop onto a playlist is exactly when the table is least
+ * worth rebuilding, and the message sits above it in the same pane.
+ */
+function ContentNotice() {
+  const notice = usePlaylistsStore((s) => s.notice);
+  const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
+  const tagNotice = useEditorStore((s) => s.notice);
+  const shellNotice = useNoticeStore((s) => s.notice);
+  const dismissShellNotice = useNoticeStore((s) => s.dismiss);
+
+  useEffect(() => {
+    if (notice === null) {
+      return;
+    }
+    const timer = setTimeout(dismissNotice, NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice, dismissNotice]);
+
+  useEffect(() => {
+    if (shellNotice === null) {
+      return;
+    }
+    const timer = setTimeout(dismissShellNotice, NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [shellNotice, dismissShellNotice]);
+
+  const message = notice ?? tagNotice ?? shellNotice;
+  if (message === null) {
+    return null;
+  }
+  return (
+    <p className="content-notice" role="status">
+      {message}
+    </p>
   );
 }
 
