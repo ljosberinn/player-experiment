@@ -304,6 +304,9 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       if (useLibraryStore.getState().playlistId === playlistId) {
         await useLibraryStore.getState().showPlaylist(null);
       }
+      // Back must not offer a playlist that no longer exists. After leaving
+      // it, so the view the exit recorded survives.
+      useLibraryStore.getState().forgetPlaylist(playlistId);
       await get().load();
     } catch (cause) {
       set({ error: String(cause) });

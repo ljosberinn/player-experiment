@@ -62,6 +62,14 @@ absences are what nobody notices coming back — hence the guards in
 - `features/library/store.ts` owns the view (tab, search, sort, selection,
   stats); `features/player/store.ts` owns playback; `features/shell` owns the
   window (geometry, zoom, menus, dynamic background).
+- **Every view change goes through `applyEntry`.** A view is
+  `{ tab, browse, playlistId }`, written in one `set` and refreshed once; the
+  four actions that used to write those fields separately are entry
+  constructors over it. Search and sort are deliberately *not* in an entry —
+  search changes per keystroke, and the sort is derived so that going back into
+  an album lands in track order rather than in whatever order it was left in.
+  The history itself lives in the library store, because a second store holding
+  a copy of those three fields would drift out of step with them.
 - Zoom is **webview zoom**, not CSS, so CSS pixel coordinates and `ROW_HEIGHT`
   are unaffected. Applied before the window is shown, rounded to one decimal on
   every path, and a rejected zoom is not persisted.
@@ -80,6 +88,10 @@ absences are what nobody notices coming back — hence the guards in
   position from that event and the row's own handler decides which rows the
   menu acts on. Both would otherwise be duplicated, and the duplicate is what
   drifts.
+- **Back and forward are `pointerdown`, not `auxclick`.** Windows fires mouse
+  buttons 3 and 4 through both, and by the time the click arrives the browser
+  has already decided nothing happened. The side buttons navigate from inside
+  the search box; Alt+←/→ stand down there like every other shortcut.
 - **Alt+Arrow nudges a selection within a playlist.** Bare arrows are seek and
   volume, and `shortcutFor` drops any key pressed with a modifier — so an Alt
   chord cannot collide with them by construction. A scattered selection is

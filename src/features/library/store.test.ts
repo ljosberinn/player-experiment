@@ -9,6 +9,7 @@ import {
   saveColumnConfig,
 } from "../../ipc";
 import { DEFAULT_COLUMN_CONFIG } from "./columns";
+import { backEntry, forwardEntry, historyAt } from "./history";
 import { PAGE_SIZE } from "./pageCache";
 import { SEARCH_DEBOUNCE_MS, useLibraryStore } from "./store";
 
@@ -99,6 +100,7 @@ beforeEach(() => {
     selection: { ids: new Set(), anchorIndex: null },
     error: null,
     queryToken: 0,
+    history: historyAt({ tab: "songs", browse: null, playlistId: null }),
   });
   statsMock.mockResolvedValue(stats(1000));
   browseGroupsMock.mockResolvedValue([]);
@@ -761,5 +763,166 @@ describe("column layout", () => {
 
     expect(useLibraryStore.getState().columns).toEqual(DEFAULT_COLUMN_CONFIG);
     expect(saveColumnConfigMock).toHaveBeenCalled();
+  });
+});
+
+describe("navigation history", () => {
+  it("goes back to the view that was open before", async () => {
+    await useLibraryStore.getState().showTab("albums");
+
+    await useLibraryStore.getState().back();
+
+    expect(useLibraryStore.getState().tab).toBe("songs");
+  });
+
+  it("does one refresh per navigation, not one per field it changes", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().back();
+
+    // Four fields describe the view and each has an action that refreshes on
+    // its own; replaying a state through those actions would query four times.
+    expect(statsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes forward again to where back came from", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().back();
+
+    await useLibraryStore.getState().forward();
+
+    expect(useLibraryStore.getState().tab).toBe("albums");
+  });
+
+  it("does nothing at either end", async () => {
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().back();
+    await useLibraryStore.getState().forward();
+
+    expect(statsMock).not.toHaveBeenCalled();
+  });
+
+  it("restores the drill-in, not merely the tab it was in", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    await useLibraryStore.getState().closeGroup();
+
+    await useLibraryStore.getState().back();
+
+    expect(useLibraryStore.getState().browse).toEqual({
+      kind: "albums",
+      key: "Shields",
+      secondary: "Grizzly Bear",
+    });
+  });
+
+  it("opens an album in track order on the way back into it", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    await useLibraryStore.getState().toggleSort("title");
+    await useLibraryStore.getState().closeGroup();
+
+    await useLibraryStore.getState().back();
+
+    // The sort is derived rather than recorded: an album read by title once
+    // is still an album, and the order it is for is its own.
+    expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+  });
+
+  it("reloads the columns on the way back into a playlist", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showTab("albums");
+    loadColumnConfigMock.mockClear();
+
+    await useLibraryStore.getState().back();
+
+    // Columns are stored per playlist, so a view on the other side of that
+    // boundary may have its own - and it may move the sort.
+    expect(loadColumnConfigMock).toHaveBeenCalledWith(5);
+  });
+
+  it("does not reload the columns between two views of the same source", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().showTab("artists");
+    loadColumnConfigMock.mockClear();
+
+    await useLibraryStore.getState().back();
+
+    // Both are the library's own layout - re-reading it would be a round trip
+    // to be told what is already on screen.
+    expect(loadColumnConfigMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves the playlist and picks the view in one entry", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().showTab("songs");
+
+    expect(useLibraryStore.getState()).toMatchObject({ playlistId: null, tab: "songs" });
+    // Leaving a playlist for Songs used to be two awaits and two queries.
+    expect(statsMock).toHaveBeenCalledTimes(1);
+    // And one entry, so back returns to the playlist rather than to a
+    // half-applied state between the two.
+    await useLibraryStore.getState().back();
+    expect(useLibraryStore.getState().playlistId).toBe(5);
+  });
+
+  it("does not record clicking the tab that is already open", async () => {
+    await useLibraryStore.getState().showTab("albums");
+
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().back();
+
+    // Otherwise back would appear to do nothing the first time it is pressed.
+    expect(useLibraryStore.getState().tab).toBe("songs");
+  });
+
+  it("abandons the forward branch when a new view is opened after going back", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().back();
+
+    await useLibraryStore.getState().showTab("genres");
+
+    expect(forwardEntry(useLibraryStore.getState().history)).toBeNull();
+  });
+
+  it("keeps the search and re-points what clearing it returns to", async () => {
+    await search("bear");
+    expect(useLibraryStore.getState().sortBy).toBe("relevance");
+
+    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showTab("albums");
+
+    // The playlist change cleared the search, so this is the library's own
+    // default rather than the playlist's position order.
+    expect(useLibraryStore.getState()).toMatchObject({ search: "", sortBy: "artist" });
+  });
+
+  it("lands in the new view's natural order when the search is cleared there", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await search("bear");
+
+    await useLibraryStore.getState().openGroup(browseGroup());
+    await useLibraryStore.getState().clearSearch();
+
+    // Relevance ranking survives the move - the term is still on screen - but
+    // clearing the box must not land in the album list's order.
+    expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+  });
+
+  it("forgets a deleted playlist rather than offering to go back to it", async () => {
+    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showTab("albums");
+
+    useLibraryStore.getState().forgetPlaylist(5);
+
+    expect(backEntry(useLibraryStore.getState().history)).toMatchObject({
+      tab: "songs",
+      playlistId: null,
+    });
   });
 });

@@ -122,6 +122,19 @@ describe("playlists store", () => {
     expect(useLibraryStore.getState().sortBy).toBe("artist");
   });
 
+  it("takes a deleted playlist out of the navigation history", async () => {
+    vi.mocked(deletePlaylist).mockResolvedValue(undefined);
+    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showTab("albums");
+
+    await usePlaylistsStore.getState().remove(3);
+    await useLibraryStore.getState().back();
+
+    // Back must not land on a playlist that no longer exists - the query would
+    // run against a dead id and the view would be empty for no visible reason.
+    expect(useLibraryStore.getState().playlistId).toBeNull();
+  });
+
   it("stays where it is when some other playlist is deleted", async () => {
     vi.mocked(deletePlaylist).mockResolvedValue(undefined);
     await useLibraryStore.getState().showPlaylist(3);
