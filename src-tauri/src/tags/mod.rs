@@ -97,9 +97,15 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
 /// The year field is free text in practice: `2012`, `2012-05-01` and
 /// `2012/05/01` all occur, so take the leading four-digit run rather than
 /// requiring the whole value to parse.
+///
+/// `0000` is a placeholder taggers write for "no year", not a year, and it
+/// would otherwise reach the browse views as one.
 fn parse_year(value: &str) -> Option<i64> {
     let digits: String = value.chars().take_while(char::is_ascii_digit).collect();
-    (digits.len() == 4).then(|| digits.parse().ok()).flatten()
+    (digits.len() == 4)
+        .then(|| digits.parse().ok())
+        .flatten()
+        .filter(|year| *year != 0)
 }
 
 /// Treats whitespace-only tag values as absent - they are common in the wild
@@ -140,6 +146,12 @@ mod tests {
         );
         assert_eq!(parse_year(""), None);
         assert_eq!(parse_year("unknown"), None);
+        assert_eq!(
+            parse_year("0000"),
+            None,
+            "a zero year is a tagger's placeholder, not a year"
+        );
+        assert_eq!(parse_year("0000-00-00"), None);
     }
 
     #[test]

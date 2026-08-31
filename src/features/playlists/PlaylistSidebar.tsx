@@ -242,11 +242,7 @@ export function PlaylistSidebar({
           </button>
         }
       >
-        {statics.length === 0 ? (
-          <p className="sidebar-empty">
-            Drag songs here to start one, or use <strong>+</strong>.
-          </p>
-        ) : (
+        {statics.length === 0 ? null : (
           <ul aria-labelledby="playlists-heading">{statics.map(row)}</ul>
         )}
 
