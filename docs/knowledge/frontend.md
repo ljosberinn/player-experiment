@@ -61,6 +61,16 @@ The app must not read as a web page in a window. Enforced by absence, and
 absences are what nobody notices coming back — hence the guards in
 `App.css.test.ts` (see [testing](testing.md)).
 
+- **Icons go through `components/icons/Icon.tsx`**, named by meaning
+  (`"play"`, `"genres"`). `registry.tsx` beside it is the only file that names
+  the library — Phosphor, imported per icon rather than from the root barrel —
+  so swapping families is one file. Library-specific props such as Phosphor's
+  `weight` are bound in the registry, never at a call site.
+  - Every icon is decorative: each sits beside its own label or inside a button
+    with an `aria-label`, so a name here would be announced twice.
+  - **The caption buttons are the exception** and stay Segoe MDL2 (see
+    `.window-buttons` in `App.css`). Those are the OS glyphs; a library X in the
+    corner of a Windows title bar reads as a web page.
 - No hover backgrounds, except window caption buttons and menu items.
 - No transitions or animations, except the playing-row speaker, which **is** the
   state — and it stands down under `prefers-reduced-motion`.
