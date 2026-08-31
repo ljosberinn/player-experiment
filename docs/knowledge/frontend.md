@@ -51,6 +51,12 @@ component that subscribes on its own behalf — `NowPlayingStatus`,
 `PlayerTransport`, `SearchBox`. `App.renders.test.tsx` counts renders, because a
 count is exact where a wall-clock budget on a CI runner is noise.
 
+`App.tsx` is the composition and nothing else: the content pane, the status
+bar, the menu bar's contents and each modal read their own stores from
+`LibraryPane`, `StatusBar`, `useAppMenus` and a host component per dialog. What
+is left at the top is the tree, the launch effects and the one transient notice
+the shell itself owns.
+
 **File splitting delivers nothing here; a component boundary does.**
 `memo(SongTable)` was deliberately not taken — the table subscribes to the
 selection itself, so the one frequent update re-renders it regardless.

@@ -64,3 +64,6 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
+# Nursery, so allow-by-default; the threshold lives in clippy.toml and matches
+# biome's, so both halves fail at the same point.
+cognitive_complexity = "deny"

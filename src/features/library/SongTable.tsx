@@ -1,9 +1,9 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { ContextMenu } from "../../components/ui/ContextMenu";
-import { revealTrack } from "../../ipc";
+import { revealTrack, type Track } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { isTypingTarget } from "../player/shortcuts";
 import {
@@ -20,7 +20,7 @@ import type { ColumnDef } from "./columns";
 import { rowIndicesOf } from "./pageCache";
 import { RowStatusCell } from "./RowStatusCell";
 import { rowMenuItems } from "./rowMenu";
-import { isSelected } from "./selection";
+import { type ClickModifiers, isSelected, type Selection } from "./selection";
 import { useLibraryStore } from "./store";
 
 const ROW_HEIGHT = 26;
@@ -38,6 +38,64 @@ const MENU_INSET = 8;
  */
 function offsetWithin(event: React.DragEvent<HTMLElement>): number {
   return event.clientY - event.currentTarget.getBoundingClientRect().top;
+}
+
+/**
+ * Where an Alt+arrow nudge would move the selection, or null when the chord is
+ * not a nudge or there is nowhere for it to go.
+ *
+ * Alt rather than a bare arrow: bare arrows are the player's seek and volume
+ * keys, and `shortcutFor` drops anything with a modifier - so an Alt chord
+ * cannot collide with them by construction.
+ */
+function nudgeFor(event: KeyboardEvent): { ids: number[]; target: number } | null {
+  if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
+    return null;
+  }
+  const { selection, pages, total } = useLibraryStore.getState();
+  const indices = rowIndicesOf(pages, selection.ids);
+  if (indices === null) {
+    return null;
+  }
+  const target = nudgeTarget(indices, event.key === "ArrowUp" ? "up" : "down", total);
+  return target === null ? null : { ids: [...selection.ids], target };
+}
+
+/**
+ * The window-level half of the table's keyboard, acting on the selection
+ * rather than on whatever has focus.
+ *
+ * State is read through `getState` for the same reason `useSelectionShortcuts`
+ * does: the listener is bound once and must not see a selection from the
+ * render it was created in.
+ */
+function tableKey(
+  event: KeyboardEvent,
+  openMenuAt: (rowIndex: number) => void,
+  onReorder: ((trackIds: number[], targetIndex: number) => void) | undefined,
+): void {
+  // A row handles its own keys first, and a text field keeps all of them.
+  if (event.defaultPrevented || isTypingTarget(event.target)) {
+    return;
+  }
+
+  // Windows opens a context menu with the Menu key or Shift+F10, and the
+  // second exists because not every keyboard has the first.
+  if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+    const { selection } = useLibraryStore.getState();
+    if (selection.ids.size > 0 && selection.anchorIndex !== null) {
+      event.preventDefault();
+      openMenuAt(selection.anchorIndex);
+    }
+    return;
+  }
+
+  const nudge = onReorder === undefined ? null : nudgeFor(event);
+  if (nudge === null) {
+    return;
+  }
+  event.preventDefault();
+  onReorder?.(nudge.ids, nudge.target);
 }
 
 /**
@@ -176,42 +234,7 @@ export function SongTable({
       });
     };
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      // A row handles its own keys first, and a text field keeps all of them.
-      if (event.defaultPrevented || isTypingTarget(event.target)) {
-        return;
-      }
-
-      // Windows opens a context menu with the Menu key or Shift+F10, and the
-      // second exists because not every keyboard has the first.
-      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-        const { selection } = useLibraryStore.getState();
-        if (selection.ids.size === 0 || selection.anchorIndex === null) {
-          return;
-        }
-        event.preventDefault();
-        openMenuAt(selection.anchorIndex);
-        return;
-      }
-
-      // Alt rather than a bare arrow: bare arrows are the player's seek and
-      // volume keys, and `shortcutFor` drops anything with a modifier - so an
-      // Alt chord cannot collide with them by construction.
-      if (!onReorder || !event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
-        return;
-      }
-      const { selection, pages, total: rowCount } = useLibraryStore.getState();
-      const indices = rowIndicesOf(pages, selection.ids);
-      if (indices === null) {
-        return;
-      }
-      const target = nudgeTarget(indices, event.key === "ArrowUp" ? "up" : "down", rowCount);
-      if (target === null) {
-        return;
-      }
-      event.preventDefault();
-      onReorder([...selection.ids], target);
-    };
+    const onKeyDown = (event: KeyboardEvent) => tableKey(event, openMenuAt, onReorder);
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -270,136 +293,213 @@ export function SongTable({
                 })
           }
         >
-          {items.map((item) => {
-            const track = rowAt(item.index);
-            const select = (event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
-              if (track) {
-                clickRow(item.index, track.id, {
-                  shift: event.shiftKey,
-                  meta: event.ctrlKey || event.metaKey,
-                });
-              }
-            };
-
-            return (
-              <tr
-                key={item.key}
-                aria-rowindex={item.index + 1}
-                aria-selected={track ? isSelected(selection, track.id) : undefined}
-                tabIndex={0}
-                draggable={track !== null}
-                className={[
-                  "song-row",
-                  item.index % 2 === 1 ? "odd" : "",
-                  track && isSelected(selection, track.id) ? "selected" : "",
-                  track && track.id === nowPlayingId ? "playing" : "",
-                  track ? "" : "placeholder",
-                  dropIndex === item.index ? "drop-before" : "",
-                  dropIndex === total && item.index === total - 1 ? "drop-after" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
-                onClick={select}
-                onDoubleClick={() => onActivate?.(item.index)}
-                onContextMenu={() => {
-                  // No preventDefault and no stopPropagation: the trigger on
-                  // <tbody> needs this event to reach it, and suppressing the
-                  // webview's own menu is its job now.
-                  if (!track) {
-                    setMenu(null);
-                    return;
-                  }
-                  // Right-clicking outside the selection acts on the row under
-                  // the pointer, the way every file manager does - otherwise
-                  // the menu would silently apply to rows scrolled off screen.
-                  const inSelection = isSelected(selection, track.id);
-                  if (!inSelection) {
-                    clickRow(item.index, track.id, {});
-                  }
-                  setMenu({
-                    trackIds: inSelection ? [...selection.ids] : [track.id],
-                    rowIndex: item.index,
-                  });
-                }}
-                onDragStart={(event) => {
-                  if (!track) {
-                    event.preventDefault();
-                    return;
-                  }
-                  // Dragging a row outside the selection makes that row the
-                  // selection first, so what moves is what the pointer grabbed
-                  // rather than something scrolled off elsewhere.
-                  const wasSelected = isSelected(selection, track.id);
-                  if (!wasSelected) {
-                    clickRow(item.index, track.id, {});
-                  }
-                  const dragged = wasSelected ? [...selection.ids] : [track.id];
-                  setTrackIds(event.dataTransfer, dragged);
-                  event.dataTransfer.effectAllowed = "copyMove";
-                  // Torn down on the next frame: the badge has to be in the
-                  // document long enough to be rasterized, and gone before it
-                  // can be seen sitting off-screen.
-                  const cleanUp = setDragImage(event, dragged.length);
-                  requestAnimationFrame(cleanUp);
-                }}
-                onDragOver={(event) => {
-                  if (!onReorder || !hasTrackIds(event.dataTransfer)) {
-                    return;
-                  }
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                  setDropIndex(dropIndexFor(item.index, offsetWithin(event), ROW_HEIGHT));
-                }}
-                onDrop={(event) => {
-                  if (!onReorder) {
-                    return;
-                  }
-                  event.preventDefault();
-                  const target = dropIndexFor(item.index, offsetWithin(event), ROW_HEIGHT);
-                  setDropIndex(null);
-                  const ids = readTrackIds(event.dataTransfer);
-                  if (ids.length > 0) {
-                    onReorder(ids, target);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    select(event);
-                    onActivate?.(item.index);
-                  } else if (event.key === "Delete" && onRemove) {
-                    event.preventDefault();
-                    const ids =
-                      track && !isSelected(selection, track.id) ? [track.id] : [...selection.ids];
-                    if (ids.length > 0) {
-                      onRemove(ids);
-                    }
-                  }
-                  // Space is deliberately not handled: it is the global
-                  // play/pause shortcut and has to reach the window.
-                }}
-              >
-                <RowStatusCell track={track} nowPlayingId={nowPlayingId} />
-                {columns.map((column) => (
-                  <td
-                    key={column.id}
-                    // Named so the header can find a column's cells to measure
-                    // when a divider is double-clicked to fit it.
-                    data-column={column.id}
-                    className={`song-cell${column.align === "right" ? " right" : ""}`}
-                    style={{ width: column.width }}
-                  >
-                    {/* A row whose page has not arrived renders a shimmer bar
-                        rather than blocking the scroll on a fetch. */}
-                    {track ? column.render(track) : <span className="skeleton" />}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
+          {items.map((item) => (
+            <SongRow
+              key={item.key}
+              item={item}
+              track={rowAt(item.index)}
+              columns={columns}
+              selection={selection}
+              nowPlayingId={nowPlayingId}
+              dropIndex={dropIndex}
+              total={total}
+              onActivate={onActivate}
+              onRemove={onRemove}
+              onReorder={onReorder}
+              onClickRow={clickRow}
+              onMenu={setMenu}
+              onDropIndex={setDropIndex}
+            />
+          ))}
         </ContextMenu>
       </table>
     </div>
+  );
+}
+
+/** What a row's state adds to `song-row`, as one class attribute. */
+function rowClasses({
+  index,
+  track,
+  selection,
+  nowPlayingId,
+  dropIndex,
+  total,
+}: {
+  index: number;
+  track: Track | null;
+  selection: Selection;
+  nowPlayingId: number | null;
+  dropIndex: number | null;
+  total: number;
+}): string {
+  return [
+    "song-row",
+    index % 2 === 1 ? "odd" : "",
+    track && isSelected(selection, track.id) ? "selected" : "",
+    track && track.id === nowPlayingId ? "playing" : "",
+    track ? "" : "placeholder",
+    dropIndex === index ? "drop-before" : "",
+    dropIndex === total && index === total - 1 ? "drop-after" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * One row, and everything a pointer or the keyboard can do to it.
+ *
+ * `track` is null for a row whose page has not arrived: the row still occupies
+ * its place and still scrolls, it just has nothing to say yet, so every
+ * handler here has to cope with having no track.
+ */
+function SongRow({
+  item,
+  track,
+  columns,
+  selection,
+  nowPlayingId,
+  dropIndex,
+  total,
+  onActivate,
+  onRemove,
+  onReorder,
+  onClickRow,
+  onMenu,
+  onDropIndex,
+}: {
+  item: VirtualItem;
+  track: Track | null;
+  columns: ColumnDef[];
+  selection: Selection;
+  nowPlayingId: number | null;
+  dropIndex: number | null;
+  total: number;
+  onActivate?: ((rowIndex: number) => void) | undefined;
+  onRemove?: ((trackIds: number[]) => void) | undefined;
+  onReorder?: ((trackIds: number[], targetIndex: number) => void) | undefined;
+  onClickRow: (rowIndex: number, id: number, modifiers: ClickModifiers) => void;
+  onMenu: (menu: { trackIds: number[]; rowIndex: number } | null) => void;
+  onDropIndex: (index: number | null) => void;
+}) {
+  const select = (event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
+    if (track) {
+      onClickRow(item.index, track.id, {
+        shift: event.shiftKey,
+        meta: event.ctrlKey || event.metaKey,
+      });
+    }
+  };
+
+  return (
+    <tr
+      aria-rowindex={item.index + 1}
+      aria-selected={track ? isSelected(selection, track.id) : undefined}
+      tabIndex={0}
+      draggable={track !== null}
+      className={rowClasses({
+        index: item.index,
+        track,
+        selection,
+        nowPlayingId,
+        dropIndex,
+        total,
+      })}
+      style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
+      onClick={select}
+      onDoubleClick={() => onActivate?.(item.index)}
+      onContextMenu={() => {
+        // No preventDefault and no stopPropagation: the trigger on <tbody>
+        // needs this event to reach it, and suppressing the webview's own menu
+        // is its job now.
+        if (!track) {
+          onMenu(null);
+          return;
+        }
+        // Right-clicking outside the selection acts on the row under the
+        // pointer, the way every file manager does - otherwise the menu would
+        // silently apply to rows scrolled off screen.
+        const inSelection = isSelected(selection, track.id);
+        if (!inSelection) {
+          onClickRow(item.index, track.id, {});
+        }
+        onMenu({
+          trackIds: inSelection ? [...selection.ids] : [track.id],
+          rowIndex: item.index,
+        });
+      }}
+      onDragStart={(event) => {
+        if (!track) {
+          event.preventDefault();
+          return;
+        }
+        // Dragging a row outside the selection makes that row the selection
+        // first, so what moves is what the pointer grabbed rather than
+        // something scrolled off elsewhere.
+        const wasSelected = isSelected(selection, track.id);
+        if (!wasSelected) {
+          onClickRow(item.index, track.id, {});
+        }
+        const dragged = wasSelected ? [...selection.ids] : [track.id];
+        setTrackIds(event.dataTransfer, dragged);
+        event.dataTransfer.effectAllowed = "copyMove";
+        // Torn down on the next frame: the badge has to be in the document
+        // long enough to be rasterized, and gone before it can be seen sitting
+        // off-screen.
+        const cleanUp = setDragImage(event, dragged.length);
+        requestAnimationFrame(cleanUp);
+      }}
+      onDragOver={(event) => {
+        if (!onReorder || !hasTrackIds(event.dataTransfer)) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        onDropIndex(dropIndexFor(item.index, offsetWithin(event), ROW_HEIGHT));
+      }}
+      onDrop={(event) => {
+        if (!onReorder) {
+          return;
+        }
+        event.preventDefault();
+        const target = dropIndexFor(item.index, offsetWithin(event), ROW_HEIGHT);
+        onDropIndex(null);
+        const ids = readTrackIds(event.dataTransfer);
+        if (ids.length > 0) {
+          onReorder(ids, target);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          select(event);
+          onActivate?.(item.index);
+        } else if (event.key === "Delete" && onRemove) {
+          event.preventDefault();
+          const ids = track && !isSelected(selection, track.id) ? [track.id] : [...selection.ids];
+          if (ids.length > 0) {
+            onRemove(ids);
+          }
+        }
+        // Space is deliberately not handled: it is the global play/pause
+        // shortcut and has to reach the window.
+      }}
+    >
+      <RowStatusCell track={track} nowPlayingId={nowPlayingId} />
+      {columns.map((column) => (
+        <td
+          key={column.id}
+          // Named so the header can find a column's cells to measure when a
+          // divider is double-clicked to fit it.
+          data-column={column.id}
+          className={`song-cell${column.align === "right" ? " right" : ""}`}
+          style={{ width: column.width }}
+        >
+          {/* A row whose page has not arrived renders a shimmer bar rather
+              than blocking the scroll on a fetch. */}
+          {track ? column.render(track) : <span className="skeleton" />}
+        </td>
+      ))}
+    </tr>
   );
 }

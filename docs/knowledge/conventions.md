@@ -18,6 +18,13 @@
   defect that shipped once.
 - Extract on the rule of three or genuine complexity; keep helpers local unless
   something else truly needs them.
+- **Cognitive complexity is capped at 15 on both halves** —
+  `complexity/noExcessiveCognitiveComplexity` in `biome.json`, and
+  `clippy::cognitive_complexity` with the matching threshold in
+  `src-tauri/clippy.toml`. Neither is suppressed per file: a function over the
+  line is split. Biome scores each function on its own but charges its
+  increments at the depth it is nested at, which is why a probe written inside
+  three `describe`s costs more than the same code at module level.
 - Every colour comes from a custom property. **No literal colour outside the
   token block** in `App.css` — that is what keeps a light theme cheap to restore.
 - Allowlists, never denylists, for anything that leaves the machine.

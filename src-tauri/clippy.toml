@@ -1,0 +1,3 @@
+# Matches biome's noExcessiveCognitiveComplexity default so both halves of the
+# codebase fail at the same point; clippy's own default is 25.
+cognitive-complexity-threshold = 15

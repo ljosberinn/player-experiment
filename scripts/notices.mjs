@@ -181,57 +181,60 @@ function npmPackages() {
     });
 }
 
-function render(packages) {
-  const byLicense = new Map();
+/** The "Licences in use" table: how many packages each licence covers. */
+function licenceSummary(packages) {
+  const counts = new Map();
   for (const pkg of packages) {
-    const list = byLicense.get(pkg.license) ?? [];
-    list.push(pkg);
-    byLicense.set(pkg.license, list);
+    counts.set(pkg.license, (counts.get(pkg.license) ?? 0) + 1);
   }
-
-  const lines = [];
-  lines.push("# Third-party notices");
-  lines.push("");
-  lines.push(
-    "Apex is MIT licensed; see [LICENSE](LICENSE). It is built from the",
-    "open-source packages below, which carry their own terms.",
+  return [
+    "## Licences in use",
     "",
-    "**This file is generated.** Run `npm run notices` to rebuild it; CI fails if",
-    "it is out of date. Do not edit it by hand.",
+    "| Licence | Packages |",
+    "| --- | --- |",
+    ...[...counts.keys()].sort().map((license) => `| ${license} | ${counts.get(license)} |`),
     "",
-  );
-  lines.push("## Licences in use", "");
-  lines.push("| Licence | Packages |", "| --- | --- |");
-  for (const license of [...byLicense.keys()].sort()) {
-    lines.push(`| ${license} | ${byLicense.get(license).length} |`);
-  }
-  lines.push("");
+  ];
+}
 
+/**
+ * The MPL-2.0 section, or nothing when the graph carries no such package.
+ *
+ * The licence requires that recipients be told where to obtain the source of
+ * the covered files, which none of the other licences here ask for.
+ */
+function mplSection(packages) {
   const mpl = packages.filter((pkg) => pkg.license?.includes("MPL-2.0"));
-  if (mpl.length > 0) {
-    lines.push("## Mozilla Public License 2.0 — source availability", "");
-    lines.push(
-      "The packages below are covered by the MPL-2.0, which requires that anyone",
-      "receiving this software be told where to obtain the source of those files.",
-      "They are used unmodified, at the versions listed, and their source is",
-      "available from the upstream repositories named in each entry — and, for",
-      "the Rust crates, from crates.io at the exact version given.",
-      "",
-    );
-    for (const pkg of mpl.sort((a, b) => a.name.localeCompare(b.name))) {
-      lines.push(`- **${pkg.name} ${pkg.version}** — ${pkg.repository ?? "see crates.io"}`);
-    }
-    lines.push("");
+  if (mpl.length === 0) {
+    return [];
   }
+  return [
+    "## Mozilla Public License 2.0 — source availability",
+    "",
+    "The packages below are covered by the MPL-2.0, which requires that anyone",
+    "receiving this software be told where to obtain the source of those files.",
+    "They are used unmodified, at the versions listed, and their source is",
+    "available from the upstream repositories named in each entry — and, for",
+    "the Rust crates, from crates.io at the exact version given.",
+    "",
+    ...mpl
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((pkg) => `- **${pkg.name} ${pkg.version}** — ${pkg.repository ?? "see crates.io"}`),
+    "",
+  ];
+}
 
-  // Each distinct licence text once, referenced by number.
-  //
-  // Written out per package, this file was 2.6 MB: the Apache-2.0 text is
-  // ~11 kB and appears verbatim in about two hundred crates. Deduplicating
-  // reproduces every text in full - which is what the licences require - while
-  // making the result a document a person could actually open. Texts that
-  // differ only in their copyright line are still distinct texts and are still
-  // reproduced separately, so no attribution is collapsed away.
+/**
+ * Each distinct licence text once, numbered, in the order first seen.
+ *
+ * Written out per package, this file was 2.6 MB: the Apache-2.0 text is ~11 kB
+ * and appears verbatim in about two hundred crates. Deduplicating reproduces
+ * every text in full - which is what the licences require - while making the
+ * result a document a person could actually open. Texts that differ only in
+ * their copyright line are still distinct texts and are still reproduced
+ * separately, so no attribution is collapsed away.
+ */
+function numberTexts(packages) {
   const texts = new Map();
   for (const pkg of packages) {
     for (const text of pkg.texts) {
@@ -240,28 +243,69 @@ function render(packages) {
       }
     }
   }
+  return texts;
+}
 
-  lines.push("## Packages", "");
+/** How one package's row points at the licence texts it carries. */
+function textRefs(pkg, texts) {
+  if (NO_TEXT_NEEDED.has(pkg.license) || pkg.texts.length === 0) {
+    return "—";
+  }
+  return pkg.texts
+    .map((text) => `[${texts.get(text)}](#licence-text-${texts.get(text)})`)
+    .join(", ");
+}
+
+/** The "Packages" table: every package, in ecosystem then name order. */
+function packageTable(packages, texts) {
   const sorted = [...packages].sort(
     (a, b) => a.ecosystem.localeCompare(b.ecosystem) || a.name.localeCompare(b.name),
   );
-  lines.push("| Package | Version | Licence | Text |", "| --- | --- | --- | --- |");
-  for (const pkg of sorted) {
-    const refs =
-      NO_TEXT_NEEDED.has(pkg.license) || pkg.texts.length === 0
-        ? "—"
-        : pkg.texts
-            .map((text) => `[${texts.get(text)}](#licence-text-${texts.get(text)})`)
-            .join(", ");
-    const source = pkg.repository ? `[${pkg.name}](${pkg.repository})` : pkg.name;
-    lines.push(`| ${source} | ${pkg.version} | ${pkg.license} | ${refs} |`);
-  }
-  lines.push("");
+  return [
+    "## Packages",
+    "",
+    "| Package | Version | Licence | Text |",
+    "| --- | --- | --- | --- |",
+    ...sorted.map((pkg) => {
+      const source = pkg.repository ? `[${pkg.name}](${pkg.repository})` : pkg.name;
+      return `| ${source} | ${pkg.version} | ${pkg.license} | ${textRefs(pkg, texts)} |`;
+    }),
+    "",
+  ];
+}
 
-  lines.push("## Licence texts", "");
-  for (const [text, number] of texts) {
-    lines.push(`### Licence text ${number}`, "", "```text", text, "```", "");
-  }
+/** The numbered licence texts themselves, which the package table links to. */
+function licenceTextSection(texts) {
+  return [
+    "## Licence texts",
+    "",
+    ...[...texts].flatMap(([text, number]) => [
+      `### Licence text ${number}`,
+      "",
+      "```text",
+      text,
+      "```",
+      "",
+    ]),
+  ];
+}
+
+function render(packages) {
+  const texts = numberTexts(packages);
+  const lines = [
+    "# Third-party notices",
+    "",
+    "Apex is MIT licensed; see [LICENSE](LICENSE). It is built from the",
+    "open-source packages below, which carry their own terms.",
+    "",
+    "**This file is generated.** Run `npm run notices` to rebuild it; CI fails if",
+    "it is out of date. Do not edit it by hand.",
+    "",
+    ...licenceSummary(packages),
+    ...mplSection(packages),
+    ...packageTable(packages, texts),
+    ...licenceTextSection(texts),
+  ];
 
   return `${lines.join("\n").trimEnd()}\n`;
 }

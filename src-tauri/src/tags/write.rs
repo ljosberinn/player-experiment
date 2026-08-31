@@ -218,25 +218,29 @@ fn mutate(tag: &mut Tag, resolved: &Resolved) {
         }
     }
     if let Some(change) = &resolved.cover {
-        // Every picture goes, not just the front cover: a file with three
-        // embedded images should end up showing the one that was chosen.
-        tag.remove_picture_type(PictureType::CoverFront);
-        while !tag.pictures().is_empty() {
-            tag.remove_picture(0);
-        }
-        if let CoverChange::Replace(cover) = change {
-            let mime = if cover.mime == "image/png" {
-                MimeType::Png
-            } else {
-                MimeType::Jpeg
-            };
-            tag.push_picture(
-                Picture::unchecked(cover.bytes.clone())
-                    .pic_type(PictureType::CoverFront)
-                    .mime_type(mime)
-                    .into(),
-            );
-        }
+        set_cover(tag, change);
+    }
+}
+
+fn set_cover(tag: &mut Tag, change: &CoverChange) {
+    // Every picture goes, not just the front cover: a file with three embedded
+    // images should end up showing the one that was chosen.
+    tag.remove_picture_type(PictureType::CoverFront);
+    while !tag.pictures().is_empty() {
+        tag.remove_picture(0);
+    }
+    if let CoverChange::Replace(cover) = change {
+        let mime = if cover.mime == "image/png" {
+            MimeType::Png
+        } else {
+            MimeType::Jpeg
+        };
+        tag.push_picture(
+            Picture::unchecked(cover.bytes.clone())
+                .pic_type(PictureType::CoverFront)
+                .mime_type(mime)
+                .into(),
+        );
     }
 }
 

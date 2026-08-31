@@ -61,6 +61,45 @@ function rows(): Promise<{ title: string; time: string; artist: string; album: s
 }
 
 /**
+ * Each row's own text colour and the fills it is read against.
+ *
+ * Every fill up to the root, not the first one found: a selected row is an 18%
+ * accent wash since phase 33, so what the row paints is not the colour its
+ * text is read against. `flatten` composites the stack in the test process.
+ */
+function rowText(): Promise<{ where: string; text: string; behind: string }[]> {
+  return browser.execute(() => {
+    const fillsAbove = (start: Element | null) => {
+      const stack: string[] = [];
+      for (let painter = start; painter !== null; painter = painter.parentElement) {
+        const fill = getComputedStyle(painter).backgroundColor;
+        if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+          stack.push(fill);
+        }
+      }
+      return stack.length === 0 ? "" : JSON.stringify(stack);
+    };
+
+    return Array.from(document.querySelectorAll("tr.song-row")).flatMap((one) => {
+      const cell = one.querySelector("td.song-cell:not(.status)");
+      if (cell === null) {
+        return [];
+      }
+      return [
+        {
+          // Named by what the row *is*, so a failure reads "selected" or "odd"
+          // rather than an index into a virtualized list that means nothing by
+          // the time anybody reads it.
+          where: one.className.replace("song-row", "").trim() || "plain",
+          text: getComputedStyle(cell).color,
+          behind: fillsAbove(cell),
+        },
+      ];
+    });
+  });
+}
+
+/**
  * Sorts by a column the way a user does, and waits for the table to say so.
  *
  * Clicks until the header reports the direction asked for, rather than once:
@@ -350,37 +389,7 @@ describe("a library with something in it", () => {
       // pair that works in one theme and collapses in the other shows up.
       await row(1).click();
 
-      const measured = await browser.execute(() =>
-        Array.from(document.querySelectorAll("tr.song-row")).flatMap((one) => {
-          const cell = one.querySelector("td.song-cell:not(.status)");
-          if (cell === null) {
-            return [];
-          }
-          // Every fill up to the root, not the first one found. A selected
-          // row is an 18% accent wash since phase 33, so what the row paints
-          // is not the colour its text is read against; `flatten` composites
-          // the stack out in the test process.
-          let painter: Element | null = cell;
-          const stack: string[] = [];
-          while (painter !== null) {
-            const fill = getComputedStyle(painter).backgroundColor;
-            if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-              stack.push(fill);
-            }
-            painter = painter.parentElement;
-          }
-          return [
-            {
-              // Named by what the row *is*, so a failure reads "selected" or
-              // "odd" rather than an index into a virtualized list that means
-              // nothing by the time anybody reads it.
-              where: one.className.replace("song-row", "").trim() || "plain",
-              text: getComputedStyle(cell).color,
-              behind: stack.length === 0 ? "" : JSON.stringify(stack),
-            },
-          ];
-        }),
-      );
+      const measured = await rowText();
 
       expect(measured.length).toBe(LIBRARY.length);
 

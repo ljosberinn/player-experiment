@@ -69,6 +69,87 @@ function computed(selector: string, property: string): Promise<string> {
   );
 }
 
+/**
+ * What each named control draws its own shape with, and what is behind it.
+ *
+ * `behind` starts at the parent, because the question is whether the control
+ * stands out from what it sits on rather than from itself. Every fill up to
+ * the root, front to back: a highlight is an 18% wash since phase 33, and
+ * reading one layer alone reports it as solid.
+ */
+function controlEdges(
+  selectors: string[],
+): Promise<{ selector: string; behind: string; fill: string; border: string }[]> {
+  return browser.execute((sels: string[]) => {
+    const fillsAbove = (start: Element | null) => {
+      const stack: string[] = [];
+      for (let painter = start; painter !== null; painter = painter.parentElement) {
+        const fill = getComputedStyle(painter).backgroundColor;
+        if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+          stack.push(fill);
+        }
+      }
+      return stack.length === 0 ? "" : JSON.stringify(stack);
+    };
+
+    return sels.flatMap((selector) => {
+      const element = document.querySelector(selector);
+      if (element === null) {
+        return [];
+      }
+      const style = getComputedStyle(element);
+      // Either edge may carry it: a control can be legible through its own
+      // fill, or through an outline drawn around a fill that is not.
+      return [
+        {
+          selector,
+          behind: fillsAbove(element.parentElement),
+          fill: style.backgroundColor,
+          border: style.borderTopWidth === "0px" ? "" : style.borderTopColor,
+        },
+      ];
+    });
+  }, selectors);
+}
+
+/**
+ * The text colour of each named element, and the fills it is read against.
+ *
+ * The stack starts at the element itself rather than at its parent: a selected
+ * row is an 18% accent wash over the table, so the fill it paints is part of
+ * what its own text sits on. `from` names the nearest ancestor that paints
+ * anything, so a failure says where the background came from.
+ */
+function textOnFills(
+  selectors: string[],
+): Promise<{ selector: string; text: string; behind: string; from: string }[]> {
+  return browser.execute((sels: string[]) => {
+    const painted = (start: Element | null) => {
+      let from: Element | null = null;
+      const stack: string[] = [];
+      for (let painter = start; painter !== null; painter = painter.parentElement) {
+        const fill = getComputedStyle(painter).backgroundColor;
+        if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
+          stack.push(fill);
+          from ??= painter;
+        }
+      }
+      return {
+        behind: stack.length === 0 ? "" : JSON.stringify(stack),
+        from: from === null ? "" : from.className.toString() || from.tagName,
+      };
+    };
+
+    return sels.map((selector) => {
+      const element = document.querySelector(selector);
+      if (element === null) {
+        return { selector, text: "", behind: "", from: "" };
+      }
+      return { selector, text: getComputedStyle(element).color, ...painted(element) };
+    });
+  }, selectors);
+}
+
 describe("appearance, in the engine that actually lays it out", () => {
   before(async () => {
     await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
@@ -196,40 +277,7 @@ describe("appearance, in the engine that actually lays it out", () => {
       //
       // WCAG 1.4.11 asks 3:1 of the parts of a control needed to understand
       // it, and a slider you cannot see the extent of is exactly that.
-      const parts = await browser.execute(
-        (selectors: string[]) =>
-          selectors.flatMap((selector) => {
-            const element = document.querySelector(selector);
-            if (element === null) {
-              return [];
-            }
-            const style = getComputedStyle(element);
-            // Every fill from here up to the root, front to back. A single
-            // layer is not enough since phase 33: a highlight is an 18% wash,
-            // and reading it alone reports it as solid.
-            let painter = element.parentElement;
-            const stack: string[] = [];
-            while (painter !== null) {
-              const fill = getComputedStyle(painter).backgroundColor;
-              if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-                stack.push(fill);
-              }
-              painter = painter.parentElement;
-            }
-            const behind = stack.length === 0 ? "" : JSON.stringify(stack);
-            // Either edge may carry it: a control can be legible through its
-            // own fill, or through an outline drawn around a fill that is not.
-            return [
-              {
-                selector,
-                behind,
-                fill: style.backgroundColor,
-                border: style.borderTopWidth === "0px" ? "" : style.borderTopColor,
-              },
-            ];
-          }),
-        [".volume-rail", ".scrubber-rail", ".volume-thumb"],
-      );
+      const parts = await controlEdges([".volume-rail", ".scrubber-rail", ".volume-thumb"]);
 
       // Guards the guard, and it is not hypothetical: a selector that matches
       // nothing contributes no entry, so when the playhead's rail was renamed
@@ -265,44 +313,15 @@ describe("appearance, in the engine that actually lays it out", () => {
       // positive: it measured the selected tab's white text against
       // `.content-header` and reported 1.23:1, when the tab paints its own
       // accent fill and the real ratio is fine.
-      const measured = await browser.execute(
-        (selectors: string[]) =>
-          selectors.map((selector) => {
-            const element = document.querySelector(selector);
-            if (element === null) {
-              return { selector, text: "", behind: "", from: "" };
-            }
-            // Starts at the element itself and keeps going to the root: a
-            // selected row is an 18% accent wash over the table, so the fill it
-            // paints is not the colour its text actually sits on.
-            let painter: Element | null = element;
-            let from: Element | null = null;
-            const stack: string[] = [];
-            while (painter !== null) {
-              const fill = getComputedStyle(painter).backgroundColor;
-              if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-                stack.push(fill);
-                from ??= painter;
-              }
-              painter = painter.parentElement;
-            }
-            return {
-              selector,
-              text: getComputedStyle(element).color,
-              behind: stack.length === 0 ? "" : JSON.stringify(stack),
-              from: from === null ? "" : from.className.toString() || from.tagName,
-            };
-          }),
-        [
-          ".statusbar-summary",
-          ".now-playing-title",
-          ".now-playing-subtitle",
-          ".scrubber-time",
-          ".sidebar-item[aria-current='page']",
-          ".sidebar-item",
-          ".empty-state",
-        ],
-      );
+      const measured = await textOnFills([
+        ".statusbar-summary",
+        ".now-playing-title",
+        ".now-playing-subtitle",
+        ".scrubber-time",
+        ".sidebar-item[aria-current='page']",
+        ".sidebar-item",
+        ".empty-state",
+      ]);
 
       const illegible = measured
         .filter((one) => one.text !== "" && one.behind !== "")

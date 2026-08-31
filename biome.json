@@ -19,6 +19,9 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "error"
+      },
       "correctness": {
         "noUnusedImports": "error",
         "noUnusedVariables": "error"

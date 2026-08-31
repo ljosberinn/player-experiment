@@ -105,17 +105,7 @@ export function TagEditor({
           </div>
 
           <div className="tag-cover">
-            {cover?.kind === "replace" ? (
-              <span className="tag-cover-note">New artwork selected.</span>
-            ) : cover?.kind === "remove" ? (
-              <span className="tag-cover-note">Artwork will be removed.</span>
-            ) : commonCover ? (
-              <img className="status-cover" src={coverUrl(commonCover)} alt="" />
-            ) : (
-              <span className="tag-cover-note">
-                {tracks.length === 1 ? "No artwork." : "Artwork differs or is missing."}
-              </span>
-            )}
+            <CoverPreview cover={cover} commonCover={commonCover} trackCount={tracks.length} />
             <button
               type="button"
               onClick={() => {
@@ -164,6 +154,36 @@ export function TagEditor({
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/**
+ * What the cover slot shows: a change waiting to be saved, the artwork every
+ * selected track already shares, or why there is none to show.
+ */
+function CoverPreview({
+  cover,
+  commonCover,
+  trackCount,
+}: {
+  cover: CoverEdit | null;
+  /** The hash every selected track shares, or null when they differ. */
+  commonCover: string | null;
+  trackCount: number;
+}) {
+  if (cover?.kind === "replace") {
+    return <span className="tag-cover-note">New artwork selected.</span>;
+  }
+  if (cover?.kind === "remove") {
+    return <span className="tag-cover-note">Artwork will be removed.</span>;
+  }
+  if (commonCover) {
+    return <img className="status-cover" src={coverUrl(commonCover)} alt="" />;
+  }
+  return (
+    <span className="tag-cover-note">
+      {trackCount === 1 ? "No artwork." : "Artwork differs or is missing."}
+    </span>
   );
 }
 

@@ -50,7 +50,7 @@ fn all_tracks(conn: &Connection) -> Vec<apex_lib::model::Track> {
 }
 
 #[test]
-fn ingests_a_library_and_reads_it_back() {
+fn ingests_every_mp3_and_ignores_the_rest() {
     let h = harness();
     fixture::library(&h.music);
 
@@ -61,13 +61,21 @@ fn ingests_a_library_and_reads_it_back() {
     assert_eq!(summary.missing, 0);
 
     let conn = h.db.conn().unwrap();
-    let tracks = all_tracks(&conn);
-    assert_eq!(tracks.len(), 5);
+    assert_eq!(all_tracks(&conn).len(), 5);
+}
 
-    let maki = tracks
-        .iter()
+#[test]
+fn reads_every_tag_field_back() {
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    let maki = all_tracks(&conn)
+        .into_iter()
         .find(|t| t.path.ends_with("01 Maki.mp3"))
         .expect("Maki");
+
     assert_eq!(maki.title.as_deref(), Some("Maki"));
     assert_eq!(maki.artist.as_deref(), Some("Guitar"));
     assert_eq!(maki.album.as_deref(), Some("Tokyo"));
@@ -81,19 +89,35 @@ fn ingests_a_library_and_reads_it_back() {
         "duration should come from the audio properties"
     );
     assert!(maki.cover_hash.is_some());
+}
 
-    // A date-shaped year tag still yields a plain year.
-    let ute = tracks
-        .iter()
+#[test]
+fn a_date_shaped_year_tag_yields_a_plain_year() {
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    let ute = all_tracks(&conn)
+        .into_iter()
         .find(|t| t.path.ends_with("01 Sleeping Ute.mp3"))
-        .unwrap();
-    assert_eq!(ute.year, Some(2012), "2012-09-18 should read as 2012");
+        .expect("Sleeping Ute");
 
-    // The untagged file is ingested rather than skipped.
-    let untagged = tracks
-        .iter()
+    assert_eq!(ute.year, Some(2012), "2012-09-18 should read as 2012");
+}
+
+#[test]
+fn an_untagged_file_is_ingested_rather_than_skipped() {
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    let untagged = all_tracks(&conn)
+        .into_iter()
         .find(|t| t.path.ends_with("untagged.mp3"))
-        .unwrap();
+        .expect("untagged.mp3");
+
     assert_eq!(untagged.title, None);
     assert_eq!(untagged.artist, None);
     assert!(untagged.duration_ms > 0);
