@@ -260,11 +260,14 @@ fn forward(
     // before.
     let scrobbler = lastfm::Scrobbler::start(db.clone(), {
         let app = app.clone();
-        Box::new(move || {
-            // The user did not do this, so it is not an error popover - but the
-            // Account menu is now claiming an account that no longer works, and
-            // that has to stop being true.
-            let _ = app.emit("lastfm://disconnected", ());
+        Box::new(move |notice| {
+            // Neither of these was asked for, so neither is an error popover.
+            // One stops the Account menu claiming an account that no longer
+            // works; the other is a count in the settings pane.
+            let _ = match notice {
+                lastfm::Notice::Disconnected => app.emit("lastfm://disconnected", ()),
+                lastfm::Notice::Queued(depth) => app.emit("lastfm://queued", depth),
+            };
         })
     });
 

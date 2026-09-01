@@ -216,4 +216,32 @@ INSERT INTO tag_values (field, value, uses)
     r#"
 ALTER TABLE covers ADD COLUMN palette TEXT;
 "#,
+    // 7 - plays waiting to reach last.fm
+    //
+    // The resolved scrobble rather than a track id, on purpose: a play is a
+    // historical fact about what was on at a moment, and the row it came from
+    // can be retagged or removed from the library before the queue drains.
+    // Sending whatever the tags say today would report something that never
+    // happened.
+    //
+    // `next_try_at` is unix seconds, and zero means "now" - a fresh row is due
+    // immediately, and only a failed attempt pushes it into the future. The
+    // index is on it because draining asks "what is due" and nothing else, and
+    // `id` is the tiebreak so a batch goes out oldest first.
+    //
+    // No foreign key to `tracks`, for the same reason the columns are copied.
+    r#"
+CREATE TABLE scrobble_queue (
+    id          INTEGER PRIMARY KEY,
+    artist      TEXT    NOT NULL,
+    title       TEXT    NOT NULL,
+    album       TEXT,
+    duration_ms INTEGER NOT NULL,
+    started_at  INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    next_try_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_scrobble_queue_due ON scrobble_queue(next_try_at, id);
+"#,
 ];

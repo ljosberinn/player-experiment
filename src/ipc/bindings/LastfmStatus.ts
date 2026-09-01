@@ -16,4 +16,13 @@ configured: boolean,
 /**
  * The connected account, or null.
  */
-username: string | null, };
+username: string | null, 
+/**
+ * Plays recorded but not yet accepted by last.fm.
+ *
+ * Normally zero. Non-zero means the machine has been offline, or last.fm
+ * has, and the pane says so - a count that only ever appears when
+ * something is wrong is the least the user is owed for a feature that
+ * works in the background.
+ */
+queued: number, };

@@ -318,3 +318,24 @@ socket, and the rules need a `Track`.
 **The scrobbler does not exist in a build with no key.** `Scrobbler::start`
 returns `Option`, which makes the issue's "no request, no code-path change"
 literal rather than merely true in effect.
+
+### 10d
+
+**A play made with no account is not queued.** The plan does not say either
+way, and the queue makes the question real: keeping those rows would mean that
+connecting an account later posted weeks of listening the user never offered.
+Opt-in has to mean the plays as well as the connection.
+
+**Only ignore code 5 is retried.** The plan says the queue must read each
+scrobble's `ignoredMessage` rather than the top-level status, which is right,
+but the reason turns out to be narrower than "so rejected scrobbles are not
+marked sent": codes 1 to 4 are permanent, so those rows are dropped exactly like
+accepted ones. The daily cap is the only reason worth waiting out, and telling
+it apart from the others is what the per-scrobble read buys.
+
+**`accepted()` became `outcomes()`**, returning the ignore codes rather than a
+bool per scrobble, because the queue needs to tell 5 from 1.
+
+**The service needed an injected clock too**, for the same reason the engine
+did: backoff and the two-week age limit are entirely about *when*, and a test
+that cannot move time can only assert that nothing has happened yet.

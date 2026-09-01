@@ -13,6 +13,7 @@
 //! value or one of those errors.
 
 pub mod auth;
+pub mod queue;
 pub mod rules;
 pub mod sign;
 pub mod transport;
@@ -237,11 +238,28 @@ pub struct Service {
     db: Db,
     transport: Box<dyn Transport>,
     credentials: Credentials,
-    /// Called when a session key turns out to be dead and is forgotten.
+    /// How the window hears about the two things this thread decides on its
+    /// own.
     ///
     /// A closure rather than a Tauri handle, like every other domain callback
     /// here, so the service stays testable with no running app.
-    on_disconnected: Box<dyn Fn() + Send>,
+    on_notice: Box<dyn Fn(Notice) + Send>,
+    /// Wall clock, injected for the same reason the engine's is: the queue's
+    /// whole behaviour is about *when* - backoff, the age limit - and a test
+    /// that cannot move time can only assert that nothing happens yet.
+    now: Box<dyn Fn() -> i64 + Send>,
+}
+
+/// Something the window should know, from a thread it has no handle on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Notice {
+    /// The stored key was rejected and has been forgotten. Nothing the user
+    /// did, so it is not an error - but the Account menu is claiming an
+    /// account that no longer works until it is told.
+    Disconnected,
+    /// How many plays are waiting to be sent. Zero included: the settings pane
+    /// has to be able to stop saying it.
+    Queued(u32),
 }
 
 impl Service {
@@ -249,13 +267,32 @@ impl Service {
         db: Db,
         transport: Box<dyn Transport>,
         credentials: Credentials,
-        on_disconnected: Box<dyn Fn() + Send>,
+        on_notice: Box<dyn Fn(Notice) + Send>,
+    ) -> Self {
+        Self::with_clock(
+            db,
+            transport,
+            credentials,
+            on_notice,
+            Box::new(crate::now_seconds),
+        )
+    }
+
+    /// [`Service::new`], with the wall clock supplied. Tests move it; the app
+    /// never calls this.
+    pub fn with_clock(
+        db: Db,
+        transport: Box<dyn Transport>,
+        credentials: Credentials,
+        on_notice: Box<dyn Fn(Notice) + Send>,
+        now: Box<dyn Fn() -> i64 + Send>,
     ) -> Self {
         Self {
             db,
             transport,
             credentials,
-            on_disconnected,
+            on_notice,
+            now,
         }
     }
 
@@ -287,26 +324,120 @@ impl Service {
         Ok(())
     }
 
-    /// Submits one play.
+    /// Records a play and then tries to send it.
+    ///
+    /// **Written down before it is sent, always.** A scrobble describes
+    /// something that happened, and a closed laptop or a dropped connection
+    /// should not cost the user their listening history - so the queue is the
+    /// path rather than a fallback, and the difference between online and
+    /// offline is only how long the row stays in it.
+    ///
+    /// **With no account there is nothing to write down.** Queuing plays made
+    /// before an account existed would mean that connecting one posted weeks of
+    /// listening the user never offered, which is the opposite of opt-in.
     pub fn played(&self, track_id: i64, started_at: i64) -> AppResult<()> {
         let conn = self.db.conn()?;
-        let Some((session, scrobble)) = self.prepare(&conn, track_id, started_at)? else {
+        let Some((_, scrobble)) = self.prepare(&conn, track_id, started_at)? else {
             return Ok(());
         };
-        self.submit(&conn, &session.key, &[scrobble])?;
+        queue::enqueue(&conn, &scrobble, (self.now)())?;
+        self.flush()
+    }
+
+    /// Sends whatever is due, oldest first, until nothing is or something
+    /// stops it.
+    ///
+    /// Also what runs at startup, which is what makes "queued offline, flushed
+    /// on the next launch" true without waiting for another play.
+    pub fn flush(&self) -> AppResult<()> {
+        let conn = self.db.conn()?;
+        let Some(session) = auth::stored_session(&conn)? else {
+            // Not connected: the queue keeps filling, and whatever is in it
+            // goes out when an account arrives. Nothing is sent, and nothing
+            // is thrown away for the lack of one.
+            return Ok(());
+        };
+
+        loop {
+            let now = (self.now)();
+            let batch = queue::due(&conn, now, BATCH_LIMIT)?;
+            if batch.is_empty() {
+                break;
+            }
+            if !self.send_batch(&conn, &session.key, &batch, now)? {
+                break;
+            }
+        }
+
+        (self.on_notice)(Notice::Queued(queue::depth(&conn)?));
         Ok(())
     }
 
-    /// Sends a batch, reporting which of them last.fm took.
+    /// One batch, and what to do with each row afterwards.
     ///
-    /// `None` in place of the flags means the response did not describe the
-    /// batch at all; see [`accepted`].
+    /// Answers whether it is worth carrying on: a failure that the next batch
+    /// would hit too - being offline, being rate limited - stops the drain
+    /// rather than working through the queue failing every row in it.
+    fn send_batch(
+        &self,
+        conn: &Connection,
+        session_key: &str,
+        batch: &[queue::Queued],
+        now: i64,
+    ) -> AppResult<bool> {
+        let scrobbles: Vec<Scrobble> = batch.iter().map(|row| row.scrobble.clone()).collect();
+        let ids: Vec<i64> = batch.iter().map(|row| row.id).collect();
+
+        let outcome = self.submit(conn, session_key, &scrobbles);
+        match outcome {
+            Ok(Some(codes)) => {
+                // Accepted and permanently refused are both finished with; only
+                // the daily cap is worth offering again, and not today.
+                let mut again: Vec<i64> = Vec::new();
+                let mut done: Vec<i64> = Vec::new();
+                for (id, code) in ids.iter().zip(&codes) {
+                    if ignore_is_temporary(*code) {
+                        again.push(*id);
+                    } else {
+                        done.push(*id);
+                    }
+                }
+                queue::forget(conn, &done)?;
+                queue::defer(conn, &again, now)?;
+                // A batch that was entirely capped will be capped again.
+                Ok(again.len() < codes.len())
+            }
+            // A response that does not describe the batch: the plays may or may
+            // not have landed, and guessing either way is worse than trying
+            // again later.
+            Ok(None) => {
+                queue::defer(conn, &ids, now)?;
+                Ok(false)
+            }
+            Err(error) if error.transient() => {
+                queue::defer(conn, &ids, now)?;
+                Ok(false)
+            }
+            // A malformed request, a bad signature, a dead key. Sending it
+            // again produces the same answer forever, which is how a client
+            // gets itself banned.
+            Err(_) => {
+                queue::forget(conn, &ids)?;
+                Ok(false)
+            }
+        }
+    }
+
+    /// Sends a batch, reporting how last.fm treated each scrobble in it.
+    ///
+    /// `None` in place of the codes means the response did not describe the
+    /// batch at all; see [`outcomes`].
     fn submit(
         &self,
         conn: &Connection,
         session_key: &str,
         batch: &[Scrobble],
-    ) -> Result<Option<Vec<bool>>, Error> {
+    ) -> Result<Option<Vec<u32>>, Error> {
         // Held here and borrowed into the parameter list: the names are
         // indexed, so unlike every other call they cannot be `&'static str`.
         let owned = scrobble_params(batch, session_key);
@@ -316,7 +447,7 @@ impl Service {
             .collect();
 
         let value = self.call(conn, signed("track.scrobble", &self.credentials, extra))?;
-        Ok(accepted(&value, batch.len()))
+        Ok(outcomes(&value, batch.len()))
     }
 
     /// The session and the scrobble, or nothing to do.
@@ -356,7 +487,7 @@ impl Service {
             // failed write here would leave the app retrying with a key it
             // already knows is dead, so it is not worth failing over either.
             let _ = auth::forget_session(conn);
-            (self.on_disconnected)();
+            (self.on_notice)(Notice::Disconnected);
         }
 
         outcome
@@ -388,7 +519,20 @@ fn scrobble_params(batch: &[Scrobble], session_key: &str) -> Vec<(String, String
     params
 }
 
-/// Which scrobbles of a batch last.fm actually took.
+/// The ignore code the daily cap arrives as.
+///
+/// **The only ignore reason that is temporary.** An ignored artist or track (1,
+/// 2) and a timestamp too far past or future (3, 4) will be ignored the same
+/// way forever; a scrobble refused for today's limit is worth offering again
+/// tomorrow, with the timestamp it already has.
+pub const IGNORE_DAILY_LIMIT: u32 = 5;
+
+/// Whether a scrobble last.fm refused is worth keeping.
+pub fn ignore_is_temporary(code: u32) -> bool {
+    code == IGNORE_DAILY_LIMIT
+}
+
+/// How last.fm treated each scrobble of a batch; zero means accepted.
 ///
 /// **An `ok` response does not mean every scrobble landed.** The daily cap
 /// arrives as an `ignoredMessage` on an individual scrobble inside an otherwise
@@ -402,7 +546,7 @@ fn scrobble_params(batch: &[Scrobble], session_key: &str) -> Vec<(String, String
 /// reason this reads the array rather than the top-level status.
 ///
 /// Note the codes arrive as **strings**, not numbers, unlike the `error` field.
-pub fn accepted(value: &Value, sent: usize) -> Option<Vec<bool>> {
+pub fn outcomes(value: &Value, sent: usize) -> Option<Vec<u32>> {
     let scrobbles = &value["scrobbles"]["scrobble"];
     let entries = match scrobbles {
         Value::Array(items) => items.iter().collect::<Vec<_>>(),
@@ -414,12 +558,7 @@ pub fn accepted(value: &Value, sent: usize) -> Option<Vec<bool>> {
         return None;
     }
 
-    Some(
-        entries
-            .into_iter()
-            .map(|entry| ignored_code(entry) == 0)
-            .collect(),
-    )
+    Some(entries.into_iter().map(ignored_code).collect())
 }
 
 /// The ignore code on one scrobble; zero means it was accepted.
@@ -435,8 +574,18 @@ fn ignored_code(entry: &Value) -> u32 {
 
 /// One thing for the scrobbler thread to do.
 enum Job {
-    NowPlaying { track_id: i64, started_at: i64 },
-    Played { track_id: i64, started_at: i64 },
+    NowPlaying {
+        track_id: i64,
+        started_at: i64,
+    },
+    Played {
+        track_id: i64,
+        started_at: i64,
+    },
+    /// Send whatever the queue has been holding. Sent once at startup, which
+    /// is what makes "queued offline, sent on the next launch" true without
+    /// waiting for another play.
+    Flush,
 }
 
 /// Handle to the scrobbler thread.
@@ -456,14 +605,14 @@ impl Scrobbler {
     /// build and every CI run: no thread, no channel, and the caller's `Option`
     /// is what makes "no code-path change" literally true rather than merely
     /// quiet.
-    pub fn start(db: Db, on_disconnected: Box<dyn Fn() + Send>) -> Option<Self> {
+    pub fn start(db: Db, on_notice: Box<dyn Fn(Notice) + Send>) -> Option<Self> {
         let credentials = credentials()?;
         let transport = transport::HttpTransport::new(transport::USER_AGENT).ok()?;
         Some(Self::spawn(Service::new(
             db,
             Box::new(transport),
             credentials,
-            on_disconnected,
+            on_notice,
         )))
     }
 
@@ -488,11 +637,23 @@ impl Scrobbler {
                             track_id,
                             started_at,
                         } => service.played(track_id, started_at),
+                        Job::Flush => service.flush(),
                     };
                 }
             })
             .expect("spawning the scrobbler thread");
-        Self { jobs }
+
+        let scrobbler = Self { jobs };
+        // Before anything plays: a queue left behind by the last session is
+        // the case this whole phase exists for, and waiting for the next song
+        // to drain it would mean an app closed after one is never drained.
+        scrobbler.flush();
+        scrobbler
+    }
+
+    /// Asks the thread to drain the queue.
+    pub fn flush(&self) {
+        let _ = self.jobs.send(Job::Flush);
     }
 
     pub fn now_playing(&self, track_id: i64, started_at: i64) {
@@ -560,20 +721,92 @@ mod tests {
         .unwrap();
     }
 
-    /// A service over `transport`, plus a counter of how often it reported the
-    /// account as gone.
-    fn service(db: Db, transport: FakeTransport) -> (Service, Arc<AtomicUsize>) {
+    /// A clock the test moves, shared with the service driving it.
+    #[derive(Clone)]
+    struct TestClock(Arc<std::sync::atomic::AtomicI64>);
+
+    impl TestClock {
+        fn new(at: i64) -> Self {
+            Self(Arc::new(std::sync::atomic::AtomicI64::new(at)))
+        }
+        fn advance(&self, seconds: i64) {
+            self.0.fetch_add(seconds, Ordering::SeqCst);
+        }
+        fn now(&self) -> i64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    /// What a test can see of a service without a running app: the notices it
+    /// sent, and the clock it reads.
+    struct Watched {
+        service: Service,
+        disconnects: Arc<AtomicUsize>,
+        clock: TestClock,
+    }
+
+    /// A service over `transport`, at a fixed moment.
+    ///
+    /// `PLAY_AT` rather than a real clock because the queue is entirely about
+    /// *when* - the backoff, the two-week age limit - and a fixed present is
+    /// what makes those assertable at all.
+    fn service(db: Db, transport: FakeTransport) -> Watched {
+        let clock = TestClock::new(PLAY_AT);
         let disconnects = Arc::new(AtomicUsize::new(0));
         let seen = Arc::clone(&disconnects);
-        let service = Service::new(
+        let reading = clock.clone();
+        let service = Service::with_clock(
             db,
             Box::new(transport),
             TEST_CREDENTIALS,
-            Box::new(move || {
-                seen.fetch_add(1, Ordering::SeqCst);
+            Box::new(move |notice| {
+                if notice == Notice::Disconnected {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                }
             }),
+            Box::new(move || reading.now()),
         );
-        (service, disconnects)
+        Watched {
+            service,
+            disconnects,
+            clock,
+        }
+    }
+
+    /// When the tests below are pretending to be.
+    const PLAY_AT: i64 = 1_700_000_000;
+
+    /// A `track.scrobble` response taking every scrobble of a batch of `count`.
+    fn ok_batch(count: usize) -> String {
+        let entries: Vec<String> = (0..count)
+            .map(|_| r##"{"ignoredMessage":{"code":"0","#text":""}}"##.to_owned())
+            .collect();
+        format!(
+            r#"{{"scrobbles":{{"@attr":{{"accepted":{count},"ignored":0}},"scrobble":[{}]}}}}"#,
+            entries.join(",")
+        )
+    }
+
+    /// A response taking the first scrobble and refusing the second for the
+    /// day - the shape that made reading the top-level status a bug.
+    fn one_capped_of_two() -> String {
+        r##"{"scrobbles":{"@attr":{"accepted":1,"ignored":1},"scrobble":[
+            {"ignoredMessage":{"code":"0","#text":""}},
+            {"ignoredMessage":{"code":"5","#text":"Daily scrobble limit exceeded"}}
+        ]}}"##
+            .to_owned()
+    }
+
+    /// A response refusing one scrobble for good: ignore code 1, an artist
+    /// last.fm will not match.
+    fn one_ignored() -> String {
+        r##"{"scrobbles":{"@attr":{"accepted":0,"ignored":1},"scrobble":{"ignoredMessage":{"code":"1","#text":"Artist was ignored"}}}}"##
+            .to_owned()
+    }
+
+    /// How many plays are still waiting to be sent.
+    fn waiting(db: &Db) -> u32 {
+        queue::depth(&db.conn().unwrap()).unwrap()
     }
 
     const OK_SCROBBLE: &str = r##"{"scrobbles":{"@attr":{"accepted":1,"ignored":0},"scrobble":{"ignoredMessage":{"code":"0","#text":""}}}}"##;
@@ -589,11 +822,15 @@ mod tests {
         let transport = FakeTransport::scripted(Vec::new());
         let log = transport.log();
 
-        let (service, _) = service(db, transport);
-        service.played(1, 1_700_000_000).unwrap();
-        service.now_playing(1, 1_700_000_000).unwrap();
+        let watched = service(db.clone(), transport);
+        watched.service.played(1, PLAY_AT).unwrap();
+        watched.service.now_playing(1, PLAY_AT).unwrap();
 
         assert_eq!(log.count(), 0);
+        // And not queued either. Keeping them would mean that connecting an
+        // account later posted weeks of listening the user never offered - the
+        // opposite of opt-in.
+        assert_eq!(waiting(&db), 0);
     }
 
     #[test]
@@ -603,8 +840,8 @@ mod tests {
         let transport = FakeTransport::always(OK_SCROBBLE);
         let log = transport.log();
 
-        let (service, _) = service(db, transport);
-        service.played(1, 1_700_000_000).unwrap();
+        let watched = service(db.clone(), transport);
+        watched.service.played(1, PLAY_AT).unwrap();
 
         let param = |name: &str| log.param(0, name);
         assert_eq!(param("method").as_deref(), Some("track.scrobble"));
@@ -616,6 +853,8 @@ mod tests {
         assert_eq!(param("timestamp[0]").as_deref(), Some("1700000000"));
         assert_eq!(param("duration[0]").as_deref(), Some("240"));
         assert_eq!(param("sk").as_deref(), Some("sk-1"));
+        // And it is gone from the queue, because last.fm took it.
+        assert_eq!(waiting(&db), 0);
     }
 
     #[test]
@@ -625,8 +864,8 @@ mod tests {
         let transport = FakeTransport::always(r#"{"nowplaying":{}}"#);
         let log = transport.log();
 
-        let (service, _) = service(db, transport);
-        service.now_playing(1, 1_700_000_000).unwrap();
+        let watched = service(db, transport);
+        watched.service.now_playing(1, PLAY_AT).unwrap();
 
         assert_eq!(
             log.param(0, "method").as_deref(),
@@ -649,18 +888,23 @@ mod tests {
                 .unwrap();
         }
 
-        let (service, _) = service(db, FakeTransport::scripted(Vec::new()));
-        service.played(1, 1_700_000_000).unwrap();
-        service.now_playing(1, 1_700_000_000).unwrap();
+        let watched = service(db.clone(), FakeTransport::scripted(Vec::new()));
+        watched.service.played(1, PLAY_AT).unwrap();
+        watched.service.now_playing(1, PLAY_AT).unwrap();
+
+        // Not queued either: a play last.fm could not have matched is not a
+        // play worth keeping.
+        assert_eq!(waiting(&db), 0);
     }
 
     #[test]
     fn a_track_the_library_no_longer_has_is_not_an_error() {
         let (_dir, db) = library();
         connect(&db);
-        let (service, _) = service(db, FakeTransport::scripted(Vec::new()));
+        let watched = service(db.clone(), FakeTransport::scripted(Vec::new()));
 
-        service.played(999, 1_700_000_000).unwrap();
+        watched.service.played(999, PLAY_AT).unwrap();
+        assert_eq!(waiting(&db), 0);
     }
 
     #[test]
@@ -671,12 +915,15 @@ mod tests {
             r#"{"error":9,"message":"Invalid session key - Please re-authenticate"}"#,
         );
 
-        let (service, disconnects) = service(db.clone(), transport);
-        service.played(1, 1_700_000_000).unwrap_err();
+        let watched = service(db.clone(), transport);
+        watched.service.played(1, PLAY_AT).unwrap();
 
         let conn = db.conn().unwrap();
         assert_eq!(auth::stored_session(&conn).unwrap(), None);
-        assert_eq!(disconnects.load(Ordering::SeqCst), 1);
+        assert_eq!(watched.disconnects.load(Ordering::SeqCst), 1);
+        // Dropped rather than queued: resending under a key already known to
+        // be dead is how a client gets itself banned.
+        assert_eq!(waiting(&db), 0);
     }
 
     #[test]
@@ -691,16 +938,176 @@ mod tests {
             Err(TransportError::Unreachable("connection refused".to_owned())),
             Ok(r#"{"error":29,"message":"Rate limit exceeded"}"#.to_owned()),
             Ok(r#"{"error":16,"message":"The service is temporarily unavailable"}"#.to_owned()),
-            // HTTP 200, `text/plain`, and `format=json` ignored entirely.
-            Ok("FAILED Incorrect protocol version. Please update your client.".to_owned()),
         ] {
-            let (service, disconnects) = service(db.clone(), FakeTransport::scripted(vec![body]));
-            service.played(1, 1_700_000_000).unwrap_err();
+            let watched = service(db.clone(), FakeTransport::scripted(vec![body]));
+            watched.service.played(1, PLAY_AT).unwrap();
 
             let conn = db.conn().unwrap();
             assert!(auth::stored_session(&conn).unwrap().is_some());
-            assert_eq!(disconnects.load(Ordering::SeqCst), 0);
+            assert_eq!(watched.disconnects.load(Ordering::SeqCst), 0);
+            // And the play is kept, which is the other half of the same
+            // judgement: temporarily unreachable is not permanently refused.
+            assert_eq!(queue::depth(&conn).unwrap(), 1);
+            conn.execute("DELETE FROM scrobble_queue", []).unwrap();
         }
+    }
+
+    #[test]
+    fn a_request_last_fm_will_never_accept_is_dropped_rather_than_retried() {
+        // HTTP 200, `text/plain`, and `format=json` ignored entirely - which is
+        // what `track.scrobble` answers a request it cannot read. Keeping the
+        // row would mean sending the same unreadable request until the age
+        // limit dropped it, which is how a client gets itself banned.
+        let (_dir, db) = library();
+        connect(&db);
+        let watched = service(
+            db.clone(),
+            FakeTransport::scripted(vec![Ok(
+                "FAILED Incorrect protocol version. Please update your client.".to_owned(),
+            )]),
+        );
+
+        watched.service.played(1, PLAY_AT).unwrap();
+
+        assert_eq!(waiting(&db), 0);
+        // But the account is untouched: an unreadable answer is not a rejected
+        // key.
+        assert!(auth::stored_session(&db.conn().unwrap()).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_play_made_offline_goes_out_on_the_next_success() {
+        // The behaviour the queue exists for, end to end: one play while the
+        // network is down, another once it is back, and both reach last.fm -
+        // the older one first.
+        let (_dir, db) = library();
+        connect(&db);
+        let transport = FakeTransport::scripted(vec![
+            Err(TransportError::Unreachable("connection refused".to_owned())),
+            Ok(ok_batch(2)),
+        ]);
+        let log = transport.log();
+        let watched = service(db.clone(), transport);
+
+        watched.service.played(1, PLAY_AT).unwrap();
+        assert_eq!(waiting(&db), 1, "the offline play is kept");
+
+        // A track later, and past the first backoff - which in practice is any
+        // second song, since the shortest scrobbleable one is thirty seconds
+        // and the delay is sixty.
+        watched.clock.advance(300);
+        watched.service.played(1, PLAY_AT + 300).unwrap();
+
+        assert_eq!(log.count(), 2);
+        // Both in one batch, oldest first.
+        assert_eq!(log.param(1, "timestamp[0]").as_deref(), Some("1700000000"));
+        assert_eq!(log.param(1, "timestamp[1]").as_deref(), Some("1700000300"));
+        assert_eq!(waiting(&db), 0);
+    }
+
+    #[test]
+    fn a_batch_the_daily_cap_partly_refused_keeps_only_what_was_refused() {
+        // The failure the plan names: a top-level `ok` with one scrobble
+        // ignored inside it. Reading the status alone would mark both sent.
+        let (_dir, db) = library();
+        connect(&db);
+        let transport = FakeTransport::scripted(vec![
+            Err(TransportError::Unreachable("offline".to_owned())),
+            Ok(one_capped_of_two()),
+        ]);
+        let watched = service(db.clone(), transport);
+
+        watched.service.played(1, PLAY_AT).unwrap();
+        watched.clock.advance(300);
+        watched.service.played(1, PLAY_AT + 300).unwrap();
+
+        // The accepted one is gone; the capped one is still waiting for
+        // tomorrow.
+        assert_eq!(waiting(&db), 1);
+        let conn = db.conn().unwrap();
+        let left = queue::due(&conn, PLAY_AT + 300 + 100_000, BATCH_LIMIT).unwrap();
+        assert_eq!(left[0].scrobble.started_at, PLAY_AT + 300);
+    }
+
+    #[test]
+    fn a_scrobble_last_fm_will_never_match_is_not_kept() {
+        // Ignore code 1, an artist last.fm refuses. Unlike the daily cap it
+        // will be refused the same way forever, so the row goes.
+        let (_dir, db) = library();
+        connect(&db);
+        let watched = service(db.clone(), FakeTransport::scripted(vec![Ok(one_ignored())]));
+
+        watched.service.played(1, PLAY_AT).unwrap();
+
+        assert_eq!(waiting(&db), 0);
+    }
+
+    #[test]
+    fn a_response_that_does_not_describe_the_batch_keeps_the_plays() {
+        // Neither accepted nor refused, as far as this build can tell. Guessing
+        // "sent" throws plays away silently, which is the whole reason
+        // `outcomes` is an `Option`.
+        let (_dir, db) = library();
+        connect(&db);
+        let watched = service(
+            db.clone(),
+            FakeTransport::scripted(vec![Ok(r#"{"scrobbles":{}}"#.to_owned())]),
+        );
+
+        watched.service.played(1, PLAY_AT).unwrap();
+
+        assert_eq!(waiting(&db), 1);
+    }
+
+    #[test]
+    fn a_queue_longer_than_one_batch_drains_in_batches() {
+        let (_dir, db) = library();
+        connect(&db);
+        {
+            let conn = db.conn().unwrap();
+            for offset in 0..(BATCH_LIMIT as i64 + 5) {
+                queue::enqueue(
+                    &conn,
+                    &rules::Scrobble {
+                        artist: "Blue Room".to_owned(),
+                        title: format!("Harbour {offset}"),
+                        album: None,
+                        duration_ms: 240_000,
+                        started_at: PLAY_AT - offset,
+                    },
+                    PLAY_AT,
+                )
+                .unwrap();
+            }
+        }
+        // Scripted rather than repeating: the two calls carry different
+        // numbers of scrobbles, and a response has to describe the batch it
+        // answers or `outcomes` refuses to read it.
+        let transport = FakeTransport::scripted(vec![Ok(ok_batch(BATCH_LIMIT)), Ok(ok_batch(5))]);
+        let log = transport.log();
+        let watched = service(db.clone(), transport);
+
+        watched.service.flush().unwrap();
+
+        // Fifty then five, rather than fifty-five in one call last.fm would
+        // refuse.
+        assert_eq!(log.count(), 2);
+        assert!(log.names(0).iter().any(|name| name == "artist[49]"));
+        assert!(!log.names(0).iter().any(|name| name == "artist[50]"));
+        assert_eq!(waiting(&db), 0);
+    }
+
+    #[test]
+    fn nothing_is_sent_for_an_empty_queue() {
+        let (_dir, db) = library();
+        connect(&db);
+        let transport = FakeTransport::scripted(Vec::new());
+        let log = transport.log();
+        let watched = service(db, transport);
+
+        watched.service.flush().unwrap();
+
+        assert_eq!(log.count(), 0);
     }
 
     #[test]
@@ -710,8 +1117,8 @@ mod tests {
         let transport = FakeTransport::always(OK_SCROBBLE);
         let log = transport.log();
 
-        let (service, _) = service(db, transport);
-        service.played(1, 1_700_000_000).unwrap();
+        let watched = service(db, transport);
+        watched.service.played(1, PLAY_AT).unwrap();
 
         // The plan's promise, as a list: no path, no folder, no library size,
         // nothing about the machine.
@@ -737,13 +1144,13 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(accepted(&value, 2), Some(vec![true, false]));
+        assert_eq!(outcomes(&value, 2), Some(vec![0, IGNORE_DAILY_LIMIT]));
     }
 
     #[test]
     fn one_scrobble_comes_back_as_an_object_rather_than_an_array_of_one() {
         let value: Value = serde_json::from_str(OK_SCROBBLE).unwrap();
-        assert_eq!(accepted(&value, 1), Some(vec![true]));
+        assert_eq!(outcomes(&value, 1), Some(vec![0]));
     }
 
     #[test]
@@ -751,12 +1158,12 @@ mod tests {
         // Not "all accepted". This is the case where guessing would throw plays
         // away, and it is why the flags are an `Option`.
         let empty: Value = serde_json::from_str("{}").unwrap();
-        assert_eq!(accepted(&empty, 1), None);
+        assert_eq!(outcomes(&empty, 1), None);
 
         let short: Value =
             serde_json::from_str(r#"{"scrobbles":{"scrobble":[{"ignoredMessage":{"code":"0"}}]}}"#)
                 .unwrap();
-        assert_eq!(accepted(&short, 2), None);
+        assert_eq!(outcomes(&short, 2), None);
     }
 
     #[test]

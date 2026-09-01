@@ -262,6 +262,16 @@ export function onLastfmDisconnected(handler: () => void): Promise<UnlistenFn> {
 }
 
 /**
+ * How many plays are recorded but not yet accepted by last.fm.
+ *
+ * Emitted after every attempt to drain the queue, zero included - the pane has
+ * to be able to stop saying it.
+ */
+export function onLastfmQueued(handler: (depth: number) => void): Promise<UnlistenFn> {
+  return listen<number>("lastfm://queued", (event) => handler(event.payload));
+}
+
+/**
  * The panic the previous run wrote down, if there is one the user has not
  * dismissed yet.
  *

@@ -739,6 +739,13 @@ pub struct LastfmStatus {
     pub configured: bool,
     /// The connected account, or null.
     pub username: Option<String>,
+    /// Plays recorded but not yet accepted by last.fm.
+    ///
+    /// Normally zero. Non-zero means the machine has been offline, or last.fm
+    /// has, and the pane says so - a count that only ever appears when
+    /// something is wrong is the least the user is owed for a feature that
+    /// works in the background.
+    pub queued: u32,
 }
 
 /// The start of the browser trip.
