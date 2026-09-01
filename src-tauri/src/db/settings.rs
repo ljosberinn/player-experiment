@@ -34,6 +34,28 @@ pub const DYNAMIC_BACKGROUND: &str = "appearance.dynamicBackground";
 /// instead of asking for it back on the next launch.
 pub const PLAYLISTS_SEEDED: &str = "playlists.seeded";
 
+/// The last.fm session key. **Stored unencrypted, on purpose.**
+///
+/// Not an oversight and not a shortcut - see `docs/plans/lastfm.md`. The short
+/// version: the browser token flow means this is not the user's password but a
+/// token granting scrobbling on one account, revocable from last.fm's own
+/// settings screen; DPAPI would cost the crate's `unsafe_code = "forbid"`
+/// permanently; and of eleven surveyed open-source clients, eight keep it in a
+/// plain app-owned file and none use app-level encryption.
+///
+/// **What must not be built here is encryption under a constant compiled into
+/// the binary.** It reads like protection in review and is worth about as much
+/// as plaintext, with the added cost that nobody can tell at a glance how
+/// exposed the secret is. If it is unencrypted, it must look unencrypted.
+///
+/// Excluded from an export by [`EXPORTABLE`] being an allowlist.
+pub const LASTFM_SESSION_KEY: &str = "lastfm.sessionKey";
+/// Which account the session key belongs to, for the status line.
+///
+/// Not a credential, but not exportable either: it names a person, and an
+/// export is a copy of a library rather than of an account.
+pub const LASTFM_USERNAME: &str = "lastfm.username";
+
 /// Settings a library export is allowed to carry.
 ///
 /// **An allowlist, not a denylist.** The plan called for a denylist so that
@@ -176,8 +198,10 @@ mod tests {
         let (_dir, conn) = conn();
         set(&conn, VOLUME, "0.5").unwrap();
         set(&conn, WINDOW_GEOMETRY, "{}").unwrap();
-        // Exactly the shape phases 10 and 12 will store.
-        set(&conn, "lastfm.session_key", "super-secret").unwrap();
+        // The credential phase 10 actually stores, plus the shape phase 12
+        // will.
+        set(&conn, LASTFM_SESSION_KEY, "super-secret").unwrap();
+        set(&conn, LASTFM_USERNAME, "listener").unwrap();
         set(&conn, "discogs.token", "also-secret").unwrap();
         // And something nobody has thought of yet.
         set(&conn, "something.new", "unknown").unwrap();
@@ -189,7 +213,11 @@ mod tests {
         // The point of the allowlist: a key added later is excluded by
         // default, rather than by someone remembering to deny it.
         assert!(!is_exportable("something.new"));
-        assert!(!is_exportable("lastfm.session_key"));
+        // The guard the last.fm phase is about not leaking rather than about
+        // working: the session key is a credential, and an export is a file
+        // the user hands to someone else.
+        assert!(!is_exportable(LASTFM_SESSION_KEY));
+        assert!(!is_exportable(LASTFM_USERNAME));
         // And the two that describe this machine's window rather than the
         // library. An export carried to another machine has no business
         // folding its sidebar or resizing its columns.

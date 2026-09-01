@@ -13,6 +13,7 @@ import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
 import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { useExportStore } from "./features/export/store";
+import { useLastfmStore } from "./features/lastfm/store";
 import { BrowseView } from "./features/library/BrowseView";
 import { resolveColumns } from "./features/library/columns";
 import { HistoryNav } from "./features/library/HistoryNav";
@@ -62,6 +63,13 @@ export function App() {
   const zoomFactor = useZoomStore((s) => s.factor);
   const stepZoom = useZoomStore((s) => s.step);
   const loadDynamicBg = useDynamicBackgroundStore((s) => s.load);
+  // Three scalars, all of which change only when the user connects or
+  // disconnects - so the Account menu can say who is signed in without the app
+  // re-rendering for anything last.fm does.
+  const lastfmConfigured = useLastfmStore((s) => s.configured);
+  const lastfmUsername = useLastfmStore((s) => s.username);
+  const loadLastfm = useLastfmStore((s) => s.load);
+  const lastfmDisconnect = useLastfmStore((s) => s.disconnect);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
   const installUpdate = useUpdaterStore((s) => s.install);
@@ -160,7 +168,10 @@ export function App() {
     // worst a slow read can do is turn the blobs off a moment after the first
     // paint of a window that has none.
     void loadDynamicBg();
-  }, [loadDynamicBg]);
+    // One SQLite read, and the only thing last.fm does unbidden: it decides
+    // whether the Account menu opens at all. Nothing leaves the machine.
+    void loadLastfm();
+  }, [loadDynamicBg, loadLastfm]);
 
   useEffect(() => {
     // `connect` resolves to its own teardown, which may land after unmount.
@@ -304,6 +315,8 @@ export function App() {
     canUndoTags,
     hasExportTarget: selectedIds.length > 0 || currentPlaylist !== null,
     exportSelectionLabel: exportSelectionLabel(selectedIds.length, currentPlaylist?.name ?? null),
+    lastfmConfigured,
+    lastfmUsername,
     rowItems:
       selectedIds.length === 0
         ? []
@@ -335,6 +348,9 @@ export function App() {
     onSettings: () => setShowSettings(true),
     onExportAll: () => void runExport(exportChoice([], null)),
     onExportSelection: () => void runExport(exportTarget),
+    // Local only - last.fm has no method to revoke a session key, so this
+    // forgets it and the Settings pane says where to revoke it properly.
+    onLastfmDisconnect: () => void lastfmDisconnect(),
     // The only outbound link in the app, and the only URL its capability
     // allows. A failure here is not worth an error dialog: the browser either
     // opened or it did not, and the user can see which.

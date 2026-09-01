@@ -12,11 +12,70 @@
 //! taxonomy, and the one function that turns a response body into either a
 //! value or one of those errors.
 
+pub mod auth;
 pub mod sign;
 pub mod transport;
 
 use crate::error::AppError;
 use transport::TransportError;
+
+/// The key pair this build was compiled with.
+///
+/// **The secret is extractable from the binary and there is no way around
+/// that**: last.fm's model requires a desktop client to carry one, every
+/// open-source client that scrobbles ships one, and obscuring it would only
+/// change how long it takes to find. What limits the damage is that the secret
+/// alone is useless - scrobbling needs a session key, which is per account and
+/// revocable by its owner.
+#[derive(Debug, Clone, Copy)]
+pub struct Credentials {
+    pub api_key: &'static str,
+    pub api_secret: &'static str,
+}
+
+/// The credentials, if this build has any.
+///
+/// Compiled in from the environment, so a build made without them - every
+/// local build and every CI run - has the feature **inert** rather than
+/// broken: the settings pane says the build carries no key, and nothing offers
+/// to connect. A key is needed to run the feature, not to test it.
+pub fn credentials() -> Option<Credentials> {
+    match (
+        option_env!("APEX_LASTFM_API_KEY"),
+        option_env!("APEX_LASTFM_API_SECRET"),
+    ) {
+        (Some(api_key), Some(api_secret)) if !api_key.is_empty() && !api_secret.is_empty() => {
+            Some(Credentials {
+                api_key,
+                api_secret,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The full parameter list for one signed call.
+///
+/// Order matters only to [`sign::api_sig`], which sorts for itself, so the
+/// list is built in the order that reads best. `api_sig` and `format` are
+/// appended **after** signing: the first cannot sign itself and the second is
+/// excluded by the spec.
+pub fn signed<'a>(
+    method: &'a str,
+    credentials: &'a Credentials,
+    extra: Vec<(&'a str, String)>,
+) -> Vec<(&'a str, String)> {
+    let mut params = vec![
+        ("method", method.to_owned()),
+        ("api_key", credentials.api_key.to_owned()),
+    ];
+    params.extend(extra);
+
+    let signature = sign::api_sig(&params, credentials.api_secret);
+    params.push(("api_sig", signature));
+    params.push(("format", "json".to_owned()));
+    params
+}
 
 /// The error numbers this code branches on.
 ///

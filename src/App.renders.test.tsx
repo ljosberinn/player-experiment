@@ -1,6 +1,7 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { useLastfmStore } from "./features/lastfm/store";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
 
@@ -85,6 +86,10 @@ vi.mock("./ipc", () => ({
   saveColumnConfig: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
+  lastfmStatus: vi.fn(async () => ({ configured: false, username: null })),
+  lastfmBeginConnect: vi.fn(),
+  lastfmCompleteConnect: vi.fn(),
+  lastfmDisconnect: vi.fn(async () => undefined),
 }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
@@ -187,6 +192,52 @@ beforeEach(() => {
   renders.browseView = 0;
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map(), error: null });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0, error: null });
+});
+
+describe("what the last.fm status re-renders", () => {
+  it("nothing, when there is nothing to report", async () => {
+    // The Account menu needs two scalars from the store, so `App` subscribes
+    // to them - and the startup read is the one thing last.fm does unbidden.
+    // In a build with no key both scalars come back as what they already were,
+    // and zustand compares selector output by `Object.is`, so no subscriber
+    // wakes at all. This is the assertion behind that claim.
+    await mounted();
+
+    await act(async () => {
+      await useLastfmStore.getState().load();
+    });
+
+    expectTableMounted();
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+
+  it("the whole tree once, when an account connects - and never again", async () => {
+    // The floor rather than an absence, and worth stating as one: the menu bar
+    // has to name the connected account, `menus()` is built in `App`, so `App`
+    // re-renders and takes its children with it. That is one render for an
+    // action a user takes once. What must never happen is a second - a store
+    // that wrote on every scrobble would put this on the playhead's schedule.
+    await mounted();
+
+    act(() => {
+      useLastfmStore.setState({ configured: true, username: "listener" });
+    });
+    expect(renders.songTable).toBe(1);
+
+    // Writing the same status again is not a change, and zustand compares
+    // selector output by `Object.is`.
+    act(() => {
+      useLastfmStore.setState({ configured: true, username: "listener" });
+    });
+    act(() => {
+      useLastfmStore.setState({ connecting: false, error: null });
+    });
+
+    expectTableMounted();
+    expect(renders.songTable).toBe(1);
+    expect(renders.playlistSidebar).toBe(1);
+  });
 });
 
 describe("what a playhead tick re-renders", () => {

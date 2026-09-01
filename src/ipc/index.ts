@@ -15,6 +15,8 @@ import type { FilterNode } from "./bindings/FilterNode";
 import type { FilterOp } from "./bindings/FilterOp";
 import type { FilterRule } from "./bindings/FilterRule";
 import type { FilterValue } from "./bindings/FilterValue";
+import type { LastfmConnection } from "./bindings/LastfmConnection";
+import type { LastfmStatus } from "./bindings/LastfmStatus";
 import type { LibraryStats } from "./bindings/LibraryStats";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
@@ -50,6 +52,8 @@ export type {
   FilterOp,
   FilterRule,
   FilterValue,
+  LastfmConnection,
+  LastfmStatus,
   LibraryStats,
   PlaybackStatus,
   PlayerPosition,
@@ -204,6 +208,46 @@ export function saveDynamicBackground(enabled: boolean): Promise<void> {
  */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });
+}
+
+/**
+ * Whether this build can talk to last.fm, and which account is connected.
+ *
+ * Read from the database alone. Whether an account is connected is a stored
+ * fact, and asking last.fm at startup would make a local-only player talk to a
+ * server before the user has done anything.
+ */
+export function lastfmStatus(): Promise<LastfmStatus> {
+  return invoke<LastfmStatus>("lastfm_status");
+}
+
+/**
+ * Step one of connecting: a token, and the page to send the user to with it.
+ *
+ * The only thing that leaves the machine is an API key — the password is typed
+ * on last.fm's own page, in the user's own browser.
+ */
+export function lastfmBeginConnect(): Promise<LastfmConnection> {
+  return invoke<LastfmConnection>("lastfm_begin_connect");
+}
+
+/**
+ * One attempt at exchanging the token for a session key.
+ *
+ * `null` means the user has not finished in the browser yet, so ask again. The
+ * cadence is decided here rather than in Rust, which is what keeps it testable
+ * against a mocked `ipc`.
+ */
+export function lastfmCompleteConnect(token: string): Promise<string | null> {
+  return invoke<string | null>("lastfm_complete_connect", { token });
+}
+
+/**
+ * Forgets the account. Local only: last.fm has no method to revoke a session
+ * key, so nothing is sent and the pane says where the user can revoke it.
+ */
+export function lastfmDisconnect(): Promise<void> {
+  return invoke<void>("lastfm_disconnect");
 }
 
 /**

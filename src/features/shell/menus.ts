@@ -34,6 +34,8 @@ export function menus({
   canUndoTags,
   hasExportTarget,
   exportSelectionLabel,
+  lastfmConfigured,
+  lastfmUsername,
   rowItems,
   onAddFolder,
   onRescan,
@@ -42,6 +44,7 @@ export function menus({
   onSettings,
   onExportAll,
   onExportSelection,
+  onLastfmDisconnect,
   onOpenRepository,
 }: {
   missingCount: number;
@@ -50,6 +53,10 @@ export function menus({
   hasExportTarget: boolean;
   /** What Export Selection is about to export - a count, or a playlist. */
   exportSelectionLabel: string;
+  /** Whether this build carries a last.fm API key at all. */
+  lastfmConfigured: boolean;
+  /** The connected last.fm account, or null. */
+  lastfmUsername: string | null;
   /** The song actions, from `rowMenuItems`. Empty with nothing selected. */
   rowItems: MenuItem[];
   onAddFolder: () => void;
@@ -59,6 +66,7 @@ export function menus({
   onSettings: () => void;
   onExportAll: () => void;
   onExportSelection: () => void;
+  onLastfmDisconnect: () => void;
   onOpenRepository: () => void;
 }): Menu[] {
   const file: MenuItem[] = [
@@ -108,10 +116,30 @@ export function menus({
         },
       ],
     },
-    // Present, empty and unopenable. This is where last.fm lands
-    // (docs/plans/lastfm.md); shipping the empty menu now means the bar does not
-    // change shape when it arrives.
-    { label: "Account", items: [], disabled: true },
+    // Shipped empty and disabled since phase 34 so the bar would not change
+    // shape when last.fm arrived. It has.
+    //
+    // Connecting is not here: it is a browser trip that needs somewhere to say
+    // what leaves the machine, and a menu item has no room for that. So the
+    // menu offers the two things a menu is good for - saying who is connected,
+    // and the one-click way out - and sends the rest to Settings.
+    {
+      label: "Account",
+      items: lastfmConfigured
+        ? lastfmUsername === null
+          ? [{ label: "Connect to last.fm…", onSelect: onSettings }]
+          : [
+              // Informational, so disabled rather than actionable: there is
+              // nothing to do to the name itself.
+              { label: `last.fm: ${lastfmUsername}`, disabled: true },
+              { kind: "separator" },
+              { label: "Disconnect from last.fm", onSelect: onLastfmDisconnect },
+            ]
+        : [],
+      // A build with no last.fm key has nothing to put here, which is every
+      // local build and every CI run.
+      disabled: !lastfmConfigured,
+    },
     {
       label: "Help",
       items: [{ label: "Source Code on GitHub", onSelect: onOpenRepository }],
