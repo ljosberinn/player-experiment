@@ -24,6 +24,12 @@ import type { Track } from "./ipc";
  *
  * Each used to be subscribed at the top of `App`, so each re-rendered the
  * entire tree - including the song table and its forty virtualized rows.
+ *
+ * React Compiler runs over these components too (`vite.config.ts`), so a child
+ * whose props did not change is now held still even when its parent re-renders.
+ * That is a second reason a count here can be zero, and the reason the numbers
+ * in this file are floors rather than budgets: the point is that they only ever
+ * go down, and never silently.
  */
 
 vi.mock("./ipc", () => ({
@@ -123,7 +129,7 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) })
  * asked to render at all, and a stub answers that without depending on how
  * React attributes time. The real components are exercised by their own tests.
  */
-const renders = { songTable: 0, playlistSidebar: 0, browseView: 0 };
+const renders = { songTable: 0, playlistSidebar: 0, browseView: 0, menuBar: 0 };
 
 vi.mock("./features/library/SongTable", () => ({
   SongTable: () => {
@@ -143,6 +149,16 @@ vi.mock("./features/library/BrowseView", () => ({
   BrowseView: () => {
     renders.browseView += 1;
     return <div />;
+  },
+}));
+
+// Not an expensive subtree - the counter that proves an update landed where it
+// was supposed to. Every other assertion here is an absence, and an absence is
+// also what a store write that reached nothing at all looks like.
+vi.mock("./components/ui/MenuBar", () => ({
+  MenuBar: () => {
+    renders.menuBar += 1;
+    return <nav />;
   },
 }));
 
@@ -206,6 +222,7 @@ async function mounted() {
   renders.songTable = 0;
   renders.playlistSidebar = 0;
   renders.browseView = 0;
+  renders.menuBar = 0;
 }
 
 /**
@@ -223,6 +240,7 @@ beforeEach(() => {
   renders.songTable = 0;
   renders.playlistSidebar = 0;
   renders.browseView = 0;
+  renders.menuBar = 0;
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map(), error: null });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0, error: null });
 });
@@ -240,6 +258,7 @@ describe("what the last.fm status re-renders", () => {
     });
 
     expectTableMounted();
+    expect(renders.menuBar).toBe(0);
     expect(renders.songTable).toBe(0);
     expect(renders.playlistSidebar).toBe(0);
   });
@@ -253,11 +272,19 @@ describe("what the last.fm status re-renders", () => {
     act(() => {
       useLastfmStore.setState({ configured: true, username: "listener" });
     });
+    expect(renders.menuBar).toBe(1);
+
+    // Writing the same status again is not a change, and zustand compares
+    // selector output by `Object.is`.
+    act(() => {
+      useLastfmStore.setState({ configured: true, username: "listener" });
+    });
     act(() => {
       useLastfmStore.setState({ connecting: false, error: null });
     });
 
     expectTableMounted();
+    expect(renders.menuBar).toBe(1);
     expect(renders.songTable).toBe(0);
     expect(renders.playlistSidebar).toBe(0);
   });

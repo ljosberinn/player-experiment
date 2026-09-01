@@ -75,6 +75,13 @@ export function SongTable({
   onExport?: ((trackIds: number[]) => void) | undefined;
   nowPlayingId?: number | null;
 }) {
+  // React Compiler declines to memoize any component holding a
+  // `useVirtualizer`: TanStack Virtual returns functions that change identity
+  // without the instance doing so, and memoizing around them shows stale rows.
+  // Saying so here is what keeps `panicThreshold: "all_errors"` meaningful -
+  // see vite.config.ts.
+  "use no memo";
+
   const total = useLibraryStore((s) => s.total);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const direction = useLibraryStore((s) => s.direction);

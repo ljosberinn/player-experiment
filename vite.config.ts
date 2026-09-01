@@ -7,7 +7,37 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      /**
+       * React Compiler, through the plugin's own oxc port rather than Babel -
+       * one dev dependency instead of three, and no second transform pass over
+       * every `.tsx` in a toolchain that is otherwise oxc-only.
+       */
+      compiler: {
+        /**
+         * A component the compiler cannot compile is skipped silently, and
+         * nothing else in this repo would report it: Biome has no
+         * react-compiler rule and there is no ESLint. Failing the build is the
+         * only channel left - the same stance, and the same cost, as `onwarn`
+         * below.
+         */
+        panicThreshold: "all_errors",
+        environment: {
+          /**
+           * Function outlining hoists a closure that captures nothing to
+           * module scope, which gives every instance of the component the same
+           * function *identity*. Five hooks here hand a handler that captures
+           * nothing to `addEventListener`, and that API deduplicates by
+           * identity: two mounted components registered one listener between
+           * them, and the first unmount took it away from both. Caught by
+           * `usePlayerShortcuts.test.tsx`'s "unbinds on unmount".
+           */
+          enableFunctionOutlining: false,
+        },
+      },
+    }),
+  ],
 
   build: {
     rollupOptions: {
@@ -33,6 +63,20 @@ export default defineConfig({
         // check is on where the cycle is, not on the code alone.
         const insideDependency = (warning.ids ?? []).every((id) => id.includes("node_modules"));
         if (warning.code === "CIRCULAR_DEPENDENCY" && insideDependency) {
+          return;
+        }
+        // The second, added with React Compiler in phase 65: the compiler
+        // refuses to memoize a component holding a `useVirtualizer`, because
+        // TanStack Virtual hands back functions whose identity changes without
+        // the instance's. Nothing this project can act on either - the two
+        // components say so with `"use no memo"`, which demotes the bailout to
+        // this warning but does not stop the plugin logging it. Every other
+        // compiler diagnostic is a rules-of-React violation and still throws.
+        if (
+          warning.code === "PLUGIN_WARNING" &&
+          warning.plugin === "vite:react-compiler" &&
+          warning.message.includes("react-compiler(IncompatibleLibrary)")
+        ) {
           return;
         }
         throw new Error(

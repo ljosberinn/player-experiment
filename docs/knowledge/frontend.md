@@ -62,12 +62,37 @@ where a wall-clock budget on a CI runner is noise.
 **File splitting delivers nothing here; a component boundary does.**
 `memo(SongTable)` was deliberately not taken — the table subscribes to the
 selection itself, so the one frequent update re-renders it regardless, and no
-memo can stop a component's own subscription from waking it.
+memo can stop a component's own subscription from waking it. React Compiler
+does not change that argument, it only removes the alternative: a child whose
+props did not change is held still without anyone writing `memo`, and a
+component that reads a fast-changing value itself is beyond either.
 
 That also decides what the render test may assert. The `SongTable` stub has no
 subscription, so its count measures `App`, not the real table; the honest
 subject for a selection change is `PlaylistSidebar`, which wants nothing from
 the selection.
+
+### React Compiler
+
+Enabled in `vite.config.ts` through `@vitejs/plugin-react`'s own oxc port, over
+every component and hook. Vitest shares that config, so the unit run and the
+build compile the same code.
+
+- **A bailout fails the build** (`panicThreshold: "all_errors"`). Biome has no
+  react-compiler rule and there is no ESLint, so nothing in `npm run lint` would
+  report a file the compiler skipped, and a rules-of-React violation would
+  otherwise sit in a build log unread. The cost is that such a violation breaks
+  `vite dev` too, which is the point.
+- **`SongTable` and `BrowseView` carry `"use no memo"`.** The compiler declines
+  any component holding a `useVirtualizer`: TanStack Virtual returns functions
+  whose identity changes without the instance's, and memoizing around them shows
+  stale rows. The directive demotes that to a warning, which `onwarn` then lets
+  through by name — the only react-compiler diagnostic it accepts.
+- **Function outlining is off** (`environment.enableFunctionOutlining`). It
+  hoists a closure that captures nothing to module scope, giving every instance
+  of a component the same function *identity*. Five hooks here hand such a
+  handler to `addEventListener`, which deduplicates by identity: two mounted
+  components shared one listener and the first unmount took it from both.
 
 ## Native feel
 

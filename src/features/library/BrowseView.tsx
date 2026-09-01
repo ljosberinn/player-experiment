@@ -25,6 +25,10 @@ const OVERSCAN = 6;
  * together from the measured container.
  */
 export function BrowseView({ kind }: { kind: BrowseKind }) {
+  // See the same directive in `SongTable`: a `useVirtualizer` in the body is
+  // one React Compiler will not memoize around.
+  "use no memo";
+
   const groups = useLibraryStore((state) => state.groups);
   const loading = useLibraryStore((state) => state.groupsLoading);
   const openGroup = useLibraryStore((state) => state.openGroup);
