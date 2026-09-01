@@ -301,3 +301,20 @@ scrobbling is on", which reads as a second toggle beside the connection.
 Connecting is the opt-in and Disconnect is the off switch; a second control that
 can only differ from the first for users who want to stay connected and send
 nothing was not worth the surface. Revisit if anyone asks for it.
+
+### 10c
+
+**Now playing needed an engine event.** The plan describes the five-second rule
+but the engine had nothing between "loaded" and "played" - so `Event::NowPlaying`
+was added beside `Event::Played`, carrying the same start timestamp so both
+halves of the feature read the same clock.
+
+**`Event::NowPlaying` and `Event::Played` are the whole interface.** The player
+thread hands over a track id and a timestamp; the scrobbler thread resolves the
+row, applies the rules and makes the call. The plan left open where the lookup
+happened, and this is the only place it can: the player thread must not touch a
+socket, and the rules need a `Track`.
+
+**The scrobbler does not exist in a build with no key.** `Scrobbler::start`
+returns `Option`, which makes the issue's "no request, no code-path change"
+literal rather than merely true in effect.

@@ -16,7 +16,16 @@ vi.mock("../../ipc", () => ({
   })),
   lastfmCompleteConnect: vi.fn(async () => null),
   lastfmDisconnect: vi.fn(async () => undefined),
+  onLastfmDisconnected: vi.fn(async (handler: () => void) => {
+    disconnectedHandler = handler;
+    return () => {
+      disconnectedHandler = null;
+    };
+  }),
 }));
+
+/** The handler the mocked `onLastfmDisconnected` last registered. */
+let disconnectedHandler: (() => void) | null = null;
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
 
@@ -171,6 +180,35 @@ describe("the last.fm store", () => {
 
     expect(lastfmDisconnect).toHaveBeenCalled();
     expect(useLastfmStore.getState().username).toBe(null);
+    expect(useLastfmStore.getState().connecting).toBe(false);
+    expect(asMock(lastfmCompleteConnect).mock.calls.length).toBe(calls);
+  });
+
+  it("forgets the account when the backend says the key was rejected", async () => {
+    // Not something the user did: the key was revoked from last.fm's own
+    // settings screen, and the scrobbler thread found out. The Account menu is
+    // claiming an account that no longer works until this lands.
+    useLastfmStore.setState({ configured: true, username: "listener" });
+    await useLastfmStore.getState().watch();
+
+    disconnectedHandler?.();
+
+    expect(useLastfmStore.getState().username).toBe(null);
+    expect(useLastfmStore.getState().error).toMatch(/Connect again/);
+    // Still a build that can connect - it is the account that went, not the
+    // key this binary was compiled with.
+    expect(useLastfmStore.getState().configured).toBe(true);
+  });
+
+  it("a rejection lands even mid-trip, and stops the poll", async () => {
+    await useLastfmStore.getState().watch();
+    void useLastfmStore.getState().connect();
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    const calls = asMock(lastfmCompleteConnect).mock.calls.length;
+
+    disconnectedHandler?.();
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+
     expect(useLastfmStore.getState().connecting).toBe(false);
     expect(asMock(lastfmCompleteConnect).mock.calls.length).toBe(calls);
   });
