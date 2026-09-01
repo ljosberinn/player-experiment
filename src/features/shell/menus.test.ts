@@ -11,6 +11,8 @@ function build(overrides: Partial<Parameters<typeof menus>[0]> = {}) {
     canUndoTags: false,
     hasExportTarget: false,
     exportSelectionLabel: "Export Selection…",
+    lastfmConfigured: false,
+    lastfmUsername: null,
     rowItems: [],
     onAddFolder: noop,
     onRescan: noop,
@@ -19,6 +21,7 @@ function build(overrides: Partial<Parameters<typeof menus>[0]> = {}) {
     onSettings: noop,
     onExportAll: noop,
     onExportSelection: noop,
+    onLastfmDisconnect: noop,
     onOpenRepository: noop,
     ...overrides,
   });
@@ -42,11 +45,52 @@ describe("the menu bar", () => {
     expect(build().map((one) => one.label)).toEqual(["File", "Edit", "Export", "Account", "Help"]);
   });
 
-  it("shows Account empty and unopenable until there is an account", () => {
-    // Shipped now rather than added later on purpose: a bar that grows an entry
-    // moves every entry after it, for someone who had learned where Help was.
-    expect(menu("Account").disabled).toBe(true);
-    expect(menu("Account").items).toEqual([]);
+  describe("Account", () => {
+    it("stays empty and unopenable in a build carrying no last.fm key", () => {
+      // Every local build and every CI run. Shipped empty since phase 34 on
+      // purpose: a bar that grows an entry moves every entry after it, for
+      // someone who had learned where Help was.
+      expect(menu("Account").disabled).toBe(true);
+      expect(menu("Account").items).toEqual([]);
+    });
+
+    it("offers the way in when a build has a key but no account", () => {
+      const account = menu("Account", { lastfmConfigured: true });
+
+      expect(account.disabled).toBe(false);
+      expect(labels(account.items)).toEqual(["Connect to last.fm…"]);
+    });
+
+    it("sends Connect to Settings rather than starting the trip from a menu", () => {
+      // Connecting opens a browser, and the page saying what leaves the
+      // machine has to be in front of the user before that happens. A menu
+      // item has nowhere to put it.
+      const onSettings = vi.fn();
+      const account = menu("Account", { lastfmConfigured: true, onSettings });
+
+      const item = account.items[0];
+      if (item?.kind === "separator") {
+        throw new Error("expected an item");
+      }
+      item?.onSelect?.();
+      expect(onSettings).toHaveBeenCalled();
+    });
+
+    it("names the account and offers the one-click way out", () => {
+      const account = menu("Account", {
+        lastfmConfigured: true,
+        lastfmUsername: "listener",
+      });
+
+      expect(labels(account.items)).toEqual([
+        "last.fm: listener",
+        "---",
+        "Disconnect from last.fm",
+      ]);
+      // The name is a fact, not an action.
+      const name = account.items[0];
+      expect(name?.kind !== "separator" && name?.disabled).toBe(true);
+    });
   });
 
   describe("File", () => {

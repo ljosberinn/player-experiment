@@ -280,3 +280,24 @@ wall-clock time in it at all, and with a real clock the start of a track and its
 halfway mark fall in the same second — so the test that the timestamp is the
 former and not the latter could not be written. `Engine::with_clock` exists for
 that test alone.
+
+### 10b
+
+**The poll cadence went to the frontend.** The plan put "the `auth.getSession`
+poll" in `auth.rs`. Built there it would have meant a sleeping thread in Rust
+and a timing behaviour with no cheap test; `auth.rs` answers one attempt and the
+store loops, so the whole thing runs against a mocked `ipc` under fake timers.
+The token crosses IPC as a consequence, which the plan did not anticipate and
+which costs nothing: it is unauthorized, single-use and expires in an hour.
+
+**Connecting is reached from Settings, not from the Account menu.** The plan
+said "a settings pane with Connect/Disconnect and a status line" and separately
+noted the Account menu was waiting. Both are true, but Connect cannot live in
+the menu: it opens a browser, and the paragraph about what leaves the machine
+has to be on screen first.
+
+**No separate "scrobbling on/off" switch.** The plan's prose says "while
+scrobbling is on", which reads as a second toggle beside the connection.
+Connecting is the opt-in and Disconnect is the off switch; a second control that
+can only differ from the first for users who want to stay connected and send
+nothing was not worth the surface. Revisit if anyone asks for it.

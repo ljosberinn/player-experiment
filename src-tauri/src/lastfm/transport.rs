@@ -17,6 +17,10 @@ use std::time::Duration;
 /// Where the API lives. One root for every method; the method is a parameter.
 pub const API_ROOT: &str = "https://ws.audioscrobbler.com/2.0/";
 
+/// What this build calls itself to last.fm. A version, so a bug in one release
+/// is distinguishable from the same bug in another.
+pub const USER_AGENT: &str = concat!("apex/", env!("CARGO_PKG_VERSION"));
+
 /// How long a call may take before it counts as unreachable.
 ///
 /// A scrobble is not urgent, but the thread making it is also the one that
@@ -121,6 +125,21 @@ impl Transport for HttpTransport {
             .text()
             .map_err(|e| TransportError::Unreachable(e.to_string()))
     }
+}
+
+/// The one client the app talks to last.fm through.
+///
+/// Built once. A `reqwest::blocking::Client` owns a connection pool, and the
+/// browser trip polls every couple of seconds - one client per poll would open
+/// a fresh TLS session each time and throw it away.
+///
+/// `None` only if the client cannot be built at all, which the caller reports
+/// as the feature being unavailable rather than as a failed scrobble.
+pub fn shared() -> Option<&'static HttpTransport> {
+    static SHARED: std::sync::OnceLock<Option<HttpTransport>> = std::sync::OnceLock::new();
+    SHARED
+        .get_or_init(|| HttpTransport::new(USER_AGENT).ok())
+        .as_ref()
 }
 
 /// A [`Transport`] that answers from a script and remembers what it was asked.

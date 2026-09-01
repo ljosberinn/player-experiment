@@ -86,6 +86,14 @@ and the GitHub release; nothing publishes while the PR sits there.
   `beforeBuildCommand` runs `npm run notices`, so every bundle describes the
   graph it is shipping. The generator skips its work when the file is newer than
   both lockfiles; `--force` overrides that, and CI passes it.
+- **The last.fm key is compiled in from the environment.** `APEX_LASTFM_API_KEY`
+  and `APEX_LASTFM_API_SECRET` are read with `option_env!`, so a build made
+  without them has the feature **inert** rather than broken: the Account menu
+  stays disabled and the Settings pane says the build carries no key. Every
+  local build and every CI run is that build — a key is needed to *run* the
+  feature, not to test it. The secret is extractable from any binary that has
+  one, which is inherent to last.fm's model and accepted; what limits it is that
+  the secret alone is useless without a per-account session key.
 - Because it is generated, it is listed in `src-tauri/tauri.release.conf.json`
   and **not** in the base config: `tauri-build` fails the *compile* when a
   resource path does not exist, so listing it in the base would mean no

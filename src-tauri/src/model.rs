@@ -724,3 +724,33 @@ pub struct CrashReport {
     pub details: String,
     pub path: String,
 }
+
+/// What the Settings pane and the Account menu know about last.fm.
+///
+/// Two facts rather than one boolean, because "cannot connect" and "not
+/// connected" need different words on screen: a build compiled without an API
+/// key has nothing to offer, and saying "Connect" there would be a button that
+/// can only fail.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LastfmStatus {
+    /// Whether this build carries an API key at all.
+    pub configured: bool,
+    /// The connected account, or null.
+    pub username: Option<String>,
+}
+
+/// The start of the browser trip.
+///
+/// The token crosses IPC because the frontend drives the poll - it is an
+/// unauthorized, single-use, hour-long token, not a credential, and keeping it
+/// in Rust would mean shared mutable state for a value one dialog owns.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LastfmConnection {
+    pub token: String,
+    /// Opened by the frontend, which is where the opener capability lives.
+    pub authorize_url: String,
+}

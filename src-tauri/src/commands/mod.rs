@@ -12,10 +12,11 @@ use crate::db::{playback, playlists, query, settings, tag_values, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::model::{
-    AppInfo, BrowseGroup, BrowseKind, CrashReport, FilterGroup, LibraryStats, PlayerSnapshot,
-    Playlist, ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track, TrackQuery,
+    AppInfo, BrowseGroup, BrowseKind, CrashReport, FilterGroup, LastfmConnection, LastfmStatus,
+    LibraryStats, PlayerSnapshot, Playlist, ScanSummary, SmartOrder, TagEdit, TagValueField,
+    TagWriteSummary, Track, TrackQuery,
 };
-use crate::{crash, scan, tags};
+use crate::{crash, lastfm, scan, tags};
 
 /// Progress channels for the two writes long enough to watch.
 const TAG_PROGRESS: &str = "tags://progress";
@@ -579,6 +580,91 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
     .map_err(|e| crate::error::AppError::Internal(format!("seed task failed: {e}")))?;
 
     seeded
+}
+
+/// What the Settings pane and the Account menu show.
+///
+/// Answered from the database alone: whether an account is connected is a
+/// stored fact, and asking last.fm on every launch would make a local player
+/// talk to a server before the user has done anything.
+#[tauri::command]
+pub fn lastfm_status(db: State<'_, Db>) -> AppResult<LastfmStatus> {
+    let conn = db.conn()?;
+    Ok(LastfmStatus {
+        configured: lastfm::credentials().is_some(),
+        username: lastfm::auth::stored_session(&conn)?.map(|session| session.username),
+    })
+}
+
+/// The transport and credentials, or a message saying which is missing.
+///
+/// A build compiled without an API key is the ordinary case for every local
+/// build and every CI run, and the message has to say so rather than reading
+/// like a network failure.
+fn lastfm_ready() -> AppResult<(
+    &'static lastfm::transport::HttpTransport,
+    lastfm::Credentials,
+)> {
+    let credentials = lastfm::credentials().ok_or_else(|| {
+        crate::error::AppError::Internal("This build carries no last.fm API key.".to_owned())
+    })?;
+    let transport = lastfm::transport::shared().ok_or_else(|| {
+        crate::error::AppError::Internal("This machine has no usable HTTP client.".to_owned())
+    })?;
+    Ok((transport, credentials))
+}
+
+/// Step one of connecting: a token, and where to send the user with it.
+///
+/// **The only thing that leaves the machine here is an API key.** The password
+/// is typed on last.fm's own page, in the user's own browser, which is why
+/// this flow was chosen over the one that would have asked for it in-app.
+#[tauri::command]
+pub async fn lastfm_begin_connect() -> AppResult<LastfmConnection> {
+    blocking("last.fm connect", move || {
+        let (transport, credentials) = lastfm_ready()?;
+        let token = lastfm::auth::request_token(transport, &credentials)?;
+        Ok(LastfmConnection {
+            authorize_url: lastfm::auth::authorize_url(credentials.api_key, &token),
+            token,
+        })
+    })
+    .await
+}
+
+/// Step three: one attempt at exchanging the token for a session key.
+///
+/// `None` means the user has not finished in the browser yet, so ask again -
+/// the cadence is the frontend's, because nothing in Rust should sleep and the
+/// timing is testable there against a mocked `ipc`.
+#[tauri::command]
+pub async fn lastfm_complete_connect(
+    app: tauri::AppHandle,
+    token: String,
+) -> AppResult<Option<String>> {
+    blocking("last.fm connect", move || {
+        let (transport, credentials) = lastfm_ready()?;
+        match lastfm::auth::poll_session(transport, &credentials, &token)? {
+            lastfm::auth::Poll::NotYet => Ok(None),
+            lastfm::auth::Poll::Authorized(session) => {
+                let conn = app.state::<Db>().conn()?;
+                lastfm::auth::store_session(&conn, &session)?;
+                Ok(Some(session.username))
+            }
+        }
+    })
+    .await
+}
+
+/// Forgets the account.
+///
+/// Local only, and deliberately: last.fm has no method to revoke a session key,
+/// so the honest thing is to stop using it and say where the user can revoke it
+/// properly. Nothing is sent.
+#[tauri::command]
+pub fn lastfm_disconnect(db: State<'_, Db>) -> AppResult<()> {
+    let conn = db.conn()?;
+    lastfm::auth::forget_session(&conn)
 }
 
 /// The panic the previous run wrote down, if the user has not seen it yet.

@@ -1,4 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { LastfmSettings } from "../lastfm/LastfmSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
@@ -20,6 +21,10 @@ import { useZoomStore } from "./zoomStore";
  * that draws attention without being asked to, so it is the one thing that
  * needs a switch - and it belongs here rather than in a menu, because it is a
  * preference the user sets once rather than a command.
+ *
+ * last.fm joins it in phase 10b, last and set apart: the two rows above are
+ * preferences about how the app looks, and that section is the only thing in
+ * the app that makes it talk to a server.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const factor = useZoomStore((s) => s.factor);
@@ -82,6 +87,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               onChange={(event) => void setDynamicBackground(event.target.checked)}
             />
           </div>
+
+          {/* Last, and set apart: everything above it is a preference about
+              how the app looks, and this is the one thing in Settings that
+              makes the app talk to a server. */}
+          <LastfmSettings />
 
           <div className="modal-actions">
             <Dialog.Close render={<button type="button" className="primary" />}>Done</Dialog.Close>

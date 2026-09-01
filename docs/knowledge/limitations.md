@@ -29,3 +29,12 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **`npm audit` reports a dev-only advisory** in `serialize-javascript` via the
   `@wdio/*` chain. Production dependencies are clean; not force-fixing.
 - **Statistics is shipped dimmed and inert**, as the design draws it.
+- **The last.fm session key is stored unencrypted**, in one `settings` row,
+  labelled as such in the code and in the Settings pane. Decided in
+  [plans/lastfm.md](../plans/lastfm.md): DPAPI would cost the crate's
+  `unsafe_code = "forbid"` permanently, the credential is a revocable
+  scrobbling token rather than a password, and encryption under a constant
+  compiled into the binary is worth nothing while looking like protection.
+- **Disconnecting from last.fm is local only.** The API has no method to revoke
+  a session key, so the app forgets it and the pane says where to revoke it
+  properly.
