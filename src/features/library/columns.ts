@@ -83,10 +83,25 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
   widths: {},
 };
 
-/** The columns to render, with any stored width applied. */
-export function resolveColumns(config: ColumnConfig): ColumnDef[] {
+/**
+ * Widths measured off what is on screen, held apart from `ColumnConfig`.
+ *
+ * Transient by construction: recomputed on the next navigation and never
+ * saved, so a playlist that has grown since its last visit is fitted again
+ * rather than keeping the answer from its first.
+ */
+export type FittedWidths = Partial<Record<SortField, number>>;
+
+/**
+ * The columns to render, with any stored width applied and any fitted width
+ * filling in behind it.
+ *
+ * A stored width wins: `resizeColumn` persists one per view, and a fit
+ * painting over it would leave the stored number with no way to be seen.
+ */
+export function resolveColumns(config: ColumnConfig, fitted: FittedWidths = {}): ColumnDef[] {
   return columnsFor(config.ids).map((column) => {
-    const width = config.widths[column.id];
+    const width = config.widths[column.id] ?? fitted[column.id];
     return width === undefined ? column : { ...column, width };
   });
 }

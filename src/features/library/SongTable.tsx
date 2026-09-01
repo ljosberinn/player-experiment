@@ -16,7 +16,8 @@ import {
 import { nudgeTarget } from "../playlists/reorder";
 import { usePlaylistsStore } from "../playlists/store";
 import { ColumnHeader } from "./ColumnHeader";
-import type { ColumnDef } from "./columns";
+import { measureColumns } from "./columnFit";
+import { resolveColumns } from "./columns";
 import { rowIndicesOf } from "./pageCache";
 import { RowStatusCell } from "./RowStatusCell";
 import { rowMenuItems } from "./rowMenu";
@@ -48,14 +49,12 @@ function offsetWithin(event: React.DragEvent<HTMLElement>): number {
  * can be absolutely positioned.
  */
 export function SongTable({
-  columns,
   onActivate,
   onReorder,
   onRemove,
   onExport,
   nowPlayingId = null,
 }: {
-  columns: ColumnDef[];
   /** Double-click or Enter on a row: play the library from that row. */
   onActivate?: (rowIndex: number) => void;
   /**
@@ -83,6 +82,12 @@ export function SongTable({
   "use no memo";
 
   const total = useLibraryStore((s) => s.total);
+  // Resolved here rather than in `App`, whose only use for the config was to
+  // hand the result down: subscribing where the columns are rendered keeps a
+  // width change - a drag, a fit - out of the shell's render entirely.
+  const columnConfig = useLibraryStore((s) => s.columns);
+  const fittedWidths = useLibraryStore((s) => s.fittedWidths);
+  const columns = resolveColumns(columnConfig, fittedWidths);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const direction = useLibraryStore((s) => s.direction);
   const selection = useLibraryStore((s) => s.selection);
@@ -92,7 +97,9 @@ export function SongTable({
   const clickRow = useLibraryStore((s) => s.clickRow);
   // Subscribing to `pages` is what re-renders rows when a page lands; `rowAt`
   // reads from the store and would otherwise look unchanged to React.
-  useLibraryStore((s) => s.pages);
+  const pages = useLibraryStore((s) => s.pages);
+  const fitPending = useLibraryStore((s) => s.fitPending);
+  const fitColumns = useLibraryStore((s) => s.fitColumns);
   // A new query drops every cached page, so the visible range has to be
   // fetched again - but the range itself has not moved, and neither has the
   // row count when only the sort changed. Without this the effect below never
@@ -134,6 +141,22 @@ export function SongTable({
       void ensureRange(firstIndex, lastIndex);
     }
   }, [ensureRange, firstIndex, lastIndex, total, queryToken]);
+
+  /**
+   * Fits the columns to a view that has just been opened.
+   *
+   * Once the first page has landed, not when the navigation happened: rows
+   * that have not arrived render a skeleton bar, and measuring those measures
+   * the shimmer. A view that lands no rows leaves the request outstanding -
+   * there is nothing to measure, and nothing to be wrong about either.
+   */
+  useEffect(() => {
+    const table = scrollRef.current?.querySelector("table");
+    if (!fitPending || pages.size === 0 || table == null) {
+      return;
+    }
+    fitColumns(measureColumns(table, columnConfig.ids));
+  }, [fitPending, pages, fitColumns, columnConfig.ids]);
 
   /**
    * The keyboard routes into the two things a pointer had to itself: the row

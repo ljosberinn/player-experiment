@@ -24,10 +24,20 @@ classes that already exist.
 - `headerBounds()` queries `th[data-column]`: the status column has no id and
   counting it offsets every drag-to-reorder drop index.
 - **Double-clicking a divider fits the column to the rows on screen**, measured
-  with a `Range` over each cell's contents — the cells clip with `ellipsis`, and
-  a clipped element's `scrollWidth` omits the padding on the overflowing side.
-  Visible rows only: the widest value in a 150k-row column is neither in the DOM
-  nor cheap to ask for, so fitting is deliberately not idempotent.
+  with a `Range` over each cell's contents (`columnFit.ts`) — the cells clip with
+  `ellipsis`, and a clipped element's `scrollWidth` omits the padding on the
+  overflowing side. Visible rows only: the widest value in a 150k-row column is
+  neither in the DOM nor cheap to ask for, so fitting is deliberately not
+  idempotent.
+- **Every navigation fits every visible column** through the same measurement.
+  The widths live in `fittedWidths`, apart from `ColumnConfig` and never saved,
+  so a width the user dragged still wins and a view that has grown since its
+  last visit is fitted again. `applyEntry` raises `fitPending` — not `refresh`,
+  which every sort toggle and every debounced keystroke also reaches, and
+  columns that resize while typing are worse than columns that are too wide.
+  The fit consumes the flag once the first page has landed, because rows that
+  have not arrived render a skeleton and measuring those measures the shimmer.
+  "Reset Columns" drops the fit with the config, or it appears to do nothing.
 
 ## The browse views
 
@@ -64,6 +74,11 @@ tree while read at the top of `App`. Each moved into a component that subscribes
 on its own behalf — `NowPlayingStatus`, `PlayerTransport`, `SearchBox`,
 `AppMenus`. `App.renders.test.tsx` counts renders, because a count is exact
 where a wall-clock budget on a CI runner is noise.
+
+`resolveColumns` runs inside `SongTable` rather than in `App`. The shell had no
+use for the config beyond handing the result down, so subscribing where the
+columns are rendered keeps a width change — a drag, a fit — out of the shell's
+render entirely.
 
 **File splitting delivers nothing here; a component boundary does.**
 `memo(SongTable)` was deliberately not taken — the table subscribes to the

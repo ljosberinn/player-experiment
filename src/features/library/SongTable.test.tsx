@@ -2,11 +2,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Track, TrackQuery } from "../../ipc";
+import type { SortField, Track, TrackQuery } from "../../ipc";
 import { addToPlaylist, libraryStats, queryTracks, revealTrack } from "../../ipc";
 import { readTrackIds, TRACK_IDS_MIME } from "../playlists/drag";
 import { usePlaylistsStore } from "../playlists/store";
-import { columnsFor } from "./columns";
 import { SongTable } from "./SongTable";
 import { useLibraryStore } from "./store";
 
@@ -60,7 +59,8 @@ function track(id: number): Track {
   };
 }
 
-const columns = columnsFor(["title", "durationMs", "artist"]);
+/** The columns these tests render; `SongTable` reads them from the store. */
+const COLUMN_IDS: SortField[] = ["title", "durationMs", "artist"];
 const initial = useLibraryStore.getState();
 
 // jsdom gives every element zero height, so the virtualizer would render no
@@ -88,6 +88,9 @@ beforeEach(() => {
   stubLayout();
   useLibraryStore.setState({
     ...initial,
+    columns: { ids: COLUMN_IDS, widths: {} },
+    fittedWidths: {},
+    fitPending: false,
     total: 0,
     pages: new Map(),
     inFlight: new Set(),
@@ -141,7 +144,7 @@ function fireDrag(type: "dragOver" | "drop", row: HTMLElement, ids: number[], cl
 
 async function renderTable() {
   await useLibraryStore.getState().refresh();
-  render(<SongTable columns={columns} />);
+  render(<SongTable />);
   await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
 }
 
@@ -175,7 +178,7 @@ describe("SongTable", () => {
       }),
     );
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} nowPlayingId={1} />);
+    render(<SongTable nowPlayingId={1} />);
     await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
 
     expect(screen.getByText("Playing")).toBeInTheDocument();
@@ -311,7 +314,7 @@ describe("SongTable", () => {
   it("reorders on a drop, above or below depending on where it landed", async () => {
     const onReorder = vi.fn();
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} onReorder={onReorder} />);
+    render(<SongTable onReorder={onReorder} />);
     await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
     const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
 
@@ -324,7 +327,7 @@ describe("SongTable", () => {
 
   it("shows where a drop would land", async () => {
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} onReorder={vi.fn()} />);
+    render(<SongTable onReorder={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
     const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
 
@@ -347,7 +350,7 @@ describe("SongTable", () => {
   it("removes the selection on Delete when the view supports it", async () => {
     const onRemove = vi.fn();
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} onRemove={onRemove} />);
+    render(<SongTable onRemove={onRemove} />);
     await waitFor(() => expect(screen.getByText("Track 2")).toBeInTheDocument());
     const user = userEvent.setup();
 
@@ -363,7 +366,7 @@ describe("SongTable", () => {
     queryTracksMock.mockImplementation(() => new Promise<Track[]>(() => {}));
     await useLibraryStore.getState().refresh();
 
-    const { container } = render(<SongTable columns={columns} />);
+    const { container } = render(<SongTable />);
 
     await waitFor(() => {
       expect(container.querySelectorAll(".song-row.placeholder").length).toBeGreaterThan(0);
@@ -387,7 +390,7 @@ describe("SongTable", () => {
   it("activates a row on double click, reporting its index not its id", async () => {
     const onActivate = vi.fn();
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} onActivate={onActivate} />);
+    render(<SongTable onActivate={onActivate} />);
     await waitFor(() => expect(screen.getByText("Track 3")).toBeInTheDocument());
 
     const user = userEvent.setup();
@@ -399,7 +402,7 @@ describe("SongTable", () => {
   it("activates a row with Enter, so the keyboard reaches playback too", async () => {
     const onActivate = vi.fn();
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} onActivate={onActivate} />);
+    render(<SongTable onActivate={onActivate} />);
     await waitFor(() => expect(screen.getByText("Track 2")).toBeInTheDocument());
 
     const user = userEvent.setup();
@@ -414,7 +417,7 @@ describe("SongTable", () => {
     const onWindowKeyDown = vi.fn();
     window.addEventListener("keydown", onWindowKeyDown);
     await useLibraryStore.getState().refresh();
-    render(<SongTable columns={columns} onActivate={onActivate} />);
+    render(<SongTable onActivate={onActivate} />);
     await waitFor(() => expect(screen.getByText("Track 1")).toBeInTheDocument());
 
     const user = userEvent.setup();
@@ -429,7 +432,7 @@ describe("SongTable", () => {
 
   it("marks the row that is playing", async () => {
     await useLibraryStore.getState().refresh();
-    const { container } = render(<SongTable columns={columns} nowPlayingId={4} />);
+    const { container } = render(<SongTable nowPlayingId={4} />);
     await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
 
     const playing = container.querySelectorAll(".song-row.playing");
@@ -456,7 +459,7 @@ describe("SongTable", () => {
   it("refetches when a search resolves to the same row count", async () => {
     // The other half of the same regression: searching and clearing back to an
     // identical total left the view stuck on placeholders.
-    const { container } = render(<SongTable columns={columns} />);
+    const { container } = render(<SongTable />);
     await useLibraryStore.getState().refresh();
     await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
 
@@ -475,7 +478,7 @@ describe("SongTable", () => {
     /** Renders a loaded table and right-clicks the first row. */
     async function openRowMenu(props: Partial<Parameters<typeof SongTable>[0]> = {}) {
       const user = userEvent.setup();
-      render(<SongTable columns={columns} {...props} />);
+      render(<SongTable {...props} />);
       await useLibraryStore.getState().refresh();
       await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
       await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 0") });
@@ -498,7 +501,7 @@ describe("SongTable", () => {
 
     it("keeps a multi-selection when right-clicking inside it", async () => {
       const user = userEvent.setup();
-      render(<SongTable columns={columns} />);
+      render(<SongTable />);
       await useLibraryStore.getState().refresh();
       await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
 
@@ -581,7 +584,7 @@ describe("SongTable", () => {
       // before the assertion - which is what made an earlier version of this
       // test pass by finding nothing to right-click.
       queryTracksMock.mockImplementation(() => new Promise(() => {}));
-      const { container } = render(<SongTable columns={columns} />);
+      const { container } = render(<SongTable />);
       await useLibraryStore.getState().refresh();
 
       const placeholder = await waitFor(() => {
@@ -596,13 +599,79 @@ describe("SongTable", () => {
     });
   });
 
+  describe("fitting the columns when a view opens", () => {
+    /**
+     * jsdom lays nothing out, so the text measurement is stubbed: ten pixels a
+     * character, which makes the expected width arithmetic rather than magic.
+     */
+    function stubTextWidth() {
+      vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function (this: Range) {
+        const text = this.startContainer.textContent ?? "";
+        return { width: text.length * 10 } as DOMRect;
+      });
+    }
+
+    /** The width the widest rendered cell of `id` calls for. */
+    function widestRendered(id: string): number {
+      const cells = [...document.querySelectorAll(`td.song-cell[data-column="${id}"]`)];
+      return Math.max(...cells.map((cell) => (cell.textContent ?? "").length)) * 10 + 24;
+    }
+
+    it("fits every visible column once the first page has landed", async () => {
+      stubTextWidth();
+      useLibraryStore.setState({ fitPending: true });
+
+      await renderTable();
+
+      await waitFor(() =>
+        expect(Object.keys(useLibraryStore.getState().fittedWidths).sort()).toEqual(
+          [...COLUMN_IDS].sort(),
+        ),
+      );
+      expect(useLibraryStore.getState().fittedWidths.title).toBe(widestRendered("title"));
+      // Consumed, so the next page to land does not resize the columns under
+      // someone who is scrolling.
+      expect(useLibraryStore.getState().fitPending).toBe(false);
+    });
+
+    it("does not fit when a sort toggle lands the rows", async () => {
+      stubTextWidth();
+      await renderTable();
+      const user = userEvent.setup();
+
+      await user.click(screen.getByRole("button", { name: /Name/ }));
+      await waitFor(() => {
+        expect(queryTracksMock).toHaveBeenCalledWith(expect.objectContaining({ sortBy: "title" }));
+      });
+      await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+
+      // Columns that resize while a search is being typed are worse than
+      // columns that are too wide, and a sort toggle is the same signal.
+      expect(useLibraryStore.getState().fittedWidths).toEqual({});
+    });
+
+    it("fits nothing in a view with no rows", async () => {
+      stubTextWidth();
+      statsMock.mockResolvedValue(stats(0));
+      useLibraryStore.setState({ fitPending: true });
+
+      render(<SongTable />);
+      await useLibraryStore.getState().refresh();
+
+      // Nothing landed, so there is nothing to measure - and the request is
+      // still outstanding for whenever this view does have rows.
+      expect(useLibraryStore.getState().fittedWidths).toEqual({});
+      expect(useLibraryStore.getState().fitPending).toBe(true);
+    });
+  });
+
   describe("the keyboard routes", () => {
     /** Renders a loaded table with `ids` selected and `anchorIndex` set. */
     async function withSelection(
       ids: number[],
       props: Partial<Parameters<typeof SongTable>[0]> = {},
     ) {
-      render(<SongTable columns={columns} {...props} />);
+      render(<SongTable {...props} />);
       await useLibraryStore.getState().refresh();
       await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
       useLibraryStore.setState({
