@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/ljosberinn/player-experiment/compare/v0.4.0...v0.5.0) (2026-08-31)
+
+
+### Features
+
+* back and forward ([#87](https://github.com/ljosberinn/player-experiment/issues/87)) ([b758d62](https://github.com/ljosberinn/player-experiment/commit/b758d6276a4071cb428e61c3ffc7fdee2fed7aeb))
+* one icon set, behind an adapter ([#91](https://github.com/ljosberinn/player-experiment/issues/91)) ([ac27f02](https://github.com/ljosberinn/player-experiment/commit/ac27f02561adb61373b87b4d23ff54480bf941a0))
+* the formatting half of the polish pass ([#88](https://github.com/ljosberinn/player-experiment/issues/88)) ([b721ae4](https://github.com/ljosberinn/player-experiment/commit/b721ae44544fe6b369ceafb119c9fee0d05884b3))
+* the interaction half of the polish pass ([#90](https://github.com/ljosberinn/player-experiment/issues/90)) ([0f114a9](https://github.com/ljosberinn/player-experiment/commit/0f114a94961e5057b609eeef61ddb60977319896))
+* the layout half of the polish pass ([#89](https://github.com/ljosberinn/player-experiment/issues/89)) ([d326409](https://github.com/ljosberinn/player-experiment/commit/d326409507cee147ccbfe461b2526ca5d721ee44))
+
 ## [0.4.0](https://github.com/ljosberinn/player-experiment/compare/v0.3.0...v0.4.0) (2026-08-23)
 
 
