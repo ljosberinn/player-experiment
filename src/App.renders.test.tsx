@@ -4,6 +4,7 @@ import { App } from "./App";
 import { useLastfmStore } from "./features/lastfm/store";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
+import type { Track } from "./ipc";
 
 /**
  * What wakes up when one value changes.
@@ -13,14 +14,15 @@ import { usePlayerStore } from "./features/player/store";
  * a machine can measure without a profiler or a stable clock. A wall-clock
  * budget on a CI runner would be noise; a render count is exact.
  *
- * The two subjects are the two updates that arrive on their own schedule
- * rather than in response to a click:
+ * The subjects are the updates that arrive often:
  *
  * - the playhead, which the audio thread emits every 250ms (`audio/mod.rs`),
  *   so four times a second for as long as anything is playing;
- * - the search field, which updates on every keystroke.
+ * - the volume rail, which writes at the pointer's sampling rate;
+ * - the search field, which updates on every keystroke;
+ * - the selection, which changes on every click, shift-range and Ctrl+A.
  *
- * Both used to be subscribed at the top of `App`, so both re-rendered the
+ * Each used to be subscribed at the top of `App`, so each re-rendered the
  * entire tree - including the song table and its forty virtualized rows.
  */
 
@@ -147,6 +149,30 @@ vi.mock("./features/library/BrowseView", () => ({
 const initialLibrary = useLibraryStore.getState();
 const initialPlayer = usePlayerStore.getState();
 
+function track(id: number): Track {
+  return {
+    id,
+    path: `/m/${id}.mp3`,
+    duration_ms: 1000,
+    title: `Track ${id}`,
+    artist: null,
+    album: null,
+    album_artist: null,
+    genre: null,
+    year: null,
+    track_no: null,
+    disc_no: null,
+    comment: null,
+    bitrate: null,
+    sample_rate: null,
+    cover_hash: null,
+    added_at: 0,
+    play_count: 0,
+    last_played_at: null,
+    missing_since: null,
+  };
+}
+
 /**
  * Renders the app with a non-empty library, lets the launch effects settle,
  * then zeroes the counters so only what follows is measured.
@@ -163,9 +189,14 @@ async function mounted() {
   });
 
   // `total` decides between the empty state and the table, so it has to be set
-  // for there to be a table whose renders are worth counting.
+  // for there to be a table whose renders are worth counting. The first page
+  // comes with it so that a click resolves to a real row and a shift-range to
+  // real ids - `clickRow` reads them out of the page cache.
   act(() => {
-    useLibraryStore.setState({ total: 500 });
+    useLibraryStore.setState({
+      total: 500,
+      pages: new Map([[0, Array.from({ length: 20 }, (_, index) => track(index))]]),
+    });
   });
   await waitFor(() => expect(renders.songTable).toBeGreaterThan(0));
   await act(async () => {
@@ -198,11 +229,10 @@ beforeEach(() => {
 
 describe("what the last.fm status re-renders", () => {
   it("nothing, when there is nothing to report", async () => {
-    // The Account menu needs two scalars from the store, so `App` subscribes
-    // to them - and the startup read is the one thing last.fm does unbidden.
-    // In a build with no key both scalars come back as what they already were,
-    // and zustand compares selector output by `Object.is`, so no subscriber
-    // wakes at all. This is the assertion behind that claim.
+    // The Account menu needs two scalars from the store, and the startup read
+    // is the one thing last.fm does unbidden. In a build with no key both come
+    // back as what they already were, and zustand compares selector output by
+    // `Object.is`, so no subscriber wakes at all.
     await mounted();
 
     await act(async () => {
@@ -214,21 +244,12 @@ describe("what the last.fm status re-renders", () => {
     expect(renders.playlistSidebar).toBe(0);
   });
 
-  it("the whole tree once, when an account connects - and never again", async () => {
-    // The floor rather than an absence, and worth stating as one: the menu bar
-    // has to name the connected account, `menus()` is built in `App`, so `App`
-    // re-renders and takes its children with it. That is one render for an
-    // action a user takes once. What must never happen is a second - a store
-    // that wrote on every scrobble would put this on the playhead's schedule.
+  it("nothing outside the menu bar, when an account connects", async () => {
+    // This used to be one render of the whole tree: the menu bar has to name
+    // the connected account and `menus()` was built in `App`. The two scalars
+    // live in `AppMenus` now, so connecting reaches the bar and nothing else.
     await mounted();
 
-    act(() => {
-      useLastfmStore.setState({ configured: true, username: "listener" });
-    });
-    expect(renders.songTable).toBe(1);
-
-    // Writing the same status again is not a change, and zustand compares
-    // selector output by `Object.is`.
     act(() => {
       useLastfmStore.setState({ configured: true, username: "listener" });
     });
@@ -237,8 +258,8 @@ describe("what the last.fm status re-renders", () => {
     });
 
     expectTableMounted();
-    expect(renders.songTable).toBe(1);
-    expect(renders.playlistSidebar).toBe(1);
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
   });
 });
 
@@ -330,6 +351,76 @@ describe("what typing in the search box re-renders", () => {
 
     expectTableMounted();
     expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+});
+
+describe("what clicking a row re-renders", () => {
+  /**
+   * `renders.playlistSidebar`, not `renders.songTable`, and deliberately.
+   *
+   * The `SongTable` stub above has no store subscription, so its count says
+   * whether `App` re-rendered, not whether the real table did. The real table
+   * subscribes to `selection` itself, so it renders once per click whatever
+   * `App` does - React batches its store notification with `App`'s into the
+   * same pass - and no arrangement of this file can change that. An assertion
+   * that a click leaves the table alone would pass against a fiction.
+   *
+   * The sidebar is the honest subject: it wants nothing from the selection, so
+   * every render it does for a click is one the click had no business causing.
+   */
+  it("nothing else, for one click", async () => {
+    await mounted();
+
+    act(() => {
+      useLibraryStore.getState().clickRow(0, 0, {});
+    });
+
+    expectTableMounted();
+    expect(useLibraryStore.getState().selection.ids.size).toBe(1);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+
+  it("stays flat across ten clicks", async () => {
+    await mounted();
+
+    // One `act` per click, for the same reason as the playhead ticks: batching
+    // them into one would collapse ten renders into one and flatter the result.
+    for (let row = 0; row < 10; row += 1) {
+      act(() => {
+        useLibraryStore.getState().clickRow(row, row, {});
+      });
+    }
+
+    expectTableMounted();
+    expect(renders.playlistSidebar).toBe(0);
+  });
+
+  it("nothing else, for a shift-range", async () => {
+    await mounted();
+
+    act(() => {
+      useLibraryStore.getState().clickRow(0, 0, {});
+    });
+    act(() => {
+      useLibraryStore.getState().clickRow(9, 9, { shift: true });
+    });
+
+    expectTableMounted();
+    expect(useLibraryStore.getState().selection.ids.size).toBe(10);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+
+  it("nothing else, for Ctrl+A", async () => {
+    await mounted();
+
+    // Every id the query matches rather than the loaded rows, so this is the
+    // one selection change that arrives from the backend.
+    await act(async () => {
+      await useLibraryStore.getState().selectAll();
+    });
+
+    expectTableMounted();
     expect(renders.playlistSidebar).toBe(0);
   });
 });

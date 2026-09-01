@@ -52,15 +52,22 @@ classes that already exist.
 
 ## Where a subscription lives is the perf lever
 
-`positionMs` (4/s), `volume` (per pointer move) and `searchInput` (per keystroke)
-each re-rendered the whole tree while read at the top of `App`. Each moved into a
-component that subscribes on its own behalf — `NowPlayingStatus`,
-`PlayerTransport`, `SearchBox`. `App.renders.test.tsx` counts renders, because a
-count is exact where a wall-clock budget on a CI runner is noise.
+`positionMs` (4/s), `volume` (per pointer move), `searchInput` (per keystroke)
+and `selection` (per click, shift-range and Ctrl+A) each re-rendered the whole
+tree while read at the top of `App`. Each moved into a component that subscribes
+on its own behalf — `NowPlayingStatus`, `PlayerTransport`, `SearchBox`,
+`AppMenus`. `App.renders.test.tsx` counts renders, because a count is exact
+where a wall-clock budget on a CI runner is noise.
 
 **File splitting delivers nothing here; a component boundary does.**
 `memo(SongTable)` was deliberately not taken — the table subscribes to the
-selection itself, so the one frequent update re-renders it regardless.
+selection itself, so the one frequent update re-renders it regardless, and no
+memo can stop a component's own subscription from waking it.
+
+That also decides what the render test may assert. The `SongTable` stub has no
+subscription, so its count measures `App`, not the real table; the honest
+subject for a selection change is `PlaylistSidebar`, which wants nothing from
+the selection.
 
 ## Native feel
 
