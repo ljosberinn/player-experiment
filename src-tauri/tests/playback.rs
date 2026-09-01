@@ -159,7 +159,7 @@ fn playing_half_a_track_counts_it_in_the_library() {
         .tick()
         .into_iter()
         .filter_map(|event| match event {
-            Event::Played(id) => Some(id),
+            Event::Played { track_id, .. } => Some(track_id),
             _ => None,
         })
         .collect();

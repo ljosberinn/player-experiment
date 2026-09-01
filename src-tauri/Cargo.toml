@@ -35,6 +35,15 @@ walkdir = "2"
 rayon = "1"
 lofty = "0.25"
 sha2 = "0.11"
+# last.fm signs every authenticated call with an md5 of the sorted parameters.
+# Nothing else in the tree provides md5; same RustCrypto family and the same
+# `digest` major as `sha2`, so it adds one crate and no second trait version.
+md-5 = "0.11"
+# Already in the tree through `tauri-plugin-updater`, so naming it here makes a
+# transitive dependency direct rather than adding one. `blocking` is the whole
+# reason it is listed: `lastfm::transport` is synchronous by design, so the
+# scrobbler thread owns its own client instead of borrowing Tauri's runtime.
+reqwest = { version = "0.13", features = ["blocking", "form"] }
 # Cover decoding only, for the palette behind the window. Decoders for the two
 # formats embedded artwork is actually in - the default feature set pulls in a
 # dozen more, plus rayon and a TIFF stack, for covers nobody ships.
@@ -55,6 +64,14 @@ tauri-plugin-opener = "2.5.4"
 
 [dev-dependencies]
 tempfile = "3"
+# The one test that opens a socket: `lastfm::transport` against a loopback
+# server, so the only code in the product that talks HTTP is not the only code
+# with no coverage. Binds an ephemeral port on 127.0.0.1; no egress, no
+# credentials.
+wiremock = "0.6"
+# `wiremock`'s server is async, and the transport under test is not - so the
+# test drives the client from `spawn_blocking` on a multi-thread runtime.
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [features]
 wdio = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]

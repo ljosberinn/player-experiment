@@ -5,8 +5,10 @@ mp3s. That scale drives every decision: SQLite is the source of truth (never an
 in-memory array of tracks), queries are paged, rows are virtualized, and audio
 decoding happens off the webview thread.
 
-Tauri v2 — Rust core plus a WebView2 frontend. No network at runtime except the
-updater.
+Tauri v2 — Rust core plus a WebView2 frontend. The only network at runtime is
+the updater and, once an account is connected, last.fm — opt-in, off by default,
+and behind a single trait (`lastfm::transport::Transport`) so nothing above it
+knows HTTP exists.
 
 ```
 src-tauri/src/
@@ -16,6 +18,7 @@ src-tauri/src/
   audio/      symphonia + rodio player thread, command/event channels
   smart/      filter tree -> parameterized SQL
   export/     JSON export
+  lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   palette.rs  dominant colours from cover bytes
@@ -64,7 +67,9 @@ than a Tauri handle, so each stays testable with no running app.
   null sink behind the same interface and reports why on `player://error` —
   headless CI is exactly this case.
 - **"Played" means 50% of the track.** One constant (`PLAYED_FRACTION`) behind
-  play counts and, when it lands, scrobbling. A repeat loop counts as a play.
+  play counts and scrobbling alike. A repeat loop counts as a play, and
+  `Event::Played` carries the wall-clock second the track *started* — derived
+  from `now - position_ms` it would be wrong after any pause or seek.
 
 ## Cover art
 
