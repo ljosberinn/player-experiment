@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextOuterSize, SHOT_HEIGHT, SHOT_WIDTH, TOLERANCE } from "./viewport";
+import { arrived, nextOuterSize, SHOT_HEIGHT, SHOT_WIDTH, TOLERANCE } from "./viewport";
 
 /**
  * The one part of the screenshot viewport that can be quietly wrong.
@@ -68,6 +68,17 @@ describe("sizing the window for a screenshot", () => {
       width: 2560 + (SHOT_WIDTH - 2544),
       height: 1440 + (SHOT_HEIGHT - 1416),
     });
+  });
+
+  it("judges having arrived by the same tolerance it stops on", () => {
+    // The loop and the log used to disagree: the loop stopped within two pixels
+    // and the log then compared for equality, so an ordinary fractional-zoom
+    // rounding announced that the display was probably too small. Both read
+    // this now.
+    expect(
+      arrived({ width: SHOT_WIDTH + TOLERANCE, height: SHOT_HEIGHT - TOLERANCE }, target),
+    ).toBe(true);
+    expect(arrived({ width: SHOT_WIDTH + TOLERANCE + 1, height: SHOT_HEIGHT }, target)).toBe(false);
   });
 
   it("accepts a target of its own, for a caller that wants one", () => {

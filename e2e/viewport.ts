@@ -22,6 +22,22 @@ export const TOLERANCE = 2;
 /** Attempts at converging on the target before settling for what we have. */
 const ATTEMPTS = 4;
 
+/** How long to give the webview to notice a window it has just been given. */
+const SETTLE_TIMEOUT = 2_000;
+/** How often to ask it, while waiting. */
+const SETTLE_INTERVAL = 50;
+
+/** Whether a measured viewport is close enough to `target` to stop. */
+export function arrived(
+  viewport: { width: number; height: number },
+  target: { width: number; height: number },
+): boolean {
+  return (
+    Math.abs(target.width - viewport.width) <= TOLERANCE &&
+    Math.abs(target.height - viewport.height) <= TOLERANCE
+  );
+}
+
 /**
  * The window size to try next, given what the last one produced.
  *
@@ -42,12 +58,13 @@ export function nextOuterSize(
   viewport: { width: number; height: number },
   target: { width: number; height: number } = { width: SHOT_WIDTH, height: SHOT_HEIGHT },
 ): { width: number; height: number } | null {
-  const dw = target.width - viewport.width;
-  const dh = target.height - viewport.height;
-  if (Math.abs(dw) <= TOLERANCE && Math.abs(dh) <= TOLERANCE) {
+  if (arrived(viewport, target)) {
     return null;
   }
-  return { width: outer.width + dw, height: outer.height + dh };
+  return {
+    width: outer.width + (target.width - viewport.width),
+    height: outer.height + (target.height - viewport.height),
+  };
 }
 
 /** The window size to put back, and the zoom to put back with it. */
@@ -69,6 +86,44 @@ function physicalSize(): Promise<{ width: number; height: number }> {
     width: Math.round(window.innerWidth * window.devicePixelRatio),
     height: Math.round(window.innerHeight * window.devicePixelRatio),
   }));
+}
+
+/**
+ * The viewport once the webview has noticed the window it was just given.
+ *
+ * `setWindowSize` resolves as soon as the driver has asked for the resize, and
+ * for some milliseconds after that `innerWidth` still describes the *previous*
+ * window. Measuring there costs a whole correction: the loop below adds a
+ * shortfall it has already applied, and the size it reports at the end belongs
+ * to the window before last. That is how a 700-pixel window came out of CI
+ * photographed 3157 pixels wide - wider than the shot it exists to contrast
+ * with - while the log said it had arrived at exactly 1920×1080.
+ *
+ * Waits for the reading to *change* rather than for it to reach the target: the
+ * target is what the loop is still deciding, and a display that cannot grow that
+ * far still moves when it is resized.
+ *
+ * Times out into the last reading rather than throwing, for the same reason
+ * nothing else here throws - a window that will not move is a smaller picture.
+ */
+async function settledSize(before: {
+  width: number;
+  height: number;
+}): Promise<{ width: number; height: number }> {
+  let latest = before;
+  try {
+    await browser.waitUntil(
+      async () => {
+        latest = await physicalSize();
+        return latest.width !== before.width || latest.height !== before.height;
+      },
+      { timeout: SETTLE_TIMEOUT, interval: SETTLE_INTERVAL },
+    );
+  } catch {
+    // The window did not move at all. `latest` is what it actually is, and the
+    // next correction is computed from that rather than from what was asked for.
+  }
+  return latest;
 }
 
 /** Applies a zoom to the webview without touching the stored preference. */
@@ -98,23 +153,27 @@ export async function enterReviewViewport(): Promise<Viewport | null> {
 
     // The window is larger than its viewport by whatever the frame costs, and
     // that is not knowable up front - it depends on decorations and on the DPI
-    // the runner happens to be at. So: measure, correct by the difference,
-    // measure again. It converges in one step when nothing else interferes and
-    // stops after four when the display simply cannot go that big.
+    // the runner happens to be at. So: measure, correct by the difference, and
+    // measure again once the webview has caught up with the resize. It converges
+    // in one step when nothing else interferes and stops after four when the
+    // display simply cannot go that big.
     let outer = { width: previous.width, height: previous.height };
+    let reached = await physicalSize();
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-      const next = nextOuterSize(outer, await physicalSize());
+      const next = nextOuterSize(outer, reached);
       if (next === null) {
         break;
       }
       outer = next;
       await browser.setWindowSize(outer.width, outer.height);
+      reached = await settledSize(reached);
     }
 
-    const reached = await physicalSize();
-    if (reached.width !== SHOT_WIDTH || reached.height !== SHOT_HEIGHT) {
+    if (!arrived(reached, { width: SHOT_WIDTH, height: SHOT_HEIGHT })) {
       // Said out loud rather than swallowed: a reviewer wondering why the
-      // pictures are small should find the answer in the log, not guess.
+      // pictures are small should find the answer in the log, not guess. Judged
+      // by the same tolerance the loop stops on, or every fractional-zoom
+      // rounding lands a pixel out and cries that the display is too small.
       console.log(
         `  viewport is ${reached.width}x${reached.height}, not ${SHOT_WIDTH}x${SHOT_HEIGHT} - the display is probably smaller`,
       );

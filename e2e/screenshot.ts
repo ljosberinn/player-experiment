@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { browser } from "@wdio/globals";
 import { enterReviewViewport, leaveReviewViewport } from "./viewport";
@@ -30,6 +30,22 @@ import { enterReviewViewport, leaveReviewViewport } from "./viewport";
 
 const directory = resolve(import.meta.dirname, "screenshots");
 
+export interface CaptureOptions {
+  /**
+   * Photograph the window the spec is holding, rather than the review viewport.
+   *
+   * For the spec whose subject *is* the window size. Growing to 1920×1080 first
+   * photographs a different window than the one the assertions ran against, and
+   * for a spec that just narrowed the window to prove the grid reflows, that is
+   * a picture of the opposite of what it proved: `browse-albums-narrow` shipped
+   * twice wider than `browse-albums-wide`.
+   *
+   * The zoom is left alone too. Applying 90% would fit more columns across, and
+   * a narrow window is the whole subject.
+   */
+  ownWindow?: boolean;
+}
+
 /**
  * Saves a PNG named `name`, and says whether it worked.
  *
@@ -40,11 +56,11 @@ const directory = resolve(import.meta.dirname, "screenshots");
  * should report that it could not photograph it, not fail as though the
  * feature were broken.
  */
-export async function capture(name: string): Promise<boolean> {
+export async function capture(name: string, options: CaptureOptions = {}): Promise<boolean> {
   mkdirSync(directory, { recursive: true });
   // Sized and scaled for the shot, then put back. See `viewport.ts` for why
   // this is per-capture rather than once for the whole run.
-  const previous = await enterReviewViewport();
+  const previous = options.ownWindow ? null : await enterReviewViewport();
   try {
     await browser.saveScreenshot(join(directory, `${name}.png`));
     return true;
@@ -52,8 +68,23 @@ export async function capture(name: string): Promise<boolean> {
     console.log(`  could not capture ${name}: ${String(cause)}`);
     return false;
   } finally {
+    // `null` here means nothing was changed, whether because `ownWindow` asked
+    // for that or because the resize failed. Either way there is nothing to put
+    // back.
     await leaveReviewViewport(previous);
   }
+}
+
+/**
+ * The pixel width of a screenshot already taken, from the PNG header.
+ *
+ * The one thing about a picture that is worth asserting on. Pixels are not -
+ * see above - but a shot taken at the wrong window size is not a photograph of
+ * its spec at all, and that is arithmetic rather than appearance. `IHDR` is the
+ * first chunk by definition, so its width is a fixed offset in.
+ */
+export function shotWidth(name: string): number {
+  return readFileSync(join(directory, `${name}.png`)).readUInt32BE(16);
 }
 
 export const SCREENSHOT_DIR = directory;

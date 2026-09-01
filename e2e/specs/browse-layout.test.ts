@@ -1,5 +1,5 @@
 import { browser, expect } from "@wdio/globals";
-import { capture } from "../screenshot";
+import { capture, shotWidth } from "../screenshot";
 
 /**
  * How the browse views lay themselves out, in an engine that has layout.
@@ -67,7 +67,7 @@ describe("browse layout", () => {
       timeoutMsg: "three albums should sit on one row in a wide window",
     });
 
-    await capture("browse-albums-wide");
+    const wide = await capture("browse-albums-wide");
 
     // The bug this replaces: the column count was read off a ref during
     // render, so it was whatever the first measurement said and the grid kept
@@ -78,7 +78,18 @@ describe("browse layout", () => {
       timeoutMsg: "the grid did not reflow when the window narrowed",
     });
 
-    await capture("browse-albums-narrow");
+    // Photographed at the window the assertion above ran against. Every other
+    // capture grows to the review viewport first, which here would put the
+    // albums back on one row before the shutter fired.
+    const narrow = await capture("browse-albums-narrow", { ownWindow: true });
+
+    // The one assertion any of these pictures carries. Nothing compares their
+    // pixels, but a narrow shot that is not narrower than the wide one is a
+    // photograph of the wrong window, and it shipped that way twice before
+    // anybody looked at the dimensions.
+    if (wide && narrow) {
+      expect(shotWidth("browse-albums-narrow")).toBeLessThan(shotWidth("browse-albums-wide"));
+    }
   });
 
   it("stripes the artist and genre lists", async () => {
