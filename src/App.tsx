@@ -1,7 +1,7 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
@@ -43,6 +43,7 @@ import { TaskProgress } from "./features/shell/TaskProgress";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
 import { useNativeFeel } from "./features/shell/useNativeFeel";
+import { useNoticeExpiry } from "./features/shell/useNoticeExpiry";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { useWindowTitle } from "./features/shell/useWindowTitle";
 import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
@@ -56,6 +57,9 @@ import { type AppInfo, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
 
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
+  // Stable, so the notice-expiry effect it feeds does not restart on every
+  // unrelated render - see the effect near the other two below.
+  const clearToolbarNotice = useCallback(() => setToolbarNotice(null), []);
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   /** What the error popover points at: the box that says what is playing. */
@@ -118,6 +122,7 @@ export function App() {
   const editorTracks = useEditorStore((s) => s.tracks);
   const canUndoTags = useEditorStore((s) => s.canUndo);
   const tagNotice = useEditorStore((s) => s.notice);
+  const dismissTagNotice = useEditorStore((s) => s.dismissNotice);
   const tagError = useEditorStore((s) => s.error);
   const openEditor = useEditorStore((s) => s.open);
   const closeTagEditor = useEditorStore((s) => s.close);
@@ -228,21 +233,9 @@ export function App() {
   // window's title shows.
   useWindowTitle();
 
-  useEffect(() => {
-    if (toolbarNotice === null) {
-      return;
-    }
-    const timer = setTimeout(() => setToolbarNotice(null), NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [toolbarNotice]);
-
-  useEffect(() => {
-    if (notice === null) {
-      return;
-    }
-    const timer = setTimeout(dismissNotice, NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [notice, dismissNotice]);
+  useNoticeExpiry(toolbarNotice, clearToolbarNotice, NOTICE_MS);
+  useNoticeExpiry(notice, dismissNotice, NOTICE_MS);
+  useNoticeExpiry(tagNotice, dismissTagNotice, NOTICE_MS);
 
   useEffect(() => {
     void refreshUndo();
