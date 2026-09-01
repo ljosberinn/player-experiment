@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/ljosberinn/player-experiment/compare/v0.5.0...v0.6.0) (2026-09-01)
+
+
+### Features
+
+* connecting a last.fm account ([#98](https://github.com/ljosberinn/player-experiment/issues/98)) ([dccfc65](https://github.com/ljosberinn/player-experiment/commit/dccfc65e436ca97ac4e5bb030b7f369fe136b06e))
+* now playing, and scrobbles ([#99](https://github.com/ljosberinn/player-experiment/issues/99)) ([c0e9326](https://github.com/ljosberinn/player-experiment/commit/c0e932653c7983cfae8a654f05ecdaa3008678f4))
+* the last.fm seam and the signature ([#97](https://github.com/ljosberinn/player-experiment/issues/97)) ([f4096d7](https://github.com/ljosberinn/player-experiment/commit/f4096d7fd4cedebebe780b828d50a34d17b3ad61))
+* the offline scrobble queue ([#100](https://github.com/ljosberinn/player-experiment/issues/100)) ([e893285](https://github.com/ljosberinn/player-experiment/commit/e8932856490b60560421862a923e3fd9ea9f88c1))
+
+
+### Bug Fixes
+
+* photograph the window the spec was actually holding ([#103](https://github.com/ljosberinn/player-experiment/issues/103)) ([c795a9b](https://github.com/ljosberinn/player-experiment/commit/c795a9b0ddfedf89882ae9826ad6176076248f17))
+
 ## [0.5.0](https://github.com/ljosberinn/player-experiment/compare/v0.4.0...v0.5.0) (2026-08-31)
 
 
