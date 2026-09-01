@@ -280,6 +280,9 @@ describe("App", () => {
   });
 
   it("names the tab properly in the drill-in breadcrumb", async () => {
+    // A drill-in landing empty ejects back to the group list (see #53), so a
+    // non-empty result keeps this test about the breadcrumb's wording.
+    statsMock.mockResolvedValue(stats(3));
     // The id is lowercase, so interpolating it read "All genres".
     useLibraryStore.setState({
       tab: "genres",

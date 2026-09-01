@@ -659,6 +659,59 @@ describe("browse tabs", () => {
   });
 });
 
+describe("leaving a drill-in that has emptied", () => {
+  it("backs out to the group list and drops the dead entry from history", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    statsMock.mockResolvedValue(stats(0));
+
+    // Stands in for the editor's refresh after a tag change moved every song
+    // in "Shields" out from under it.
+    await useLibraryStore.getState().refresh();
+
+    expect(useLibraryStore.getState().browse).toBeNull();
+    expect(useLibraryStore.getState().tab).toBe("albums");
+    // Back must land on what came before the drill-in, not on it, and forward
+    // must have nothing left to offer.
+    expect(backEntry(useLibraryStore.getState().history)).toMatchObject({ tab: "songs" });
+    expect(forwardEntry(useLibraryStore.getState().history)).toBeNull();
+  });
+
+  it("leaves a search that matches nothing inside a group alone", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    useLibraryStore.setState({ search: "no such track" });
+    statsMock.mockResolvedValue(stats(0));
+
+    await useLibraryStore.getState().refresh();
+
+    // Nothing matching a typed search is a legitimate result, not a sign the
+    // group is gone.
+    expect(useLibraryStore.getState().browse).not.toBeNull();
+  });
+
+  it("does not eject while the refresh is still in flight", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    statsMock.mockImplementation(() => new Promise(() => {}));
+
+    const pending = useLibraryStore.getState().refresh();
+
+    expect(useLibraryStore.getState().browse).not.toBeNull();
+    void pending;
+  });
+
+  it("does nothing outside a drill-in", async () => {
+    const historyBefore = useLibraryStore.getState().history;
+    statsMock.mockResolvedValue(stats(0));
+
+    await useLibraryStore.getState().refresh();
+
+    expect(useLibraryStore.getState().browse).toBeNull();
+    expect(useLibraryStore.getState().history).toBe(historyBefore);
+  });
+});
+
 describe("column layout", () => {
   it("persists a change against the view it was made in", async () => {
     useLibraryStore.setState({ playlistId: 7 });

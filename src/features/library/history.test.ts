@@ -3,6 +3,7 @@ import {
   backEntry,
   currentEntry,
   emptyHistory,
+  forgetGroup,
   forgetPlaylist,
   forwardEntry,
   goBack,
@@ -151,5 +152,34 @@ describe("forgetPlaylist", () => {
     expect(backEntry(forgotten)).toBeNull();
     expect(forwardEntry(forgotten)).toBeNull();
     expect(currentEntry(forgotten)).toBeNull();
+  });
+});
+
+describe("forgetGroup", () => {
+  const shields = entry({
+    tab: "albums",
+    browse: { kind: "albums", key: "Shields", secondary: "Grizzly Bear" },
+  });
+
+  it("drops only the entry that matches the dead group", () => {
+    const veckatimest = entry({
+      tab: "albums",
+      browse: { kind: "albums", key: "Veckatimest", secondary: "Grizzly Bear" },
+    });
+    const history = visited([entry({ tab: "albums" }), shields, veckatimest]);
+
+    const forgotten = forgetGroup(history, shields);
+
+    expect(forgotten.entries).toEqual([entry({ tab: "albums" }), veckatimest]);
+  });
+
+  it("falls back to the entry behind it when the dead group was on screen", () => {
+    const history = visited([entry(), entry({ tab: "albums" }), shields]);
+
+    const forgotten = forgetGroup(history, shields);
+
+    // Back must land on the list the drill-in came from, not on the drill-in.
+    expect(currentEntry(forgotten)).toEqual(entry({ tab: "albums" }));
+    expect(forwardEntry(forgotten)).toBeNull();
   });
 });
