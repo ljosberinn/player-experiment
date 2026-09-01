@@ -1,12 +1,10 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
 import { LibraryNav } from "./components/ui/LibraryNav";
-import { MenuBar } from "./components/ui/MenuBar";
 import { Sidebar } from "./components/ui/Sidebar";
 import { TitleBar } from "./components/ui/TitleBar";
 import { CrashNotice } from "./features/crash/CrashNotice";
@@ -18,7 +16,6 @@ import { useLastfmStore } from "./features/lastfm/store";
 import { BrowseView } from "./features/library/BrowseView";
 import { resolveColumns } from "./features/library/columns";
 import { HistoryNav } from "./features/library/HistoryNav";
-import { rowMenuItems } from "./features/library/rowMenu";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
@@ -35,9 +32,9 @@ import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { AppMenus } from "./features/shell/AppMenus";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
-import { exportSelectionLabel, menus, REPOSITORY } from "./features/shell/menus";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
 import { TaskProgress } from "./features/shell/TaskProgress";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
@@ -53,7 +50,7 @@ import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import { type AppInfo, getAppInfo, onLibraryChanged, revealTrack } from "./ipc";
+import { type AppInfo, getAppInfo, onLibraryChanged } from "./ipc";
 
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
@@ -68,14 +65,10 @@ export function App() {
   const zoomFactor = useZoomStore((s) => s.factor);
   const stepZoom = useZoomStore((s) => s.step);
   const loadDynamicBg = useDynamicBackgroundStore((s) => s.load);
-  // Three scalars, all of which change only when the user connects or
-  // disconnects - so the Account menu can say who is signed in without the app
-  // re-rendering for anything last.fm does.
-  const lastfmConfigured = useLastfmStore((s) => s.configured);
-  const lastfmUsername = useLastfmStore((s) => s.username);
+  // Launch lifecycle, and nothing else: who is connected is `AppMenus`'
+  // business. Both are actions, so they cost no renders where they are.
   const loadLastfm = useLastfmStore((s) => s.load);
   const watchLastfm = useLastfmStore((s) => s.watch);
-  const lastfmDisconnect = useLastfmStore((s) => s.disconnect);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
   const installUpdate = useUpdaterStore((s) => s.install);
@@ -113,27 +106,16 @@ export function App() {
   const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
-  const addTracks = usePlaylistsStore((s) => s.addTracks);
-  const selection = useLibraryStore((s) => s.selection);
-  // Reads the page cache when the menu is built rather than subscribing to it:
-  // the Edit menu is rebuilt when the selection changes, and the row a
-  // selection of one names is the row that was just clicked.
-  const trackById = useLibraryStore((s) => s.trackById);
   const editorTracks = useEditorStore((s) => s.tracks);
-  const canUndoTags = useEditorStore((s) => s.canUndo);
   const tagNotice = useEditorStore((s) => s.notice);
   const dismissTagNotice = useEditorStore((s) => s.dismissNotice);
   const tagError = useEditorStore((s) => s.error);
-  const openEditor = useEditorStore((s) => s.open);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
-  const undoTags = useEditorStore((s) => s.undo);
   const refreshUndo = useEditorStore((s) => s.refreshUndo);
   const tagProgress = useEditorStore((s) => s.progress);
   const runExportTo = useExportStore((s) => s.run);
 
-  const addFolder = useScanStore((s) => s.addFolder);
-  const rescan = useScanStore((s) => s.rescan);
   const scanError = useScanStore((s) => s.error);
   const dismissScanError = useScanStore((s) => s.dismissError);
 
@@ -303,9 +285,10 @@ export function App() {
     }
   };
 
+  // Resolved from the store rather than fixed, so a hidden column, a reorder
+  // or a drag-resize reaches the table - and so a playlist can have its own.
   const columns = resolveColumns(columnConfig);
   const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
-  const exportTarget = exportChoice([...selection.ids], currentPlaylist);
   const currentPlaylistName = currentPlaylist?.name ?? "This playlist";
   // A smart playlist's membership is its filter, so it has neither an order to
   // rearrange nor rows to take out - editing it means editing the filter.
@@ -314,65 +297,6 @@ export function App() {
   // persist: inside a static playlist, showing it in its own order. Sorted by
   // a column the arrangement is derived and a drop would have nowhere to go.
   const reorderable = editable && sortBy === "position";
-
-  /**
-   * The menu bar's contents, rebuilt whenever anything they depend on changes.
-   *
-   * Edit serves the *same* items the right-click menu does, built by the same
-   * `rowMenuItems` - which is the whole point of the menu existing. A menu bar
-   * that offered a different set of song actions from the row menu would be two
-   * things to keep in step, and the one that got forgotten would be this one.
-   */
-  const selectedIds = [...selection.ids];
-  const appMenus = menus({
-    missingCount: stats.missing,
-    canUndoTags,
-    hasExportTarget: selectedIds.length > 0 || currentPlaylist !== null,
-    exportSelectionLabel: exportSelectionLabel(selectedIds.length, currentPlaylist?.name ?? null),
-    lastfmConfigured,
-    lastfmUsername,
-    rowItems:
-      selectedIds.length === 0
-        ? []
-        : rowMenuItems({
-            count: selectedIds.length,
-            playlists,
-            openPlaylist: currentPlaylist,
-            // Only with exactly one row selected is there a row to look up,
-            // and only then is it cached to be found by id.
-            track: selectedIds.length === 1 ? trackById(selectedIds[0] as number) : null,
-            // By id rather than by row index: the menu bar has no row under a
-            // pointer to start from, and the selection is what it acts on.
-            onPlay: () => void play(selectedIds, 0),
-            onGetInfo: () => void openEditor(selectedIds),
-            onAddTo: (id) => void addTracks(id, selectedIds),
-            onRemove: () => {
-              if (playlistId !== null) {
-                void removeTracks(playlistId, selectedIds);
-              }
-            },
-            onExport: () => void runExport(exportChoice(selectedIds, null)),
-            onReveal: () => void revealTrack(selectedIds[0] as number),
-            onOpenUrl: (url) => void openUrl(url).catch(() => {}),
-          }),
-    onAddFolder: () => void addFolder(),
-    onRescan: () => void rescan(),
-    onRemoveMissing: () => setConfirmRemoveMissing(true),
-    onUndoTags: () => void undoTags(),
-    onSettings: () => setShowSettings(true),
-    onExportAll: () => void runExport(exportChoice([], null)),
-    onExportSelection: () => void runExport(exportTarget),
-    // Local only - last.fm has no method to revoke a session key, so this
-    // forgets it and the Settings pane says where to revoke it properly.
-    onLastfmDisconnect: () => void lastfmDisconnect(),
-    // The only outbound link in the app, and the only URL its capability
-    // allows. A failure here is not worth an error dialog: the browser either
-    // opened or it did not, and the user can see which.
-    onOpenRepository: () => void openUrl(REPOSITORY).catch(() => {}),
-  });
-
-  // Resolved from the store rather than fixed, so a hidden column, a reorder
-  // or a drag-resize reaches the table - and so a playlist can have its own.
 
   return (
     <div className="app">
@@ -386,7 +310,14 @@ export function App() {
           used to ride on it is in the strip below, which is what the design
           draws and what gives the menus the left edge to themselves. */}
       <TitleBar version={appInfo?.version ?? null}>
-        <MenuBar menus={appMenus} />
+        {/* Its own component because the Edit menu serves the selection:
+            built here, a click re-rendered the whole app for a menu nobody
+            had open. */}
+        <AppMenus
+          onRemoveMissing={() => setConfirmRemoveMissing(true)}
+          onSettings={() => setShowSettings(true)}
+          onExport={(choice) => void runExport(choice)}
+        />
       </TitleBar>
 
       {/* Each of these subscribes to its own store values rather than taking
