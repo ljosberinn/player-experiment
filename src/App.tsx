@@ -632,6 +632,7 @@ export function App() {
           name={editing.name}
           filter={editing.filter}
           order={editing.order}
+          isNew={editing.playlistId === null}
           onSave={(name, filter, order) => void saveSmart(name, filter, order)}
           onCancel={closeEditor}
         />

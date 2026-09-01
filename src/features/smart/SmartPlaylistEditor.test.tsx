@@ -9,7 +9,12 @@ import { SmartPlaylistEditor } from "./SmartPlaylistEditor";
 // about the tree, so it holds nothing.
 vi.mock("../../ipc", () => ({ suggestTagValues: vi.fn(async () => []) }));
 
-function open(filter: FilterGroup = emptyFilter, name = "Recent", order: SmartOrder = noOrder) {
+function open(
+  filter: FilterGroup = emptyFilter,
+  name = "Recent",
+  order: SmartOrder = noOrder,
+  isNew = false,
+) {
   const onSave = vi.fn();
   const onCancel = vi.fn();
   render(
@@ -18,6 +23,7 @@ function open(filter: FilterGroup = emptyFilter, name = "Recent", order: SmartOr
       name={name}
       filter={filter}
       order={order}
+      isNew={isNew}
       onSave={onSave}
       onCancel={onCancel}
     />,
@@ -311,6 +317,71 @@ describe("SmartPlaylistEditor", () => {
     open();
 
     expect(screen.getByRole("dialog", { name: "New Smart Playlist" })).toBeInTheDocument();
+  });
+});
+
+describe("naming a new smart playlist from its one rule (issue 52)", () => {
+  const DEFAULT = "New Smart Playlist";
+
+  it("derives the name from a single rule's value as it is typed", async () => {
+    const { user } = open(emptyFilter, DEFAULT, noOrder, true);
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByLabelText("Value for condition 1"), "Rome");
+
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Rome");
+  });
+
+  it("does not derive a name once a second rule exists", async () => {
+    const { user } = open(emptyFilter, DEFAULT, noOrder, true);
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByLabelText("Value for condition 1"), "Rome");
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(DEFAULT);
+  });
+
+  it("falls back to the default when the rule's value is empty", async () => {
+    const { user } = open(emptyFilter, DEFAULT, noOrder, true);
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByLabelText("Value for condition 1"), "Rome");
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Rome");
+
+    await user.clear(screen.getByLabelText("Value for condition 1"));
+
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(DEFAULT);
+  });
+
+  it("stops deriving for good once the user types a name of their own", async () => {
+    const { onSave, user } = open(emptyFilter, DEFAULT, noOrder, true);
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByLabelText("Value for condition 1"), "Rome");
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Rome");
+
+    await user.clear(screen.getByRole("textbox", { name: "Name" }));
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Touring Bands");
+
+    // The rule changes again after the takeover; the typed name must survive it.
+    await user.clear(screen.getByLabelText("Value for condition 1"));
+    await user.type(screen.getByLabelText("Value for condition 1"), "Paris");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledWith("Touring Bands", expect.anything(), noOrder);
+  });
+
+  it("never derives a name when editing an existing playlist", async () => {
+    const { onSave, user } = open(emptyFilter, "My Mix", noOrder, false);
+
+    await user.click(screen.getByRole("button", { name: "+ Rule" }));
+    await user.type(screen.getByLabelText("Value for condition 1"), "Rome");
+
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("My Mix");
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith("My Mix", expect.anything(), noOrder);
   });
 });
 
