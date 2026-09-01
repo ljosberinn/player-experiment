@@ -48,6 +48,8 @@ import {
   scanLibrary,
   setPlaylistFilter,
   stageDroppedCover,
+  stagedCoverUrl,
+  stagePickedCover,
   type TagEdit,
   tracksByIds,
   undoTagEdit,
@@ -244,6 +246,18 @@ describe("ipc", () => {
       expect(invokeMock).toHaveBeenCalledWith("stage_dropped_cover", bytes);
     });
 
+    it("stages a picked image by path, since the backend can read that itself", async () => {
+      invokeMock.mockResolvedValue("C:/cache/chosen-cover.jpg");
+
+      await expect(stagePickedCover("C:/art/sleeve.jpg")).resolves.toBe(
+        "C:/cache/chosen-cover.jpg",
+      );
+
+      expect(invokeMock).toHaveBeenCalledWith("stage_picked_cover", {
+        path: "C:/art/sleeve.jpg",
+      });
+    });
+
     it("undoes and reports whether there is anything to undo", async () => {
       invokeMock.mockResolvedValue({ written: 1, failed: 0, errors: [] });
       await undoTagEdit();
@@ -355,6 +369,15 @@ describe("ipc", () => {
 
     expect(coverUrl("abc123")).toBe("http://cover.localhost/abc123");
     expect(convertFileSrcMock).toHaveBeenCalledWith("abc123", "cover");
+  });
+
+  it("points the staged url at the one path that is not a hash, and versions it", () => {
+    convertFileSrcMock.mockReturnValue("http://cover.localhost/staged");
+
+    // The staging file's name never changes, so the query string is the only
+    // thing that can tell the webview this is a different image.
+    expect(stagedCoverUrl(2)).toBe("http://cover.localhost/staged?v=2");
+    expect(convertFileSrcMock).toHaveBeenCalledWith("staged", "cover");
   });
 
   describe("player", () => {

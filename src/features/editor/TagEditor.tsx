@@ -4,6 +4,7 @@ import { TagCombobox } from "../../components/ui/TagCombobox";
 import {
   type CoverEdit,
   coverUrl,
+  stagedCoverUrl,
   type TagEdit,
   type TagValueField,
   type Track,
@@ -50,7 +51,10 @@ export function TagEditor({
   progress?: WriteProgress | null;
   onSave: (edit: TagEdit) => void;
   onCancel: () => void;
-  /** Opens the OS picker; resolves to a path, or null if dismissed. */
+  /**
+   * Opens the OS picker and stages what it returns; resolves to a path, null
+   * if the picker was dismissed, or rejects with the sentence to show.
+   */
   onPickCover: () => Promise<string | null>;
   /**
    * Stages a dropped image; resolves to a path, or rejects with the sentence
@@ -69,6 +73,33 @@ export function TagEditor({
    * would not take must not stop a typed field being written.
    */
   const [rejected, setRejected] = useState<string | null>(null);
+  /**
+   * How many images have been staged in this dialog.
+   *
+   * The staging file has one fixed name, so nothing about the URL changes
+   * between two choices and the webview would go on showing the first. This is
+   * what changes it.
+   */
+  const [staged, setStaged] = useState(0);
+
+  /**
+   * Takes whichever route chose an image.
+   *
+   * Both stage, both can be refused, and both end in the same two pieces of
+   * state - so the picker and the drop differ only in what they hand over.
+   */
+  const choose = (staging: Promise<string | null>) => {
+    setRejected(null);
+    void staging.then(
+      (path) => {
+        if (path !== null) {
+          setCover({ kind: "replace", path });
+          setStaged((version) => version + 1);
+        }
+      },
+      (error: unknown) => setRejected(String(error)),
+    );
+  };
 
   const saving = progress != null;
   const problem = numericProblem(draft);
@@ -77,6 +108,15 @@ export function TagEditor({
   const commonCover = tracks.every((track) => track.cover_hash === tracks[0]?.cover_hash)
     ? (tracks[0]?.cover_hash ?? null)
     : null;
+  /**
+   * What goes in the square: the image about to be written if there is one,
+   * and otherwise whatever the selection already shares.
+   *
+   * A pending *removal* keeps showing the art it is about to take away - the
+   * caption is what says it is going.
+   */
+  const art =
+    cover?.kind === "replace" ? stagedCoverUrl(staged) : commonCover ? coverUrl(commonCover) : null;
   // What the square cannot say for itself. Shared artwork and no pending
   // choice is the one state that needs no caption: the art is the answer.
   const coverNote =
@@ -162,42 +202,28 @@ export function TagEditor({
               }
               event.preventDefault();
               const file = event.dataTransfer.files[0];
-              if (file === undefined) {
-                return;
+              if (file !== undefined) {
+                choose(onDropCover(file));
               }
-              setRejected(null);
-              void onDropCover(file).then(
-                (path) => setCover({ kind: "replace", path }),
-                (error: unknown) => setRejected(String(error)),
-              );
             }}
           >
             <div className="tag-cover-preview">
               {/* The square is drawn whether or not there is art to put in it,
                   so the block keeps its shape as the selection changes and as a
-                  choice goes pending. A picked replacement cannot be shown yet -
-                  `CoverEdit` carries a path and the webview cannot read it - so
-                  the square holds what is still on the files and the caption
-                  says what the save will do. */}
-              {commonCover ? (
-                <img className="tag-cover-art" src={coverUrl(commonCover)} alt="" />
-              ) : (
+                  choice goes pending. A pending replacement is shown from the
+                  staging file rather than from the library, which is the whole
+                  reason both routes stage; the caption stays either way,
+                  because what the save will do is not something a picture
+                  says. */}
+              {art === null ? (
                 <div className="tag-cover-art tag-cover-art-empty" aria-hidden="true" />
+              ) : (
+                <img className="tag-cover-art" src={art} alt="" />
               )}
               {coverNote === null ? null : <span className="tag-cover-note">{coverNote}</span>}
             </div>
             <div className="tag-cover-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  setRejected(null);
-                  void onPickCover().then((path) => {
-                    if (path !== null) {
-                      setCover({ kind: "replace", path });
-                    }
-                  });
-                }}
-              >
+              <button type="button" onClick={() => choose(onPickCover())}>
                 Choose Artwork…
               </button>
               <button type="button" onClick={() => setCover({ kind: "remove" })}>

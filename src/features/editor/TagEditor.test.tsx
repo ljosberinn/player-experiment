@@ -7,6 +7,7 @@ import { TagEditor } from "./TagEditor";
 
 vi.mock("../../ipc", () => ({
   coverUrl: (hash: string) => `cover-url:${hash}`,
+  stagedCoverUrl: (version: number) => `staged-cover-url:${version}`,
   suggestTagValues: vi.fn(async () => []),
 }));
 
@@ -231,6 +232,67 @@ describe("TagEditor", () => {
     await screen.findByText("New artwork selected.");
 
     expect(document.querySelector(".tag-cover-art")).toBeInTheDocument();
+  });
+
+  it("shows the staged image while a replacement is pending", async () => {
+    const { user } = open([track({ cover_hash: "abc" })], "C:/cache/chosen-cover.png");
+
+    // Until it is saved the art is not in the library and has no hash; what
+    // the square shows is the staging file, over the same protocol.
+    await user.click(screen.getByRole("button", { name: "Choose Artwork…" }));
+
+    await waitFor(() =>
+      expect(document.querySelector(".tag-cover-art")).toHaveAttribute("src", "staged-cover-url:1"),
+    );
+  });
+
+  it("changes the URL for a second choice, since the file name never does", async () => {
+    const { user } = open([track()], "C:/cache/chosen-cover.png");
+
+    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    await waitFor(() =>
+      expect(document.querySelector(".tag-cover-art")).toHaveAttribute("src", "staged-cover-url:1"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Choose Artwork…" }));
+
+    // One staging file, one fixed name: without this the webview would go on
+    // showing the first image for the rest of the dialog.
+    await waitFor(() =>
+      expect(document.querySelector(".tag-cover-art")).toHaveAttribute("src", "staged-cover-url:2"),
+    );
+  });
+
+  it("keeps showing the library's art while a removal is pending", async () => {
+    const { user } = open([track({ cover_hash: "abc" })]);
+
+    await user.click(screen.getByRole("button", { name: "Remove Artwork" }));
+
+    // The caption is what says it is going; hiding it too would leave the
+    // dialog saying "will be removed" about nothing visible.
+    expect(document.querySelector(".tag-cover-art")).toHaveAttribute("src", "cover-url:abc");
+  });
+
+  it("says why a picked image was refused, the same way a dropped one is", async () => {
+    render(
+      <TagEditor
+        tracks={[track()]}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        // Picking now stages too, so the picker can refuse - which it could
+        // not before: an unreadable file used to fail at save time.
+        onPickCover={vi.fn(() => Promise.reject("That image is 40 MB; the limit is 12 MB."))}
+        onDropCover={vi.fn(async () => "")}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Choose Artwork…" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That image is 40 MB; the limit is 12 MB.",
+    );
+    expect(document.querySelector(".tag-cover-art")).toHaveClass("tag-cover-art-empty");
   });
 
   it("attaches an image dropped on the artwork", async () => {

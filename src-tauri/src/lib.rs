@@ -126,15 +126,33 @@ pub fn run() {
         // track rows: the bytes stay out of every page payload and the webview
         // gets to cache them per hash.
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
-            let hash = request.uri().path().trim_start_matches('/').to_owned();
-            let db = ctx.app_handle().state::<Db>().inner().clone();
+            // The query string is where the tag editor's cache-buster goes, and
+            // is not part of what is being asked for.
+            let key = request.uri().path().trim_start_matches('/').to_owned();
+            let app = ctx.app_handle().clone();
 
             tauri::async_runtime::spawn_blocking(move || {
-                let found = db.conn().ok().and_then(|conn| query_cover(&conn, &hash));
+                let staged = key == commands::STAGED_COVER;
+                let found = if staged {
+                    commands::staged_cover(&app)
+                } else {
+                    let db = app.state::<Db>();
+                    db.conn().ok().and_then(|conn| query_cover(&conn, &key))
+                };
                 let response = match found {
                     Some((mime, bytes)) => tauri::http::Response::builder()
                         .header("Content-Type", mime)
-                        .header("Cache-Control", "max-age=31536000, immutable")
+                        // A hash names its own bytes and can be cached forever.
+                        // The staging file's name is fixed and its contents are
+                        // whatever was chosen last, so it can be cached never.
+                        .header(
+                            "Cache-Control",
+                            if staged {
+                                "no-store"
+                            } else {
+                                "max-age=31536000, immutable"
+                            },
+                        )
                         .body(bytes),
                     None => tauri::http::Response::builder()
                         .status(404)
@@ -182,6 +200,7 @@ pub fn run() {
             commands::tracks_by_ids,
             commands::write_tags,
             commands::stage_dropped_cover,
+            commands::stage_picked_cover,
             commands::undo_tag_edit,
             commands::can_undo_tag_edit,
             commands::suggest_tag_values,
