@@ -1,5 +1,6 @@
 import type {
   FilterField,
+  FilterFieldKind,
   FilterGroup,
   FilterNode,
   FilterOp,
@@ -9,6 +10,10 @@ import type {
   SortField,
   TagValueField,
 } from "../../ipc";
+// Straight from the generated table rather than through `../../ipc`, whose
+// index pulls in `invoke`: this module is pure, and nothing here should need a
+// Tauri runtime to be imported.
+import { FILTER_FIELD_KINDS } from "../../ipc/bindings/filterOps.generated";
 
 /**
  * Editing operations on a filter tree.
@@ -16,38 +21,43 @@ import type {
  * Pure and separate from the editor component: a nested and/or tree is where
  * the bugs live, not in the inputs that render it.
  *
- * **This file mirrors a table that also exists in Rust** (`model.rs`'s
- * `FilterField::kind` and `smart::compile`'s operator match). The backend
- * validates every filter by compiling it before storing, so the two drifting
- * apart shows up as the editor offering a combination the backend refuses -
- * annoying, never unsafe.
+ * What a field holds comes from the backend (`FILTER_FIELD_KINDS`), because
+ * that is a fact about the schema and not a decision. What the editor *offers*
+ * is decided here, and `filterTree.test.ts` holds it to the backend's accepted
+ * set - the backend compiles every filter before storing it, so offering a
+ * combination it refuses is annoying, never unsafe.
  */
-
-export type FieldKind = "text" | "number" | "timestamp";
 
 export interface FieldDef {
   id: FilterField;
   label: string;
-  kind: FieldKind;
 }
 
+/**
+ * The fields the editor offers, in the order it offers them.
+ *
+ * Labels and order are UI decisions, which is why this list is written by hand
+ * rather than generated. Its completeness is not a decision: the test asserts
+ * every field the backend knows appears here, so a column added to the filter
+ * enum cannot quietly go missing from the dropdown.
+ */
 export const FIELDS: FieldDef[] = [
-  { id: "title", label: "Name", kind: "text" },
-  { id: "artist", label: "Artist", kind: "text" },
-  { id: "album", label: "Album", kind: "text" },
-  { id: "albumArtist", label: "Album Artist", kind: "text" },
-  { id: "genre", label: "Genre", kind: "text" },
-  { id: "comment", label: "Comment", kind: "text" },
-  { id: "path", label: "Location", kind: "text" },
-  { id: "year", label: "Year", kind: "number" },
-  { id: "trackNo", label: "Track Number", kind: "number" },
-  { id: "discNo", label: "Disc Number", kind: "number" },
-  { id: "durationMs", label: "Time (ms)", kind: "number" },
-  { id: "bitrate", label: "Bit Rate", kind: "number" },
-  { id: "sampleRate", label: "Sample Rate", kind: "number" },
-  { id: "playCount", label: "Plays", kind: "number" },
-  { id: "addedAt", label: "Date Added", kind: "timestamp" },
-  { id: "lastPlayedAt", label: "Last Played", kind: "timestamp" },
+  { id: "title", label: "Name" },
+  { id: "artist", label: "Artist" },
+  { id: "album", label: "Album" },
+  { id: "albumArtist", label: "Album Artist" },
+  { id: "genre", label: "Genre" },
+  { id: "comment", label: "Comment" },
+  { id: "path", label: "Location" },
+  { id: "year", label: "Year" },
+  { id: "trackNo", label: "Track Number" },
+  { id: "discNo", label: "Disc Number" },
+  { id: "durationMs", label: "Time (ms)" },
+  { id: "bitrate", label: "Bit Rate" },
+  { id: "sampleRate", label: "Sample Rate" },
+  { id: "playCount", label: "Plays" },
+  { id: "addedAt", label: "Date Added" },
+  { id: "lastPlayedAt", label: "Last Played" },
 ];
 
 /**
@@ -96,7 +106,17 @@ export const OP_LABELS: Record<FilterOp, string> = {
 /** Operators that carry no value, so the editor renders no input for them. */
 const VALUELESS: FilterOp[] = ["isEmpty", "isNotEmpty"];
 
-const OPS_BY_KIND: Record<FieldKind, FilterOp[]> = {
+/**
+ * The operators the editor offers per kind.
+ *
+ * A deliberate subset of `ACCEPTED_FILTER_OPS`, which is why it is written out
+ * here rather than generated: timestamp omits "is" and "is not" on purpose,
+ * because the backend compares against an exact unix second and nobody wants
+ * to be offered a date match that lands on one. Do not "fix" that by adding
+ * them - the test only checks this is a subset, so narrowing further is
+ * allowed and widening past what the backend takes is not.
+ */
+const OPS_BY_KIND: Record<FilterFieldKind, FilterOp[]> = {
   text: [
     "is",
     "isNot",
@@ -111,8 +131,15 @@ const OPS_BY_KIND: Record<FieldKind, FilterOp[]> = {
   timestamp: ["inLast", "greaterThan", "lessThan", "between", "isEmpty", "isNotEmpty"],
 };
 
-export function kindOf(field: FilterField): FieldKind {
-  return FIELDS.find((definition) => definition.id === field)?.kind ?? "text";
+/**
+ * What kind of value a field holds.
+ *
+ * Falls back to text for a field this build does not know, which is a filter
+ * stored by a later one: an editor that renders the wrong input beats an
+ * editor that throws.
+ */
+export function kindOf(field: FilterField): FilterFieldKind {
+  return FILTER_FIELD_KINDS[field] ?? "text";
 }
 
 export function labelOf(field: FilterField): string {

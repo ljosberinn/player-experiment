@@ -10,6 +10,7 @@ import type { CoverEdit } from "./bindings/CoverEdit";
 import type { CrashReport } from "./bindings/CrashReport";
 import type { ExportScope } from "./bindings/ExportScope";
 import type { FilterField } from "./bindings/FilterField";
+import type { FilterFieldKind } from "./bindings/FilterFieldKind";
 import type { FilterGroup } from "./bindings/FilterGroup";
 import type { FilterNode } from "./bindings/FilterNode";
 import type { FilterOp } from "./bindings/FilterOp";
@@ -47,6 +48,7 @@ export type {
   CrashReport,
   ExportScope,
   FilterField,
+  FilterFieldKind,
   FilterGroup,
   FilterNode,
   FilterOp,
