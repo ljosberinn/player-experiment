@@ -12,7 +12,8 @@ import { useLibraryStore } from "./store";
  * has rendered anything, and a grid whose rows resize as covers load would
  * reflow under the scroll position.
  */
-const TILE_WIDTH = 178;
+const TILE_WIDTH = 168;
+const TILE_GAP = 10;
 const TILE_HEIGHT = 235;
 const LIST_ROW_HEIGHT = 41;
 const OVERSCAN = 6;
@@ -47,24 +48,35 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   // and never run again.
   const attachScroll = useCallback((element: HTMLDivElement | null) => {
     scrollRef.current = element;
-    if (element === null) {
-      return;
-    }
-    // `clientWidth`, not the entry's `contentRect`: the tiles lay out inside
-    // the padding box, and the box the observer reports excludes the padding.
-    setWidth(element.clientWidth);
-    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
-    observer.observe(element);
     return () => {
-      observer.disconnect();
       scrollRef.current = null;
     };
   }, []);
 
-  // One column for the lists; for the grid, however many tiles fit. Falls back
-  // to a single column before the first measurement, which is corrected on the
-  // same frame rather than being visible.
-  const columns = isGrid ? Math.max(1, Math.floor(width / TILE_WIDTH)) : 1;
+  // The section is measured rather than the scroll container around it: a row
+  // is as wide as the section, while the container's `clientWidth` also counts
+  // `.browse-body`'s 30px of padding on each side. Counting columns against
+  // those extra 60px overflowed the grid at every width where the surplus was
+  // less than one tile - about a quarter of them, the maximised window among
+  // them.
+  const attachRow = useCallback((element: HTMLElement | null) => {
+    if (element === null) {
+      return;
+    }
+    setWidth(element.clientWidth);
+    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  // One column for the lists; for the grid, however many tiles fit. `n` tiles
+  // need `n` widths and the `n - 1` gaps between them, which is the gap added
+  // to both sides of the division. Falls back to a single column before the
+  // first measurement, which is corrected on the same frame rather than being
+  // visible.
+  const columns = isGrid
+    ? Math.max(1, Math.floor((width + TILE_GAP) / (TILE_WIDTH + TILE_GAP)))
+    : 1;
   const rowCount = Math.ceil(groups.length / columns);
 
   const virtualizer = useVirtualizer({
@@ -110,6 +122,7 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
           anyway would describe a structure that is not there. A section with a
           label is a region, which is true and needs no role attribute. */}
       <section
+        ref={attachRow}
         className={isGrid ? "browse-grid" : "browse-list"}
         style={{ height: virtualizer.getTotalSize() }}
         aria-label={kind}

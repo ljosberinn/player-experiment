@@ -37,6 +37,12 @@ classes that already exist.
 - The width is measured into state through a `ResizeObserver`. A ref read during
   render is whatever the last commit left there, which is how the grid came to
   be fixed at its first measurement.
+- **The measured element is the `<section>`, not the scroll container.** A row
+  is as wide as the section; the container's `clientWidth` also counts
+  `.browse-body`'s 30px of padding on each side. Counting columns against those
+  extra 60px overflowed the grid sideways at about a quarter of all widths.
+  `TILE_WIDTH` and `TILE_GAP` are separate constants for the same reason — `n`
+  tiles need `n` widths and the `n - 1` gaps between them.
 - A reflow keeps the row height and changes what a row holds, so the scroll
   offset survives it pointing at a different album. `BrowseView` re-anchors on
   the group that was at the top and drops the virtualizer's size cache.
