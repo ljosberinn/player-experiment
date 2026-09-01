@@ -1,4 +1,4 @@
-# Statistics
+# xx — Statistics
 
 The sidebar ships a dimmed, inert **Statistics** item, as the design draws it.
 What it shows is undecided — that decision is the work, not the rendering.

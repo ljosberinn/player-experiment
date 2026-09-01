@@ -18,4 +18,4 @@ here — phase 34 rebuilds that bar from scratch, so moving it early meant CSS
 thrown away and four tests edited twice.
 
 **The repository was deliberately not renamed** — see
-[repository-rename](../upcoming/repository-rename.md).
+[57 — repository rename](../upcoming/57-repository-rename.md).

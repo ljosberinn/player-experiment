@@ -1,4 +1,4 @@
-# 12 — Online tag lookup (MusicBrainz + Discogs)
+# xx — Online tag lookup (MusicBrainz + Discogs)
 
 Produces a candidate tag set only; phase 8's atomic writer and undo journal
 apply it. Second outbound network dependency, inert unless the user opens the
