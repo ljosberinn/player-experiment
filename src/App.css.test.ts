@@ -432,6 +432,19 @@ describe("the stylesheet", () => {
     expect(cover?.body).toMatch(/object-fit:\s*cover/);
   });
 
+  it("sizes the tag editor's artwork rather than letting the file decide", () => {
+    // Same failure as the strip's thumbnail, somewhere it is worse: an
+    // embedded cover can be 3000px square, and drawn at its intrinsic size it
+    // pushes the dialog past `.modal`'s `max-height` and turns it into a
+    // scroll area. The box states its size and crops to it.
+    const art = all.find((one) => /(^|\s)\.tag-cover-art$/.test(one.selector));
+
+    expect(art).toBeDefined();
+    expect(art?.body).toMatch(/[^-]width:\s*\d/);
+    expect(art?.body).toMatch(/[^-]height:\s*\d/);
+    expect(art?.body).toMatch(/object-fit:\s*cover/);
+  });
+
   it("keeps the title bar and the footer the heights the design draws", () => {
     // Both are stated rather than left to their contents, and both are what
     // the transport strip and the content pane are measured against. A bar

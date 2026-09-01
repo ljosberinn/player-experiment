@@ -77,6 +77,9 @@ export const config: WebdriverIO.Config = {
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.
     "./specs/row-menu.test.ts",
+    // After `library` too: the artwork square is measured against a song that
+    // has a cover and one that does not, and the fixture is what supplies both.
+    "./specs/tag-editor.test.ts",
     // After `library` too: a grid with no albums in it has no column count,
     // and a list with no rows cannot alternate. Resizes the window and puts it
     // back, so it has to be somewhere the size it borrows is the default one.

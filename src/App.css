@@ -1562,12 +1562,40 @@ th.status {
 
 .tag-cover {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tag-cover-preview {
+  display: flex;
   align-items: center;
   gap: 10px;
 }
 
+/* Sized here rather than left to the image: an embedded cover can be 3000px
+   square, and at its intrinsic size it pushes the dialog past `.modal`'s
+   `max-height` and turns it into a scroll area. */
+.tag-cover-art {
+  flex: none;
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  object-fit: cover;
+  /* A hairline rather than a border, which would eat into the art. */
+  box-shadow: 0 0 0 1px var(--accent-ring);
+}
+
+.tag-cover-art-empty {
+  background: var(--skeleton);
+}
+
 .tag-cover-note {
   color: var(--muted);
+}
+
+.tag-cover-actions {
+  display: flex;
+  gap: 10px;
 }
 
 /* ---------- smart playlist editor ---------- */

@@ -48,6 +48,18 @@ export function TagEditor({
   const commonCover = tracks.every((track) => track.cover_hash === tracks[0]?.cover_hash)
     ? (tracks[0]?.cover_hash ?? null)
     : null;
+  // What the square cannot say for itself. Shared artwork and no pending
+  // choice is the one state that needs no caption: the art is the answer.
+  const coverNote =
+    cover?.kind === "replace"
+      ? "New artwork selected."
+      : cover?.kind === "remove"
+        ? "Artwork will be removed."
+        : commonCover
+          ? null
+          : tracks.length === 1
+            ? "No artwork."
+            : "Artwork differs or is missing.";
 
   return (
     // Open on render: the caller decides whether the editor is up, so there is
@@ -105,37 +117,42 @@ export function TagEditor({
           </div>
 
           <div className="tag-cover">
-            {cover?.kind === "replace" ? (
-              <span className="tag-cover-note">New artwork selected.</span>
-            ) : cover?.kind === "remove" ? (
-              <span className="tag-cover-note">Artwork will be removed.</span>
-            ) : commonCover ? (
-              <img className="status-cover" src={coverUrl(commonCover)} alt="" />
-            ) : (
-              <span className="tag-cover-note">
-                {tracks.length === 1 ? "No artwork." : "Artwork differs or is missing."}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                void onPickCover().then((path) => {
-                  if (path !== null) {
-                    setCover({ kind: "replace", path });
-                  }
-                });
-              }}
-            >
-              Choose Artwork…
-            </button>
-            <button type="button" onClick={() => setCover({ kind: "remove" })}>
-              Remove Artwork
-            </button>
-            {cover === null ? null : (
-              <button type="button" onClick={() => setCover(null)}>
-                Keep Existing
+            <div className="tag-cover-preview">
+              {/* The square is drawn whether or not there is art to put in it,
+                  so the block keeps its shape as the selection changes and as a
+                  choice goes pending. A picked replacement cannot be shown yet -
+                  `CoverEdit` carries a path and the webview cannot read it - so
+                  the square holds what is still on the files and the caption
+                  says what the save will do. */}
+              {commonCover ? (
+                <img className="tag-cover-art" src={coverUrl(commonCover)} alt="" />
+              ) : (
+                <div className="tag-cover-art tag-cover-art-empty" aria-hidden="true" />
+              )}
+              {coverNote === null ? null : <span className="tag-cover-note">{coverNote}</span>}
+            </div>
+            <div className="tag-cover-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  void onPickCover().then((path) => {
+                    if (path !== null) {
+                      setCover({ kind: "replace", path });
+                    }
+                  });
+                }}
+              >
+                Choose Artwork…
               </button>
-            )}
+              <button type="button" onClick={() => setCover({ kind: "remove" })}>
+                Remove Artwork
+              </button>
+              {cover === null ? null : (
+                <button type="button" onClick={() => setCover(null)}>
+                  Keep Existing
+                </button>
+              )}
+            </div>
           </div>
 
           {problem ? (
