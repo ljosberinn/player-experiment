@@ -5,10 +5,12 @@ import { LastfmSettings } from "./LastfmSettings";
 import { useLastfmStore } from "./store";
 
 vi.mock("../../ipc", () => ({
-  lastfmStatus: vi.fn(async () => ({ configured: true, username: null })),
+  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0 })),
   lastfmBeginConnect: vi.fn(),
   lastfmCompleteConnect: vi.fn(),
   lastfmDisconnect: vi.fn(async () => undefined),
+  onLastfmDisconnected: vi.fn(async () => () => {}),
+  onLastfmQueued: vi.fn(async () => () => {}),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
@@ -18,6 +20,7 @@ function set(state: Partial<ReturnType<typeof useLastfmStore.getState>>) {
     configured: true,
     username: null,
     connecting: false,
+    queued: 0,
     error: null,
     ...state,
   });
@@ -76,6 +79,25 @@ describe("the last.fm settings pane", () => {
     expect(screen.getByText(/Never the file path/)).toBeInTheDocument();
     // And that the credential is not pretending to be protected.
     expect(screen.getByText(/stored unencrypted/)).toBeInTheDocument();
+  });
+
+  it("says nothing about a backlog when there is none", () => {
+    render(<LastfmSettings />);
+    expect(screen.queryByText(/waiting to be sent/)).not.toBeInTheDocument();
+  });
+
+  it("counts the plays that have not gone out yet", () => {
+    set({ username: "listener", queued: 4 });
+    render(<LastfmSettings />);
+
+    expect(screen.getByText(/4 plays are recorded and waiting/)).toBeInTheDocument();
+  });
+
+  it("counts one play as one", () => {
+    set({ username: "listener", queued: 1 });
+    render(<LastfmSettings />);
+
+    expect(screen.getByText(/1 play is recorded and waiting/)).toBeInTheDocument();
   });
 
   it("shows a failure where the user is looking", () => {

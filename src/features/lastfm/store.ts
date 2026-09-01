@@ -7,6 +7,7 @@ import {
   lastfmDisconnect,
   lastfmStatus,
   onLastfmDisconnected,
+  onLastfmQueued,
 } from "../../ipc";
 
 /** How often the browser trip is checked on. */
@@ -29,13 +30,16 @@ interface LastfmState {
   username: string | null;
   /** Whether a browser trip is in progress. */
   connecting: boolean;
+  /** Plays recorded but not yet accepted by last.fm. Normally zero. */
+  queued: number;
   error: string | null;
 
   /** Reads the stored status. Called once, at startup. */
   load: () => Promise<void>;
   /**
-   * Listens for the backend forgetting a rejected key. Called once, at
-   * startup; resolves to its own teardown.
+   * Listens for what the scrobbler thread decides on its own: a rejected key,
+   * and how many plays are waiting. Called once, at startup; resolves to its
+   * own teardown.
    */
   watch: () => Promise<UnlistenFn>;
   connect: () => Promise<void>;
@@ -69,20 +73,25 @@ export const useLastfmStore = create<LastfmState>((set) => ({
   configured: false,
   username: null,
   connecting: false,
+  queued: 0,
   error: null,
 
   load: async () => {
     try {
       const status = await lastfmStatus();
-      set({ configured: status.configured, username: status.username });
+      set({
+        configured: status.configured,
+        username: status.username,
+        queued: status.queued,
+      });
     } catch {
       // Left as "no key, no account", which is what an app that cannot read
       // the setting should offer: nothing.
     }
   },
 
-  watch: () =>
-    onLastfmDisconnected(() => {
+  watch: async () => {
+    const stopDisconnected = await onLastfmDisconnected(() => {
       // Nothing the user did, so it is not a popover - but the Account menu is
       // claiming an account that no longer works, and the pane has to explain
       // why the connection went away on its own.
@@ -92,7 +101,13 @@ export const useLastfmStore = create<LastfmState>((set) => ({
         connecting: false,
         error: "last.fm rejected the stored key. Connect again to keep scrobbling.",
       });
-    }),
+    });
+    const stopQueued = await onLastfmQueued((queued) => set({ queued }));
+    return () => {
+      stopDisconnected();
+      stopQueued();
+    };
+  },
 
   connect: async () => {
     const attempt = ++generation;
@@ -145,6 +160,8 @@ export const useLastfmStore = create<LastfmState>((set) => ({
     try {
       await lastfmDisconnect();
       set({ username: null, connecting: false, error: null });
+      // The queue is not cleared, and the count stays: those plays are still
+      // recorded, and connecting the same account again sends them.
     } catch (error) {
       set({ error: String(error) });
     }

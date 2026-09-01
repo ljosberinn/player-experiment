@@ -593,6 +593,7 @@ pub fn lastfm_status(db: State<'_, Db>) -> AppResult<LastfmStatus> {
     Ok(LastfmStatus {
         configured: lastfm::credentials().is_some(),
         username: lastfm::auth::stored_session(&conn)?.map(|session| session.username),
+        queued: lastfm::queue::depth(&conn)?,
     })
 }
 

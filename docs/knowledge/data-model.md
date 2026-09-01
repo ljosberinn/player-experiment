@@ -12,6 +12,7 @@ edit a shipped one.
 | 4 | `tracks.missing_since` + a **partial** index |
 | 5 | `tag_values` — the distinct values a library uses, for autocompletion |
 | 6 | `covers.palette` — the dominant colours of a cover |
+| 7 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
 
 ## One query, narrowed
 
@@ -51,6 +52,25 @@ is why paging, sorting, search-within, "select all", the play queue, export and
 - Per-playlist columns live in `playlists.columns_json`; the library view keeps
   its own row in `settings`. `None` stays distinguishable from "configured to
   show nothing" — a playlist with no layout inherits the library's.
+
+## The scrobble queue
+
+`scrobble_queue` holds the **resolved** play — artist, title, album, duration,
+the second it started — rather than a track id. A play is a historical fact
+about what was on at a moment, and the row it came from can be retagged or
+removed before the queue drains; sending what the tags say today would report
+something that never happened. So there is no foreign key either.
+
+- **Every play goes through it**, online or off, so there is one code path
+  rather than two. `next_try_at` is zero for a fresh row, which means due now.
+- **A play made with no account connected is not queued at all** — keeping it
+  would mean that connecting an account later posted listening the user never
+  offered.
+- **Bounded by age and by attempts**: last.fm refuses a play over two weeks old
+  (ignore code 3), so nothing is kept past that, and twelve failures drops a row
+  regardless. No size cap is needed.
+- **Only ignore code 5, the daily cap, is deferred.** Codes 1–4 are permanent,
+  so those rows are dropped exactly like accepted ones.
 
 ## Smart playlists
 

@@ -17,6 +17,7 @@ export function LastfmSettings() {
   const configured = useLastfmStore((s) => s.configured);
   const username = useLastfmStore((s) => s.username);
   const connecting = useLastfmStore((s) => s.connecting);
+  const queued = useLastfmStore((s) => s.queued);
   const error = useLastfmStore((s) => s.error);
   const connect = useLastfmStore((s) => s.connect);
   const cancelConnect = useLastfmStore((s) => s.cancelConnect);
@@ -56,6 +57,15 @@ export function LastfmSettings() {
           </button>
         )}
       </div>
+
+      {/* Only when there is a backlog, which in a healthy install is never.
+          A line that says "0 waiting" is a line asking to be worried about. */}
+      {queued === 0 ? null : (
+        <p className="settings-lastfm-note" aria-live="polite">
+          {queued === 1 ? "1 play is" : `${queued} plays are`} recorded and waiting to be sent. They
+          go out with the next song, or the next time the app starts.
+        </p>
+      )}
 
       {error === null ? null : (
         <p className="settings-lastfm-error" role="alert">

@@ -9,7 +9,7 @@ import {
 import { POLL_INTERVAL_MS, POLL_TIMEOUT_MS, useLastfmStore } from "./store";
 
 vi.mock("../../ipc", () => ({
-  lastfmStatus: vi.fn(async () => ({ configured: true, username: null })),
+  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0 })),
   lastfmBeginConnect: vi.fn(async () => ({
     token: "tok",
     authorizeUrl: "https://www.last.fm/api/auth/?api_key=KEY&token=tok",
@@ -22,10 +22,17 @@ vi.mock("../../ipc", () => ({
       disconnectedHandler = null;
     };
   }),
+  onLastfmQueued: vi.fn(async (handler: (depth: number) => void) => {
+    queuedHandler = handler;
+    return () => {
+      queuedHandler = null;
+    };
+  }),
 }));
 
 /** The handler the mocked `onLastfmDisconnected` last registered. */
 let disconnectedHandler: (() => void) | null = null;
+let queuedHandler: ((depth: number) => void) | null = null;
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
 
@@ -38,9 +45,10 @@ beforeEach(() => {
     configured: false,
     username: null,
     connecting: false,
+    queued: 0,
     error: null,
   });
-  asMock(lastfmStatus).mockResolvedValue({ configured: true, username: null });
+  asMock(lastfmStatus).mockResolvedValue({ configured: true, username: null, queued: 0 });
   asMock(lastfmBeginConnect).mockResolvedValue({
     token: "tok",
     authorizeUrl: "https://www.last.fm/api/auth/?api_key=KEY&token=tok",
@@ -61,12 +69,32 @@ describe("the last.fm store", () => {
   });
 
   it("loads the stored status", async () => {
-    asMock(lastfmStatus).mockResolvedValue({ configured: true, username: "listener" });
+    asMock(lastfmStatus).mockResolvedValue({ configured: true, username: "listener", queued: 3 });
 
     await useLastfmStore.getState().load();
 
     expect(useLastfmStore.getState().username).toBe("listener");
     expect(useLastfmStore.getState().configured).toBe(true);
+  });
+
+  it("carries the backlog the status reported", async () => {
+    asMock(lastfmStatus).mockResolvedValue({ configured: true, username: "listener", queued: 3 });
+
+    await useLastfmStore.getState().load();
+
+    expect(useLastfmStore.getState().queued).toBe(3);
+  });
+
+  it("follows the backlog as the scrobbler drains it", async () => {
+    await useLastfmStore.getState().watch();
+
+    queuedHandler?.(7);
+    expect(useLastfmStore.getState().queued).toBe(7);
+
+    // Including back to nothing: a count the pane cannot clear is a count that
+    // worries the user forever.
+    queuedHandler?.(0);
+    expect(useLastfmStore.getState().queued).toBe(0);
   });
 
   it("says nothing when the status cannot be read", async () => {
