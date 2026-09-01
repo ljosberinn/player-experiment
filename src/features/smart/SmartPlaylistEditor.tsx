@@ -1,5 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { TagCombobox } from "../../components/ui/TagCombobox";
 import type {
   FilterField,
@@ -30,6 +30,7 @@ import {
   vocabularyFor,
   withLimit,
 } from "./filterTree";
+import { isUninformative, suggestedName } from "./nameFromRule";
 
 /**
  * The filter-tree editor.
@@ -42,6 +43,7 @@ export function SmartPlaylistEditor({
   name,
   filter,
   order,
+  isNew = false,
   onSave,
   onCancel,
 }: {
@@ -49,6 +51,8 @@ export function SmartPlaylistEditor({
   name: string;
   filter: FilterGroup;
   order: SmartOrder;
+  /** Whether this playlist has never been saved - only this one derives its name from its rule; see issue 52. */
+  isNew?: boolean;
   onSave: (name: string, filter: FilterGroup, order: SmartOrder) => void;
   onCancel: () => void;
 }) {
@@ -57,6 +61,29 @@ export function SmartPlaylistEditor({
   const [draftOrder, setDraftOrder] = useState(order);
   const nameId = useId();
   const canSave = draftName.trim() !== "";
+
+  // A new playlist's name follows its single rule until the user types
+  // something into the field themselves - a ref rather than state because
+  // flipping it must never itself cause a render, only the writes it gates
+  // do. Retyping the default stops it same as any other edit (the compare
+  // against `name` below), but retyping the sentence the rule's own controls
+  // already spell out does not - that string is exactly as uninformative as
+  // the default it would otherwise replace.
+  const derivingRef = useRef(isNew);
+
+  const changeDraft = (next: FilterGroup) => {
+    setDraft(next);
+    if (derivingRef.current) {
+      setDraftName(suggestedName(next) ?? name);
+    }
+  };
+
+  const changeName = (value: string) => {
+    if (derivingRef.current) {
+      derivingRef.current = value !== name && isUninformative(value, draft, name);
+    }
+    setDraftName(value);
+  };
 
   return (
     // As with the tag editor: open on render, Escape is the library's, and
@@ -95,11 +122,11 @@ export function SmartPlaylistEditor({
             <input
               id={nameId}
               value={draftName}
-              onChange={(event) => setDraftName(event.currentTarget.value)}
+              onChange={(event) => changeName(event.currentTarget.value)}
             />
           </label>
 
-          <GroupEditor group={draft} path={[]} root onChange={setDraft} />
+          <GroupEditor group={draft} path={[]} root onChange={changeDraft} />
 
           <OrderEditor order={draftOrder} onChange={setDraftOrder} />
 
