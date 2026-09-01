@@ -42,6 +42,13 @@ classes that already exist.
   the group that was at the top and drops the virtualizer's size cache.
 - Lists stripe by **data index**, not `:nth-child` — the rows are absolutely
   positioned, so DOM order is the visible window rather than the list.
+- **A drill-in that lands empty ejects to the group list**, from inside
+  `refresh()` itself so a group emptied by a tag edit, a missing file or a
+  rescan is covered the same way. Only when there is no active search — one
+  that legitimately matches nothing must not eject — and only once the query
+  has actually landed. The dead entry is dropped from history rather than
+  pushed over, the way `forgetPlaylist` drops a deleted playlist's, so Back and
+  Forward cannot land back on it.
 
 ## Where a subscription lives is the perf lever
 

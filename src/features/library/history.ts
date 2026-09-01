@@ -97,3 +97,25 @@ export function forgetPlaylist(history: History, playlistId: number): History {
   });
   return { entries, index };
 }
+
+/**
+ * Drops every entry pointing at exactly the group that just emptied.
+ *
+ * Narrower than `forgetPlaylist`: a playlist takes every entry behind it, but
+ * only the one drill-in died here, so a different group in the same tab must
+ * survive.
+ */
+export function forgetGroup(history: History, dead: HistoryEntry): History {
+  const entries: HistoryEntry[] = [];
+  let index = -1;
+  history.entries.forEach((entry, position) => {
+    if (sameView(entry, dead)) {
+      return;
+    }
+    entries.push(entry);
+    if (position <= history.index) {
+      index = entries.length - 1;
+    }
+  });
+  return { entries, index };
+}

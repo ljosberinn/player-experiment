@@ -29,6 +29,7 @@ import {
 } from "./columns";
 import {
   currentEntry,
+  forgetGroup as dropGroupEntry,
   forgetPlaylist as dropPlaylistEntries,
   goBack,
   goForward,
@@ -330,6 +331,35 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ error: String(cause), loading: false });
     }
     await get().loadGroups(token);
+
+    const state = get();
+    // A drill-in that lands empty here means the group itself is gone - tags
+    // changed, its last file went missing, a rescan - not that a search found
+    // nothing inside a group that still exists. `search` is what tells the two
+    // apart, and the token check is what keeps a superseded refresh from
+    // ejecting a view a newer one has already replaced.
+    if (
+      state.queryToken === token &&
+      state.error === null &&
+      state.browse !== null &&
+      state.search.trim() === "" &&
+      state.total === 0
+    ) {
+      const dead: HistoryEntry = {
+        tab: state.tab,
+        browse: state.browse,
+        playlistId: state.playlistId,
+      };
+      // Not `pushEntry`: that would leave Back pointing right at the dead
+      // group. Dropping its entry instead is what `forgetPlaylist` does for a
+      // deleted playlist, so Back and Forward skip over it like it never
+      // happened.
+      set({
+        browse: null,
+        selection: emptySelection,
+        history: dropGroupEntry(state.history, dead),
+      });
+    }
   },
 
   removeMissing: async () => {
