@@ -1,3 +1,4 @@
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { create } from "zustand";
 import {
@@ -5,6 +6,7 @@ import {
   lastfmCompleteConnect,
   lastfmDisconnect,
   lastfmStatus,
+  onLastfmDisconnected,
 } from "../../ipc";
 
 /** How often the browser trip is checked on. */
@@ -31,6 +33,11 @@ interface LastfmState {
 
   /** Reads the stored status. Called once, at startup. */
   load: () => Promise<void>;
+  /**
+   * Listens for the backend forgetting a rejected key. Called once, at
+   * startup; resolves to its own teardown.
+   */
+  watch: () => Promise<UnlistenFn>;
   connect: () => Promise<void>;
   /** Stops waiting on the browser. The token is simply abandoned. */
   cancelConnect: () => void;
@@ -73,6 +80,19 @@ export const useLastfmStore = create<LastfmState>((set) => ({
       // the setting should offer: nothing.
     }
   },
+
+  watch: () =>
+    onLastfmDisconnected(() => {
+      // Nothing the user did, so it is not a popover - but the Account menu is
+      // claiming an account that no longer works, and the pane has to explain
+      // why the connection went away on its own.
+      generation += 1;
+      set({
+        username: null,
+        connecting: false,
+        error: "last.fm rejected the stored key. Connect again to keep scrobbling.",
+      });
+    }),
 
   connect: async () => {
     const attempt = ++generation;

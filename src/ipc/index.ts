@@ -251,6 +251,17 @@ export function lastfmDisconnect(): Promise<void> {
 }
 
 /**
+ * last.fm rejected the stored session key, so the app has forgotten it.
+ *
+ * Emitted by the scrobbler thread, not in response to anything the user did:
+ * the key was revoked from last.fm's own settings screen, or invalidated. The
+ * Account menu is claiming an account that no longer works until this lands.
+ */
+export function onLastfmDisconnected(handler: () => void): Promise<UnlistenFn> {
+  return listen("lastfm://disconnected", () => handler());
+}
+
+/**
  * The panic the previous run wrote down, if there is one the user has not
  * dismissed yet.
  *

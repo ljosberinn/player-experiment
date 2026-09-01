@@ -1,3 +1,4 @@
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
@@ -69,6 +70,7 @@ export function App() {
   const lastfmConfigured = useLastfmStore((s) => s.configured);
   const lastfmUsername = useLastfmStore((s) => s.username);
   const loadLastfm = useLastfmStore((s) => s.load);
+  const watchLastfm = useLastfmStore((s) => s.watch);
   const lastfmDisconnect = useLastfmStore((s) => s.disconnect);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
@@ -172,6 +174,25 @@ export function App() {
     // whether the Account menu opens at all. Nothing leaves the machine.
     void loadLastfm();
   }, [loadDynamicBg, loadLastfm]);
+
+  useEffect(() => {
+    // The one thing last.fm reports without being asked: the stored key has
+    // been rejected and forgotten, so the Account menu must stop claiming an
+    // account. Same teardown dance as the player subscription below.
+    let stop: UnlistenFn | undefined;
+    let cancelled = false;
+    void watchLastfm().then((off) => {
+      if (cancelled) {
+        off();
+      } else {
+        stop = off;
+      }
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [watchLastfm]);
 
   useEffect(() => {
     // `connect` resolves to its own teardown, which may land after unmount.

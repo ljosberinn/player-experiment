@@ -87,6 +87,7 @@ vi.mock("./ipc", () => ({
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
   lastfmStatus: vi.fn(async () => ({ configured: false, username: null })),
+  onLastfmDisconnected: vi.fn(async () => () => {}),
   lastfmBeginConnect: vi.fn(),
   lastfmCompleteConnect: vi.fn(),
   lastfmDisconnect: vi.fn(async () => undefined),

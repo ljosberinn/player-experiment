@@ -142,6 +142,49 @@ pub fn shared() -> Option<&'static HttpTransport> {
         .as_ref()
 }
 
+/// One recorded request: its parameters, owned.
+#[cfg(test)]
+pub type Call = Vec<(String, String)>;
+
+/// Every request a [`FakeTransport`] was given.
+///
+/// Its own handle, cloneable and shared, because the interesting subjects above
+/// this file (the service, the scrobbler) take ownership of their transport. A
+/// test takes one of these before handing the transport over, and reads it
+/// afterwards.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub struct CallLog(std::sync::Arc<std::sync::Mutex<Vec<Call>>>);
+
+#[cfg(test)]
+impl CallLog {
+    pub fn calls(&self) -> Vec<Call> {
+        self.0.lock().expect("the fake transport's log").clone()
+    }
+
+    pub fn count(&self) -> usize {
+        self.0.lock().expect("the fake transport's log").len()
+    }
+
+    /// One parameter of the nth call, for assertions that care about a value
+    /// rather than the whole request.
+    pub fn param(&self, call: usize, name: &str) -> Option<String> {
+        self.calls()
+            .get(call)?
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.clone())
+    }
+
+    /// The parameter names of the nth call, in the order they were sent.
+    pub fn names(&self, call: usize) -> Vec<String> {
+        self.calls()
+            .get(call)
+            .map(|params| params.iter().map(|(name, _)| name.clone()).collect())
+            .unwrap_or_default()
+    }
+}
+
 /// A [`Transport`] that answers from a script and remembers what it was asked.
 ///
 /// The whole testing strategy above this file: canned bodies for success, for
@@ -154,9 +197,7 @@ pub struct FakeTransport {
     answers: std::sync::Mutex<std::collections::VecDeque<Result<String, TransportError>>>,
     /// Whether the last answer stands in for every call after it.
     repeat: bool,
-    /// Every call made, in order, as owned pairs so a test can assert on one
-    /// after the transport has moved into whatever is under test.
-    calls: std::sync::Mutex<Vec<Vec<(String, String)>>>,
+    calls: CallLog,
 }
 
 #[cfg(test)]
@@ -164,12 +205,13 @@ impl FakeTransport {
     /// Answers each call from `answers` in turn, and panics once they run out.
     ///
     /// Running out is a test that made a call it did not plan for, which is a
-    /// fact worth failing on rather than papering over with a default.
+    /// fact worth failing on rather than papering over with a default - and
+    /// `scripted(Vec::new())` is how "this must never be called" is asserted.
     pub fn scripted(answers: Vec<Result<String, TransportError>>) -> Self {
         Self {
             answers: std::sync::Mutex::new(answers.into()),
             repeat: false,
-            calls: std::sync::Mutex::new(Vec::new()),
+            calls: CallLog::default(),
         }
     }
 
@@ -178,7 +220,7 @@ impl FakeTransport {
         Self {
             answers: std::sync::Mutex::new([Ok(body.to_owned())].into()),
             repeat: true,
-            calls: std::sync::Mutex::new(Vec::new()),
+            calls: CallLog::default(),
         }
     }
 
@@ -187,33 +229,32 @@ impl FakeTransport {
         Self {
             answers: std::sync::Mutex::new([Err(error)].into()),
             repeat: true,
-            calls: std::sync::Mutex::new(Vec::new()),
+            calls: CallLog::default(),
         }
     }
 
-    pub fn calls(&self) -> Vec<Vec<(String, String)>> {
-        self.calls.lock().expect("the fake transport's log").clone()
+    /// The log, which outlives the transport being moved into a subject.
+    pub fn log(&self) -> CallLog {
+        self.calls.clone()
+    }
+
+    pub fn calls(&self) -> Vec<Call> {
+        self.calls.calls()
     }
 
     pub fn call_count(&self) -> usize {
-        self.calls.lock().expect("the fake transport's log").len()
+        self.calls.count()
     }
 
-    /// One parameter of the nth call, for assertions that care about a value
-    /// rather than the whole request.
     pub fn param(&self, call: usize, name: &str) -> Option<String> {
-        self.calls()
-            .get(call)?
-            .iter()
-            .find(|(key, _)| key == name)
-            .map(|(_, value)| value.clone())
+        self.calls.param(call, name)
     }
 }
 
 #[cfg(test)]
 impl Transport for FakeTransport {
     fn post(&self, params: &[(&str, String)]) -> Result<String, TransportError> {
-        self.calls.lock().expect("the fake transport's log").push(
+        self.calls.0.lock().expect("the fake transport's log").push(
             params
                 .iter()
                 .map(|(name, value)| ((*name).to_owned(), value.clone()))

@@ -59,6 +59,17 @@ pub enum Event {
         position_ms: i64,
         duration_ms: i64,
     },
+    /// This track has been playing long enough to say so. Emitted at most once
+    /// per load, well before [`Event::Played`].
+    ///
+    /// Exists for last.fm's `track.updateNowPlaying`, which describes what is
+    /// on *right now* - so it is fire-and-forget by nature: by the time a
+    /// retry landed it would be describing a moment that has passed, which is
+    /// why last.fm says not to retry it.
+    NowPlaying {
+        track_id: i64,
+        started_at: i64,
+    },
     /// This track passed the "counts as played" threshold. Emitted at most
     /// once per load.
     ///
@@ -97,6 +108,13 @@ pub struct EngineState {
     pub repeat_one: bool,
 }
 
+/// How long a track has to have been playing before it is announced.
+///
+/// Five seconds rather than immediately: skipping through a queue would
+/// otherwise announce every track passed over, and each announcement is a
+/// request.
+const NOW_PLAYING_AFTER_MS: i64 = 5_000;
+
 /// Fraction of a track that has to play before it counts as played.
 ///
 /// Matches the last.fm scrobbling rule the plan calls for, so the two never
@@ -128,6 +146,8 @@ pub struct Engine<S: AudioSink> {
     muted: bool,
     /// Whether the end of the current track loops back to its start.
     repeat_one: bool,
+    /// Whether the current load has already been announced as now playing.
+    announced: bool,
     /// Whether the current load has already been counted as played.
     counted: bool,
     last_position_ms: i64,
@@ -162,6 +182,7 @@ impl<S: AudioSink> Engine<S> {
             volume,
             muted,
             repeat_one: false,
+            announced: false,
             counted: false,
             last_position_ms: 0,
             started_at: 0,
@@ -300,6 +321,9 @@ impl<S: AudioSink> Engine<S> {
         let position_ms = self.position_ms();
         let duration_ms = self.current().map_or(0, |entry| entry.duration_ms);
 
+        if let Some(event) = self.announce_if_due(position_ms) {
+            events.push(event);
+        }
         if let Some(event) = self.count_play_if_due(position_ms, duration_ms) {
             events.push(event);
         }
@@ -317,6 +341,18 @@ impl<S: AudioSink> Engine<S> {
             });
         }
         events
+    }
+
+    fn announce_if_due(&mut self, position_ms: i64) -> Option<Event> {
+        if self.announced || position_ms < NOW_PLAYING_AFTER_MS {
+            return None;
+        }
+        self.announced = true;
+        let started_at = self.started_at;
+        self.current().map(|entry| Event::NowPlaying {
+            track_id: entry.track_id,
+            started_at,
+        })
     }
 
     fn count_play_if_due(&mut self, position_ms: i64, duration_ms: i64) -> Option<Event> {
@@ -367,6 +403,7 @@ impl<S: AudioSink> Engine<S> {
                     self.sink.play();
                     self.index = Some(index);
                     self.status = PlaybackStatus::Playing;
+                    self.announced = false;
                     self.counted = false;
                     self.last_position_ms = 0;
                     // Here rather than at the threshold: this is the moment
@@ -427,6 +464,7 @@ impl<S: AudioSink> Engine<S> {
         self.sink.stop();
         self.status = PlaybackStatus::Stopped;
         self.last_position_ms = 0;
+        self.announced = false;
         self.counted = false;
         // `index` is kept: it is where Toggle resumes from.
         vec![Event::StateChanged]
@@ -884,6 +922,76 @@ mod tests {
         }
 
         assert_eq!(stamps, [1_000, 1_060]);
+    }
+
+    /// Which track a batch of events announced as now playing, if any.
+    fn announced(events: &[Event]) -> Option<i64> {
+        events.iter().find_map(|event| match event {
+            Event::NowPlaying { track_id, .. } => Some(*track_id),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_track_is_announced_once_after_five_seconds() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 200_000)],
+            index: 0,
+        });
+
+        engine.handle(Command::Seek { position_ms: 4_999 });
+        assert_eq!(announced(&engine.tick()), None);
+
+        engine.handle(Command::Seek { position_ms: 5_000 });
+        assert_eq!(announced(&engine.tick()), Some(7));
+
+        engine.handle(Command::Seek { position_ms: 9_000 });
+        assert_eq!(announced(&engine.tick()), None, "announced twice");
+    }
+
+    #[test]
+    fn skipping_through_a_queue_announces_nothing() {
+        // The reason for the five seconds. Each announcement is a request, and
+        // a user walking down a queue with Next would otherwise send one per
+        // track they did not listen to.
+        let mut engine = engine_with(5);
+
+        for _ in 0..4 {
+            assert_eq!(announced(&engine.tick()), None);
+            engine.handle(Command::Next);
+        }
+    }
+
+    #[test]
+    fn a_repeat_loop_announces_itself_again() {
+        // Each loop is a play, so each loop is also a fresh "now playing" -
+        // and `announced` is cleared by the reload, the same way `counted` is.
+        let mut engine = engine_with(1);
+        engine.handle(Command::SetRepeatOne(true));
+
+        engine.handle(Command::Seek { position_ms: 6_000 });
+        assert_eq!(announced(&engine.tick()), Some(1));
+
+        engine.sink.exhausted = true;
+        engine.tick();
+        engine.handle(Command::Seek { position_ms: 6_000 });
+        assert_eq!(announced(&engine.tick()), Some(1));
+    }
+
+    #[test]
+    fn a_short_track_is_still_announced() {
+        // The 30-second floor is `lastfm::rules`' business, not the engine's:
+        // the engine says what is playing, and what is worth sending is
+        // decided where the other product judgements are.
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 8_000)],
+            index: 0,
+        });
+
+        engine.handle(Command::Seek { position_ms: 5_000 });
+        assert_eq!(announced(&engine.tick()), Some(7));
     }
 
     #[test]

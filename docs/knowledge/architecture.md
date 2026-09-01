@@ -45,6 +45,11 @@ e2e/          WebdriverIO specs plus the harness (fixtures, contrast, screenshot
 
 ## Threading and events
 
+One dedicated **scrobbler thread** owns the last.fm transport and drains an
+`mpsc` channel of jobs, the same shape as the player: the player thread produces
+`Played` and `NowPlaying` and must never wait on a socket, so it hands over a
+track id and moves on. In a build with no last.fm key the thread does not exist.
+
 One dedicated audio thread owns the `rodio` sink and receives an `mpsc` command
 enum. It emits `player://position` (throttled ~4/s), `player://state`,
 `player://ended`, `player://error`. Scanning runs on a `rayon` pool and emits

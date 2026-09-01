@@ -253,6 +253,21 @@ fn forward(
     app: tauri::AppHandle,
     db: Db,
 ) -> impl FnMut(&Event, &audio::EngineState) + Send + 'static {
+    // Owned by this closure, which lives on the player thread, rather than
+    // managed as app state: nothing else has a reason to reach it, and the two
+    // events that feed it arrive here. `None` in a build with no last.fm key -
+    // no thread, no channel, and nothing on the played path that was not there
+    // before.
+    let scrobbler = lastfm::Scrobbler::start(db.clone(), {
+        let app = app.clone();
+        Box::new(move || {
+            // The user did not do this, so it is not an error popover - but the
+            // Account menu is now claiming an account that no longer works, and
+            // that has to stop being true.
+            let _ = app.emit("lastfm://disconnected", ());
+        })
+    });
+
     move |event, state| match event {
         Event::StateChanged => {
             if let Ok(conn) = db.conn() {
@@ -273,13 +288,27 @@ fn forward(
                 },
             );
         }
+        Event::NowPlaying {
+            track_id,
+            started_at,
+        } => {
+            if let Some(scrobbler) = &scrobbler {
+                scrobbler.now_playing(*track_id, *started_at);
+            }
+        }
         Event::Played {
             track_id,
-            started_at: _,
+            started_at,
         } => {
             // A lost play count is not worth interrupting playback for.
             if let Ok(conn) = db.conn() {
                 let _ = playback::mark_played(&conn, *track_id, now_seconds());
+            }
+            // Handed to a thread of its own rather than sent here: this is the
+            // player thread, and it is the one thread in the app that must not
+            // wait on a socket.
+            if let Some(scrobbler) = &scrobbler {
+                scrobbler.played(*track_id, *started_at);
             }
         }
         Event::Error(message) => {
