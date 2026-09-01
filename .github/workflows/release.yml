@@ -76,7 +76,31 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APEX_LASTFM_API_KEY: ${{ secrets.APEX_LASTFM_API_KEY }}
+          APEX_LASTFM_API_SECRET: ${{ secrets.APEX_LASTFM_API_SECRET }}
         run: npm run tauri -- build --config src-tauri/tauri.release.conf.json
+
+      # `option_env!` turns a missing key into a feature that is inert rather
+      # than broken, which is right everywhere except here: the installer builds
+      # and installs perfectly and scrobbling is simply dead, and nothing says
+      # so until a user opens Settings. Asserted against the binary rather than
+      # the environment because a restored build cache can satisfy the second
+      # without the first.
+      - name: The installers carry the last.fm key
+        shell: bash
+        env:
+          APEX_LASTFM_API_KEY: ${{ secrets.APEX_LASTFM_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$APEX_LASTFM_API_KEY" || {
+            echo "APEX_LASTFM_API_KEY is empty - is the repository secret set?" >&2
+            exit 1
+          }
+          binary=src-tauri/target/release/apex.exe
+          grep -qF "$APEX_LASTFM_API_KEY" "$binary" || {
+            echo "$binary was compiled without the key" >&2
+            exit 1
+          }
 
       # `latest.json` is what an installed copy polls. Tauri does not write it -
       # it only produces the signed bundles - so it is assembled here. NSIS

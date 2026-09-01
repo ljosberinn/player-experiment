@@ -37,6 +37,18 @@ coverage at all, and the fake would keep passing while the real transport posted
 to the wrong URL. **No credentials in CI** - a key is needed to run the feature,
 not to test it.
 
+Exercising it against the real service is a local build with a key of your own
+from https://www.last.fm/api/account/create, compiled in the way the release job
+does it:
+
+```powershell
+$env:APEX_LASTFM_API_KEY = "..."; $env:APEX_LASTFM_API_SECRET = "..."
+npm run tauri dev
+```
+
+The vars are read at *compile* time, so they have to be set before cargo runs,
+not before the window opens.
+
 **jsdom applies no stylesheet** — no layout engine, no computed colour. Three
 defects shipped past 600 green tests for exactly that reason.
 
