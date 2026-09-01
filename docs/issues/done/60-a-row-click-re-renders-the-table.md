@@ -45,7 +45,7 @@ does not care: `PlaylistSidebar`, `Sidebar`, `LibraryNav`, `HistoryNav`,
 transport strip, `CrashNotice`, `ErrorPopover` and the footer — plus a fresh
 `resolveColumns` array and a rebuilt `menus()`.
 
-The table's own forty rows are [63](../upcoming/63-forty-rows-render-for-one-click.md).
+The table's own forty rows are [63](../upcoming/63-every-visible-row-re-renders.md).
 
 ## Tests
 
