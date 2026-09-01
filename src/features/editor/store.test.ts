@@ -233,6 +233,14 @@ describe("editor store", () => {
     expect(useEditorStore.getState().error).toContain("nothing to undo");
   });
 
+  it("dismisses the notice", () => {
+    useEditorStore.setState({ notice: "Updated 1 song." });
+
+    useEditorStore.getState().dismissNotice();
+
+    expect(useEditorStore.getState().notice).toBeNull();
+  });
+
   it("tracks whether an undo is available", async () => {
     vi.mocked(canUndoTagEdit).mockResolvedValue(true);
     await useEditorStore.getState().refreshUndo();

@@ -32,6 +32,7 @@ interface EditorState {
   close: () => void;
   /** Clears the last error. The shell shows one at a time and dismisses it. */
   dismissError: () => void;
+  dismissNotice: () => void;
   save: (edit: TagEdit) => Promise<void>;
   undo: () => Promise<void>;
   /** Reads whether an undo is available, for enabling the control. */
@@ -83,6 +84,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   close: () => set({ tracks: null }),
   dismissError: () => set({ error: null }),
+  dismissNotice: () => set({ notice: null }),
 
   save: async (edit) => {
     const tracks = get().tracks;
