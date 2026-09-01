@@ -403,7 +403,12 @@ pub enum FilterField {
 }
 
 /// What kind of value a field holds, which decides the operators it accepts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Exported so the editor classifies fields from this table rather than from a
+/// copy of it; see `smart::bindings::export_bindings_filter_ops`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum FilterFieldKind {
     Text,
     Number,

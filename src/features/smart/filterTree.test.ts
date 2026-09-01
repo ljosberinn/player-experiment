@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FilterGroup, FilterNode, FilterRule, SmartOrder } from "../../ipc";
+import { ACCEPTED_FILTER_OPS, FILTER_FIELD_KINDS } from "../../ipc/bindings/filterOps.generated";
 import {
   addNode,
   countRules,
   emptyFilter,
+  FIELDS,
   groupAt,
   kindOf,
   labelOf,
@@ -33,13 +35,36 @@ describe("field metadata", () => {
     expect(kindOf("addedAt")).toBe("timestamp");
   });
 
-  it("offers each kind only the operators that fit it", () => {
-    // "in the last N days" on a title, or "contains" on a year, are exactly
-    // what the backend refuses - so the editor must not offer them.
+  it("offers each kind the operators that fit it", () => {
     expect(opsFor("artist")).toContain("contains");
-    expect(opsFor("artist")).not.toContain("inLast");
-    expect(opsFor("year")).not.toContain("contains");
+    expect(opsFor("year")).toContain("between");
     expect(opsFor("addedAt")).toContain("inLast");
+  });
+
+  it("offers every field the backend can filter on", () => {
+    // A column added to FilterField that nobody labelled here would simply
+    // never appear in the dropdown, with nothing failing anywhere.
+    expect(FIELDS.map((field) => field.id).sort()).toEqual(Object.keys(FILTER_FIELD_KINDS).sort());
+  });
+
+  it("offers no operator the backend would refuse", () => {
+    // The backend compiles a filter before storing it, so an operator offered
+    // here that it does not accept is a save that fails for reasons the user
+    // cannot see. One direction only: the editor narrowing further is fine.
+    for (const { id } of FIELDS) {
+      for (const op of opsFor(id)) {
+        expect(ACCEPTED_FILTER_OPS[kindOf(id)], `${id} ${op}`).toContain(op);
+      }
+    }
+  });
+
+  it("leaves out an exact date match the backend would accept", () => {
+    // The one deliberate gap, asserted so it stays deliberate: a timestamp is
+    // a unix second, and "added at exactly 1700000000" matches nothing anybody
+    // meant to ask for.
+    expect(ACCEPTED_FILTER_OPS.timestamp).toContain("is");
+    expect(opsFor("addedAt")).not.toContain("is");
+    expect(opsFor("addedAt")).not.toContain("isNot");
   });
 
   it("falls back rather than crashing on a field it does not know", () => {
