@@ -9,7 +9,20 @@ import {
   type Track,
   type WriteProgress,
 } from "../../ipc";
+import { hasTrackIds } from "../playlists/drag";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
+
+/**
+ * Whether a drag over the artwork is a file worth taking.
+ *
+ * `dragover` sees the payload's types and nothing else, so both halves of the
+ * question have to be answerable from those: a song dragged out of the table
+ * carries ids and is not artwork, and anything else has to actually be a file
+ * rather than, say, text from a field.
+ */
+function isFileDrag(data: Pick<DataTransfer, "types">): boolean {
+  return !hasTrackIds(data) && Array.from(data.types).includes("Files");
+}
 
 /**
  * The tag editor, for one track or five hundred.
@@ -24,6 +37,7 @@ export function TagEditor({
   onSave,
   onCancel,
   onPickCover,
+  onDropCover,
 }: {
   tracks: Track[];
   /**
@@ -38,12 +52,27 @@ export function TagEditor({
   onCancel: () => void;
   /** Opens the OS picker; resolves to a path, or null if dismissed. */
   onPickCover: () => Promise<string | null>;
+  /**
+   * Stages a dropped image; resolves to a path, or rejects with the sentence
+   * to show. A `File` is bytes and no path, and the editor deals in paths.
+   */
+  onDropCover: (file: File) => Promise<string>;
 }) {
   const [draft, setDraft] = useState<Draft>({});
   const [cover, setCover] = useState<CoverEdit | null>(null);
+  /**
+   * Why the last drop was refused, if it was.
+   *
+   * State rather than something derived the way `problem` is: a rejected drop
+   * is an event, not a property of the draft. It reads out of the same line as
+   * `problem` but is deliberately not part of `canSave` - an image the backend
+   * would not take must not stop a typed field being written.
+   */
+  const [rejected, setRejected] = useState<string | null>(null);
 
   const saving = progress != null;
   const problem = numericProblem(draft);
+  const message = problem ?? rejected;
   const canSave = problem === null && hasChanges(draft, cover) && !saving;
   const commonCover = tracks.every((track) => track.cover_hash === tracks[0]?.cover_hash)
     ? (tracks[0]?.cover_hash ?? null)
@@ -116,7 +145,33 @@ export function TagEditor({
             })}
           </div>
 
-          <div className="tag-cover">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target has no role that describes it, and dragging is a pointer-only gesture - the keyboard route to the same state is the Choose Artwork… button inside this block. */}
+          <div
+            className="tag-cover"
+            // Both halves ask the same question, because `dragover` is where
+            // the answer is visible: without `preventDefault` there the pointer
+            // says "no drop" and the drop never arrives.
+            onDragOver={(event) => {
+              if (isFileDrag(event.dataTransfer)) {
+                event.preventDefault();
+              }
+            }}
+            onDrop={(event) => {
+              if (!isFileDrag(event.dataTransfer)) {
+                return;
+              }
+              event.preventDefault();
+              const file = event.dataTransfer.files[0];
+              if (file === undefined) {
+                return;
+              }
+              setRejected(null);
+              void onDropCover(file).then(
+                (path) => setCover({ kind: "replace", path }),
+                (error: unknown) => setRejected(String(error)),
+              );
+            }}
+          >
             <div className="tag-cover-preview">
               {/* The square is drawn whether or not there is art to put in it,
                   so the block keeps its shape as the selection changes and as a
@@ -135,6 +190,7 @@ export function TagEditor({
               <button
                 type="button"
                 onClick={() => {
+                  setRejected(null);
                   void onPickCover().then((path) => {
                     if (path !== null) {
                       setCover({ kind: "replace", path });
@@ -155,9 +211,9 @@ export function TagEditor({
             </div>
           </div>
 
-          {problem ? (
+          {message ? (
             <p className="content-error" role="alert">
-              {problem}
+              {message}
             </p>
           ) : null}
 

@@ -165,7 +165,13 @@ absences are what nobody notices coming back — hence the guards in
 - A maximized window stores the flag, not the bounds.
 - Drag payloads travel under a private MIME type, so a row cannot be dropped
   into a text field. `dragover` sees only the *types*, which is why the check and
-  the read are separate functions.
+  the read are separate functions — and why the tag editor's artwork decides
+  from those alone that a drag is a file and not a song.
+- `useNativeFeel` swallows any drag the app did not claim. A file dropped where
+  nothing handles it is *opened* by the webview, which navigates the window away
+  from the app; the guard runs at the window, skips anything a target already
+  called `preventDefault` on, and sets `dropEffect = "none"` so the pointer
+  still reads honestly outside a target.
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.

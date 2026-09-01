@@ -61,6 +61,35 @@ describe("useNativeFeel", () => {
     expect(sawEvent).toBe(true);
   });
 
+  it("stops a file dropped on nothing from navigating the window away", () => {
+    render(<Harness />);
+    const transfer = { dropEffect: "copy", types: ["Files"] };
+
+    const dropped = fireEvent.drop(screen.getByTestId("row"), { dataTransfer: transfer });
+    fireEvent.dragOver(screen.getByTestId("row"), { dataTransfer: transfer });
+
+    // Unhandled, the webview opens the file and the app is gone until it is
+    // relaunched. Not hypothetical now that the tag editor asks for images.
+    expect(dropped).toBe(false);
+    // And the pointer says so on the way in, rather than the window claiming
+    // to accept everything.
+    expect(transfer.dropEffect).toBe("none");
+  });
+
+  it("leaves a real drop target alone", () => {
+    render(<Harness />);
+    const target = screen.getByTestId("row");
+    target.addEventListener("dragover", (event) => event.preventDefault());
+    const transfer = { dropEffect: "copy", types: ["Files"] };
+
+    fireEvent.dragOver(target, { dataTransfer: transfer });
+
+    // The guard runs at the window, after the target has had its say, and only
+    // claims drags nothing else accepted - otherwise it would swallow the
+    // artwork square's own.
+    expect(transfer.dropEffect).toBe("copy");
+  });
+
   it("stops suppressing once unmounted", () => {
     const { unmount } = render(<Harness />);
     const loose = document.createElement("div");

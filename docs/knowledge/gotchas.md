@@ -22,6 +22,12 @@ Each of these cost real time once. They are here so they cost it once.
   events to the native file-drop handler instead of the page, which kills HTML5
   drag and drop inside the window on Windows. It cannot be toggled at runtime in
   Tauri v2 — the flag is fixed at window creation.
+- **Raw bytes over IPC are all-or-nothing.** Tauri sends an `invoke` payload as
+  a raw body only when the *whole* payload is an `ArrayBuffer` or a view of one;
+  a `Uint8Array` inside an args object is JSON, one number per byte. Wrapping it
+  typechecks and passes every mocked test —
+  `invoke("stage_dropped_cover", bytes)`, never `{ bytes }`. The command reads
+  it as `tauri::ipc::Request`, whose body is `Raw` or `Json`.
 - **`startDragging` swallows the second click**, so a `dblclick` never arrives on
   a bar that also drags. Both gestures live in one `mousedown` handler keyed off
   `event.detail === 2`. jsdom delivers a synthetic `dblclick` happily, which is

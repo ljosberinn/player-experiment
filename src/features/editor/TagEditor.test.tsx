@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
@@ -43,6 +43,7 @@ function open(
   const onSave = vi.fn();
   const onCancel = vi.fn();
   const onPickCover = vi.fn(async () => pickedCover);
+  const onDropCover = vi.fn(async () => "C:/staged/dropped-cover.png");
   render(
     <TagEditor
       tracks={tracks}
@@ -50,10 +51,27 @@ function open(
       onSave={onSave}
       onCancel={onCancel}
       onPickCover={onPickCover}
+      onDropCover={onDropCover}
     />,
   );
-  return { onSave, onCancel, onPickCover, user: userEvent.setup() };
+  return { onSave, onCancel, onPickCover, onDropCover, user: userEvent.setup() };
 }
+
+/**
+ * A drag payload jsdom cannot make: it implements no `DataTransfer` at all,
+ * so what the handlers read has to be handed to them.
+ */
+function dragPayload(types: string[], files: File[] = []) {
+  return { types, files, getData: () => "" };
+}
+
+const jpeg = () =>
+  new File([new Uint8Array([0xff, 0xd8, 0xff])], "cover.jpg", {
+    type: "image/jpeg",
+  });
+
+/** The block that takes the drop, which is the whole artwork row. */
+const coverBlock = () => document.querySelector(".tag-cover") as HTMLElement;
 
 const savedEdit = (onSave: ReturnType<typeof vi.fn>) => onSave.mock.calls.at(-1)?.[0] as TagEdit;
 
@@ -170,6 +188,7 @@ describe("TagEditor", () => {
         onSave={vi.fn()}
         onCancel={vi.fn()}
         onPickCover={vi.fn(async () => null)}
+        onDropCover={vi.fn(async () => "")}
       />,
     );
 
@@ -212,6 +231,95 @@ describe("TagEditor", () => {
     await screen.findByText("New artwork selected.");
 
     expect(document.querySelector(".tag-cover-art")).toBeInTheDocument();
+  });
+
+  it("attaches an image dropped on the artwork", async () => {
+    const { onSave, onDropCover, user } = open([track()]);
+
+    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+
+    await screen.findByText("New artwork selected.");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // The drop crosses as bytes and comes back a path, so what is saved is the
+    // same shape the picker produces - `CoverEdit` never learns a drop
+    // happened.
+    expect(onDropCover).toHaveBeenCalledWith(expect.any(File));
+    expect(savedEdit(onSave).cover).toEqual({
+      kind: "replace",
+      path: "C:/staged/dropped-cover.png",
+    });
+  });
+
+  it("accepts a file drag and refuses a song dragged out of the table", () => {
+    open([track()]);
+
+    const file = fireEvent.dragOver(coverBlock(), {
+      dataTransfer: dragPayload(["Files"]),
+    });
+    const song = fireEvent.dragOver(coverBlock(), {
+      dataTransfer: dragPayload(["application/x-player-track-ids", "Files"]),
+    });
+    const text = fireEvent.dragOver(coverBlock(), { dataTransfer: dragPayload(["text/plain"]) });
+
+    // `fireEvent` returns false once something called `preventDefault`, which
+    // on `dragover` is the whole of "this is a drop target": a drag that is
+    // not accepted here never becomes a drop.
+    expect(file).toBe(false);
+    expect(song).toBe(true);
+    expect(text).toBe(true);
+  });
+
+  it("says why a dropped image was refused, and still lets a typed field save", async () => {
+    const onSave = vi.fn();
+    render(
+      <TagEditor
+        tracks={[track()]}
+        onSave={onSave}
+        onCancel={vi.fn()}
+        onPickCover={vi.fn(async () => null)}
+        // The refusal comes from the backend, the only thing that has seen the
+        // bytes: too big, or not a JPEG or a PNG.
+        // Rejecting with a bare string, which is what `invoke` does: an
+        // `AppError` serializes to its sentence and nothing else.
+        onDropCover={vi.fn(() => Promise.reject("Cover art has to be a JPEG or a PNG."))}
+      />,
+    );
+    const user = userEvent.setup();
+
+    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    await screen.findByText("Cover art has to be a JPEG or a PNG.");
+
+    // A refused image is not a reason to hold a typed field hostage: the cover
+    // is simply unchanged, and the rest of the edit still writes.
+    await user.type(screen.getByLabelText("Genre"), "Dream Pop");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(savedEdit(onSave).genre).toBe("ShoegazeDream Pop");
+    expect(savedEdit(onSave).cover).toBeNull();
+  });
+
+  it("clears a refusal when the next choice is made", async () => {
+    render(
+      <TagEditor
+        tracks={[track()]}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        onPickCover={vi.fn(async () => "C:/art/cover.png")}
+        onDropCover={vi.fn(() => Promise.reject("Cover art has to be a JPEG or a PNG."))}
+      />,
+    );
+    const user = userEvent.setup();
+
+    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    await screen.findByRole("alert");
+
+    // The picker is the other way to choose artwork, and a sentence about the
+    // last refusal left standing under a fresh choice reports on nothing.
+    await user.click(screen.getByRole("button", { name: "Choose Artwork…" }));
+
+    await screen.findByText("New artwork selected.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("saves on Enter from a field", async () => {
@@ -295,6 +403,7 @@ describe("TagEditor", () => {
             onSave={vi.fn()}
             onCancel={vi.fn()}
             onPickCover={vi.fn(async () => null)}
+            onDropCover={vi.fn(async () => "")}
           />
         </>,
       );

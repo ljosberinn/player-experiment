@@ -268,6 +268,69 @@ pub async fn write_tags(
     .await
 }
 
+/// The staged drop's file name, minus the extension the sniff decides.
+///
+/// One name, so a second drop overwrites the first: the file is needed only
+/// until the save reads it back, and a name per drop would leave a cache full
+/// of album covers behind.
+const STAGED_COVER_STEM: &str = "dropped-cover";
+
+/// Writes a dropped image into the cache directory and hands back its path.
+///
+/// The editor's cover travels as a path - `CoverEdit::Replace` - and an HTML5
+/// drop gives the page a `File`, which is bytes and no path: the native event
+/// that carries paths needs `dragDropEnabled`, which would kill in-app
+/// dragging. Staging is what turns one into the other, so a drop lands in the
+/// same state the picker produces and nothing downstream of `CoverEdit` has to
+/// know a drop happened.
+///
+/// The bytes arrive as the *whole* invoke payload, which is the only shape
+/// Tauri sends raw; a `Uint8Array` inside an args object is JSON, one number
+/// per byte. A JSON body here is therefore a caller that has lost the raw
+/// route, and is an error rather than something to decode.
+///
+/// Not on a worker thread, unlike the writes above: the body is a `&` into the
+/// message, so moving it would mean copying up to 12 MB to save a single write
+/// of the same bytes.
+#[tauri::command]
+pub fn stage_dropped_cover(
+    app: tauri::AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> AppResult<String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(crate::error::AppError::Internal(
+            "A dropped image has to arrive as raw bytes.".to_owned(),
+        ));
+    };
+    let mime = tags::write::check_cover(bytes)?;
+
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| crate::error::AppError::Internal(format!("no cache directory: {e}")))?;
+    std::fs::create_dir_all(&dir).map_err(|e| crate::error::AppError::io(dir.display(), e))?;
+
+    let staged = staged_cover_path(&dir, mime);
+    std::fs::write(&staged, bytes).map_err(|e| crate::error::AppError::io(staged.display(), e))?;
+    // The other format's file, left by an earlier drop. Without this the fixed
+    // name holds once per extension rather than once for the staging area.
+    let other = if mime == "image/png" {
+        "image/jpeg"
+    } else {
+        "image/png"
+    };
+    let _ = std::fs::remove_file(staged_cover_path(&dir, other));
+
+    Ok(staged.to_string_lossy().into_owned())
+}
+
+/// Where a cover of `mime` is staged, named for what the bytes turned out to
+/// be rather than for what the dropped file was called.
+fn staged_cover_path(dir: &std::path::Path, mime: &str) -> PathBuf {
+    let extension = if mime == "image/png" { "png" } else { "jpg" };
+    dir.join(format!("{STAGED_COVER_STEM}.{extension}"))
+}
+
 /// Reverts the last edit, on a worker thread for the same reason.
 #[tauri::command]
 pub async fn undo_tag_edit(app: tauri::AppHandle) -> AppResult<TagWriteSummary> {
@@ -789,6 +852,23 @@ mod tests {
         assert!(
             !ran_on_the_caller,
             "the work ran on the thread that asked for it - `spawn_blocking` is gone"
+        );
+    }
+
+    #[test]
+    fn a_staged_cover_is_named_for_what_its_bytes_are() {
+        let dir = std::path::Path::new(r"C:\cache");
+
+        // Both drops land on one name per format, so nothing accumulates - and
+        // the extension follows the sniff, not the dropped file's name, which
+        // is what `File.type` would have given us.
+        assert_eq!(
+            staged_cover_path(dir, "image/png"),
+            dir.join("dropped-cover.png")
+        );
+        assert_eq!(
+            staged_cover_path(dir, "image/jpeg"),
+            dir.join("dropped-cover.jpg")
         );
     }
 

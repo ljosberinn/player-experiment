@@ -122,9 +122,17 @@ fn resolve(edit: &TagEdit) -> AppResult<Resolved> {
     })
 }
 
-/// Loads a replacement cover from the file the user picked.
-fn read_cover(path: &str) -> AppResult<Cover> {
-    let bytes = std::fs::read(path).map_err(|e| AppError::io(path, e))?;
+/// Checks a candidate cover and reports the mime its bytes say it is.
+///
+/// The cap and the sniff live here rather than in either caller: a cover
+/// reaches the app two ways now - picked as a path, or dropped as bytes - and
+/// the two must refuse the same images.
+///
+/// The mime is sniffed rather than trusted from the extension. A file named
+/// .jpg that is really a PNG would be stored mislabelled and fail to render,
+/// and a dropped `File`'s `type` is derived from its name, so for a drop the
+/// bytes are the only honest source there is.
+pub(crate) fn check_cover(bytes: &[u8]) -> AppResult<&'static str> {
     if bytes.len() > MAX_COVER_BYTES {
         return Err(AppError::Internal(format!(
             "That image is {} MB; the limit is {} MB.",
@@ -132,18 +140,24 @@ fn read_cover(path: &str) -> AppResult<Cover> {
             MAX_COVER_BYTES / 1024 / 1024
         )));
     }
-    // Sniffed from the bytes rather than trusted from the extension: a file
-    // named .jpg that is really a PNG would otherwise be stored mislabelled and
-    // fail to render.
-    let mime = match bytes.as_slice() {
-        [0xFF, 0xD8, 0xFF, ..] => "image/jpeg",
-        [0x89, b'P', b'N', b'G', ..] => "image/png",
-        _ => {
-            return Err(AppError::Internal(
-                "Cover art has to be a JPEG or a PNG.".to_owned(),
-            ))
-        }
-    };
+    match bytes {
+        [0xFF, 0xD8, 0xFF, ..] => Ok("image/jpeg"),
+        [0x89, b'P', b'N', b'G', ..] => Ok("image/png"),
+        _ => Err(AppError::Internal(
+            "Cover art has to be a JPEG or a PNG.".to_owned(),
+        )),
+    }
+}
+
+/// Loads a replacement cover from the file the user picked.
+///
+/// A dropped image has already been through [`check_cover`] once, when it
+/// was staged. It goes through again here: staging refuses early, while the
+/// pointer is still over the square, and this is the last line before bytes go
+/// into an mp3.
+fn read_cover(path: &str) -> AppResult<Cover> {
+    let bytes = std::fs::read(path).map_err(|e| AppError::io(path, e))?;
+    let mime = check_cover(&bytes)?;
     Ok(Cover {
         hash: hash_bytes(&bytes),
         mime: mime.to_owned(),
@@ -607,6 +621,18 @@ mod tests {
             read_cover(&path.to_string_lossy()).unwrap().mime,
             "image/png"
         );
+    }
+
+    #[test]
+    fn the_same_check_refuses_bytes_that_never_were_a_file() {
+        // What a drop goes through: the picker's path never exists for it, so
+        // the cap and the sniff have to be reachable from the bytes alone.
+        assert!(check_cover(b"not an image at all").is_err());
+        assert_eq!(
+            check_cover(&[0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).unwrap(),
+            "image/jpeg"
+        );
+        assert!(check_cover(&vec![0; MAX_COVER_BYTES + 1]).is_err());
     }
 
     #[test]

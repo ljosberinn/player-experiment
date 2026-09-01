@@ -72,6 +72,34 @@ async function openEditorOn(title: string): Promise<void> {
     .waitForExist({ timeout: 10_000, timeoutMsg: `the editor never opened on ${title}` });
 }
 
+/**
+ * Drops a file of `bytes` on the artwork block, and says whether it found it.
+ *
+ * Built and dispatched in the page: WebDriver has no drag of its own here (see
+ * `docs/knowledge/limitations.md`), and an OS drag is not what this is anyway -
+ * the webview's own `dragDropEnabled` is off, so what the app ever sees is an
+ * HTML5 drop carrying a `File`. That is exactly what this constructs.
+ */
+function dropOnArtwork(bytes: number[], name: string, type: string): Promise<boolean> {
+  return browser.execute(
+    (values: number[], fileName: string, mime: string) => {
+      const block = document.querySelector(".tag-cover");
+      if (block === null) {
+        return false;
+      }
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([new Uint8Array(values)], fileName, { type: mime }));
+      block.dispatchEvent(
+        new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }),
+      );
+      return true;
+    },
+    bytes,
+    name,
+    type,
+  );
+}
+
 /** Cancel, which is the only exit that writes nothing. */
 async function closeEditor(): Promise<void> {
   const dialog = browser.$("[role='dialog']");
@@ -112,6 +140,36 @@ describe("the tag editor's artwork", () => {
     await expect(browser.$(".tag-cover-note")).toHaveText("No artwork.");
 
     await capture("tag-editor-no-artwork");
+  });
+
+  it("takes an image dropped on the square", async () => {
+    // The one thing no unit test can reach: the bytes travel as the whole
+    // invoke payload, and the command that stages them hands back a path. A
+    // wrapper object around the buffer would still typecheck, still pass every
+    // mocked test, and arrive here as a JSON array of numbers.
+    //
+    // Only the first four bytes decide - staging sniffs, it does not decode -
+    // and nothing is saved, so a whole PNG would prove nothing more.
+    await openEditorOn("Drift");
+
+    expect(await dropOnArtwork([0x89, 0x50, 0x4e, 0x47, 1, 2, 3], "art.png", "image/png")).toBe(
+      true,
+    );
+
+    await expect(browser.$(".tag-cover-note")).toHaveText("New artwork selected.");
+  });
+
+  it("says why a dropped file that is not artwork was refused", async () => {
+    await openEditorOn("Drift");
+
+    await dropOnArtwork([0x68, 0x69], "notes.txt", "text/plain");
+
+    // The sentence is the backend's, which is the only thing that has seen the
+    // bytes: `File.type` comes from the name and says nothing about them.
+    await expect(browser.$("[role='alert']")).toHaveText("Cover art has to be a JPEG or a PNG.");
+    await expect(browser.$(".tag-cover-note")).toHaveText("No artwork.");
+
+    await capture("tag-editor-drop-refused");
   });
 
   it("keeps the square when a removal is pending", async () => {
