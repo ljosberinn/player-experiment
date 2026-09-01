@@ -110,6 +110,15 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   afterwards, measuring `innerWidth × devicePixelRatio` because zoom decouples
   CSS pixels from physical ones. Nothing asserts on it; a runner that refuses to
   resize gets smaller pictures.
+- **`setWindowSize` resolves before the webview reports the new size.** Measure
+  after one and you read the previous window; the correcting loop then applies a
+  shortfall it already applied. `settledSize` waits for the reading to change
+  first. See phase 47 — this shipped twice, silently, as screenshots at sizes
+  nobody asked for.
+- `capture(name, { ownWindow: true })` photographs the window the spec is holding
+  instead of the review viewport, for the one spec whose subject *is* the window
+  size. `browse-layout` asserts its narrow shot is narrower than its wide one —
+  the only assertion any picture carries, and it is arithmetic, not pixels.
 
 ## Uncovered on purpose
 
