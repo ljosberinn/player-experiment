@@ -101,7 +101,7 @@ export function AppMenus({
                 // By id rather than by row index: the menu bar has no row under
                 // a pointer to start from, and the selection is what it acts on.
                 onPlay: () => void play(selectedIds, 0),
-                onGetInfo: () => void openEditor(selectedIds),
+                onEdit: () => void openEditor(selectedIds),
                 onAddTo: (id) => void addTracks(id, selectedIds),
                 onRemove: () => {
                   if (playlistId !== null) {

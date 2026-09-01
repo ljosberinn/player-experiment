@@ -40,7 +40,7 @@ import { contrast, flatten, luminance } from "../contrast";
  * Opens the smart-playlist filter editor.
  *
  * The filter editor rather than the tag editor because it is the dialog an
- * *empty* library can reach - Get Info needs a selection, and the smoke suite
+ * *empty* library can reach - Edit needs a selection, and the smoke suite
  * runs against a library with nothing in it. It is also the denser of the two:
  * a row of selects and inputs, which is where the contrast defect showed worst.
  */

@@ -81,7 +81,7 @@ export function TagEditor({
         >
           {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
           <Dialog.Title render={<h2 />}>
-            {tracks.length === 1 ? "Get Info" : `Get Info — ${tracks.length} songs`}
+            {tracks.length === 1 ? "Edit" : `Edit — ${tracks.length} songs`}
           </Dialog.Title>
 
           <div className="tag-grid">

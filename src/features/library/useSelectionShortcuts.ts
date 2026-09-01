@@ -31,7 +31,7 @@ export function useSelectionShortcuts(): void {
         return;
       }
 
-      // Get Info's keyboard route. It used to be a toolbar button; that moved
+      // Edit's keyboard route. It used to be a toolbar button; that moved
       // to the row's right-click menu, and a menu is not a substitute for a
       // shortcut, so the shortcut had to exist before the button could go.
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "i") {

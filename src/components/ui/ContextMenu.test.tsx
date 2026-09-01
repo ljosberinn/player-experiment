@@ -42,7 +42,7 @@ describe("ContextMenu", () => {
     const second = vi.fn();
     const { user } = await open([
       { label: "Play", onSelect: first },
-      { label: "Get Info", onSelect: second },
+      { label: "Edit", onSelect: second },
     ]);
 
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
@@ -54,7 +54,7 @@ describe("ContextMenu", () => {
 
   it("wraps around at both ends", async () => {
     const last = vi.fn();
-    const { user } = await open([{ label: "Play" }, { label: "Get Info", onSelect: last }]);
+    const { user } = await open([{ label: "Play" }, { label: "Edit", onSelect: last }]);
 
     // Up from before the first item reaches the last, so a long menu's bottom
     // entry is one keystroke away rather than five.

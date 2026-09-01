@@ -121,7 +121,7 @@ describe("useSelectionShortcuts", () => {
 
       await user.keyboard("{Control>}i{/Control}");
 
-      // Get Info lost its toolbar button when it moved to the row menu; a
+      // Edit lost its toolbar button when it moved to the row menu; a
       // menu is not a substitute for a shortcut, so this had to exist first.
       expect(tracksByIds).toHaveBeenCalledWith([1, 2]);
     });

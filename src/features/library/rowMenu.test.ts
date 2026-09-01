@@ -8,7 +8,7 @@ function playlist(id: number, name: string, kind: Playlist["kind"] = "static"): 
 
 const handlers = {
   onPlay: vi.fn(),
-  onGetInfo: vi.fn(),
+  onEdit: vi.fn(),
   onAddTo: vi.fn(),
   onRemove: vi.fn(),
   onExport: vi.fn(),
@@ -84,7 +84,7 @@ describe("rowMenuItems", () => {
 
   it("does not offer removal in the library", () => {
     // In the library this could only mean deleting the file, which is not a
-    // thing to sit one entry below "Get Info".
+    // thing to sit one entry below "Edit".
     expect(labels(items())).not.toContain("Remove from Playlist");
   });
 
