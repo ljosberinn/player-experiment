@@ -8,6 +8,7 @@ current frontend coverage is well above it.
 | Rust unit | `cargo test` | filter → SQL compilation (incl. injection attempts, depth cap), scan diffing, playlist position math, export shape, palette extraction, panic formatting |
 | Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, undo restores prior bytes, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
+| last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
@@ -26,6 +27,15 @@ runs its closure somewhere other than the thread that asked for it, which is the
 property a lost `spawn_blocking` would take away. That a readout *moves* rather
 than jumping at the end is a property of the numbers, and `tests/tagwrite.rs`
 asserts it over a generated 120-file batch.
+
+**Nothing reaches last.fm.** Every layer above `lastfm::transport::Transport`
+runs against a fake that answers from a script and records what it was asked -
+the same shape as `AudioSink`, and for the same reason. The one exception is
+`transport.rs` itself, which gets a `wiremock` server on an ephemeral loopback
+port: without it the only code in the product that opens a socket would have no
+coverage at all, and the fake would keep passing while the real transport posted
+to the wrong URL. **No credentials in CI** - a key is needed to run the feature,
+not to test it.
 
 **jsdom applies no stylesheet** — no layout engine, no computed colour. Three
 defects shipped past 600 green tests for exactly that reason.

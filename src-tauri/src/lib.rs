@@ -4,6 +4,7 @@ pub mod crash;
 pub mod db;
 pub mod error;
 pub mod export;
+pub mod lastfm;
 pub mod model;
 pub mod palette;
 pub mod reveal;
@@ -268,7 +269,10 @@ fn forward(
                 },
             );
         }
-        Event::Played(track_id) => {
+        Event::Played {
+            track_id,
+            started_at: _,
+        } => {
             // A lost play count is not worth interrupting playback for.
             if let Ok(conn) = db.conn() {
                 let _ = playback::mark_played(&conn, *track_id, now_seconds());

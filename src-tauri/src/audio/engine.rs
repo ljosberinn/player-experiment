@@ -61,7 +61,15 @@ pub enum Event {
     },
     /// This track passed the "counts as played" threshold. Emitted at most
     /// once per load.
-    Played(i64),
+    ///
+    /// `started_at` is unix seconds at the moment the track was loaded, which
+    /// is what a scrobble has to carry. It is recorded rather than derived:
+    /// `now - position_ms` is wrong for any track that was paused or seeked,
+    /// and both are ordinary.
+    Played {
+        track_id: i64,
+        started_at: i64,
+    },
     /// Non-fatal: playback carried on or stopped cleanly, and the user is told.
     Error(String),
     /// This track would not open, so the file is gone or unreadable. The owner
@@ -123,10 +131,28 @@ pub struct Engine<S: AudioSink> {
     /// Whether the current load has already been counted as played.
     counted: bool,
     last_position_ms: i64,
+    /// Unix seconds at which the current load started.
+    ///
+    /// The engine is otherwise free of wall-clock time, and this is the one
+    /// thing that needs it: a scrobble reports when the track *started*, and
+    /// only the engine knows when that was.
+    started_at: i64,
+    /// Where that comes from, injected so a test can move it.
+    ///
+    /// Boxed rather than a `fn` pointer because the test that matters advances
+    /// the clock between the load and the threshold, which needs a closure
+    /// over state.
+    now: Box<dyn Fn() -> i64 + Send>,
 }
 
 impl<S: AudioSink> Engine<S> {
     pub fn new(sink: S, volume: f32, muted: bool) -> Self {
+        Self::with_clock(sink, volume, muted, Box::new(crate::now_seconds))
+    }
+
+    /// [`Engine::new`], with the wall clock supplied. Tests pin it; the app
+    /// never calls this.
+    pub fn with_clock(sink: S, volume: f32, muted: bool, now: Box<dyn Fn() -> i64 + Send>) -> Self {
         let volume = clamp_volume(volume);
         let mut engine = Self {
             sink,
@@ -138,6 +164,8 @@ impl<S: AudioSink> Engine<S> {
             repeat_one: false,
             counted: false,
             last_position_ms: 0,
+            started_at: 0,
+            now,
         };
         let output = engine.output_volume();
         engine.sink.set_volume(output);
@@ -300,7 +328,11 @@ impl<S: AudioSink> Engine<S> {
             return None;
         }
         self.counted = true;
-        self.current().map(|entry| Event::Played(entry.track_id))
+        let started_at = self.started_at;
+        self.current().map(|entry| Event::Played {
+            track_id: entry.track_id,
+            started_at,
+        })
     }
 
     /// What a track running out of audio means.
@@ -337,6 +369,10 @@ impl<S: AudioSink> Engine<S> {
                     self.status = PlaybackStatus::Playing;
                     self.counted = false;
                     self.last_position_ms = 0;
+                    // Here rather than at the threshold: this is the moment
+                    // the track started, and a pause or a seek between the two
+                    // must not move it.
+                    self.started_at = (self.now)();
                     events.push(Event::Loaded(entry.track_id));
                     events.push(Event::StateChanged);
                     return events;
@@ -450,6 +486,18 @@ mod tests {
             index: 0,
         });
         engine
+    }
+
+    /// Which track a batch of events counted as played, if any.
+    ///
+    /// The event carries a timestamp now, so the assertions below cannot
+    /// compare against a whole value without pinning the clock - and most of
+    /// them are about *whether* a play was counted, not when.
+    fn played(events: &[Event]) -> Option<i64> {
+        events.iter().find_map(|event| match event {
+            Event::Played { track_id, .. } => Some(*track_id),
+            _ => None,
+        })
     }
 
     #[test]
@@ -730,7 +778,7 @@ mod tests {
         for loops in 1..=3 {
             engine.handle(Command::Seek { position_ms: 9_000 });
             assert!(
-                engine.tick().contains(&Event::Played(7)),
+                played(&engine.tick()) == Some(7),
                 "loop {loops} went uncounted"
             );
             // Which is what the end of a track looks like to the engine.
@@ -760,14 +808,82 @@ mod tests {
         });
 
         engine.handle(Command::Seek { position_ms: 4_999 });
-        assert!(!engine.tick().contains(&Event::Played(7)));
+        assert_eq!(played(&engine.tick()), None);
 
         engine.handle(Command::Seek { position_ms: 5_000 });
-        assert!(engine.tick().contains(&Event::Played(7)));
+        assert_eq!(played(&engine.tick()), Some(7));
 
         // Still past the threshold, but already counted.
         engine.handle(Command::Seek { position_ms: 6_000 });
-        assert!(!engine.tick().contains(&Event::Played(7)));
+        assert_eq!(played(&engine.tick()), None);
+    }
+
+    /// A stepping clock, so a test can tell "when the track started" apart
+    /// from "when it crossed the halfway mark" - with a real clock both fall
+    /// in the same second and the assertion would prove nothing.
+    fn ticking_clock(start: i64) -> Box<dyn Fn() -> i64 + Send> {
+        let next = std::sync::Mutex::new(start);
+        Box::new(move || {
+            let mut guard = next.lock().expect("the test clock");
+            let now = *guard;
+            *guard += 60;
+            now
+        })
+    }
+
+    #[test]
+    fn a_played_event_carries_the_time_the_track_started() {
+        let mut engine = Engine::with_clock(
+            FakeSink::default(),
+            1.0,
+            false,
+            ticking_clock(1_700_000_000),
+        );
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 10_000), entry(8, 10_000)],
+            index: 0,
+        });
+
+        // Paused for a while, then resumed past the halfway mark: the clock has
+        // moved on, and the timestamp must not have.
+        engine.handle(Command::Pause);
+        engine.handle(Command::Resume);
+        engine.handle(Command::Seek { position_ms: 9_000 });
+
+        assert_eq!(
+            engine.tick().into_iter().find_map(|event| match event {
+                Event::Played { started_at, .. } => Some(started_at),
+                _ => None,
+            }),
+            Some(1_700_000_000),
+            "the timestamp is when the track started, not when it was counted"
+        );
+    }
+
+    #[test]
+    fn each_load_starts_its_own_clock() {
+        // Including a repeat loop, which is a fresh play with a fresh start
+        // time - two scrobbles sharing a timestamp are one scrobble to
+        // last.fm.
+        let mut engine = Engine::with_clock(FakeSink::default(), 1.0, false, ticking_clock(1_000));
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 10_000)],
+            index: 0,
+        });
+        engine.handle(Command::SetRepeatOne(true));
+
+        let mut stamps = Vec::new();
+        for _ in 0..2 {
+            engine.handle(Command::Seek { position_ms: 9_000 });
+            stamps.extend(engine.tick().into_iter().filter_map(|event| match event {
+                Event::Played { started_at, .. } => Some(started_at),
+                _ => None,
+            }));
+            engine.sink.exhausted = true;
+            engine.tick();
+        }
+
+        assert_eq!(stamps, [1_000, 1_060]);
     }
 
     #[test]
@@ -778,10 +894,7 @@ mod tests {
             index: 0,
         });
         engine.handle(Command::Seek { position_ms: 0 });
-        assert!(!engine
-            .tick()
-            .iter()
-            .any(|event| matches!(event, Event::Played(_))));
+        assert_eq!(played(&engine.tick()), None);
     }
 
     #[test]
@@ -793,11 +906,11 @@ mod tests {
             index: 0,
         });
         engine.handle(Command::Seek { position_ms: 9_000 });
-        assert!(engine.tick().contains(&Event::Played(7)));
+        assert_eq!(played(&engine.tick()), Some(7));
 
         engine.handle(Command::SetQueue { entries, index: 0 });
         engine.handle(Command::Seek { position_ms: 9_000 });
-        assert!(engine.tick().contains(&Event::Played(7)));
+        assert_eq!(played(&engine.tick()), Some(7));
     }
 
     #[test]
