@@ -19,8 +19,9 @@ classes that already exist.
   materializes 50k row objects.
 - **Real `<table>` markup**, not divs with ARIA roles. `aria-rowcount` carries
   the true library size even though only a window is in the DOM.
-- `ROW_HEIGHT` lives in `SongTable.tsx`, where the virtualizer reads it — a CSS
-  copy would be a second number to keep in step. Change one, change both.
+- `ROW_HEIGHT` lives in `SongRow.tsx`, beside the row it is the height of, and
+  the virtualizer imports it — a CSS copy would be a second number to keep in
+  step. Change one, change both.
 - `headerBounds()` queries `th[data-column]`: the status column has no id and
   counting it offsets every drag-to-reorder drop index.
 - **Double-clicking a divider fits the column to the rows on screen**, measured
@@ -87,6 +88,22 @@ memo can stop a component's own subscription from waking it. React Compiler
 does not change that argument, it only removes the alternative: a child whose
 props did not change is held still without anyone writing `memo`, and a
 component that reads a fast-changing value itself is beyond either.
+
+The boundary that *does* pay is one level down. **A row is its own component**
+(`SongRow.tsx`), so the compiler caches its JSX per props while the table stays
+uncompiled behind `"use no memo"`. That puts the whole weight on prop
+stability, and the rule is that a row is given per-row facts and never table
+state: `selected` and `playing` rather than the selection and the playing id,
+`drop` rather than the drop index — passed raw, one dragover would invalidate
+every row in the window instead of the one under the pointer. The handlers
+travel with the row and read `useLibraryStore.getState()` where they need the
+selection, the way the table's window keydown listener already does, so a row
+subscribes to nothing and forty-odd subscriptions are not the trade. What the
+table is not compiled for, it does by hand: `columns` and the one `actions`
+object are `useMemo`d, because a fresh array or object there is a changed prop
+on every row. `SongTable.renders.test.tsx` counts `ColumnDef.render` calls
+against a 47-row window: a click and a sub-row scroll touch no cell at all, and
+crossing six rows renders six. Before the split those were 235 and 3265.
 
 That also decides what the render test may assert. The `SongTable` stub has no
 subscription, so its count measures `App`, not the real table; the honest

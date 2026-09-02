@@ -14,12 +14,17 @@ export type RowStatus = "playing" | "missing" | null;
  */
 export const STATUS_COLUMN_WIDTH = 26;
 
-export function rowStatus(track: Track, nowPlayingId: number | null): RowStatus {
+/**
+ * `playing` rather than the id to compare against: a row is told whether it is
+ * the one playing, so that the playing track changing does not look like a
+ * changed prop to every other row in the window.
+ */
+export function rowStatus(track: Track, playing: boolean): RowStatus {
   // Playing wins over missing, and the order matters for one real case: a
   // track marked by a failed load whose file has since come back is playing
   // now, and the mark is stale until the next scan clears it. What the row is
   // doing beats what a scan last thought.
-  if (track.id === nowPlayingId) {
+  if (playing) {
     return "playing";
   }
   return track.missing_since === null ? null : "missing";
