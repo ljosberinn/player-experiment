@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addWatchFolder, scanLibrary } from "../../ipc";
+import { useStatusStore } from "../shell/statusStore";
 import { useScanStore } from "./scan";
 import { useLibraryStore } from "./store";
 
@@ -18,7 +19,8 @@ beforeEach(async () => {
   vi.mocked(scanLibrary).mockResolvedValue(summary);
   const { open } = await import("@tauri-apps/plugin-dialog");
   vi.mocked(open).mockResolvedValue(null);
-  useScanStore.setState({ progress: null, busy: false, error: null });
+  useScanStore.setState({ progress: null, busy: false });
+  useStatusStore.setState({ message: null, notice: null });
   // Only the one action this store reaches for; the rest of the library store
   // is not its business.
   useLibraryStore.setState({ refresh } as never);
@@ -102,7 +104,7 @@ describe("the scan store", () => {
 
     await useScanStore.getState().rescan();
 
-    expect(useScanStore.getState().error).toBe("permission denied");
+    expect(useStatusStore.getState().message).toBe("permission denied");
     // And releases the lock, or one failure would refuse every scan after it.
     expect(useScanStore.getState().busy).toBe(false);
   });
@@ -113,15 +115,15 @@ describe("the scan store", () => {
 
     await useScanStore.getState().addFolder();
 
-    expect(useScanStore.getState().error).toBe("dialog unavailable");
+    expect(useStatusStore.getState().message).toBe("dialog unavailable");
     expect(addWatchFolder).not.toHaveBeenCalled();
   });
 
-  it("clears an error when asked", async () => {
-    useScanStore.setState({ error: "permission denied" });
+  it("clears the popover as it starts, so a retry is not read as the old failure", async () => {
+    useStatusStore.setState({ message: "permission denied" });
 
-    useScanStore.getState().dismissError();
+    await useScanStore.getState().rescan();
 
-    expect(useScanStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBeNull();
   });
 });

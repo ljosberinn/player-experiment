@@ -98,7 +98,6 @@ beforeEach(() => {
     sortBy: "artist",
     direction: "asc",
     selection: { ids: new Set(), anchorIndex: null },
-    error: null,
   });
   statsMock.mockResolvedValue(stats(500));
   queryTracksMock.mockImplementation(async (query: TrackQuery) =>

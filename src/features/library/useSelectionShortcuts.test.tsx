@@ -31,7 +31,7 @@ const initialPlaylists = usePlaylistsStore.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
-  usePlaylistsStore.setState({ ...initialPlaylists, playlists: [], notice: null, error: null });
+  usePlaylistsStore.setState({ ...initialPlaylists, playlists: [] });
   useLibraryStore.setState({
     ...initial,
     selection: { ids: new Set(), anchorIndex: null },

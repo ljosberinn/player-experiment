@@ -8,6 +8,7 @@ import {
   queryTracks,
   saveColumnConfig,
 } from "../../ipc";
+import { useStatusStore } from "../shell/statusStore";
 import { DEFAULT_COLUMN_CONFIG } from "./columns";
 import { backEntry, forwardEntry, historyAt } from "./history";
 import { PAGE_SIZE } from "./pageCache";
@@ -98,10 +99,10 @@ beforeEach(() => {
     groupsLoading: false,
     columns: DEFAULT_COLUMN_CONFIG,
     selection: { ids: new Set(), anchorIndex: null },
-    error: null,
     queryToken: 0,
     history: historyAt({ tab: "songs", browse: null, playlistId: null }),
   });
+  useStatusStore.setState({ message: null, notice: null });
   statsMock.mockResolvedValue(stats(1000));
   browseGroupsMock.mockResolvedValue([]);
   loadColumnConfigMock.mockResolvedValue(null);
@@ -156,7 +157,7 @@ describe("refresh", () => {
 
     await useLibraryStore.getState().refresh();
 
-    expect(useLibraryStore.getState().error).toContain("db is locked");
+    expect(useStatusStore.getState().message).toContain("db is locked");
   });
 });
 
@@ -270,7 +271,7 @@ describe("ensureRange", () => {
 
     await useLibraryStore.getState().ensureRange(0, 10);
 
-    expect(useLibraryStore.getState().error).toContain("boom");
+    expect(useStatusStore.getState().message).toContain("boom");
     expect(useLibraryStore.getState().inFlight.size).toBe(0);
   });
 });
@@ -759,7 +760,7 @@ describe("column layout", () => {
 
     expect(useLibraryStore.getState().columns).toEqual(DEFAULT_COLUMN_CONFIG);
     // Not worth an error banner over the table: the defaults are usable.
-    expect(useLibraryStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBeNull();
   });
 
   it("reports a layout that could not be saved", async () => {
@@ -768,7 +769,7 @@ describe("column layout", () => {
     await useLibraryStore.getState().toggleColumn("year");
 
     // Silence would look like it saved, and it would be gone next launch.
-    expect(useLibraryStore.getState().error).toContain("disk full");
+    expect(useStatusStore.getState().message).toContain("disk full");
   });
 
   it("moves the sort off a column it just hid, and re-queries", async () => {

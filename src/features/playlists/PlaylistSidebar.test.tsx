@@ -58,8 +58,6 @@ beforeEach(() => {
   usePlaylistsStore.setState({
     ...initialPlaylists,
     playlists: [],
-    notice: null,
-    error: null,
     renaming: null,
     collapsed: {},
   });

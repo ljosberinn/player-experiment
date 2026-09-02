@@ -17,6 +17,7 @@ import {
   playerToggle,
   type Track,
 } from "../../ipc";
+import { report } from "../shell/statusStore";
 
 /**
  * Mirror of the Rust player.
@@ -42,7 +43,6 @@ interface PlayerState {
   repeatOne: boolean;
   queueIndex: number | null;
   queueLen: number;
-  error: string | null;
 
   /** Subscribes to backend events and loads the current state. Returns an unsubscribe. */
   connect: () => Promise<() => void>;
@@ -55,7 +55,6 @@ interface PlayerState {
   setVolume: (volume: number) => Promise<void>;
   toggleMute: () => Promise<void>;
   toggleRepeatOne: () => Promise<void>;
-  dismissError: () => void;
 }
 
 const initial = {
@@ -69,18 +68,14 @@ const initial = {
   repeatOne: false,
   queueIndex: null,
   queueLen: 0,
-  error: null,
 };
 
 /** Wraps a command so a dead backend surfaces in the UI instead of the console. */
-async function run(
-  set: (partial: Partial<PlayerState>) => void,
-  action: () => Promise<void>,
-): Promise<void> {
+async function run(action: () => Promise<void>): Promise<void> {
   try {
     await action();
   } catch (cause) {
-    set({ error: String(cause) });
+    report(cause);
   }
 }
 
@@ -106,7 +101,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }),
       ),
       onPlayerPosition(({ positionMs, durationMs }) => set({ positionMs, durationMs })),
-      onPlayerError((error) => set({ error })),
+      onPlayerError(report),
     ]);
 
     // Listeners first, then the snapshot: a state change between the two would
@@ -126,7 +121,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         queueLen: snapshot.queueLen,
       });
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
 
     return () => {
@@ -136,17 +131,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     };
   },
 
-  play: (trackIds, index) => run(set, () => playerPlay(trackIds, index)),
-  toggle: () => run(set, playerToggle),
-  stop: () => run(set, playerStop),
-  next: () => run(set, playerNext),
-  previous: () => run(set, playerPrevious),
+  play: (trackIds, index) => run(() => playerPlay(trackIds, index)),
+  toggle: () => run(playerToggle),
+  stop: () => run(playerStop),
+  next: () => run(playerNext),
+  previous: () => run(playerPrevious),
 
   seek: async (positionMs) => {
     // Echoed immediately so the scrubber follows the pointer; the backend
     // confirms with a position event a beat later.
     set({ positionMs: Math.max(0, Math.min(positionMs, get().durationMs)) });
-    await run(set, () => playerSeek(positionMs));
+    await run(() => playerSeek(positionMs));
   },
 
   setVolume: async (volume) => {
@@ -156,13 +151,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // same thing or the fill would follow the pointer under a lit mute button
     // until the next state event caught up.
     set({ volume: clamped, muted: false });
-    await run(set, () => playerSetVolume(clamped));
+    await run(() => playerSetVolume(clamped));
   },
 
   // No echo, unlike volume: these are one click rather than a drag, so the
   // state event they cause is the only thing that has to arrive.
-  toggleMute: () => run(set, () => playerSetMuted(!get().muted)),
-  toggleRepeatOne: () => run(set, () => playerSetRepeatOne(!get().repeatOne)),
-
-  dismissError: () => set({ error: null }),
+  toggleMute: () => run(() => playerSetMuted(!get().muted)),
+  toggleRepeatOne: () => run(() => playerSetRepeatOne(!get().repeatOne)),
 }));

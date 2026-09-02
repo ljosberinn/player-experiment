@@ -1,6 +1,6 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
@@ -18,7 +18,6 @@ import { HistoryNav } from "./features/library/HistoryNav";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
-import { useScanStore } from "./features/library/scan";
 import { useLibraryStore, VIEW_TITLES } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
@@ -30,11 +29,12 @@ import { usePlayerStore } from "./features/player/store";
 import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
-import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { usePlaylistsStore } from "./features/playlists/store";
 import { AppMenus } from "./features/shell/AppMenus";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
+import { NOTICE_MS, notify, useStatusStore } from "./features/shell/statusStore";
 import { TaskProgress } from "./features/shell/TaskProgress";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
@@ -58,10 +58,6 @@ import {
 } from "./ipc";
 
 export function App() {
-  const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
-  // Stable, so the notice-expiry effect it feeds does not restart on every
-  // unrelated render - see the effect near the other two below.
-  const clearToolbarNotice = useCallback(() => setToolbarNotice(null), []);
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   /** What the error popover points at: the box that says what is playing. */
@@ -96,58 +92,30 @@ export function App() {
   const clearSearch = useLibraryStore((s) => s.clearSearch);
   const refresh = useLibraryStore((s) => s.refresh);
   const removeMissing = useLibraryStore((s) => s.removeMissing);
-  const error = useLibraryStore((s) => s.error);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
   const nowPlaying = usePlayerStore((s) => s.track);
-  const playerError = usePlayerStore((s) => s.error);
   const connect = usePlayerStore((s) => s.connect);
   const play = usePlayerStore((s) => s.play);
 
   const playlists = usePlaylistsStore((s) => s.playlists);
-  const notice = usePlaylistsStore((s) => s.notice);
-  const playlistError = usePlaylistsStore((s) => s.error);
-  const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
+  const notice = useStatusStore((s) => s.notice);
+  const dismissNotice = useStatusStore((s) => s.dismissNotice);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
   const editorTracks = useEditorStore((s) => s.tracks);
-  const tagNotice = useEditorStore((s) => s.notice);
-  const dismissTagNotice = useEditorStore((s) => s.dismissNotice);
-  const tagError = useEditorStore((s) => s.error);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
   const refreshUndo = useEditorStore((s) => s.refreshUndo);
   const tagProgress = useEditorStore((s) => s.progress);
   const runExportTo = useExportStore((s) => s.run);
 
-  const scanError = useScanStore((s) => s.error);
-  const dismissScanError = useScanStore((s) => s.dismissError);
-
   const editing = usePlaylistsStore((s) => s.editing);
   const closeEditor = usePlaylistsStore((s) => s.closeEditor);
   const saveSmart = usePlaylistsStore((s) => s.saveSmart);
 
-  const dismissLibraryError = useLibraryStore((s) => s.dismissError);
-  const dismissPlayerError = usePlayerStore((s) => s.dismissError);
-  const dismissPlaylistError = usePlaylistsStore((s) => s.dismissError);
-  const dismissTagError = useEditorStore((s) => s.dismissError);
-
-  /**
-   * The one error on screen, whichever part of the app it came from.
-   *
-   * Four stores can be unhappy at once and there is one place to say so, so the
-   * order is the order they are noticed in - and dismissing clears all four
-   * rather than uncovering the next one, which would read as the message
-   * refusing to go away.
-   */
-  const problem = error ?? playerError ?? playlistError ?? tagError ?? scanError ?? null;
-  const dismissProblem = () => {
-    dismissLibraryError();
-    dismissPlayerError();
-    dismissPlaylistError();
-    dismissTagError();
-    dismissScanError();
-  };
+  const statusMessage = useStatusStore((s) => s.message);
+  const dismissStatus = useStatusStore((s) => s.dismiss);
 
   useEffect(() => {
     // The layout first: it can move the sort off a hidden column, and doing
@@ -219,9 +187,7 @@ export function App() {
   // window's title shows.
   useWindowTitle();
 
-  useNoticeExpiry(toolbarNotice, clearToolbarNotice, NOTICE_MS);
   useNoticeExpiry(notice, dismissNotice, NOTICE_MS);
-  useNoticeExpiry(tagNotice, dismissTagNotice, NOTICE_MS);
 
   useEffect(() => {
     void refreshUndo();
@@ -275,9 +241,12 @@ export function App() {
         return;
       }
       const count = await runExportTo(path, choice.scope);
-      setToolbarNotice(`Exported ${count} song${count === 1 ? "" : "s"}.`);
+      notify(`Exported ${count} song${count === 1 ? "" : "s"}.`);
     } catch (cause) {
-      setToolbarNotice(`Export failed: ${String(cause)}`);
+      // A notice rather than a report: the user named a file and is owed an
+      // answer either way, and the answer belongs on the same line as the
+      // success it replaces.
+      notify(`Export failed: ${String(cause)}`);
     }
   };
 
@@ -376,9 +345,9 @@ export function App() {
             </div>
           ) : null}
 
-          {notice || tagNotice || toolbarNotice ? (
+          {notice ? (
             <p className="content-notice" role="status">
-              {notice ?? tagNotice ?? toolbarNotice}
+              {notice}
             </p>
           ) : null}
 
@@ -540,7 +509,7 @@ export function App() {
           As a paragraph it pushed the rows down as it appeared, shifting the
           whole view under the pointer, and it sat nowhere near the thing it
           was about. */}
-      <ErrorPopover message={problem} anchor={statusRef} onDismiss={dismissProblem} />
+      <ErrorPopover message={statusMessage} anchor={statusRef} onDismiss={dismissStatus} />
 
       {confirmRemoveMissing ? (
         <ConfirmDialog
@@ -550,7 +519,7 @@ export function App() {
           onConfirm={() => {
             setConfirmRemoveMissing(false);
             void removeMissing().then((removed) => {
-              setToolbarNotice(`Removed ${removed} missing song${removed === 1 ? "" : "s"}.`);
+              notify(`Removed ${removed} missing song${removed === 1 ? "" : "s"}.`);
             });
           }}
           onCancel={() => setConfirmRemoveMissing(false)}

@@ -151,6 +151,19 @@ absences are what nobody notices coming back — hence the guards in
 - `features/library/store.ts` owns the view (tab, search, sort, selection,
   stats); `features/player/store.ts` owns playback; `features/shell` owns the
   window (geometry, zoom, menus, dynamic background).
+- **There is one status channel**, `features/shell/statusStore.ts`: one
+  `message` behind the error popover and one `notice` behind the content line,
+  written through the free `report`, `notify` and `dismiss`. No feature store
+  carries an `error` of its own — `App` used to merge five of them and pick the
+  first, which is the same thing said less directly. One slot, last wins, and
+  an operation clears the popover as it starts so a successful retry is not
+  read under the failure before it. Two deliberate exceptions: the updater
+  keeps a diagnostic `error` behind `status: "failed"`, deliberately unshown
+  because a check that fails usually means the machine is offline, and last.fm
+  keeps its own because `LastfmSettings` draws it inside the dialog it belongs
+  to. Failures nobody asked for still stay silent — `loadColumns`,
+  `loadSections`, `toggleSection`, `refreshUndo` and `getAppInfo` keep their
+  bare `catch`.
 - **Every view change goes through `applyEntry`.** A view is
   `{ tab, browse, playlistId }`, written in one `set` and refreshed once; the
   four actions that used to write those fields separately are entry

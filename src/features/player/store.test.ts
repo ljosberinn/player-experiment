@@ -15,6 +15,7 @@ import {
   playerStop,
   playerToggle,
 } from "../../ipc";
+import { useStatusStore } from "../shell/statusStore";
 import { usePlayerStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -108,8 +109,8 @@ beforeEach(() => {
     repeatOne: false,
     queueIndex: null,
     queueLen: 0,
-    error: null,
   });
+  useStatusStore.setState({ message: null, notice: null });
   vi.mocked(playerSnapshot).mockResolvedValue(snapshot({ status: "stopped", track: null }));
   for (const command of [
     playerPlay,
@@ -189,11 +190,10 @@ describe("connect", () => {
     const handlers = captureListeners();
     await usePlayerStore.getState().connect();
 
+    // The one report with no `catch` around it: the backend says so on an
+    // event, so `report` has to take a bare string as readily as a cause.
     handlers.error?.("no audio output device");
-    expect(usePlayerStore.getState().error).toBe("no audio output device");
-
-    usePlayerStore.getState().dismissError();
-    expect(usePlayerStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBe("no audio output device");
   });
 
   it("reports a snapshot that fails rather than throwing at startup", async () => {
@@ -201,7 +201,7 @@ describe("connect", () => {
     vi.mocked(playerSnapshot).mockRejectedValue(new Error("no backend"));
 
     await usePlayerStore.getState().connect();
-    expect(usePlayerStore.getState().error).toContain("no backend");
+    expect(useStatusStore.getState().message).toContain("no backend");
   });
 
   it("returns a teardown that removes every listener", async () => {
@@ -244,7 +244,7 @@ describe("commands", () => {
     vi.mocked(playerToggle).mockRejectedValue(new Error("player thread is not running"));
 
     await usePlayerStore.getState().toggle();
-    expect(usePlayerStore.getState().error).toContain("player thread is not running");
+    expect(useStatusStore.getState().message).toContain("player thread is not running");
   });
 });
 
@@ -350,6 +350,6 @@ describe("mute and repeat", () => {
     vi.mocked(playerSetMuted).mockRejectedValue(new Error("the player thread is not running"));
 
     await usePlayerStore.getState().toggleMute();
-    expect(usePlayerStore.getState().error).toContain("the player thread is not running");
+    expect(useStatusStore.getState().message).toContain("the player thread is not running");
   });
 });

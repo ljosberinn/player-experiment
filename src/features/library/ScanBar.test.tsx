@@ -48,7 +48,7 @@ beforeEach(async () => {
   vi.mocked(open).mockResolvedValue(null);
   // The store is a module singleton; progress left behind by one test would
   // otherwise be on screen at the start of the next.
-  useScanStore.setState({ progress: null, busy: false, error: null });
+  useScanStore.setState({ progress: null, busy: false });
 });
 
 describe("ScanBar", () => {

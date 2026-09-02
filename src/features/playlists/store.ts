@@ -22,6 +22,7 @@ import {
 import { debounce } from "../../lib/debounce";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
+import { dismiss, notify, report } from "../shell/statusStore";
 import { emptyFilter, noOrder } from "../smart/filterTree";
 import {
   type Collapsed,
@@ -30,14 +31,6 @@ import {
   serialiseSections,
   toggleSection,
 } from "./sections";
-
-/**
- * How long a drop confirmation stays on screen.
- *
- * Long enough to read a sentence, short enough that it is gone before it
- * becomes furniture. Dismissing it by hand is also possible.
- */
-export const NOTICE_MS = 4000;
 
 /** The name a brand new playlist gets, the way every music player does it. */
 export const NEW_PLAYLIST_NAME = "New Playlist";
@@ -55,9 +48,6 @@ export const RECOUNT_DEBOUNCE_MS = 250;
 
 interface PlaylistsState {
   playlists: Playlist[];
-  /** What the last drop or removal did, for a moment. */
-  notice: string | null;
-  error: string | null;
   /** Which sidebar sections are folded away; see `sections.ts`. */
   collapsed: Collapsed;
 
@@ -117,9 +107,6 @@ interface PlaylistsState {
   moveTracks: (playlistId: number, trackIds: number[], targetIndex: number) => Promise<void>;
   /** Opens a playlist and starts playing it from the top. */
   playPlaylist: (playlistId: number) => Promise<void>;
-  dismissNotice: () => void;
-  /** Clears the last error. The shell shows one at a time and dismisses it. */
-  dismissError: () => void;
 }
 
 function nameOf(playlists: Playlist[], playlistId: number): string {
@@ -132,17 +119,16 @@ function plural(count: number, noun: string): string {
 
 export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   playlists: [],
-  notice: null,
-  error: null,
   editing: null,
   renaming: null,
   collapsed: {},
 
   load: async () => {
+    dismiss();
     try {
-      set({ playlists: await listPlaylists(), error: null });
+      set({ playlists: await listPlaylists() });
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -191,7 +177,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       // which is the only thing there is to do with it yet.
       set({ renaming: playlist.id });
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -206,12 +192,10 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       // The songs land before the rename starts, so what is being named is a
       // playlist that already holds something - and if the rename is abandoned
       // the drop is still not lost.
-      set({
-        renaming: playlist.id,
-        notice: `Added ${plural(added, "song")} to a new playlist.`,
-      });
+      set({ renaming: playlist.id });
+      notify(`Added ${plural(added, "song")} to a new playlist.`);
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -246,10 +230,9 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
           filter: filter ?? emptyFilter,
           order,
         },
-        error: null,
       });
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -283,7 +266,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     } catch (cause) {
       // The editor stays open on a rejected filter, so the user can fix it
       // rather than losing what they built.
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -292,7 +275,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       await renamePlaylist(playlistId, name);
       await get().load();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -309,7 +292,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       useLibraryStore.getState().forgetPlaylist(playlistId);
       await get().load();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -324,18 +307,17 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       // already has adds fewer than were dragged. Saying so is more useful
       // than reporting the number the user dropped.
       const skipped = trackIds.length - added;
-      set({
-        notice:
-          skipped > 0
-            ? `Added ${plural(added, "song")} to ${name}; ${skipped} already there.`
-            : `Added ${plural(added, "song")} to ${name}.`,
-      });
+      notify(
+        skipped > 0
+          ? `Added ${plural(added, "song")} to ${name}; ${skipped} already there.`
+          : `Added ${plural(added, "song")} to ${name}.`,
+      );
       await get().load();
       if (useLibraryStore.getState().playlistId === playlistId) {
         await useLibraryStore.getState().refresh();
       }
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -345,14 +327,12 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     }
     try {
       const removed = await removeFromPlaylist(playlistId, trackIds);
-      set({
-        notice: `Removed ${plural(removed, "song")} from ${nameOf(get().playlists, playlistId)}.`,
-      });
+      notify(`Removed ${plural(removed, "song")} from ${nameOf(get().playlists, playlistId)}.`);
       useLibraryStore.getState().clearSelection();
       await get().load();
       await useLibraryStore.getState().refresh();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -364,7 +344,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       await moveInPlaylist(playlistId, trackIds, targetIndex);
       await useLibraryStore.getState().refresh();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -385,15 +365,12 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       });
       await useLibraryStore.getState().showPlaylist(playlistId);
       if (ids.length === 0) {
-        set({ notice: `${nameOf(get().playlists, playlistId)} is empty.` });
+        notify(`${nameOf(get().playlists, playlistId)} is empty.`);
         return;
       }
       await usePlayerStore.getState().play(ids, 0);
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
-
-  dismissNotice: () => set({ notice: null }),
-  dismissError: () => set({ error: null }),
 }));

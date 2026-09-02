@@ -7,6 +7,7 @@ import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
 import { TRACK_IDS_MIME } from "./features/playlists/drag";
 import { usePlaylistsStore } from "./features/playlists/store";
+import { useStatusStore } from "./features/shell/statusStore";
 import { useUpdaterStore } from "./features/updater/store";
 import {
   addToPlaylist,
@@ -147,16 +148,15 @@ function playlist(id: number, name: string, trackCount = 0): Playlist {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  useLibraryStore.setState({ ...initial, total: 0, pages: new Map(), error: null });
+  useLibraryStore.setState({ ...initial, total: 0, pages: new Map() });
+  useStatusStore.setState({ message: null, notice: null });
   usePlaylistsStore.setState({
     ...initialPlaylists,
     playlists: [],
-    notice: null,
-    error: null,
     editing: null,
     renaming: null,
   });
-  useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
+  useEditorStore.setState({ ...initialEditor, tracks: null });
   useUpdaterStore.setState({ status: "idle", version: null, error: null, update: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
   // Restated rather than left to the factory: `clearAllMocks` clears calls but
@@ -988,7 +988,7 @@ describe("the error popover", () => {
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
     act(() => {
-      usePlayerStore.setState({ error: "C:/music/gone.mp3 could not be opened" });
+      useStatusStore.setState({ message: "C:/music/gone.mp3 could not be opened" });
     });
 
     // In the popover, which is portalled, rather than in the content area -
@@ -1004,7 +1004,7 @@ describe("the error popover", () => {
     search.focus();
 
     act(() => {
-      usePlayerStore.setState({ error: "that file will not open" });
+      useStatusStore.setState({ message: "that file will not open" });
     });
     await screen.findByRole("alert");
 
@@ -1018,7 +1018,7 @@ describe("the error popover", () => {
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
     act(() => {
-      usePlayerStore.setState({ error: "C:/music/gone.mp3 could not be opened" });
+      useStatusStore.setState({ message: "C:/music/gone.mp3 could not be opened" });
     });
 
     // The message alone is often a path and a reason with no subject, and does
@@ -1033,7 +1033,7 @@ describe("the error popover", () => {
     render(<App />);
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
     act(() => {
-      usePlayerStore.setState({ error: "that file will not open" });
+      useStatusStore.setState({ message: "that file will not open" });
     });
     await screen.findByRole("alert");
 
@@ -1044,7 +1044,7 @@ describe("the error popover", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     // Cleared at the source, not merely hidden: a popover that hides a live
     // error would never show that error again.
-    expect(usePlayerStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBeNull();
   });
 
   it("shows one message when several parts of the app are unhappy", async () => {
@@ -1052,14 +1052,15 @@ describe("the error popover", () => {
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
     act(() => {
-      useLibraryStore.setState({ error: "the library is locked" });
-      usePlayerStore.setState({ error: "that file will not open" });
+      useStatusStore.getState().report("the library is locked");
+      useStatusStore.getState().report("that file will not open");
     });
 
-    // There is one place to say so, so dismissing has to clear all of them -
-    // uncovering the next would read as the message refusing to go away.
+    // One slot, last wins: two unhappy stores are still one popover, and the
+    // newer message is the one on screen.
     const alerts = await screen.findAllByRole("alert");
     expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("that file will not open");
   });
 });
 
