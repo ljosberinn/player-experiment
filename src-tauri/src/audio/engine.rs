@@ -125,6 +125,41 @@ const PLAYED_FRACTION: f64 = 0.5;
 /// behaviour every CD player and iTunes has had.
 const PREVIOUS_RESTART_AFTER: Duration = Duration::from_secs(3);
 
+/// How often the engine is ticked while nothing is about to end.
+///
+/// Also the floor on how often the playhead is reported: the two used to be
+/// the same number, and [`Engine::next_tick`] splitting them is what lets the
+/// poll speed up without the IPC following it.
+pub const TICK: Duration = Duration::from_millis(250);
+
+/// How often the engine is ticked over the last [`FAST_WINDOW_MS`] of a track.
+///
+/// A track exhausts at a uniformly random point between two ticks, and nothing
+/// but a tick notices, so the wait before the next one starts is on the order
+/// of the interval. This is that gap.
+const FAST_TICK_MS: u64 = 10;
+pub const FAST_TICK: Duration = Duration::from_millis(FAST_TICK_MS);
+
+/// How close to the end of a track the fast poll starts.
+///
+/// Keyed off the scanned duration, so a track whose `duration_ms` is wrong
+/// never opens the window and falls back to [`TICK`].
+const FAST_WINDOW_MS: i64 = 1_000;
+
+/// The floor on the interval between [`Event::Position`] events.
+///
+/// Measured in playback position rather than wall-clock time, which keeps the
+/// engine free of a clock it would otherwise need only for this - and comes to
+/// the same 4/s while a track plays at speed.
+const POSITION_INTERVAL_MS: i64 = 250;
+
+/// How long before the end of a track the next one starts being opened.
+///
+/// Comfortably past the worst first-read measured on a cold external volume
+/// (309ms), since the cost of being early is a decoder built a few seconds
+/// sooner than it was needed.
+const PREPARE_BEFORE_END_MS: i64 = 5_000;
+
 /// How many files in a row may fail to load before the engine gives up.
 ///
 /// Skipping past a broken file is what a user wants; skipping past forty
@@ -150,6 +185,8 @@ pub struct Engine<S: AudioSink> {
     announced: bool,
     /// Whether the current load has already been counted as played.
     counted: bool,
+    /// Whether the successor to the current load has already been prepared.
+    prepared: bool,
     last_position_ms: i64,
     /// Unix seconds at which the current load started.
     ///
@@ -184,6 +221,7 @@ impl<S: AudioSink> Engine<S> {
             repeat_one: false,
             announced: false,
             counted: false,
+            prepared: false,
             last_position_ms: 0,
             started_at: 0,
             now,
@@ -310,6 +348,31 @@ impl<S: AudioSink> Engine<S> {
         vec![Event::StateChanged]
     }
 
+    /// How long the owning thread should wait before ticking again.
+    ///
+    /// Fast over the last second of a track, because a tick is the only thing
+    /// that notices one has run out, and the wait before the next one starts
+    /// is audible.
+    pub fn next_tick(&self) -> Duration {
+        if self.status != PlaybackStatus::Playing {
+            return TICK;
+        }
+        let duration_ms = self.current().map_or(0, |entry| entry.duration_ms);
+        if duration_ms <= 0 {
+            return TICK;
+        }
+        // Bounded on both sides. A track still playing well past its scanned
+        // length is one whose `duration_ms` is wrong, and polling it at 100Hz
+        // for the rest of its life buys nothing - the same slack covers a
+        // duration that is merely a little short.
+        let remaining_ms = duration_ms - self.position_ms();
+        if (-FAST_WINDOW_MS..=FAST_WINDOW_MS).contains(&remaining_ms) {
+            FAST_TICK
+        } else {
+            TICK
+        }
+    }
+
     /// Called on a timer: advances the queue when a track runs out and reports
     /// the playhead.
     pub fn tick(&mut self) -> Vec<Event> {
@@ -327,13 +390,17 @@ impl<S: AudioSink> Engine<S> {
         if let Some(event) = self.count_play_if_due(position_ms, duration_ms) {
             events.push(event);
         }
+        self.prepare_next_if_due(position_ms, duration_ms);
 
         if self.sink.finished() {
             events.extend(self.finished());
             return events;
         }
 
-        if position_ms != self.last_position_ms {
+        // Against the last position *reported*, not the last one read: the
+        // poll can be running twenty-five times faster than the scrubber
+        // needs, and every one of these crosses the IPC.
+        if (position_ms - self.last_position_ms).abs() >= POSITION_INTERVAL_MS {
             self.last_position_ms = position_ms;
             events.push(Event::Position {
                 position_ms,
@@ -353,6 +420,29 @@ impl<S: AudioSink> Engine<S> {
             track_id: entry.track_id,
             started_at,
         })
+    }
+
+    /// Asks the sink to open the next track while this one is still playing.
+    ///
+    /// At most once per load, and nothing to invalidate: a skip or a queue
+    /// edit means the sink is asked for a path it did not prepare, which it
+    /// already handles.
+    fn prepare_next_if_due(&mut self, position_ms: i64, duration_ms: i64) {
+        // Repeat reloads the same file, which is warm by definition.
+        if self.prepared || self.repeat_one || duration_ms <= 0 {
+            return;
+        }
+        if duration_ms - position_ms > PREPARE_BEFORE_END_MS {
+            return;
+        }
+        let Some(index) = self.index else {
+            return;
+        };
+        let Some(path) = self.queue.get(index + 1).map(|entry| entry.path.clone()) else {
+            return;
+        };
+        self.prepared = true;
+        self.sink.prepare(Path::new(&path));
     }
 
     fn count_play_if_due(&mut self, position_ms: i64, duration_ms: i64) -> Option<Event> {
@@ -405,6 +495,7 @@ impl<S: AudioSink> Engine<S> {
                     self.status = PlaybackStatus::Playing;
                     self.announced = false;
                     self.counted = false;
+                    self.prepared = false;
                     self.last_position_ms = 0;
                     // Here rather than at the threshold: this is the moment
                     // the track started, and a pause or a seek between the two
@@ -466,6 +557,7 @@ impl<S: AudioSink> Engine<S> {
         self.last_position_ms = 0;
         self.announced = false;
         self.counted = false;
+        self.prepared = false;
         // `index` is kept: it is where Toggle resumes from.
         vec![Event::StateChanged]
     }
@@ -524,6 +616,10 @@ mod tests {
             index: 0,
         });
         engine
+    }
+
+    fn track_path(id: i64) -> std::path::PathBuf {
+        std::path::PathBuf::from(entry(id, 0).path)
     }
 
     /// Which track a batch of events counted as played, if any.
@@ -1111,5 +1207,122 @@ mod tests {
             })
             .collect();
         assert_eq!(failed, [7, 8], "each file it tried, in the order it tried");
+    }
+
+    #[test]
+    fn the_poll_slows_back_down_once_a_track_is_no_longer_ending() {
+        let mut engine = engine_with(1);
+        engine.sink.position = Duration::from_millis(199_500);
+        assert_eq!(engine.next_tick(), FAST_TICK);
+
+        engine.handle(Command::Seek {
+            position_ms: 10_000,
+        });
+        assert_eq!(engine.next_tick(), TICK);
+    }
+
+    #[test]
+    fn the_poll_only_speeds_up_near_the_end_of_a_playing_track() {
+        let mut engine = engine_with(1);
+        assert_eq!(engine.next_tick(), TICK);
+
+        engine.sink.position = Duration::from_millis(199_500);
+        assert_eq!(engine.next_tick(), FAST_TICK);
+
+        // Paused at the same spot: nothing is about to run out.
+        engine.handle(Command::Pause);
+        assert_eq!(engine.next_tick(), TICK);
+    }
+
+    #[test]
+    fn a_track_playing_past_its_scanned_length_stops_polling_fast() {
+        let mut engine = engine_with(1);
+        engine.sink.position = Duration::from_millis(200_500);
+        assert_eq!(engine.next_tick(), FAST_TICK);
+
+        engine.sink.position = Duration::from_millis(210_000);
+        assert_eq!(engine.next_tick(), TICK);
+    }
+
+    #[test]
+    fn a_track_of_unknown_length_never_opens_the_fast_window() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(1, 0)],
+            index: 0,
+        });
+        engine.sink.position = Duration::from_millis(500);
+        assert_eq!(engine.next_tick(), TICK);
+    }
+
+    #[test]
+    fn position_keeps_its_own_cadence_while_the_poll_runs_fast() {
+        let mut engine = engine_with(1);
+
+        // Two seconds of playback polled at the fast rate: the scrubber gets
+        // its four updates a second, not two hundred.
+        let mut reported = 0;
+        for step in 1..=200 {
+            engine.sink.position = Duration::from_millis(199_000 + step * FAST_TICK_MS);
+            reported += engine
+                .tick()
+                .iter()
+                .filter(|event| matches!(event, Event::Position { .. }))
+                .count();
+        }
+        assert_eq!(reported, 8);
+    }
+
+    #[test]
+    fn the_next_track_is_prepared_before_the_current_one_ends() {
+        let mut engine = engine_with(2);
+        engine.sink.position = Duration::from_millis(190_000);
+        engine.tick();
+        assert!(
+            engine.sink.prepares.is_empty(),
+            "prepared with ten seconds still to play"
+        );
+
+        engine.sink.position = Duration::from_millis(197_000);
+        engine.tick();
+        assert_eq!(engine.sink.prepares, [track_path(2)]);
+
+        // Once per load: the decoder is already on its way.
+        engine.sink.position = Duration::from_millis(198_000);
+        engine.tick();
+        assert_eq!(engine.sink.prepares, [track_path(2)]);
+    }
+
+    #[test]
+    fn nothing_is_prepared_past_the_end_of_the_queue() {
+        let mut engine = engine_with(1);
+        engine.sink.position = Duration::from_millis(199_000);
+        engine.tick();
+        assert!(engine.sink.prepares.is_empty());
+    }
+
+    #[test]
+    fn repeat_one_prepares_nothing() {
+        let mut engine = engine_with(2);
+        engine.handle(Command::SetRepeatOne(true));
+        engine.sink.position = Duration::from_millis(199_000);
+        engine.tick();
+        assert!(
+            engine.sink.prepares.is_empty(),
+            "prepared a track the queue is not going to reach"
+        );
+    }
+
+    #[test]
+    fn each_track_prepares_its_own_successor() {
+        let mut engine = engine_with(3);
+        engine.sink.position = Duration::from_millis(199_000);
+        engine.tick();
+
+        engine.handle(Command::Next);
+        engine.sink.position = Duration::from_millis(199_000);
+        engine.tick();
+
+        assert_eq!(engine.sink.prepares, [track_path(2), track_path(3)]);
     }
 }

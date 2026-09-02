@@ -12,7 +12,9 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **Installers are unsigned.** SmartScreen warns on first run of each version.
 - **mp3 only.** The schema and `lofty` both allow flac/m4a later with no
   migration.
-- **No gapless playback.** The engine keeps the door open; nothing uses it.
+- **No gapless playback.** The join is down to roughly 10ms, not to nothing:
+  sample accuracy needs the next decoder appended to the same `rodio::Player`,
+  which costs the one-`Player`-per-track design the engine relies on.
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.

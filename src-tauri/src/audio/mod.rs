@@ -11,18 +11,11 @@ pub mod sink;
 
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use crate::error::{AppError, AppResult};
 
 pub use engine::{Command, EngineState, Event, QueueEntry};
 pub use sink::{AudioSink, RodioSink};
-
-/// How often the engine is ticked.
-///
-/// Doubles as the position event rate (4/s, enough for a smooth scrubber) and
-/// as the worst-case delay before a finished track advances the queue.
-const TICK: Duration = Duration::from_millis(250);
 
 /// Handle to the player thread.
 ///
@@ -52,7 +45,9 @@ impl Player {
         std::thread::Builder::new()
             .name("player".to_owned())
             .spawn(move || loop {
-                let events = match rx.recv_timeout(TICK) {
+                // The engine sets the interval: it is the only thing that
+                // knows how close the current track is to running out.
+                let events = match rx.recv_timeout(engine.next_tick()) {
                     Ok(command) => engine.handle(command),
                     Err(RecvTimeoutError::Timeout) => engine.tick(),
                     // Every sender is gone, so the app is shutting down.
@@ -102,6 +97,7 @@ mod tests {
     use super::*;
     use crate::model::PlaybackStatus;
     use std::sync::mpsc::channel;
+    use std::time::Duration;
 
     // `sink::SilentSink` - a sink that reports itself as loaded, so the thread
     // can be driven without an audio device. It used to be declared here as

@@ -6,7 +6,8 @@
 //! card, so that behaviour is tested against a fake implementation of this
 //! trait instead of against `rodio`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 /// Somewhere decoded audio can be sent.
@@ -17,6 +18,12 @@ pub trait AudioSink: Send {
     /// Loads `path`, replacing whatever was loaded before, and leaves it
     /// paused at position zero.
     fn load(&mut self, path: &Path) -> Result<(), String>;
+    /// Hints that `path` is about to be loaded, so the cost of opening it can
+    /// be paid before the engine is waiting on it.
+    ///
+    /// Advisory in both directions: an implementation may ignore it, and a
+    /// `load` of some other path is always correct. Never blocks.
+    fn prepare(&mut self, _path: &Path) {}
     fn play(&mut self);
     fn pause(&mut self);
     /// Unloads the current source. `position` reads zero afterwards.
@@ -39,6 +46,18 @@ pub struct RodioSink {
     /// fresh one per track is both simpler and cheap.
     player: Option<rodio::Player>,
     volume: f32,
+    /// A decoder being built ahead of time by [`AudioSink::prepare`], with the
+    /// path it was asked for. Only ever consumed by a `load` of that same
+    /// path, so a skip or a queue edit needs no invalidation of its own.
+    pending: Option<Pending>,
+}
+
+/// What `rodio::Decoder::try_from` hands back for a file.
+type PreparedDecoder = rodio::Decoder<std::io::BufReader<std::fs::File>>;
+
+struct Pending {
+    path: PathBuf,
+    decoder: Receiver<Result<PreparedDecoder, String>>,
 }
 
 impl RodioSink {
@@ -54,15 +73,59 @@ impl RodioSink {
             device,
             player: None,
             volume: 1.0,
+            pending: None,
         })
     }
 }
 
+/// Opens `path` and builds a decoder for it. All of the first-read I/O a load
+/// costs is here, which is why it is also what `prepare` runs off-thread.
+fn decode(path: &Path) -> Result<PreparedDecoder, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    rodio::Decoder::try_from(file).map_err(|e| format!("{}: cannot decode: {e}", path.display()))
+}
+
+impl RodioSink {
+    /// The prepared decoder for `path`, if that is what was prepared.
+    ///
+    /// Waits for the scratch thread rather than giving up on it: by the time a
+    /// load arrives the work is seconds old, and waiting on it is at worst the
+    /// same read this would otherwise do itself. A prefetch that failed is
+    /// discarded so the error the caller sees comes from a fresh attempt.
+    fn take_prepared(&mut self, path: &Path) -> Option<PreparedDecoder> {
+        if !self.pending.as_ref().is_some_and(|p| p.path == path) {
+            return None;
+        }
+        self.pending.take()?.decoder.recv().ok()?.ok()
+    }
+}
+
 impl AudioSink for RodioSink {
+    fn prepare(&mut self, path: &Path) {
+        if self.pending.as_ref().is_some_and(|p| p.path == path) {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let owned = path.to_path_buf();
+        // Detached: nothing joins it, and a send into a dropped receiver is
+        // how it learns the prefetch was abandoned.
+        std::thread::Builder::new()
+            .name("prefetch".to_owned())
+            .spawn(move || {
+                let _ = tx.send(decode(&owned));
+            })
+            .ok();
+        self.pending = Some(Pending {
+            path: path.to_path_buf(),
+            decoder: rx,
+        });
+    }
+
     fn load(&mut self, path: &Path) -> Result<(), String> {
-        let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let decoder = rodio::Decoder::try_from(file)
-            .map_err(|e| format!("{}: cannot decode: {e}", path.display()))?;
+        let decoder = match self.take_prepared(path) {
+            Some(decoder) => decoder,
+            None => decode(path)?,
+        };
 
         let player = rodio::Player::connect_new(self.device.mixer());
         player.pause();
@@ -88,6 +151,8 @@ impl AudioSink for RodioSink {
         // Drop, not `Player::stop`: `Drop` stops the sound and releases the
         // mixer slot in one step.
         self.player = None;
+        // Nothing is going to ask for it, and it is holding a file open.
+        self.pending = None;
     }
 
     fn set_volume(&mut self, volume: f32) {
@@ -250,10 +315,16 @@ pub struct FakeSink {
     pub exhausted: bool,
     /// Every path `load` was called with, successful or not.
     pub loads: Vec<std::path::PathBuf>,
+    /// Every path `prepare` was called with.
+    pub prepares: Vec<std::path::PathBuf>,
 }
 
 #[cfg(test)]
 impl AudioSink for FakeSink {
+    fn prepare(&mut self, path: &Path) {
+        self.prepares.push(path.to_path_buf());
+    }
+
     fn load(&mut self, path: &Path) -> Result<(), String> {
         self.loads.push(path.to_path_buf());
         if self.fail_load {

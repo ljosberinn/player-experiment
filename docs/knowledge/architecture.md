@@ -77,6 +77,13 @@ it says the library moved and the views re-ask.
 - **One `rodio::Player` per track**, dropped and recreated on load. `Drop`
   already stops the sound, so per-track is cheaper than working around append
   queue semantics.
+- **The gap between tracks is two costs, paid separately.** A tick is the only
+  thing that notices a track ran out, so `Engine::next_tick` shortens the poll
+  from 250ms to 10ms over the last second of a track; `player://position` keeps
+  its own 4/s floor, measured in playback position rather than the poll rate.
+  The load itself is prefetched - `AudioSink::prepare` opens the next file on a
+  scratch thread a few seconds out, and `load` uses the result only on an exact
+  path match, so a skip or a queue edit invalidates it by missing.
 - **A missing audio device is not fatal.** `RodioSink::open` failing installs a
   null sink behind the same interface and reports why on `player://error` —
   headless CI is exactly this case.
