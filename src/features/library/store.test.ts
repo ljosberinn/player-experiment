@@ -3,8 +3,10 @@ import type { BrowseGroup, Track, TrackQuery } from "../../ipc";
 import {
   allTrackIds,
   browseGroups,
+  INVALIDATE_DEBOUNCE_MS,
   libraryStats,
   loadColumnConfig,
+  onLibraryChanged,
   queryTracks,
   saveColumnConfig,
 } from "../../ipc";
@@ -15,6 +17,8 @@ import { PAGE_SIZE } from "./pageCache";
 import { SEARCH_DEBOUNCE_MS, useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
+  INVALIDATE_DEBOUNCE_MS: 250,
+  onLibraryChanged: vi.fn(async () => () => {}),
   countTracks: vi.fn(),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(),
@@ -1039,5 +1043,52 @@ describe("navigation history", () => {
       tab: "songs",
       playlistId: null,
     });
+  });
+});
+
+describe("reloading when the library changes underneath", () => {
+  /** Hands back the handler the store subscribed with. */
+  async function watching(): Promise<{ fire: () => void; stop: () => void }> {
+    let handler: (() => void) | undefined;
+    vi.mocked(onLibraryChanged).mockImplementation(async (h: () => void) => {
+      handler = h;
+      return () => {};
+    });
+    const stop = await useLibraryStore.getState().watch();
+    return { fire: () => handler?.(), stop };
+  }
+
+  it("reloads once for a burst, not once per event", async () => {
+    // A tag write over a selection, its undo and a scan finishing can land
+    // together, and each reload is a count plus a page.
+    vi.useFakeTimers();
+    const { fire, stop } = await watching();
+    statsMock.mockClear();
+
+    for (let i = 0; i < 20; i += 1) {
+      fire();
+    }
+    expect(statsMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(INVALIDATE_DEBOUNCE_MS);
+    expect(statsMock).toHaveBeenCalledTimes(1);
+
+    stop();
+    vi.useRealTimers();
+  });
+
+  it("drops a pending reload when it stops watching", async () => {
+    // Otherwise the reload lands after the window has gone, which in a test is
+    // a stray promise and in the app is a write to a store nothing reads.
+    vi.useFakeTimers();
+    const { fire, stop } = await watching();
+    statsMock.mockClear();
+
+    fire();
+    stop();
+    await vi.advanceTimersByTimeAsync(INVALIDATE_DEBOUNCE_MS);
+
+    expect(statsMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

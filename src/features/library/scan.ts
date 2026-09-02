@@ -2,7 +2,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 import { addWatchFolder, onScanProgress, type ScanProgress, scanLibrary } from "../../ipc";
 import { dismiss, report } from "../shell/statusStore";
-import { useLibraryStore } from "./store";
 
 /**
  * Adding folders and running scans.
@@ -62,7 +61,6 @@ export const useScanStore = create<ScanState>((set, get) => ({
     set({ busy: true });
     try {
       await scanLibrary();
-      await useLibraryStore.getState().refresh();
     } catch (cause) {
       report(cause);
     } finally {

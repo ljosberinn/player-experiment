@@ -6,6 +6,7 @@ import {
   createSmartPlaylist,
   deletePlaylist,
   type FilterGroup,
+  INVALIDATE_DEBOUNCE_MS,
   listPlaylists,
   loadSidebarSections,
   moveInPlaylist,
@@ -23,9 +24,10 @@ import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { useStatusStore } from "../shell/statusStore";
 import { emptyFilter, noOrder } from "../smart/filterTree";
-import { RECOUNT_DEBOUNCE_MS, usePlaylistsStore } from "./store";
+import { usePlaylistsStore } from "./store";
 
 vi.mock("../../ipc", () => ({
+  INVALIDATE_DEBOUNCE_MS: 250,
   listPlaylists: vi.fn(),
   createPlaylist: vi.fn(),
   createSmartPlaylist: vi.fn(),
@@ -254,7 +256,7 @@ describe("playlists store", () => {
     expect(useLibraryStore.getState().playlistId).toBe(7);
   });
 
-  it("re-asks the view when the filter behind it changes", async () => {
+  it("writes the filter and leaves the re-ask to the event", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([smartPlaylist(4, "Recent")]);
     await usePlaylistsStore.getState().load();
     vi.mocked(setPlaylistFilter).mockResolvedValue(undefined);
@@ -265,10 +267,11 @@ describe("playlists store", () => {
 
     await usePlaylistsStore.getState().saveSmart("Recent", yearIs2012, topPlayed);
 
-    // Membership is the filter, so there is nothing to recompute - only to
-    // ask again.
+    // Membership is the filter, so the view is wrong the moment it is saved -
+    // but `set_playlist_filter` announces that itself now, and reaching into
+    // the library store here would be a second way of saying it.
     expect(setPlaylistFilter).toHaveBeenCalledWith(4, yearIs2012, topPlayed);
-    expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
+    expect(useLibraryStore.getState().queryToken).toBe(before);
   });
 
   it("renames only when the name in the editor actually changed", async () => {
@@ -304,16 +307,16 @@ describe("playlists store", () => {
     expect(setPlaylistFilter).not.toHaveBeenCalled();
   });
 
-  it("refreshes the view only when the drop landed in the playlist on screen", async () => {
+  it("leaves the view alone: the drop announces itself", async () => {
+    // This used to be a guard here - "is the playlist I just wrote to the one
+    // on screen" - which every new mutation had to remember to repeat.
     vi.mocked(addToPlaylist).mockResolvedValue(1);
     await useLibraryStore.getState().showPlaylist(3);
     const before = useLibraryStore.getState().queryToken;
 
-    await usePlaylistsStore.getState().addTracks(9, [10]);
-    expect(useLibraryStore.getState().queryToken).toBe(before);
-
     await usePlaylistsStore.getState().addTracks(3, [11]);
-    expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
+
+    expect(useLibraryStore.getState().queryToken).toBe(before);
   });
 });
 
@@ -465,7 +468,7 @@ describe("recounting after the library changes", () => {
     }
     expect(listPlaylists).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(RECOUNT_DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(INVALIDATE_DEBOUNCE_MS);
     expect(listPlaylists).toHaveBeenCalledTimes(1);
 
     stop();
@@ -487,7 +490,7 @@ describe("recounting after the library changes", () => {
 
     fire?.();
     stop();
-    await vi.advanceTimersByTimeAsync(RECOUNT_DEBOUNCE_MS * 4);
+    await vi.advanceTimersByTimeAsync(INVALIDATE_DEBOUNCE_MS * 4);
 
     expect(listPlaylists).not.toHaveBeenCalled();
     vi.useRealTimers();

@@ -16,6 +16,7 @@ import { PlaylistSidebar } from "./PlaylistSidebar";
 import { usePlaylistsStore } from "./store";
 
 vi.mock("../../ipc", () => ({
+  INVALIDATE_DEBOUNCE_MS: 250,
   listPlaylists: vi.fn(),
   createPlaylist: vi.fn(),
   renamePlaylist: vi.fn(),

@@ -6,6 +6,7 @@ import {
   createSmartPlaylist,
   deletePlaylist,
   type FilterGroup,
+  INVALIDATE_DEBOUNCE_MS,
   listPlaylists,
   loadSidebarSections,
   moveInPlaylist,
@@ -34,17 +35,6 @@ import {
 
 /** The name a brand new playlist gets, the way every music player does it. */
 export const NEW_PLAYLIST_NAME = "New Playlist";
-
-/**
- * How long the sidebar waits after the library changes before recounting.
- *
- * A scan emits `library://changed` far more often than anyone can read a
- * number, and every emission would otherwise mean one `list_playlists` - which
- * is a `count_tracks` per playlist, and for a smart one that is its whole
- * compiled filter re-run. Quarter of a second is under the threshold at which
- * a number feels stale and well above the rate a scan fires at.
- */
-export const RECOUNT_DEBOUNCE_MS = 250;
 
 interface PlaylistsState {
   playlists: Playlist[];
@@ -159,7 +149,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     // collapses into one reload rather than one per emission - which is the
     // whole point. `list_playlists` counts every playlist, and for a smart one
     // that means re-running its compiled filter.
-    const recount = debounce(() => void get().load(), RECOUNT_DEBOUNCE_MS);
+    const recount = debounce(() => void get().load(), INVALIDATE_DEBOUNCE_MS);
     const off = await onLibraryChanged(recount);
     return () => {
       recount.cancel();
@@ -247,7 +237,8 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       if (editing.playlistId === null) {
         const created = await createSmartPlaylist(name, filter, order);
         set({ editing: null });
-        await get().load();
+        // Navigation, not invalidation: the new playlist has to be what is on
+        // screen, and no event can say that.
         await useLibraryStore.getState().showPlaylist(created.id);
         return;
       }
@@ -257,12 +248,6 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
         await renamePlaylist(editing.playlistId, name);
       }
       set({ editing: null });
-      await get().load();
-      // Its membership is its filter, so a changed filter is a changed view -
-      // there is nothing to recompute, only to re-ask.
-      if (useLibraryStore.getState().playlistId === editing.playlistId) {
-        await useLibraryStore.getState().refresh();
-      }
     } catch (cause) {
       // The editor stays open on a rejected filter, so the user can fix it
       // rather than losing what they built.
@@ -273,7 +258,6 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   rename: async (playlistId, name) => {
     try {
       await renamePlaylist(playlistId, name);
-      await get().load();
     } catch (cause) {
       report(cause);
     }
@@ -282,15 +266,14 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   remove: async (playlistId) => {
     try {
       await deletePlaylist(playlistId);
-      // Order matters: the view has to leave a playlist that no longer exists
-      // before the sidebar drops it, or the query runs against a dead id.
+      // Both navigation: leave a playlist that no longer exists, and stop
+      // offering it to Back. Neither is something an event can express, and
+      // both run here rather than behind a debounce so the view is never
+      // querying a dead id.
       if (useLibraryStore.getState().playlistId === playlistId) {
         await useLibraryStore.getState().showPlaylist(null);
       }
-      // Back must not offer a playlist that no longer exists. After leaving
-      // it, so the view the exit recorded survives.
       useLibraryStore.getState().forgetPlaylist(playlistId);
-      await get().load();
     } catch (cause) {
       report(cause);
     }
@@ -312,10 +295,6 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
           ? `Added ${plural(added, "song")} to ${name}; ${skipped} already there.`
           : `Added ${plural(added, "song")} to ${name}.`,
       );
-      await get().load();
-      if (useLibraryStore.getState().playlistId === playlistId) {
-        await useLibraryStore.getState().refresh();
-      }
     } catch (cause) {
       report(cause);
     }
@@ -328,9 +307,8 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     try {
       const removed = await removeFromPlaylist(playlistId, trackIds);
       notify(`Removed ${plural(removed, "song")} from ${nameOf(get().playlists, playlistId)}.`);
+      // Selection, not invalidation: the rows it names are gone.
       useLibraryStore.getState().clearSelection();
-      await get().load();
-      await useLibraryStore.getState().refresh();
     } catch (cause) {
       report(cause);
     }
@@ -342,7 +320,6 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     }
     try {
       await moveInPlaylist(playlistId, trackIds, targetIndex);
-      await useLibraryStore.getState().refresh();
     } catch (cause) {
       report(cause);
     }

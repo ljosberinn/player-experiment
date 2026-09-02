@@ -151,6 +151,18 @@ absences are what nobody notices coming back — hence the guards in
 - `features/library/store.ts` owns the view (tab, search, sort, selection,
   stats); `features/player/store.ts` owns playback; `features/shell` owns the
   window (geometry, zoom, menus, dynamic background).
+- **There is one invalidation channel.** The library and playlists stores each
+  `watch()` `library://changed` and reload their own contents, debounced by
+  `INVALIDATE_DEBOUNCE_MS`. A mutation does not reach across stores to say what
+  it invalidated — that was fifteen `useLibraryStore.getState()` calls outside
+  the library store, each with its own "is this the playlist on screen" guard,
+  and every new mutation was another chance to forget one silently. What stays
+  is navigation and selection, which no event can express: leaving a playlist
+  before it is deleted, opening a smart playlist that was just created,
+  clearing a selection whose rows are gone. Those run synchronously in the
+  action, so the debounced reload always lands after them. `create` and
+  `createFrom` also keep a direct `load()`, because the row they put into
+  inline rename has to be on screen for the input to open.
 - **There is one status channel**, `features/shell/statusStore.ts`: one
   `message` behind the error popover and one `notice` behind the content line,
   written through the free `report`, `notify` and `dismiss`. No feature store

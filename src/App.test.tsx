@@ -37,6 +37,7 @@ import {
 } from "./ipc";
 
 vi.mock("./ipc", () => ({
+  INVALIDATE_DEBOUNCE_MS: 250,
   countTracks: vi.fn(),
   // Answered rather than merely stubbed: the crash notice asks on mount, and
   // an unresolved promise there leaves an act() warning in every App test.

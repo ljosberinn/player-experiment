@@ -166,7 +166,7 @@ describe("editor store", () => {
     expect(useEditorStore.getState().tracks).toBeNull();
   });
 
-  it("writes the edit for every open track and refreshes the view", async () => {
+  it("writes the edit for every open track and leaves the re-read to the event", async () => {
     vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2)]);
     vi.mocked(writeTags).mockResolvedValue({ written: 2, failed: 0, errors: [] });
     await useEditorStore.getState().open([1, 2]);
@@ -177,7 +177,8 @@ describe("editor store", () => {
     expect(writeTags).toHaveBeenCalledWith([1, 2], edit);
     expect(useEditorStore.getState().tracks).toBeNull();
     expect(useStatusStore.getState().notice).toBe("Updated 2 songs.");
-    expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
+    // `write_tags` announces itself; the table re-reads a debounce later.
+    expect(useLibraryStore.getState().queryToken).toBe(before);
   });
 
   it("reports a partial write rather than rounding it to done", async () => {
@@ -215,14 +216,14 @@ describe("editor store", () => {
     expect(writeTags).not.toHaveBeenCalled();
   });
 
-  it("undoes and re-reads the view", async () => {
+  it("undoes, and the re-read comes from the event like any other write", async () => {
     vi.mocked(undoTagEdit).mockResolvedValue({ written: 2, failed: 0, errors: [] });
     const before = useLibraryStore.getState().queryToken;
 
     await useEditorStore.getState().undo();
 
     expect(useStatusStore.getState().notice).toBe("Reverted 2 songs.");
-    expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
+    expect(useLibraryStore.getState().queryToken).toBe(before);
   });
 
   it("surfaces having nothing to undo", async () => {
