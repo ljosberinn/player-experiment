@@ -181,6 +181,7 @@ pub fn run() {
             commands::load_window_geometry,
             commands::tracks_by_ids,
             commands::write_tags,
+            commands::stage_dropped_cover,
             commands::undo_tag_edit,
             commands::can_undo_tag_edit,
             commands::suggest_tag_values,

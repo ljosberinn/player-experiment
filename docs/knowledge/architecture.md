@@ -81,4 +81,12 @@ than a Tauri handle, so each stays testable with no running app.
 `covers(hash, mime, bytes, palette)` deduped by content hash, referenced by
 `tracks.cover_hash`. Bytes are **never** part of a row payload over IPC; they
 are served through a custom `cover://<hash>` protocol handler so the webview
-caches them. Mime types are sniffed from the bytes, not the extension.
+caches them. Mime types are sniffed from the bytes, not the extension
+(`tags::write::check_cover`, which also caps the size).
+
+A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
+whichever way it was chosen. A dropped image has no path — an HTML5 drop hands
+the page a `File` — so `stage_dropped_cover` takes the bytes as the whole invoke
+payload, checks them, and writes one fixed-name file into the cache directory,
+handing back its path. The bytes cross once, at drop time; the save re-reads and
+re-checks the file like any other.

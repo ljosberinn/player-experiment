@@ -327,6 +327,22 @@ export function writeTags(trackIds: number[], edit: TagEdit): Promise<TagWriteSu
   return invoke<TagWriteSummary>("write_tags", { trackIds, edit });
 }
 
+/**
+ * Writes a dropped image to a staging file and resolves to its path.
+ *
+ * The editor carries a replacement cover as a path, and a drop hands the page
+ * a `File` - bytes with no path anywhere - so the bytes cross once, here, and
+ * what comes back is what `CoverEdit.Replace` already knew how to carry.
+ *
+ * The buffer is the *whole* payload rather than a field of an args object,
+ * which is the only shape Tauri sends as a raw body: a `Uint8Array` inside an
+ * object is JSON-serialized as one number per byte. Rejects with the sentence
+ * to show when the bytes are not a JPEG or a PNG, or are too big.
+ */
+export function stageDroppedCover(bytes: ArrayBuffer): Promise<string> {
+  return invoke<string>("stage_dropped_cover", bytes);
+}
+
 export function undoTagEdit(): Promise<TagWriteSummary> {
   return invoke<TagWriteSummary>("undo_tag_edit");
 }

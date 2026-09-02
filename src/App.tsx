@@ -50,7 +50,7 @@ import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import { type AppInfo, getAppInfo, onLibraryChanged } from "./ipc";
+import { type AppInfo, getAppInfo, onLibraryChanged, stageDroppedCover } from "./ipc";
 
 export function App() {
   const [toolbarNotice, setToolbarNotice] = useState<string | null>(null);
@@ -527,6 +527,10 @@ export function App() {
             });
             return typeof picked === "string" ? picked : null;
           }}
+          // The bytes cross once, at drop time, and what comes back is a path -
+          // the same thing the picker gives, so the editor has one cover state
+          // rather than two.
+          onDropCover={async (file) => stageDroppedCover(await file.arrayBuffer())}
         />
       ) : null}
 
