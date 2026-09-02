@@ -7,6 +7,12 @@ import { useEditorStore } from "../editor/store";
 import { isTypingTarget } from "../player/shortcuts";
 import { nudgeTarget } from "../playlists/reorder";
 import { usePlaylistsStore } from "../playlists/store";
+import {
+  dropIndexAt,
+  edgeScrollSpeed,
+  isTrackDragging,
+  onTrackDragEnd,
+} from "../playlists/trackDrag";
 import { ColumnHeader } from "./ColumnHeader";
 import { measureColumns } from "./columnFit";
 import { resolveColumns } from "./columns";
@@ -18,6 +24,13 @@ import { useLibraryStore } from "./store";
 
 /** Rows rendered beyond the viewport, so a fast flick shows content not gaps. */
 const OVERSCAN = 12;
+/**
+ * How far in from the top and bottom of the list a drag starts scrolling it.
+ *
+ * One row: deep enough to be reachable without leaving the list, shallow
+ * enough that dropping onto the first or last visible row is still possible.
+ */
+const EDGE_SCROLL_BAND_PX = ROW_HEIGHT;
 /** How far in from a row's left edge a keyboard-opened menu is anchored. */
 const MENU_INSET = 8;
 
@@ -140,6 +153,85 @@ export function SongTable({
     [onActivate, onReorder, onRemove, onRemoveFromLibrary],
   );
 
+  /**
+   * Where the pointer is while a drag is over the list, and the frame loop
+   * scrolling towards it.
+   *
+   * Refs rather than state: the loop runs every frame and writing either of
+   * these into a render would cost the table one per frame on top of the drop
+   * index it actually has to publish.
+   */
+  const dragY = useRef<number | null>(null);
+  const scrollFrame = useRef<number | null>(null);
+
+  const stopEdgeScroll = () => {
+    if (scrollFrame.current !== null) {
+      cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+    }
+  };
+
+  /**
+   * Scrolls the list while a drag is held near its top or bottom edge.
+   *
+   * `scrollTop +=` rather than `scrollBy`, which jsdom does not implement.
+   * Off the frame delta rather than a fixed step per frame, so the speed is
+   * the same on a 60Hz panel and a 144Hz one.
+   *
+   * The drop index is recomputed here too: a stationary pointer over a
+   * scrolling virtualized list fires no `pointermove`, yet the rows under it
+   * are changing.
+   */
+  const runEdgeScroll = (previous: number) => {
+    scrollFrame.current = requestAnimationFrame((now) => {
+      const element = scrollRef.current;
+      const y = dragY.current;
+      if (element === null || y === null || !isTrackDragging()) {
+        stopEdgeScroll();
+        return;
+      }
+      const rect = element.getBoundingClientRect();
+      const speed = edgeScrollSpeed(y, rect.top, rect.bottom, EDGE_SCROLL_BAND_PX);
+      if (speed === 0) {
+        stopEdgeScroll();
+        return;
+      }
+      element.scrollTop += (speed * (now - previous)) / 1000;
+      const body = element.querySelector("tbody");
+      if (body !== null) {
+        setDropIndex(
+          dropIndexAt(
+            y - body.getBoundingClientRect().top,
+            ROW_HEIGHT,
+            useLibraryStore.getState().total,
+          ),
+        );
+      }
+      runEdgeScroll(now);
+    });
+  };
+
+  // A drag can end anywhere - a drop on the sidebar, Escape, the pointer
+  // leaving the window - and none of those reach this component as an event of
+  // its own, so the indicator and the loop would both outlive it. The same
+  // teardown serves unmount, where a running loop would hold a dead element.
+  useEffect(() => {
+    const cancel = () => {
+      if (scrollFrame.current !== null) {
+        cancelAnimationFrame(scrollFrame.current);
+        scrollFrame.current = null;
+      }
+    };
+    const unsubscribe = onTrackDragEnd(() => {
+      cancel();
+      setDropIndex(null);
+    });
+    return () => {
+      unsubscribe();
+      cancel();
+    };
+  }, []);
+
   const items = virtualizer.getVirtualItems();
   const firstIndex = items[0]?.index ?? 0;
   const lastIndex = items[items.length - 1]?.index ?? 0;
@@ -257,7 +349,26 @@ export function SongTable({
   }, [onReorder, virtualizer]);
 
   return (
-    <div className="song-body" ref={scrollRef} data-testid="song-scroll">
+    <div
+      className="song-body"
+      ref={scrollRef}
+      data-testid="song-scroll"
+      // On the scroll container rather than on the rows: the bands sit at its
+      // edges, which is where the header is at the top and empty space at the
+      // bottom, and neither of those is a row.
+      onPointerMove={(event) => {
+        if (!onReorder || !isTrackDragging()) {
+          return;
+        }
+        dragY.current = event.clientY;
+        if (scrollFrame.current === null) {
+          runEdgeScroll(performance.now());
+        }
+      }}
+      onPointerLeave={() => {
+        dragY.current = null;
+      }}
+    >
       <table className="song-table" aria-rowcount={total}>
         <thead>
           <ColumnHeader
@@ -276,7 +387,7 @@ export function SongTable({
           render={
             <tbody
               style={{ height: virtualizer.getTotalSize() }}
-              onDragLeave={() => setDropIndex(null)}
+              onPointerLeave={() => setDropIndex(null)}
             />
           }
           onOpenChange={(open) => {

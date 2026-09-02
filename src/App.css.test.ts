@@ -531,7 +531,7 @@ describe("the stylesheet", () => {
     // applies no stylesheet - and the app still passed 630 of them.
     //
     // Anything the app portals to the body has to carry its own position.
-    for (const selector of [".modal", ".modal-backdrop", ".context-positioner"]) {
+    for (const selector of [".modal", ".modal-backdrop", ".context-positioner", ".drag-badge"]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
 
       expect(rule, `${selector} should exist`).toBeDefined();
@@ -544,6 +544,17 @@ describe("the stylesheet", () => {
     const layer = (body: string | undefined) => Number(/z-index:\s*(\d+)/.exec(body ?? "")?.[1]);
 
     expect(layer(modal?.body)).toBeGreaterThan(layer(backdrop?.body));
+  });
+
+  it("keeps the drag badge out of the pointer's way", () => {
+    // Load-bearing rather than tidy. The badge follows the pointer, so without
+    // this it is the element every `pointermove` and every `pointerup` is
+    // delivered to - which is every drop target in the window swallowed at
+    // once, and a drag that can never be dropped. jsdom applies no stylesheet,
+    // so nothing in a component test would notice.
+    const badge = all.find((one) => one.selector.trim().endsWith(".drag-badge"));
+
+    expect(badge?.body).toMatch(/pointer-events:\s*none/);
   });
 
   it("highlights menu items from state rather than from :hover", () => {

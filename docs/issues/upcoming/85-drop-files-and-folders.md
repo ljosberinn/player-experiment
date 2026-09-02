@@ -1,7 +1,7 @@
 # 85 — Drop files and folders into the library
 
 Reopens [15, cut](../done/15-ingest-ergonomics-cut.md). **Tauri is not what
-changed** — [74](74-in-app-dragging-without-html5.md) is. Verified against
+changed** — [74](../done/74-in-app-dragging-without-html5.md) is. Verified against
 wry 0.55.1 under tauri 2.11.5:
 
 - `with_drag_drop_handler` is still **builder-only**. There is no

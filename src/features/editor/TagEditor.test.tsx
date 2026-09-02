@@ -313,14 +313,14 @@ describe("TagEditor", () => {
     });
   });
 
-  it("accepts a file drag and refuses a song dragged out of the table", () => {
+  it("accepts a file drag and nothing else", () => {
     open([track()]);
 
+    // The app's last HTML5 drop target, and deliberately so: a song dragged
+    // out of the table is a pointer gesture that carries no `DataTransfer` at
+    // all, so what is left to tell apart is a file from anything else.
     const file = fireEvent.dragOver(coverBlock(), {
       dataTransfer: dragPayload(["Files"]),
-    });
-    const song = fireEvent.dragOver(coverBlock(), {
-      dataTransfer: dragPayload(["application/x-player-track-ids", "Files"]),
     });
     const text = fireEvent.dragOver(coverBlock(), { dataTransfer: dragPayload(["text/plain"]) });
 
@@ -328,7 +328,6 @@ describe("TagEditor", () => {
     // on `dragover` is the whole of "this is a drop target": a drag that is
     // not accepted here never becomes a drop.
     expect(file).toBe(false);
-    expect(song).toBe(true);
     expect(text).toBe(true);
   });
 

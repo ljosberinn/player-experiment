@@ -124,8 +124,12 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 
 - The frameless window, custom title bar and drag region — the e2e build pins
   `decorations: true`, or the embedded driver never sees the webview.
-- OS-level drag gestures. This gap let a whole feature ship broken once: anything
-  depending on one needs a manual check on a real build.
+- OS-level drag gestures — a file dragged in from Explorer onto the tag editor's
+  artwork square, which is the last of them. This gap let a whole feature ship
+  broken once: anything depending on one needs a manual check on a real build.
+  Dragging *inside* the window stopped being part of it in phase 74:
+  `row-drag.test.ts` dispatches a real `PointerEvent` sequence, and the app's own
+  listeners run against it.
 - "Sound actually came out." Decoding is covered; output is manual.
 - Whether the OS delivers a media key to an unfocused window, or Shift+F10 and
   the Menu key to a focused one. The shortcut behind them is covered from a
