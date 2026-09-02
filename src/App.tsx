@@ -110,9 +110,6 @@ export function App() {
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
   const editorTracks = useEditorStore((s) => s.tracks);
-  const tagNotice = useEditorStore((s) => s.notice);
-  const dismissTagNotice = useEditorStore((s) => s.dismissNotice);
-  const tagError = useEditorStore((s) => s.error);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
   const refreshUndo = useEditorStore((s) => s.refreshUndo);
@@ -129,7 +126,6 @@ export function App() {
   const statusMessage = useStatusStore((s) => s.message);
   const dismissStatus = useStatusStore((s) => s.dismiss);
   const dismissPlayerError = usePlayerStore((s) => s.dismissError);
-  const dismissTagError = useEditorStore((s) => s.dismissError);
 
   /**
    * The one error on screen, whichever part of the app it came from.
@@ -139,11 +135,10 @@ export function App() {
    * rather than uncovering the next one, which would read as the message
    * refusing to go away.
    */
-  const problem = statusMessage ?? playerError ?? tagError ?? scanError ?? null;
+  const problem = statusMessage ?? playerError ?? scanError ?? null;
   const dismissProblem = () => {
     dismissStatus();
     dismissPlayerError();
-    dismissTagError();
     dismissScanError();
   };
 
@@ -219,7 +214,6 @@ export function App() {
 
   useNoticeExpiry(toolbarNotice, clearToolbarNotice, NOTICE_MS);
   useNoticeExpiry(notice, dismissNotice, NOTICE_MS);
-  useNoticeExpiry(tagNotice, dismissTagNotice, NOTICE_MS);
 
   useEffect(() => {
     void refreshUndo();
@@ -374,9 +368,9 @@ export function App() {
             </div>
           ) : null}
 
-          {notice || tagNotice || toolbarNotice ? (
+          {notice || toolbarNotice ? (
             <p className="content-notice" role="status">
-              {notice ?? tagNotice ?? toolbarNotice}
+              {notice ?? toolbarNotice}
             </p>
           ) : null}
 

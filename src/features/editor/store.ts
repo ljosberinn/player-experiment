@@ -10,6 +10,7 @@ import {
   writeTags,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
+import { dismiss, notify, report } from "../shell/statusStore";
 
 interface EditorState {
   /** The tracks the dialog is open on, or null when it is closed. */
@@ -24,15 +25,10 @@ interface EditorState {
    * the write moved off the IPC thread.
    */
   progress: WriteProgress | null;
-  notice: string | null;
-  error: string | null;
 
   /** Opens the editor on a selection. */
   open: (trackIds: number[]) => Promise<void>;
   close: () => void;
-  /** Clears the last error. The shell shows one at a time and dismisses it. */
-  dismissError: () => void;
-  dismissNotice: () => void;
   save: (edit: TagEdit) => Promise<void>;
   undo: () => Promise<void>;
   /** Reads whether an undo is available, for enabling the control. */
@@ -63,28 +59,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   tracks: null,
   canUndo: false,
   progress: null,
-  notice: null,
-  error: null,
 
   open: async (trackIds) => {
     if (trackIds.length === 0) {
       return;
     }
+    dismiss();
     try {
       // Fetched fresh rather than read from the page cache: the selection can
       // name rows that were evicted, and stale values would be written back.
       const tracks = await tracksByIds(trackIds);
       if (tracks.length > 0) {
-        set({ tracks, error: null });
+        set({ tracks });
       }
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
   close: () => set({ tracks: null }),
-  dismissError: () => set({ error: null }),
-  dismissNotice: () => set({ notice: null }),
 
   save: async (edit) => {
     const tracks = get().tracks;
@@ -99,13 +92,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tracks.map((track) => track.id),
         edit,
       );
-      set({ tracks: null, notice: describe("Updated", summary) });
+      set({ tracks: null });
+      notify(describe("Updated", summary));
       await get().refreshUndo();
       await useLibraryStore.getState().refresh();
     } catch (cause) {
       // The dialog stays open so a rejected edit can be corrected rather than
       // retyped.
-      set({ error: String(cause) });
+      report(cause);
     } finally {
       set({ progress: null });
     }
@@ -117,11 +111,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ progress: { done: 0, total: 0 } });
     try {
       const summary = await undoTagEdit();
-      set({ notice: describe("Reverted", summary) });
+      notify(describe("Reverted", summary));
       await get().refreshUndo();
       await useLibraryStore.getState().refresh();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     } finally {
       set({ progress: null });
     }

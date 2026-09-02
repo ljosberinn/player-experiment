@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
 import { canUndoTagEdit, onTagWriteProgress, tracksByIds, undoTagEdit, writeTags } from "../../ipc";
 import { useLibraryStore } from "../library/store";
+import { useStatusStore } from "../shell/statusStore";
 import { useEditorStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -62,10 +63,9 @@ beforeEach(() => {
     ...initialEditor,
     tracks: null,
     progress: null,
-    notice: null,
-    error: null,
   });
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
+  useStatusStore.setState({ message: null, notice: null });
   vi.mocked(canUndoTagEdit).mockResolvedValue(false);
 });
 
@@ -176,7 +176,7 @@ describe("editor store", () => {
 
     expect(writeTags).toHaveBeenCalledWith([1, 2], edit);
     expect(useEditorStore.getState().tracks).toBeNull();
-    expect(useEditorStore.getState().notice).toBe("Updated 2 songs.");
+    expect(useStatusStore.getState().notice).toBe("Updated 2 songs.");
     expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
   });
 
@@ -191,7 +191,7 @@ describe("editor store", () => {
 
     await useEditorStore.getState().save(edit);
 
-    const notice = useEditorStore.getState().notice ?? "";
+    const notice = useStatusStore.getState().notice ?? "";
     expect(notice).toContain("3 songs");
     expect(notice).toContain("2 could not be written");
     expect(notice).toContain("access denied");
@@ -206,7 +206,7 @@ describe("editor store", () => {
 
     // Closing it would make the user retype everything.
     expect(useEditorStore.getState().tracks).not.toBeNull();
-    expect(useEditorStore.getState().error).toContain("Year must be a number");
+    expect(useStatusStore.getState().message).toContain("Year must be a number");
   });
 
   it("writes nothing when the dialog is not open", async () => {
@@ -221,7 +221,7 @@ describe("editor store", () => {
 
     await useEditorStore.getState().undo();
 
-    expect(useEditorStore.getState().notice).toBe("Reverted 2 songs.");
+    expect(useStatusStore.getState().notice).toBe("Reverted 2 songs.");
     expect(useLibraryStore.getState().queryToken).toBeGreaterThan(before);
   });
 
@@ -230,15 +230,7 @@ describe("editor store", () => {
 
     await useEditorStore.getState().undo();
 
-    expect(useEditorStore.getState().error).toContain("nothing to undo");
-  });
-
-  it("dismisses the notice", () => {
-    useEditorStore.setState({ notice: "Updated 1 song." });
-
-    useEditorStore.getState().dismissNotice();
-
-    expect(useEditorStore.getState().notice).toBeNull();
+    expect(useStatusStore.getState().message).toContain("nothing to undo");
   });
 
   it("tracks whether an undo is available", async () => {
@@ -251,6 +243,6 @@ describe("editor store", () => {
     vi.mocked(canUndoTagEdit).mockRejectedValue("db is locked");
     await useEditorStore.getState().refreshUndo();
     expect(useEditorStore.getState().canUndo).toBe(false);
-    expect(useEditorStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBeNull();
   });
 });
