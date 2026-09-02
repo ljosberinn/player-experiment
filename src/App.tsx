@@ -30,12 +30,12 @@ import { usePlayerStore } from "./features/player/store";
 import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
-import { NOTICE_MS, usePlaylistsStore } from "./features/playlists/store";
+import { usePlaylistsStore } from "./features/playlists/store";
 import { AppMenus } from "./features/shell/AppMenus";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
-import { useStatusStore } from "./features/shell/statusStore";
+import { NOTICE_MS, useStatusStore } from "./features/shell/statusStore";
 import { TaskProgress } from "./features/shell/TaskProgress";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
@@ -105,9 +105,8 @@ export function App() {
   const play = usePlayerStore((s) => s.play);
 
   const playlists = usePlaylistsStore((s) => s.playlists);
-  const notice = usePlaylistsStore((s) => s.notice);
-  const playlistError = usePlaylistsStore((s) => s.error);
-  const dismissNotice = usePlaylistsStore((s) => s.dismissNotice);
+  const notice = useStatusStore((s) => s.notice);
+  const dismissNotice = useStatusStore((s) => s.dismissNotice);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
   const moveTracks = usePlaylistsStore((s) => s.moveTracks);
   const editorTracks = useEditorStore((s) => s.tracks);
@@ -130,7 +129,6 @@ export function App() {
   const statusMessage = useStatusStore((s) => s.message);
   const dismissStatus = useStatusStore((s) => s.dismiss);
   const dismissPlayerError = usePlayerStore((s) => s.dismissError);
-  const dismissPlaylistError = usePlaylistsStore((s) => s.dismissError);
   const dismissTagError = useEditorStore((s) => s.dismissError);
 
   /**
@@ -141,11 +139,10 @@ export function App() {
    * rather than uncovering the next one, which would read as the message
    * refusing to go away.
    */
-  const problem = statusMessage ?? playerError ?? playlistError ?? tagError ?? scanError ?? null;
+  const problem = statusMessage ?? playerError ?? tagError ?? scanError ?? null;
   const dismissProblem = () => {
     dismissStatus();
     dismissPlayerError();
-    dismissPlaylistError();
     dismissTagError();
     dismissScanError();
   };

@@ -153,12 +153,10 @@ beforeEach(async () => {
   usePlaylistsStore.setState({
     ...initialPlaylists,
     playlists: [],
-    notice: null,
-    error: null,
     editing: null,
     renaming: null,
   });
-  useEditorStore.setState({ ...initialEditor, tracks: null, notice: null, error: null });
+  useEditorStore.setState({ ...initialEditor, tracks: null });
   useUpdaterStore.setState({ status: "idle", version: null, error: null, update: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
   // Restated rather than left to the factory: `clearAllMocks` clears calls but

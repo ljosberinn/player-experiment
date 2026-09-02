@@ -21,6 +21,7 @@ import {
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
+import { useStatusStore } from "../shell/statusStore";
 import { emptyFilter, noOrder } from "../smart/filterTree";
 import { RECOUNT_DEBOUNCE_MS, usePlaylistsStore } from "./store";
 
@@ -70,12 +71,11 @@ beforeEach(() => {
   usePlaylistsStore.setState({
     ...initialPlaylists,
     playlists: [],
-    notice: null,
-    error: null,
     editing: null,
     renaming: null,
     collapsed: {},
   });
+  useStatusStore.setState({ message: null, notice: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
   // Restated rather than left to `clearAllMocks`, which clears the calls and
   // keeps the implementation: without this, one test's stored order leaks into
@@ -151,7 +151,7 @@ describe("playlists store", () => {
 
     await usePlaylistsStore.getState().addTracks(1, [10, 11, 12]);
 
-    expect(usePlaylistsStore.getState().notice).toBe("Added 2 songs to Evening; 1 already there.");
+    expect(useStatusStore.getState().notice).toBe("Added 2 songs to Evening; 1 already there.");
   });
 
   it("does not mention skipped tracks when nothing was skipped", async () => {
@@ -161,7 +161,7 @@ describe("playlists store", () => {
 
     await usePlaylistsStore.getState().addTracks(1, [10]);
 
-    expect(usePlaylistsStore.getState().notice).toBe("Added 1 song to Evening.");
+    expect(useStatusStore.getState().notice).toBe("Added 1 song to Evening.");
   });
 
   it("does not call the backend for an empty drop", async () => {
@@ -190,7 +190,7 @@ describe("playlists store", () => {
 
     await usePlaylistsStore.getState().rename(1, "   ");
 
-    expect(usePlaylistsStore.getState().error).toContain("A playlist needs a name.");
+    expect(useStatusStore.getState().message).toContain("A playlist needs a name.");
   });
 
   it("opens the editor on a blank filter for a new smart playlist", async () => {
@@ -294,7 +294,7 @@ describe("playlists store", () => {
 
     // Closing it would throw away everything the user built.
     expect(usePlaylistsStore.getState().editing).not.toBeNull();
-    expect(usePlaylistsStore.getState().error).toContain("does not accept");
+    expect(useStatusStore.getState().message).toContain("does not accept");
   });
 
   it("saves nothing when the editor is not open", async () => {
@@ -338,7 +338,7 @@ describe("createFrom", () => {
     // Naming it is the only thing left to do, and abandoning the rename still
     // leaves a playlist with the songs in it.
     expect(usePlaylistsStore.getState().renaming).toBe(9);
-    expect(usePlaylistsStore.getState().notice).toBe("Added 2 songs to a new playlist.");
+    expect(useStatusStore.getState().notice).toBe("Added 2 songs to a new playlist.");
   });
 
   it("does nothing when the drag carried no songs", async () => {
@@ -352,7 +352,7 @@ describe("createFrom", () => {
 
     await usePlaylistsStore.getState().createFrom([10]);
 
-    expect(usePlaylistsStore.getState().error).toContain("disk full");
+    expect(useStatusStore.getState().message).toContain("disk full");
   });
 });
 
@@ -382,7 +382,7 @@ describe("playPlaylist", () => {
     await usePlaylistsStore.getState().playPlaylist(3);
 
     expect(usePlayerStore.getState().play).not.toHaveBeenCalled();
-    expect(usePlaylistsStore.getState().notice).toBe("Evening is empty.");
+    expect(useStatusStore.getState().notice).toBe("Evening is empty.");
   });
 });
 
@@ -412,7 +412,7 @@ describe("the sidebar arrangement", () => {
     await usePlaylistsStore.getState().loadSections();
 
     expect(usePlaylistsStore.getState().collapsed).toEqual({});
-    expect(usePlaylistsStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBeNull();
   });
 
   it("folds on screen before it has been stored", async () => {
@@ -440,7 +440,7 @@ describe("the sidebar arrangement", () => {
 
     // The sidebar is folded either way; only the memory of it is lost.
     expect(usePlaylistsStore.getState().collapsed).toEqual({ smart: true });
-    expect(usePlaylistsStore.getState().error).toBeNull();
+    expect(useStatusStore.getState().message).toBeNull();
   });
 });
 
