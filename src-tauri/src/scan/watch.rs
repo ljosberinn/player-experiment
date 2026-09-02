@@ -19,6 +19,7 @@ use rusqlite::Connection;
 
 use crate::db::{settings, Db};
 use crate::error::AppResult;
+use crate::log::Log;
 use crate::model::{ScanProgress, ScanSummary};
 
 use super::ScanLock;
@@ -74,6 +75,7 @@ pub fn pass(
 pub fn spawn(
     db: Db,
     lock: ScanLock,
+    log: Log,
     mut on_progress: impl FnMut(ScanProgress) + Send + 'static,
     on_change: impl Fn() + Send + 'static,
 ) {
@@ -119,15 +121,22 @@ pub fn spawn(
                 let Some(_guard) = lock.try_acquire() else {
                     continue;
                 };
+                // A pass that changed nothing still says nothing to the
+                // window; the log is where it says so, since "the timer is
+                // running and finds nothing" and "the timer stopped" look the
+                // same from outside.
+                let op = log.op("scan.watch");
                 let summary = db
                     .conn()
                     .and_then(|mut conn| pass(&mut conn, &mut on_progress));
 
+                match &summary {
+                    Ok(summary) => op.succeeded(super::summary_fields(summary)),
+                    Err(error) => op.failed(error),
+                }
+
                 match summary {
                     Ok(summary) if summary.changed() => on_change(),
-                    // Nothing to say. A pass that changed nothing says nothing,
-                    // and one that failed has no user to tell - it belongs in
-                    // a log, which issue 86 is what gives it.
                     Ok(_) | Err(_) => {}
                 }
             }

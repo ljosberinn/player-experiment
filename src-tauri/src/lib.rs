@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod export;
 pub mod lastfm;
+pub mod log;
 pub mod model;
 pub mod palette;
 pub mod reveal;
@@ -97,14 +98,27 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let path = database_path(app.handle())?;
+            // Derived the same way `commands::crash_dir` derives it, so the
+            // three files this app writes cannot end up in three places.
+            let dir = path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_path_buf();
             // Before anything that could panic is spawned, and before the
             // database is even opened: a panic in `Db::open` is exactly the
             // kind that takes the window with it and leaves nothing behind.
-            if let Some(dir) = path.parent() {
-                crash::install(crash::log_path(dir), app.package_info().version.to_string());
-            }
+            crash::install(
+                crash::log_path(&dir),
+                app.package_info().version.to_string(),
+            );
+            let log = log::Log::to(log::log_path(&dir));
 
-            let db = Db::open(&path)?;
+            // The first line of every session, and the one that says which
+            // library the rest of them are about.
+            let db = log
+                .op("db.open")
+                .add("path", path.display())
+                .run(|| Db::open(&path))?;
             // Here rather than inside `Db::open`: which playlists a new library
             // starts with is a product decision, and the storage layer opening
             // a database should not be the thing that has an opinion about it.
@@ -118,15 +132,17 @@ pub fn run() {
                 db.clone(),
                 volume,
                 muted,
+                log.clone(),
             ));
-            normalize_covers(db.clone());
+            normalize_covers(db.clone(), log.clone());
             // One lock for everything that rewrites rows from files on disk,
             // so the unattended pass can tell whether it would be racing a
             // scan or an undo the user started.
             let lock = scan::ScanLock::default();
-            watch_library(app.handle().clone(), db.clone(), lock.clone());
+            watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
             app.manage(db);
+            app.manage(log);
             Ok(())
         })
         // Cover art is served over its own protocol rather than embedded in
@@ -237,6 +253,7 @@ pub fn run() {
             commands::last_crash,
             commands::acknowledge_crash,
             commands::reveal_crash_log,
+            commands::reveal_main_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -248,11 +265,12 @@ pub fn run() {
 /// the same progress bar a Rescan does, and a pass that changed something says
 /// so on `library://changed`. A pass that found nothing is silent on both -
 /// which is why `scan::watch` calls back rather than emitting for itself.
-fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock) {
+fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
     let progress = app.clone();
     scan::watch::spawn(
         db,
         lock,
+        log,
         move |p| {
             let _ = progress.emit(crate::commands::SCAN_PROGRESS, &p);
         },
@@ -270,15 +288,26 @@ fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock) {
 /// tag write meeting it mid-pass waits at most one chunk for the write lock -
 /// so the handle is dropped and nothing joins it. A quit part-way through
 /// resumes on the next launch.
-fn normalize_covers(db: Db) {
-    // Nothing here was asked for, so nothing here reports. A pass that fails
-    // leaves the flag unset, and the next launch picks up where it stopped.
+fn normalize_covers(db: Db, log: log::Log) {
+    // Nothing here was asked for, so nothing here reports to the window. A
+    // pass that fails leaves the flag unset, and the next launch picks up
+    // where it stopped - which is exactly the kind of thing that is invisible
+    // without a line in the log.
     let _ = std::thread::Builder::new()
         .name("cover-normalize".to_owned())
         .spawn(move || {
-            let _ = db
+            let op = log.op("covers.normalize");
+            match db
                 .conn()
-                .and_then(|mut conn| db::covers::normalize_stored(&mut conn));
+                .and_then(|mut conn| db::covers::normalize_stored(&mut conn))
+            {
+                // Every launch after the one that finished the pass. A line
+                // per launch saying there was nothing to do is noise in the
+                // file the next investigation has to read.
+                Ok(false) => {}
+                Ok(true) => op.succeeded(log::Fields::new()),
+                Err(error) => op.failed(&error),
+            }
         });
 }
 
@@ -287,7 +316,7 @@ fn normalize_covers(db: Db) {
 /// The sink is opened here so a machine with no audio device still gets a
 /// running app: playback commands then fail loudly instead of the window
 /// refusing to open. CI runners are exactly that machine.
-fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool) -> Player {
+fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool, log: log::Log) -> Player {
     // The e2e build can ask for a sink that succeeds without hardware. On the
     // runner the branch below would take the `NullSink` path, where every load
     // fails - so a test could never reach a playing row, which is exactly the
@@ -298,7 +327,7 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool) -> Play
             audio::sink::SilentSink::new(),
             volume,
             muted,
-            forward(app, db),
+            forward(app, db, log),
         );
     }
 
@@ -308,12 +337,13 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool) -> Play
             // watcher needs the same stream-error flag the sink was opened
             // with, and the channel it sends into only exists after `spawn`.
             let faulted = sink.faulted();
-            let player = Player::spawn(sink, volume, muted, forward(app, db));
+            let player = Player::spawn(sink, volume, muted, forward(app, db, log));
             player.watch_output(faulted);
             player
         }
         Err(message) => {
             let _ = app.emit("player://error", &message);
+            log.op("audio.open").failed(&message);
             // No forwarding: nothing can load, so there is no state to report.
             Player::spawn(
                 audio::sink::NullSink::new(message),
@@ -332,13 +362,14 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool) -> Play
 fn forward(
     app: tauri::AppHandle,
     db: Db,
+    log: log::Log,
 ) -> impl FnMut(&Event, &audio::EngineState) + Send + 'static {
     // Owned by this closure, which lives on the player thread, rather than
     // managed as app state: nothing else has a reason to reach it, and the two
     // events that feed it arrive here. `None` in a build with no last.fm key -
     // no thread, no channel, and nothing on the played path that was not there
     // before.
-    let scrobbler = lastfm::Scrobbler::start(db.clone(), {
+    let scrobbler = lastfm::Scrobbler::start(db.clone(), log.clone(), {
         let app = app.clone();
         Box::new(move |notice| {
             // Neither of these was asked for, so neither is an error popover.
@@ -384,8 +415,15 @@ fn forward(
             started_at,
         } => {
             // A lost play count is not worth interrupting playback for.
+            //
+            // Logged, unlike pause, seek or volume: this is the moment the
+            // library changes and the scrobbler is handed something to send,
+            // which is what makes "my play count is wrong" answerable.
             if let Ok(conn) = db.conn() {
-                let _ = playback::mark_played(&conn, *track_id, now_seconds());
+                let _ = log
+                    .op("playback.played")
+                    .add("track", track_id)
+                    .run(|| playback::mark_played(&conn, *track_id, now_seconds()));
             }
             // Handed to a thread of its own rather than sent here: this is the
             // player thread, and it is the one thread in the app that must not
@@ -398,6 +436,13 @@ fn forward(
             let _ = app.emit("player://error", message);
         }
         Event::LoadFailed(track_id) => {
+            // What the event means, rather than why: the reason the sink gave
+            // arrives as the `Event::Error` immediately after this one and
+            // goes to the user on `player://error`. Carrying it here would
+            // mean holding one event to describe the next.
+            log.op("playback.load")
+                .add("track", track_id)
+                .failed(&"the file would not open");
             // Marked here rather than waiting for the next scan: the file is
             // demonstrably not playable now, and the row's status column is
             // where the user will look for why.
@@ -406,6 +451,7 @@ fn forward(
             }
         }
         Event::Loaded(track_id) => {
+            log.note("playback.load", log::Fields::new().add("track", track_id));
             // The mirror: a file that opens is a file that is there, so a mark
             // left over from an unplugged drive is stale the moment it plays.
             //

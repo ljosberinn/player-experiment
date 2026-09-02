@@ -5,14 +5,14 @@ current frontend coverage is well above it.
 
 | Layer | Tool | What |
 | --- | --- | --- |
-| Rust unit | `cargo test` | filter → SQL compilation (incl. injection attempts, depth cap), scan diffing, playlist position math, export shape, palette extraction, panic formatting |
+| Rust unit | `cargo test` | filter → SQL compilation (incl. injection attempts, depth cap), scan diffing, playlist position math, export shape, palette extraction, panic formatting, log line format and rotation |
 | Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, undo restores prior bytes, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
 | last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
-| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, crash notice, appearance |
+| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance |
 
 Fixture mp3s are generated (silent frames, known tags) rather than committed
 audio: no encoder, no binary blobs, no licensing question. Rust generates its
@@ -48,6 +48,14 @@ npm run tauri dev
 
 The vars are read at *compile* time, so they have to be set before cargo runs,
 not before the window opens.
+
+**No unit test can see where a file actually lands.** `log::tests` proves the
+line format and the rotation against a `tempfile`, and says nothing about
+whether the running app opens `main.log` beside the library rather than in the
+developer's own app-data directory. `e2e/specs/logfile.test.ts` reads the file
+with `node:fs` after asking for a rescan through the File menu — deliberately
+not through a command, since one that answered with its own idea of the
+contents would prove nothing.
 
 **jsdom applies no stylesheet** — no layout engine, no computed colour. Three
 defects shipped past 600 green tests for exactly that reason.

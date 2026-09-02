@@ -605,18 +605,23 @@ impl Scrobbler {
     /// build and every CI run: no thread, no channel, and the caller's `Option`
     /// is what makes "no code-path change" literally true rather than merely
     /// quiet.
-    pub fn start(db: Db, on_notice: Box<dyn Fn(Notice) + Send>) -> Option<Self> {
+    pub fn start(
+        db: Db,
+        log: crate::log::Log,
+        on_notice: Box<dyn Fn(Notice) + Send>,
+    ) -> Option<Self> {
         let credentials = credentials()?;
         let transport = transport::HttpTransport::new(transport::USER_AGENT).ok()?;
-        Some(Self::spawn(Service::new(
-            db,
-            Box::new(transport),
-            credentials,
-            on_notice,
-        )))
+        Some(Self::spawn(
+            Service::new(db, Box::new(transport), credentials, on_notice),
+            log,
+        ))
     }
 
-    pub fn spawn(service: Service) -> Self {
+    /// The log is taken here rather than inside [`Service`] because this is
+    /// where a job begins and ends: the service is the domain, and every test
+    /// of it runs with no file to write to.
+    pub fn spawn(service: Service, log: crate::log::Log) -> Self {
         let (jobs, rx) = mpsc::channel::<Job>();
         std::thread::Builder::new()
             .name("scrobbler".to_owned())
@@ -625,19 +630,28 @@ impl Scrobbler {
                 // down.
                 while let Ok(job) = rx.recv() {
                     // Nothing here was asked for by the user, so nothing here
-                    // reports. The one consequence that matters - a dead
-                    // session key being forgotten - is applied inside the
-                    // service and reaches the window on its own channel.
+                    // reports to the window. The one consequence that matters
+                    // - a dead session key being forgotten - is applied inside
+                    // the service and reaches it on its own channel. The rest
+                    // is exactly the work that used to leave no trace at all:
+                    // a scrobble that never arrived looked the same as one
+                    // that did.
                     let _ = match job {
                         Job::NowPlaying {
                             track_id,
                             started_at,
-                        } => service.now_playing(track_id, started_at),
+                        } => log
+                            .op("lastfm.now_playing")
+                            .add("track", track_id)
+                            .run(|| service.now_playing(track_id, started_at)),
                         Job::Played {
                             track_id,
                             started_at,
-                        } => service.played(track_id, started_at),
-                        Job::Flush => service.flush(),
+                        } => log
+                            .op("lastfm.scrobble")
+                            .add("track", track_id)
+                            .run(|| service.played(track_id, started_at)),
+                        Job::Flush => log.op("lastfm.flush").run(|| service.flush()),
                     };
                 }
             })

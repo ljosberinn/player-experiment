@@ -11,10 +11,11 @@ use crate::audio::{Command, Player};
 use crate::db::{playback, playlists, query, settings, tag_values, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
+use crate::log::{Fields, Log, Op};
 use crate::model::{
-    AppInfo, BrowseGroup, BrowseKind, CrashReport, FilterGroup, LastfmConnection, LastfmStatus,
-    LibraryStats, PlayerSnapshot, Playlist, ScanSummary, SmartOrder, TagEdit, TagValueField,
-    TagWriteSummary, Track, TrackQuery,
+    AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, FilterGroup, LastfmConnection,
+    LastfmStatus, LibraryStats, PlayerSnapshot, Playlist, ScanSummary, SmartOrder, TagEdit,
+    TagValueField, TagWriteSummary, Track, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags};
@@ -35,15 +36,43 @@ pub(crate) const SCAN_PROGRESS: &str = "scan://progress";
 /// thing two stores have to agree on.
 pub(crate) const LIBRARY_CHANGED: &str = "library://changed";
 
-/// Runs a write and announces it, so no caller has to remember to.
+/// Runs a write, writes it down, and announces it, so no caller has to
+/// remember to do any of the three.
 ///
-/// Only on success: a rejected filter or a name collision changed nothing, and
-/// telling every view to re-query over it is work for no reason. A dropped
-/// event is not worth failing a write that has already committed.
-fn announcing<T>(app: &tauri::AppHandle, write: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
-    let done = write()?;
+/// Announced only on success: a rejected filter or a name collision changed
+/// nothing, and telling every view to re-query over it is work for no reason.
+/// A dropped event is not worth failing a write that has already committed.
+/// The log line goes out either way - a write that failed is the one somebody
+/// will be looking for.
+fn announcing<T>(
+    app: &tauri::AppHandle,
+    op: Op,
+    write: impl FnOnce() -> AppResult<T>,
+) -> AppResult<T> {
+    let done = op.run(write)?;
     let _ = app.emit(LIBRARY_CHANGED, ());
     Ok(done)
+}
+
+/// [`announcing`], for a write whose counts only its result knows.
+fn announcing_with<T>(
+    app: &tauri::AppHandle,
+    op: Op,
+    write: impl FnOnce() -> AppResult<T>,
+    fields: impl FnOnce(&T) -> Fields,
+) -> AppResult<T> {
+    let done = op.run_with(write, fields)?;
+    let _ = app.emit(LIBRARY_CHANGED, ());
+    Ok(done)
+}
+
+/// The line this command leaves behind in `main.log`.
+///
+/// Reached through the app handle rather than taken as a parameter, because
+/// every command that announces already holds one. A read has nothing to
+/// announce, so it takes the log itself.
+fn op(app: &tauri::AppHandle, name: &'static str) -> Op {
+    app.state::<Log>().op(name)
 }
 
 /// Runs `work` off the async runtime, naming the task if the thread dies.
@@ -75,18 +104,22 @@ pub fn get_app_info() -> AppResult<AppInfo> {
 }
 
 #[tauri::command]
-pub fn add_watch_folder(db: State<'_, Db>, path: String) -> AppResult<()> {
-    let conn = db.conn()?;
-    scan::add_watch_folder(&conn, &PathBuf::from(path))
+pub fn add_watch_folder(log: State<'_, Log>, db: State<'_, Db>, path: String) -> AppResult<()> {
+    log.op("watch.add").add("path", &path).run(|| {
+        let conn = db.conn()?;
+        scan::add_watch_folder(&conn, &PathBuf::from(path))
+    })
 }
 
 #[tauri::command]
-pub fn list_watch_folders(db: State<'_, Db>) -> AppResult<Vec<String>> {
-    let conn = db.conn()?;
-    Ok(scan::watch_folders(&conn)?
-        .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect())
+pub fn list_watch_folders(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Vec<String>> {
+    log.op("watch.list").quiet().run(|| {
+        let conn = db.conn()?;
+        Ok(scan::watch_folders(&conn)?
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect())
+    })
 }
 
 /// Stops watching a folder. The songs already in the library stay.
@@ -94,9 +127,11 @@ pub fn list_watch_folders(db: State<'_, Db>) -> AppResult<Vec<String>> {
 /// No `library://changed`: the list this changes is the one in Settings, and
 /// the tracks are exactly as they were until a pass does not find them.
 #[tauri::command]
-pub fn remove_watch_folder(db: State<'_, Db>, path: String) -> AppResult<()> {
-    let conn = db.conn()?;
-    scan::remove_watch_folder(&conn, &PathBuf::from(path))
+pub fn remove_watch_folder(log: State<'_, Log>, db: State<'_, Db>, path: String) -> AppResult<()> {
+    log.op("watch.remove").add("path", &path).run(|| {
+        let conn = db.conn()?;
+        scan::remove_watch_folder(&conn, &PathBuf::from(path))
+    })
 }
 
 /// Runs a scan on a worker thread, streaming `scan://progress` as it goes.
@@ -117,26 +152,39 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
         // Announced once at the end rather than per file: `scan://progress`
         // already drives the bar, and a ping per file would put one re-query
         // per file behind it.
-        announcing(&app, || {
-            scan::scan(&mut conn, |progress| {
-                // A dropped progress event is not worth failing a scan over.
-                let _ = app.emit(SCAN_PROGRESS, &progress);
-            })
-        })
+        announcing_with(
+            &app,
+            op(&app, "scan"),
+            || {
+                scan::scan(&mut conn, |progress| {
+                    // A dropped progress event is not worth failing a scan over.
+                    let _ = app.emit(SCAN_PROGRESS, &progress);
+                })
+            },
+            scan::summary_fields,
+        )
     })
     .await
 }
 
 #[tauri::command]
-pub fn query_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<Vec<Track>> {
-    let conn = db.conn()?;
-    query::query_tracks(&conn, &query)
+pub fn query_tracks(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    query: TrackQuery,
+) -> AppResult<Vec<Track>> {
+    log.op("tracks.query").quiet().run(|| {
+        let conn = db.conn()?;
+        query::query_tracks(&conn, &query)
+    })
 }
 
 #[tauri::command]
-pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
-    let conn = db.conn()?;
-    query::count_tracks(&conn, &query)
+pub fn count_tracks(log: State<'_, Log>, db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
+    log.op("tracks.count").quiet().run(|| {
+        let conn = db.conn()?;
+        query::count_tracks(&conn, &query)
+    })
 }
 
 /// Count, total duration and total size for the current view.
@@ -153,8 +201,15 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
 /// No tombstones: see `scan::remove_missing`.
 #[tauri::command]
 pub fn remove_missing_tracks(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<u32> {
-    let conn = db.conn()?;
-    announcing(&app, || scan::remove_missing(&conn))
+    announcing_with(
+        &app,
+        op(&app, "tracks.remove_missing"),
+        || {
+            let conn = db.conn()?;
+            scan::remove_missing(&conn)
+        },
+        |removed| Fields::new().add("removed", removed),
+    )
 }
 
 /// Deletes the named rows and tombstones their paths, leaving the files alone.
@@ -168,8 +223,15 @@ pub fn remove_tracks(
     db: State<'_, Db>,
     track_ids: Vec<i64>,
 ) -> AppResult<u32> {
-    let mut conn = db.conn()?;
-    announcing(&app, || scan::remove_tracks(&mut conn, &track_ids))
+    announcing_with(
+        &app,
+        op(&app, "tracks.remove").add("tracks", track_ids.len()),
+        || {
+            let mut conn = db.conn()?;
+            scan::remove_tracks(&mut conn, &track_ids)
+        },
+        |removed| Fields::new().add("removed", removed),
+    )
 }
 
 /// Drops every tombstone, so the next scan finds those files again.
@@ -179,14 +241,27 @@ pub fn remove_tracks(
 /// offering itself once there is nothing left to forget.
 #[tauri::command]
 pub fn forget_removed_tracks(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<u32> {
-    let conn = db.conn()?;
-    announcing(&app, || scan::forget_removed(&conn))
+    announcing_with(
+        &app,
+        op(&app, "tracks.forget_removed"),
+        || {
+            let conn = db.conn()?;
+            scan::forget_removed(&conn)
+        },
+        |forgotten| Fields::new().add("forgotten", forgotten),
+    )
 }
 
 #[tauri::command]
-pub fn library_stats(db: State<'_, Db>, query: TrackQuery) -> AppResult<LibraryStats> {
-    let conn = db.conn()?;
-    query::library_stats(&conn, &query)
+pub fn library_stats(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    query: TrackQuery,
+) -> AppResult<LibraryStats> {
+    log.op("tracks.stats").quiet().run(|| {
+        let conn = db.conn()?;
+        query::library_stats(&conn, &query)
+    })
 }
 
 /// The albums, artists or genres inside the current view.
@@ -196,25 +271,36 @@ pub fn library_stats(db: State<'_, Db>, query: TrackQuery) -> AppResult<LibraryS
 /// a property of the open tab rather than of the query.
 #[tauri::command]
 pub fn browse_groups(
+    log: State<'_, Log>,
     db: State<'_, Db>,
     query: TrackQuery,
     kind: BrowseKind,
 ) -> AppResult<Vec<BrowseGroup>> {
-    let conn = db.conn()?;
-    query::browse_groups(&conn, &query, kind)
+    log.op("tracks.browse").quiet().run(|| {
+        let conn = db.conn()?;
+        query::browse_groups(&conn, &query, kind)
+    })
 }
 
 /// Ids of every track matching `query`, for "select all".
 #[tauri::command]
-pub fn all_track_ids(db: State<'_, Db>, query: TrackQuery) -> AppResult<Vec<i64>> {
-    let conn = db.conn()?;
-    query::all_track_ids(&conn, &query)
+pub fn all_track_ids(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    query: TrackQuery,
+) -> AppResult<Vec<i64>> {
+    log.op("tracks.all_ids").quiet().run(|| {
+        let conn = db.conn()?;
+        query::all_track_ids(&conn, &query)
+    })
 }
 
 #[tauri::command]
-pub fn list_playlists(db: State<'_, Db>) -> AppResult<Vec<Playlist>> {
-    let conn = db.conn()?;
-    playlists::list(&conn)
+pub fn list_playlists(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Vec<Playlist>> {
+    log.op("playlist.list").quiet().run(|| {
+        let conn = db.conn()?;
+        playlists::list(&conn)
+    })
 }
 
 #[tauri::command]
@@ -223,8 +309,8 @@ pub fn create_playlist(
     db: State<'_, Db>,
     name: String,
 ) -> AppResult<Playlist> {
-    let conn = db.conn()?;
-    announcing(&app, || {
+    announcing(&app, op(&app, "playlist.create"), || {
+        let conn = db.conn()?;
         playlists::create(&conn, &name, crate::now_seconds())
     })
 }
@@ -239,8 +325,8 @@ pub fn create_smart_playlist(
     filter: FilterGroup,
     order: SmartOrder,
 ) -> AppResult<Playlist> {
-    let conn = db.conn()?;
-    announcing(&app, || {
+    announcing(&app, op(&app, "playlist.create_smart"), || {
+        let conn = db.conn()?;
         playlists::create_smart(&conn, &name, &filter, &order, crate::now_seconds())
     })
 }
@@ -253,25 +339,41 @@ pub fn set_playlist_filter(
     filter: FilterGroup,
     order: SmartOrder,
 ) -> AppResult<()> {
-    let conn = db.conn()?;
-    announcing(&app, || {
-        playlists::set_smart(&conn, playlist_id, &filter, &order, crate::now_seconds())
-    })
+    announcing(
+        &app,
+        op(&app, "playlist.set_filter").add("id", playlist_id),
+        || {
+            let conn = db.conn()?;
+            playlists::set_smart(&conn, playlist_id, &filter, &order, crate::now_seconds())
+        },
+    )
 }
 
 /// The stored filter, for the editor to open.
 #[tauri::command]
-pub fn playlist_filter(db: State<'_, Db>, playlist_id: i64) -> AppResult<Option<FilterGroup>> {
-    let conn = db.conn()?;
-    playlists::filter(&conn, playlist_id)
+pub fn playlist_filter(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    playlist_id: i64,
+) -> AppResult<Option<FilterGroup>> {
+    log.op("playlist.filter").quiet().run(|| {
+        let conn = db.conn()?;
+        playlists::filter(&conn, playlist_id)
+    })
 }
 
 /// The stored order and cutoff, for the editor to open and for the songs table
 /// to know which column a playlist should arrive sorted by.
 #[tauri::command]
-pub fn playlist_order(db: State<'_, Db>, playlist_id: i64) -> AppResult<SmartOrder> {
-    let conn = db.conn()?;
-    playlists::order(&conn, playlist_id)
+pub fn playlist_order(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    playlist_id: i64,
+) -> AppResult<SmartOrder> {
+    log.op("playlist.order").quiet().run(|| {
+        let conn = db.conn()?;
+        playlists::order(&conn, playlist_id)
+    })
 }
 
 #[tauri::command]
@@ -281,8 +383,14 @@ pub fn rename_playlist(
     playlist_id: i64,
     name: String,
 ) -> AppResult<()> {
-    let conn = db.conn()?;
-    announcing(&app, || playlists::rename(&conn, playlist_id, &name))
+    announcing(
+        &app,
+        op(&app, "playlist.rename").add("id", playlist_id),
+        || {
+            let conn = db.conn()?;
+            playlists::rename(&conn, playlist_id, &name)
+        },
+    )
 }
 
 #[tauri::command]
@@ -291,8 +399,14 @@ pub fn delete_playlist(
     db: State<'_, Db>,
     playlist_id: i64,
 ) -> AppResult<()> {
-    let conn = db.conn()?;
-    announcing(&app, || playlists::delete(&conn, playlist_id))
+    announcing(
+        &app,
+        op(&app, "playlist.delete").add("id", playlist_id),
+        || {
+            let conn = db.conn()?;
+            playlists::delete(&conn, playlist_id)
+        },
+    )
 }
 
 /// Appends tracks to a playlist, returning how many were actually added.
@@ -307,10 +421,17 @@ pub fn add_to_playlist(
     playlist_id: i64,
     track_ids: Vec<i64>,
 ) -> AppResult<u32> {
-    let mut conn = db.conn()?;
-    announcing(&app, || {
-        playlists::add_tracks(&mut conn, playlist_id, &track_ids)
-    })
+    announcing_with(
+        &app,
+        op(&app, "playlist.add")
+            .add("id", playlist_id)
+            .add("tracks", track_ids.len()),
+        || {
+            let mut conn = db.conn()?;
+            playlists::add_tracks(&mut conn, playlist_id, &track_ids)
+        },
+        |added| Fields::new().add("added", added),
+    )
 }
 
 #[tauri::command]
@@ -320,10 +441,17 @@ pub fn remove_from_playlist(
     playlist_id: i64,
     track_ids: Vec<i64>,
 ) -> AppResult<u32> {
-    let mut conn = db.conn()?;
-    announcing(&app, || {
-        playlists::remove_tracks(&mut conn, playlist_id, &track_ids)
-    })
+    announcing_with(
+        &app,
+        op(&app, "playlist.remove")
+            .add("id", playlist_id)
+            .add("tracks", track_ids.len()),
+        || {
+            let mut conn = db.conn()?;
+            playlists::remove_tracks(&mut conn, playlist_id, &track_ids)
+        },
+        |removed| Fields::new().add("removed", removed),
+    )
 }
 
 /// Moves tracks so they sit immediately before the row at `target_index`.
@@ -335,10 +463,16 @@ pub fn move_in_playlist(
     track_ids: Vec<i64>,
     target_index: u32,
 ) -> AppResult<()> {
-    let mut conn = db.conn()?;
-    announcing(&app, || {
-        playlists::move_tracks(&mut conn, playlist_id, &track_ids, target_index as usize)
-    })
+    announcing(
+        &app,
+        op(&app, "playlist.move")
+            .add("id", playlist_id)
+            .add("tracks", track_ids.len()),
+        || {
+            let mut conn = db.conn()?;
+            playlists::move_tracks(&mut conn, playlist_id, &track_ids, target_index as usize)
+        },
+    )
 }
 
 /// The rows behind a selection, so the editor can show what they hold.
@@ -346,9 +480,15 @@ pub fn move_in_playlist(
 /// Ids rather than a query: the selection survives scrolling, and the rows it
 /// names may have been evicted from the frontend's page cache.
 #[tauri::command]
-pub fn tracks_by_ids(db: State<'_, Db>, track_ids: Vec<i64>) -> AppResult<Vec<Track>> {
-    let conn = db.conn()?;
-    playback::tracks_by_ids(&conn, &track_ids)
+pub fn tracks_by_ids(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    track_ids: Vec<i64>,
+) -> AppResult<Vec<Track>> {
+    log.op("tracks.by_ids").quiet().run(|| {
+        let conn = db.conn()?;
+        playback::tracks_by_ids(&conn, &track_ids)
+    })
 }
 
 /// Applies one edit to every track named, reporting what it managed.
@@ -362,18 +502,42 @@ pub async fn write_tags(
     track_ids: Vec<i64>,
     edit: TagEdit,
 ) -> AppResult<TagWriteSummary> {
+    // Started before the work moves onto the worker, so `ms=` covers the whole
+    // batch rather than the part of it after the thread started.
+    let op = op(&app, "tags.write").add("tracks", track_ids.len());
+    let op = match &edit.cover {
+        Some(CoverEdit::Remove) => op.add("cover", "removed"),
+        Some(CoverEdit::Replace { .. }) => op.add("cover", "replaced"),
+        None => op,
+    };
+
     blocking("tag write", move || {
         let db = app.state::<Db>();
         let mut conn = db.conn()?;
         // Once, when the batch returns. `TAG_PROGRESS` stays per track.
-        announcing(&app, || {
-            tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds(), |p| {
-                // A dropped progress event is not worth failing a write over.
-                let _ = app.emit(TAG_PROGRESS, &p);
-            })
-        })
+        announcing_with(
+            &app,
+            op,
+            || {
+                tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds(), |p| {
+                    // A dropped progress event is not worth failing a write over.
+                    let _ = app.emit(TAG_PROGRESS, &p);
+                })
+            },
+            written_fields,
+        )
     })
     .await
+}
+
+/// What a tag write or its undo managed, for the log.
+///
+/// `failed` is always written, zero included: "17 written" and "17 written, 3
+/// refused" are different outcomes and the line has to distinguish them.
+fn written_fields(summary: &TagWriteSummary) -> Fields {
+    Fields::new()
+        .add("written", summary.written)
+        .add("failed", summary.failed)
 }
 
 /// The staged cover's file name, minus the extension the sniff decides.
@@ -411,12 +575,14 @@ pub fn stage_dropped_cover(
     app: tauri::AppHandle,
     request: tauri::ipc::Request<'_>,
 ) -> AppResult<String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err(crate::error::AppError::Internal(
-            "A dropped image has to arrive as raw bytes.".to_owned(),
-        ));
-    };
-    stage_cover(&staging_dir(&app)?, bytes)
+    op(&app, "cover.stage_dropped").run(|| {
+        let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+            return Err(crate::error::AppError::Internal(
+                "A dropped image has to arrive as raw bytes.".to_owned(),
+            ));
+        };
+        stage_cover(&staging_dir(&app)?, bytes)
+    })
 }
 
 /// Copies a picked image into the same staging file, and hands back its path.
@@ -427,8 +593,10 @@ pub fn stage_dropped_cover(
 /// image refused while the dialog is open rather than at save time.
 #[tauri::command]
 pub fn stage_picked_cover(app: tauri::AppHandle, path: String) -> AppResult<String> {
-    let bytes = std::fs::read(&path).map_err(|e| crate::error::AppError::io(&path, e))?;
-    stage_cover(&staging_dir(&app)?, &bytes)
+    op(&app, "cover.stage_picked").add("path", &path).run(|| {
+        let bytes = std::fs::read(&path).map_err(|e| crate::error::AppError::io(&path, e))?;
+        stage_cover(&staging_dir(&app)?, &bytes)
+    })
 }
 
 /// The staged image, for the `cover://staged` route: its mime and its bytes.
@@ -493,19 +661,26 @@ pub async fn undo_tag_edit(app: tauri::AppHandle) -> AppResult<TagWriteSummary> 
         let lock = app.state::<ScanLock>();
         let _guard = lock.acquire();
         let mut conn = db.conn()?;
-        announcing(&app, || {
-            tags::write::undo_last(&mut conn, |p| {
-                let _ = app.emit(TAG_PROGRESS, &p);
-            })
-        })
+        announcing_with(
+            &app,
+            op(&app, "tags.undo"),
+            || {
+                tags::write::undo_last(&mut conn, |p| {
+                    let _ = app.emit(TAG_PROGRESS, &p);
+                })
+            },
+            written_fields,
+        )
     })
     .await
 }
 
 #[tauri::command]
-pub fn can_undo_tag_edit(db: State<'_, Db>) -> AppResult<bool> {
-    let conn = db.conn()?;
-    tags::write::can_undo(&conn)
+pub fn can_undo_tag_edit(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<bool> {
+    log.op("tags.can_undo").quiet().run(|| {
+        let conn = db.conn()?;
+        tags::write::can_undo(&conn)
+    })
 }
 
 /// Values already in the library for `field`, best match first.
@@ -515,12 +690,15 @@ pub fn can_undo_tag_edit(db: State<'_, Db>) -> AppResult<bool> {
 /// 50k-track library over IPC on the chance that someone types.
 #[tauri::command]
 pub fn suggest_tag_values(
+    log: State<'_, Log>,
     db: State<'_, Db>,
     field: TagValueField,
     query: String,
 ) -> AppResult<Vec<String>> {
-    let conn = db.conn()?;
-    tag_values::suggest(&conn, field, &query, tag_values::SUGGESTION_LIMIT)
+    log.op("tags.suggest").quiet().run(|| {
+        let conn = db.conn()?;
+        tag_values::suggest(&conn, field, &query, tag_values::SUGGESTION_LIMIT)
+    })
 }
 
 /// Writes an export to `path`, returning how many tracks it holds.
@@ -537,16 +715,23 @@ pub async fn export_library(
     path: String,
     scope: ExportScope,
 ) -> AppResult<u32> {
+    let op = op(&app, "export").add("path", &path);
+
     blocking("export", move || {
-        let db = app.state::<Db>();
-        let conn = db.conn()?;
-        let document = export::build(&conn, &scope, crate::now_seconds(), |p| {
-            let _ = app.emit(EXPORT_PROGRESS, &p);
-        })?;
-        let count = document.tracks.len() as u32;
-        std::fs::write(&path, export::to_json(&document)?)
-            .map_err(|e| crate::error::AppError::io(&path, e))?;
-        Ok(count)
+        op.run_with(
+            || {
+                let db = app.state::<Db>();
+                let conn = db.conn()?;
+                let document = export::build(&conn, &scope, crate::now_seconds(), |p| {
+                    let _ = app.emit(EXPORT_PROGRESS, &p);
+                })?;
+                let count = document.tracks.len() as u32;
+                std::fs::write(&path, export::to_json(&document)?)
+                    .map_err(|e| crate::error::AppError::io(&path, e))?;
+                Ok(count)
+            },
+            |count| Fields::new().add("tracks", count),
+        )
     })
     .await
 }
@@ -556,15 +741,20 @@ pub async fn export_library(
 /// Takes a track id rather than a path so the frontend never has to hold a
 /// path it might act on; the row it has is enough.
 #[tauri::command]
-pub fn reveal_track(db: State<'_, Db>, track_id: i64) -> AppResult<()> {
-    let conn = db.conn()?;
-    let track = playback::tracks_by_ids(&conn, &[track_id])?
-        .into_iter()
-        .next()
-        .ok_or_else(|| {
-            crate::error::AppError::NotFound("That song is not in the library.".into())
-        })?;
-    crate::reveal::reveal(std::path::Path::new(&track.path))
+pub fn reveal_track(log: State<'_, Log>, db: State<'_, Db>, track_id: i64) -> AppResult<()> {
+    log.op("reveal.track")
+        .add("track", track_id)
+        .quiet()
+        .run(|| {
+            let conn = db.conn()?;
+            let track = playback::tracks_by_ids(&conn, &[track_id])?
+                .into_iter()
+                .next()
+                .ok_or_else(|| {
+                    crate::error::AppError::NotFound("That song is not in the library.".into())
+                })?;
+            crate::reveal::reveal(std::path::Path::new(&track.path))
+        })
 }
 
 /// Remembers where the window is, so the next launch opens there.
@@ -825,12 +1015,14 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
 /// stored fact, and asking last.fm on every launch would make a local player
 /// talk to a server before the user has done anything.
 #[tauri::command]
-pub fn lastfm_status(db: State<'_, Db>) -> AppResult<LastfmStatus> {
-    let conn = db.conn()?;
-    Ok(LastfmStatus {
-        configured: lastfm::credentials().is_some(),
-        username: lastfm::auth::stored_session(&conn)?.map(|session| session.username),
-        queued: lastfm::queue::depth(&conn)?,
+pub fn lastfm_status(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<LastfmStatus> {
+    log.op("lastfm.status").quiet().run(|| {
+        let conn = db.conn()?;
+        Ok(LastfmStatus {
+            configured: lastfm::credentials().is_some(),
+            username: lastfm::auth::stored_session(&conn)?.map(|session| session.username),
+            queued: lastfm::queue::depth(&conn)?,
+        })
     })
 }
 
@@ -858,13 +1050,17 @@ fn lastfm_ready() -> AppResult<(
 /// is typed on last.fm's own page, in the user's own browser, which is why
 /// this flow was chosen over the one that would have asked for it in-app.
 #[tauri::command]
-pub async fn lastfm_begin_connect() -> AppResult<LastfmConnection> {
+pub async fn lastfm_begin_connect(app: tauri::AppHandle) -> AppResult<LastfmConnection> {
+    let op = op(&app, "lastfm.begin_connect");
+
     blocking("last.fm connect", move || {
-        let (transport, credentials) = lastfm_ready()?;
-        let token = lastfm::auth::request_token(transport, &credentials)?;
-        Ok(LastfmConnection {
-            authorize_url: lastfm::auth::authorize_url(credentials.api_key, &token),
-            token,
+        op.run(|| {
+            let (transport, credentials) = lastfm_ready()?;
+            let token = lastfm::auth::request_token(transport, &credentials)?;
+            Ok(LastfmConnection {
+                authorize_url: lastfm::auth::authorize_url(credentials.api_key, &token),
+                token,
+            })
         })
     })
     .await
@@ -880,16 +1076,30 @@ pub async fn lastfm_complete_connect(
     app: tauri::AppHandle,
     token: String,
 ) -> AppResult<Option<String>> {
+    let op = op(&app, "lastfm.connect");
+
     blocking("last.fm connect", move || {
-        let (transport, credentials) = lastfm_ready()?;
-        match lastfm::auth::poll_session(transport, &credentials, &token)? {
-            lastfm::auth::Poll::NotYet => Ok(None),
-            lastfm::auth::Poll::Authorized(session) => {
-                let conn = app.state::<Db>().conn()?;
-                lastfm::auth::store_session(&conn, &session)?;
-                Ok(Some(session.username))
+        let outcome = (|| {
+            let (transport, credentials) = lastfm_ready()?;
+            match lastfm::auth::poll_session(transport, &credentials, &token)? {
+                lastfm::auth::Poll::NotYet => Ok(None),
+                lastfm::auth::Poll::Authorized(session) => {
+                    let conn = app.state::<Db>().conn()?;
+                    lastfm::auth::store_session(&conn, &session)?;
+                    Ok(Some(session.username))
+                }
             }
+        })();
+
+        match &outcome {
+            // The frontend polls this until the user has finished in the
+            // browser. A line per poll would bury the one that says an account
+            // actually arrived.
+            Ok(None) => {}
+            Ok(Some(username)) => op.succeeded(Fields::new().add("user", username)),
+            Err(error) => op.failed(error),
         }
+        outcome
     })
     .await
 }
@@ -900,9 +1110,11 @@ pub async fn lastfm_complete_connect(
 /// so the honest thing is to stop using it and say where the user can revoke it
 /// properly. Nothing is sent.
 #[tauri::command]
-pub fn lastfm_disconnect(db: State<'_, Db>) -> AppResult<()> {
-    let conn = db.conn()?;
-    lastfm::auth::forget_session(&conn)
+pub fn lastfm_disconnect(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<()> {
+    log.op("lastfm.disconnect").run(|| {
+        let conn = db.conn()?;
+        lastfm::auth::forget_session(&conn)
+    })
 }
 
 /// The panic the previous run wrote down, if the user has not seen it yet.
@@ -911,8 +1123,13 @@ pub fn lastfm_disconnect(db: State<'_, Db>) -> AppResult<()> {
 /// one fact in one place: the notice is shown once per crash, not at every
 /// launch after one.
 #[tauri::command]
-pub fn last_crash(db: State<'_, Db>) -> AppResult<Option<CrashReport>> {
-    let path = crash::log_path(crash_dir(&db));
+pub fn last_crash(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Option<CrashReport>> {
+    log.op("crash.last").quiet().run(|| last_crash_report(&db))
+}
+
+/// Split out so the command above is its log wrapper and nothing else.
+fn last_crash_report(db: &Db) -> AppResult<Option<CrashReport>> {
+    let path = crash::log_path(crash_dir(db));
     let Some(report) = crash::latest(&path) else {
         return Ok(None);
     };
@@ -977,6 +1194,17 @@ pub fn acknowledge_crash(db: State<'_, Db>, when: i64) -> AppResult<()> {
 #[tauri::command]
 pub fn reveal_crash_log(db: State<'_, Db>) -> AppResult<()> {
     crate::reveal::reveal(&crash::log_path(crash_dir(&db)))
+}
+
+/// Opens the file manager with `main.log` selected.
+///
+/// Beside `reveal_crash_log`, and for the same reason it reveals rather than
+/// renders: the file is megabytes of lines meant to be read in an editor or
+/// sent to somebody, not paged through in a dialog. A log nobody can find is
+/// not one.
+#[tauri::command]
+pub fn reveal_main_log(log: State<'_, Log>) -> AppResult<()> {
+    crate::reveal::reveal(log.path())
 }
 
 /// Where the crash log lives: beside the database, whatever directory that is.

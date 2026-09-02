@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { revealMainLog } from "../../ipc";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { SettingsDialog } from "./SettingsDialog";
+import { useStatusStore } from "./statusStore";
 
 vi.mock("../../ipc", () => ({
   loadDynamicBackground: vi.fn(async () => true),
@@ -13,6 +15,7 @@ vi.mock("../../ipc", () => ({
   loadWatchInterval: vi.fn(async () => 15),
   removeWatchFolder: vi.fn(async () => undefined),
   saveWatchInterval: vi.fn(async () => undefined),
+  revealMainLog: vi.fn(async () => undefined),
 }));
 
 function checkbox(): HTMLInputElement {
@@ -58,6 +61,25 @@ describe("the Settings dialog", () => {
     // replacement.
     expect(screen.getByText("Interface Zoom")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+  });
+
+  it("opens the activity log in the file manager", async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Show Log File" }));
+
+    expect(vi.mocked(revealMainLog)).toHaveBeenCalled();
+  });
+
+  it("reports a file manager that would not open, rather than failing silently", async () => {
+    vi.mocked(revealMainLog).mockRejectedValueOnce(new Error("no file manager"));
+    const user = userEvent.setup();
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Show Log File" }));
+
+    expect(useStatusStore.getState().message).toContain("no file manager");
   });
 
   it("carries the music folders section", () => {

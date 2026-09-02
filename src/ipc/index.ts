@@ -346,6 +346,16 @@ export function revealCrashLog(): Promise<void> {
   return invoke<void>("reveal_crash_log");
 }
 
+/**
+ * Opens the OS file manager with `main.log` selected.
+ *
+ * Revealed rather than rendered, like the crash log: it is every operation the
+ * backend has run since the file was last rotated, which is an editor's job.
+ */
+export function revealMainLog(): Promise<void> {
+  return invoke<void>("reveal_main_log");
+}
+
 /** Opens the OS file manager with this track selected. */
 export function revealTrack(trackId: number): Promise<void> {
   return invoke<void>("reveal_track", { trackId });

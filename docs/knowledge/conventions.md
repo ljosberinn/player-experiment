@@ -18,6 +18,13 @@
   defect that shipped once.
 - Extract on the rule of three or genuine complexity; keep helpers local unless
   something else truly needs them.
+- **Anything new on the backend gets written down where it makes sense.** A
+  command that mutates, a job long enough to watch, or work a background thread
+  does on its own runs through `log::Op` — `announcing`/`announcing_with` for a
+  write, `Op::quiet` for a read, which is silent until it fails. Preference
+  writes and the transport controls are the standing exceptions; see
+  [architecture](architecture.md#what-is-written-down). A feature that is
+  invisible when it goes wrong is how this file came to exist.
 - Every colour comes from a custom property. **No literal colour outside the
   token block** in `App.css` — that is what keeps a light theme cheap to restore.
 - Allowlists, never denylists, for anything that leaves the machine.

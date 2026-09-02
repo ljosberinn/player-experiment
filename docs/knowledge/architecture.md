@@ -21,6 +21,7 @@ src-tauri/src/
   lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
+  log.rs      every operation, one line each, rotated
   palette.rs  dominant colours from cover bytes
 src/
   features/   library, playlists, player, editor, smart, shell, updater, crash, export
@@ -97,6 +98,52 @@ say "both" at almost every site while being one more thing two stores have to
 agree on. Only on success, since a rejected write changed nothing. This is the
 one invalidation channel — a mutation does not tell each view what to reload,
 it says the library moved and the views re-ask.
+
+## What is written down
+
+**`main.log`, beside `library.sqlite3` and `crashes.log`** — one folder holds
+everything this app has put on the machine, and `data_dir()`'s e2e override
+carries all three, so a test build logs into its own directory. `crash.rs`
+covers the process dying and nothing else, and the progress channels are gone
+the moment the window closes; this is what is left to read when a scan dropped
+a folder, a tag write half-landed or a scrobble never arrived.
+
+One line per operation: `timestamp outcome operation key=value…`, with the
+`AppError` display string on a failure — the same string the user was shown, so
+a screenshot and the log line agree. A `Mutex<Option<File>>` in Tauri state and
+one whole line per lock, because the `rayon` pool, the player thread and the
+scrobbler thread all write into it. No `log` or `tracing` crate: what those buy
+is levels and filtering, and the set of operations is a product decision rather
+than a runtime knob. `format` and `rotate` are pure functions over a path, so
+both are tested against a `tempfile` like `crash::format`.
+
+**Rotation is checked before each write.** Current size plus the line over 5MB
+renames `main.log` to `main_prev.log`, overwriting whatever was there. Two
+files, 10MB, no third generation and no timestamped names to sweep up. The
+handle is closed before the rename, because Windows will not move a file this
+process still holds open.
+
+What gets a line:
+
+- **Every mutation and every long job** — roughly what already goes through
+  `commands::announcing` and `commands::blocking`, plus the background work
+  that goes through neither: the unattended pass (`scan.watch`, including the
+  passes that found nothing), the cover-normalize pass, and each scrobble and
+  now-playing submission.
+- **Every `Err`, reads included.** A read is `Op::quiet`: a `query_tracks` that
+  fails leaves a trace, and the thousands that succeed do not — a line per page
+  the table asks for would rotate the file past whatever is being investigated.
+- **From playback, only what changes state**: the track load and the `Played`
+  mark. Not pause, resume, seek, next, previous, volume, mute or repeat.
+- **Not the UI preference writes** — zoom, columns, sidebar sections, window
+  geometry. They are a control's position, not an operation.
+
+**The session key is never written**, at any level, in any error string. Paths
+and the last.fm username do land in the file; it never leaves the machine it
+was written on, which is the same reason the crash log has nothing to scrub.
+
+Reachable from Settings ▸ Activity Log, which reveals it through `reveal.rs`
+beside `reveal_crash_log`: a log nobody can find is not one.
 
 - **The play queue is a list of ids sent to Rust**, not a view the backend
   re-derives: `player_play` takes the ordered ids of the current view plus the

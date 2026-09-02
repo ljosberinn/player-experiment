@@ -57,6 +57,11 @@ rodio = { version = "0.22", default-features = false, features = ["playback", "m
 # optional deps behind a feature CI enables for the e2e build alone.
 tauri-plugin-wdio = { version = "1", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1", optional = true }
+# A readable timestamp on every log line, and nothing else. Already in the tree
+# through Tauri, so naming it here makes a transitive dependency direct rather
+# than adding one; default features are off because the components are all
+# `main.log` needs and `std` arrives through everything else that uses it.
+time = { version = "0.3", default-features = false }
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-global-shortcut = "2.3.2"
