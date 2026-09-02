@@ -11,14 +11,8 @@ import { rowStatus, STATUS_COLUMN_WIDTH } from "./rowStatus";
  * Colour is never the only signal: the exclamation mark carries the meaning on
  * its own for anyone who cannot tell the red from the surrounding text.
  */
-export function RowStatusCell({
-  track,
-  nowPlayingId,
-}: {
-  track: Track | null;
-  nowPlayingId: number | null;
-}) {
-  const status = track === null ? null : rowStatus(track, nowPlayingId);
+export function RowStatusCell({ track, playing }: { track: Track | null; playing: boolean }) {
+  const status = track === null ? null : rowStatus(track, playing);
 
   return (
     <td className="song-cell status" style={{ width: STATUS_COLUMN_WIDTH }}>

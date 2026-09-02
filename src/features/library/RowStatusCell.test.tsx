@@ -29,12 +29,12 @@ function track(overrides: Partial<Track> = {}): Track {
 }
 
 /** The cell only makes sense inside the row markup it belongs to. */
-function renderCell(value: Track | null, nowPlayingId: number | null = null) {
+function renderCell(value: Track | null, playing = false) {
   return render(
     <table>
       <tbody>
         <tr>
-          <RowStatusCell track={value} nowPlayingId={nowPlayingId} />
+          <RowStatusCell track={value} playing={playing} />
         </tr>
       </tbody>
     </table>,
@@ -60,7 +60,7 @@ describe("the row status cell", () => {
   });
 
   it("names the playing state for a screen reader, not just in colour", () => {
-    renderCell(track({ id: 7 }), 7);
+    renderCell(track({ id: 7 }), true);
 
     // An icon is not a label. The speaker itself is aria-hidden, so this text
     // is the only thing that says what the cell means.
@@ -87,7 +87,7 @@ describe("the row status cell", () => {
   });
 
   it("shows the playing marker on a track that is also marked missing", () => {
-    renderCell(track({ id: 7, missing_since: 1 }), 7);
+    renderCell(track({ id: 7, missing_since: 1 }), true);
 
     expect(screen.getByText("Playing")).toBeInTheDocument();
     expect(screen.queryByText("File missing")).not.toBeInTheDocument();
