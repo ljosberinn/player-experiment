@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.0](https://github.com/ljosberinn/player-experiment/compare/v0.7.0...v0.8.0) (2026-09-02)
+
+
+### Features
+
+* call the Albums view Releases ([#131](https://github.com/ljosberinn/player-experiment/issues/131)) ([38978e6](https://github.com/ljosberinn/player-experiment/commit/38978e679320a6762cba120b3ef092d13ae72dc9))
+* remove a song from the library ([#130](https://github.com/ljosberinn/player-experiment/issues/130)) ([9b18ca2](https://github.com/ljosberinn/player-experiment/commit/9b18ca276dd5e10dd56ade43c0330dabfa388d3f))
+
+
+### Bug Fixes
+
+* follow the OS default output device ([#126](https://github.com/ljosberinn/player-experiment/issues/126)) ([58515e1](https://github.com/ljosberinn/player-experiment/commit/58515e1039b09b3421c20a14e37ea70e501e5e67))
+
+
+### Documentation
+
+* refine issues 69-74 against the code ([#129](https://github.com/ljosberinn/player-experiment/issues/129)) ([c66341d](https://github.com/ljosberinn/player-experiment/commit/c66341d81b98af9029d58f931d7e72658994bf05))
+* reindex upcoming issues by dependency and simplicity ([#128](https://github.com/ljosberinn/player-experiment/issues/128)) ([86ca530](https://github.com/ljosberinn/player-experiment/commit/86ca530ad9bbdfbb4807c6acb3ce463301c4c3f2))
+
 ## [0.7.0](https://github.com/ljosberinn/player-experiment/compare/v0.6.0...v0.7.0) (2026-09-02)
 
 
