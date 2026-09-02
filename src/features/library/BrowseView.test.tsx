@@ -88,7 +88,13 @@ beforeEach(() => {
       disconnect() {}
     },
   );
-  useLibraryStore.setState({ ...initial, groups: [], groupsLoading: false, search: "" });
+  useLibraryStore.setState({
+    ...initial,
+    groups: [],
+    groupsLoading: false,
+    search: "",
+    browseOffsets: { albums: 0, artists: 0, genres: 0 },
+  });
 });
 
 afterEach(() => {
@@ -286,5 +292,115 @@ describe("BrowseView", () => {
 
     // "No songs yet" flashing up before the first result would be a lie.
     expect(screen.queryByText("No songs yet")).not.toBeInTheDocument();
+  });
+});
+
+describe("where each tab was left", () => {
+  /** Four tiles fit at 800px, so a row is four albums. */
+  const WIDE = 800;
+
+  it("opens the same tab where it was scrolled to", () => {
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, WIDE);
+
+    const first = render(<BrowseView kind="albums" />);
+    const scroll = screen.getByTestId("browse-scroll");
+    // Row 8 of four columns: group 32 is at the top.
+    scroll.scrollTop = 8 * 235;
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    first.unmount();
+
+    expect(useLibraryStore.getState().browseOffsets.albums).toBe(32);
+
+    render(<BrowseView kind="albums" />);
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+  });
+
+  it("opens a different tab at the top rather than at the other one's offset", () => {
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, WIDE);
+
+    const albums = render(<BrowseView kind="albums" />);
+    const scroll = screen.getByTestId("browse-scroll");
+    scroll.scrollTop = 8 * 235;
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    albums.unmount();
+
+    render(<BrowseView kind="artists" />);
+
+    // The whole bug: one container, so the list opened at the grid's offset -
+    // and the reflow correction then rewrote it in the grid's row height.
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(0);
+  });
+
+  it("remembers the group rather than the pixel, so a resize between visits holds", () => {
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, WIDE);
+
+    const first = render(<BrowseView kind="albums" />);
+    const scroll = screen.getByTestId("browse-scroll");
+    scroll.scrollTop = 8 * 235;
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    first.unmount();
+
+    // Two columns now, so group 32 is row 16 rather than row 8.
+    stubLayout(600, 400);
+    render(<BrowseView kind="albums" />);
+
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(16 * 235);
+  });
+
+  it("waits for the groups before restoring, and does not restore twice", () => {
+    useLibraryStore.setState({ groups: [], groupsLoading: false });
+    useLibraryStore.getState().rememberBrowseOffset("albums", 32);
+    stubLayout(600, WIDE);
+
+    render(<BrowseView kind="albums" />);
+    // The empty state has no container at all, so there is nothing to scroll.
+    expect(screen.queryByTestId("browse-scroll")).toBeNull();
+
+    act(() => {
+      useLibraryStore.setState({ groups: groups(80) });
+    });
+    const scroll = screen.getByTestId("browse-scroll");
+    expect(scroll.scrollTop).toBe(8 * 235);
+
+    // A later group list is the user scrolling somewhere else's problem, not a
+    // second restore of a position they have moved on from.
+    scroll.scrollTop = 0;
+    act(() => {
+      useLibraryStore.setState({ groups: groups(60) });
+    });
+    expect(scroll.scrollTop).toBe(0);
+  });
+
+  it("leaves a restored offset alone on the first measurement of a mount", () => {
+    // The trap: `columns` falls back to 1 until the width is known, so the
+    // first commit at four columns looks like a reflow - which against a
+    // restored offset would divide it by four.
+    useLibraryStore.getState().rememberBrowseOffset("albums", 32);
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, WIDE);
+
+    render(<BrowseView kind="albums" />);
+
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+  });
+
+  it("keeps a restored offset rather than writing a zero back over it", () => {
+    useLibraryStore.getState().rememberBrowseOffset("albums", 32);
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, WIDE);
+
+    // Opened and left again without touching the scrollbar.
+    render(<BrowseView kind="albums" />).unmount();
+
+    expect(useLibraryStore.getState().browseOffsets.albums).toBe(32);
   });
 });

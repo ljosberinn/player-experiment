@@ -117,6 +117,17 @@ interface LibraryState {
   groups: BrowseGroup[];
   groupsLoading: boolean;
   /**
+   * Which group each browse tab was last looking at.
+   *
+   * The index of the top group rather than a pixel offset: the window can be
+   * resized while another tab is open, and an index survives a changed column
+   * count where a pixel would point at a different album.
+   *
+   * Written by `BrowseView` on unmount and read by it on mount, never
+   * subscribed to - scrolling must cost no render.
+   */
+  browseOffsets: Record<BrowseKind, number>;
+  /**
    * Which columns this view shows, in what order, at what widths.
    *
    * Per view rather than global: `playlists.columns_json` has been in the
@@ -168,6 +179,8 @@ interface LibraryState {
    */
   history: History;
 
+  /** Records where a browse tab was left. See `browseOffsets`. */
+  rememberBrowseOffset: (kind: BrowseKind, topGroup: number) => void;
   /** Reloads the count and drops cached pages; call after any query change. */
   refresh: () => Promise<void>;
   /**
@@ -309,6 +322,13 @@ function sortForEntry(
   return { sortBeforeSearch: { sortBy: opensIn, direction: "asc" } };
 }
 
+/**
+ * Every browse tab at the top, which is where a changed set of groups puts
+ * them: a remembered position into a list that is no longer the same list
+ * means nothing.
+ */
+const NO_BROWSE_OFFSETS: Record<BrowseKind, number> = { albums: 0, artists: 0, genres: 0 };
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
   stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0 },
@@ -321,6 +341,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   browse: null,
   groups: [],
   groupsLoading: false,
+  browseOffsets: NO_BROWSE_OFFSETS,
   columns: DEFAULT_COLUMN_CONFIG,
   fittedWidths: {},
   fitPending: false,
@@ -333,6 +354,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   // Seeded with the view the app opens in, so the first navigation has
   // somewhere to go back to.
   history: historyAt({ tab: "songs", browse: null, playlistId: null }),
+
+  rememberBrowseOffset: (kind, topGroup) => {
+    set((state) => ({ browseOffsets: { ...state.browseOffsets, [kind]: topGroup } }));
+  },
 
   refresh: async () => {
     const token = get().queryToken + 1;
@@ -591,6 +616,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       runSearch.cancel();
     }
 
+    // Kept where they still describe the view - a drill-in and the list it
+    // came from share one group list.
+    const keepsGroups = state.tab === entry.tab && !crossesPlaylist;
+
     // One `set` for all of it, and one `refresh` after: every field here is
     // written today by an action that refreshes on its own, so replaying a
     // state by calling those actions would query once per field.
@@ -604,12 +633,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // describe rows that are already gone.
       fittedWidths: {},
       fitPending: true,
-      // Kept where they still describe the view - a drill-in and the list it
-      // came from share one group list - and cleared otherwise, so a browse
-      // tab cannot show the previous tab's groups while its own are in flight.
-      groups: state.tab === entry.tab && !crossesPlaylist ? state.groups : [],
+      // Cleared unless they still describe the view, so a browse tab cannot
+      // show the previous tab's groups while its own are in flight.
+      groups: keepsGroups ? state.groups : [],
+      // In the same `set` as the blanking above: with the flag still false the
+      // browse view renders its empty state for a frame, which detaches the
+      // scroll container it is about to be measured and restored through.
+      groupsLoading: keepsGroups ? state.groupsLoading : true,
       ...sortForEntry(state, entry, crossesPlaylist),
-      ...(crossesPlaylist ? { searchInput: "", search: "", sortBeforeSearch: null } : {}),
+      ...(crossesPlaylist
+        ? {
+            searchInput: "",
+            search: "",
+            sortBeforeSearch: null,
+            // A playlist's albums are not the library's, so where the grid was
+            // left describes a list that is not the one being opened.
+            browseOffsets: NO_BROWSE_OFFSETS,
+          }
+        : {}),
     });
 
     if (crossesPlaylist) {
@@ -833,7 +874,13 @@ async function applySearch(search: string): Promise<void> {
 
   const wasSearching = previous.trim() !== "";
   const nowSearching = search.trim() !== "";
-  const next: Partial<LibraryState> = { search, selection: emptySelection };
+  // The term decides what is listed at all, so no browse tab is looking at the
+  // groups it was left on.
+  const next: Partial<LibraryState> = {
+    search,
+    selection: emptySelection,
+    browseOffsets: NO_BROWSE_OFFSETS,
+  };
 
   if (nowSearching && !wasSearching) {
     next.sortBeforeSearch = { sortBy, direction };

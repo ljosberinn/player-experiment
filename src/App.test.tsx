@@ -13,6 +13,7 @@ import {
   addToPlaylist,
   addWatchFolder,
   allTrackIds,
+  browseGroups,
   canUndoTagEdit,
   createPlaylist,
   createSmartPlaylist,
@@ -973,6 +974,34 @@ describe("removing missing songs", () => {
 
     expect(removeMissingTracks).toHaveBeenCalled();
     expect(await screen.findByText("Removed 2 missing songs.")).toBeInTheDocument();
+  });
+});
+
+describe("the browse tabs", () => {
+  it("gives each tab its own scroll container", async () => {
+    // The whole point of the key: unkeyed, the three tabs are one component
+    // instance in one slot, React reuses the div across the switch, and
+    // `scrollTop` rides along - so Artists opened wherever the album grid had
+    // been left.
+    const user = userEvent.setup();
+    vi.mocked(browseGroups).mockResolvedValue([
+      {
+        key: "Shields",
+        secondary: "Grizzly Bear",
+        trackCount: 10,
+        durationMs: 0,
+        coverHash: null,
+        year: 2012,
+      },
+    ]);
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Albums" }));
+    const albums = await screen.findByTestId("browse-scroll");
+
+    await user.click(screen.getByRole("button", { name: "Artists" }));
+    await waitFor(() => expect(screen.getByTestId("browse-scroll")).not.toBe(albums));
   });
 });
 

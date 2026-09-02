@@ -193,6 +193,16 @@ absences are what nobody notices coming back — hence the guards in
   to. Failures nobody asked for still stay silent — `loadColumns`,
   `loadSections`, `toggleSection`, `refreshUndo` and `getAppInfo` keep their
   bare `catch`.
+- **Each browse tab is its own instance**, keyed on the tab in `App`. Unkeyed,
+  the three shared one component and one scroll container — `song-body` and
+  `song-body browse-body` are both a `div` in the same slot, so React reused
+  the element even across the empty-state frame between them and `scrollTop`
+  rode along. Where each was left is an index into `groups` in the library
+  store, written on unmount through `getState()` and never subscribed to, so
+  scrolling costs no render. An index rather than a pixel offset: the window
+  can be resized while another tab is open, and an index survives a changed
+  column count. A search or a move into a playlist clears all three, because
+  the list they point into is no longer the same list.
 - **Every view change goes through `applyEntry`.** A view is
   `{ tab, browse, playlistId }`, written in one `set` and refreshed once; the
   four actions that used to write those fields separately are entry
