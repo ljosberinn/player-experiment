@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { LIBRARY } from "../fixtures";
+import { openMenu } from "../menu";
 import { capture } from "../screenshot";
 
 /**
@@ -19,6 +20,10 @@ import { capture } from "../screenshot";
  * one is here: the shortcut hands the trigger a *synthesized* `contextmenu`,
  * and whether Base UI opens on one of those is a question only a real webview
  * answers.
+ *
+ * Phase 49 added the Edit menu with a selection, which lives here rather than
+ * in `menus.test.ts` for a mechanical reason: that spec runs before the
+ * library is seeded, and the song entries only exist when rows are selected.
  *
  * Runs after `library.test.ts`, which is what puts songs in the shared
  * library: an empty table has no row to right-click.
@@ -172,5 +177,45 @@ describe("the row menu", () => {
       .waitForExist({ timeout: 10_000, timeoutMsg: "the album submenu never opened" });
 
     expect(await itemsOf("Open Album on…")).toEqual(["Last.fm", "Discogs"]);
+  });
+
+  it("serves the same entries from the Edit menu, under its own verb", async () => {
+    // The menu bar acts on the selection, and clicking is the only route to
+    // one - the same reason the Shift+F10 test above starts this way.
+    await browser.$("tr.song-row").click();
+    await browser.waitUntil(async () => await browser.$("tr.song-row.selected").isExisting());
+
+    await openMenu("Edit");
+
+    // The first two entries only, not the whole menu: `rowMenu.test.ts` owns
+    // which entries appear, and asserting them again here would fail whenever
+    // a spec before this one left a playlist open. What is worth pinning is
+    // Edit ▸ Edit - what a menu bar does with the verb it is named for, and
+    // the reason phase 49 did not invent a second name for the entry.
+    const items = await itemsOf("Edit");
+    expect(items.slice(0, 2)).toEqual(["Play", "Edit"]);
+    expect(items).toContain("Undo Tag Edit");
+
+    await capture("menubar-edit-with-a-selection");
+  });
+
+  it("opens the tag editor on Edit, titled the same as the entry", async () => {
+    // The one entry it is safe to follow: the lookups open a browser on the
+    // runner, and this opens a dialog. Cancel puts it back.
+    await openRowMenu();
+    await browser
+      .$(
+        "//*[@role='menu'][@aria-label='Song actions']//*[@role='menuitem'][normalize-space()='Edit']",
+      )
+      .click();
+
+    const dialog = browser.$("[role='dialog']");
+    await dialog.waitForExist({ timeout: 10_000, timeoutMsg: "the tag editor never opened" });
+    await expect(browser.$("[role='dialog'] h2")).toHaveText("Edit");
+
+    await capture("tag-editor");
+
+    await browser.$("//button[normalize-space()='Cancel']").click();
+    await dialog.waitForExist({ timeout: 10_000, reverse: true });
   });
 });

@@ -715,9 +715,8 @@ describe("App playback", () => {
     await renderWithLibrary();
     const user = userEvent.setup();
 
-    // Get Info used to be a toolbar button. It is a per-song action, so it
+    // Edit used to be a toolbar button. It is a per-song action, so it
     // now lives where a per-song action belongs.
-    expect(screen.queryByRole("button", { name: "Get Info" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
 
     await user.pointer({ keys: "[MouseRight]", target: screen.getByText("Track 1") });

@@ -63,7 +63,7 @@ describe("TagEditor", () => {
 
     expect(screen.getByLabelText("Name")).toHaveValue("Maki");
     expect(screen.getByLabelText("Year")).toHaveValue("2012");
-    expect(screen.getByRole("dialog", { name: "Get Info" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit" })).toBeInTheDocument();
   });
 
   it("says how many songs a bulk edit covers", () => {
@@ -325,7 +325,7 @@ describe("the suggestion list phase 18 brought with it", () => {
       expect(screen.queryByRole("option", { name: "Grizzly Bear" })).not.toBeInTheDocument(),
     );
     expect(onCancel).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "Get Info" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit" })).toBeInTheDocument();
 
     // A second Escape, with no list left to close, cancels as it always did.
     await user.keyboard("{Escape}");

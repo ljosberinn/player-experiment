@@ -18,7 +18,7 @@ export function rowMenuItems({
   openPlaylist,
   track,
   onPlay,
-  onGetInfo,
+  onEdit,
   onAddTo,
   onRemove,
   onExport,
@@ -36,7 +36,7 @@ export function rowMenuItems({
    */
   track: LinkableTrack | null;
   onPlay: () => void;
-  onGetInfo: () => void;
+  onEdit: () => void;
   onAddTo: (playlistId: number) => void;
   onRemove: () => void;
   onExport: () => void;
@@ -48,7 +48,7 @@ export function rowMenuItems({
   const items: MenuItem[] = [
     { label: "Play", onSelect: onPlay },
     { kind: "separator" },
-    { label: count === 1 ? "Edit" : `Edit ${songs}`, onSelect: onGetInfo },
+    { label: count === 1 ? "Edit" : `Edit ${songs}`, onSelect: onEdit },
     {
       label: "Add to Playlist",
       // Smart playlists are excluded rather than shown disabled: their
@@ -65,7 +65,7 @@ export function rowMenuItems({
 
   // Only inside a static playlist, where there is a membership row to remove.
   // In the library this action would have to mean deleting the file, which is
-  // not something a menu should offer next to "Get Info".
+  // not something a menu should offer next to "Edit".
   if (openPlaylist?.kind === "static") {
     items.push({
       label: count === 1 ? "Remove from Playlist" : `Remove ${songs} from Playlist`,

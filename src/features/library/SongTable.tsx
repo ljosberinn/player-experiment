@@ -264,7 +264,7 @@ export function SongTable({
                   // them unless it is the only row.
                   track: rowAt(menu.rowIndex),
                   onPlay: () => onActivate?.(menu.rowIndex),
-                  onGetInfo: () => void openEditor(menu.trackIds),
+                  onEdit: () => void openEditor(menu.trackIds),
                   onAddTo: (id) => void addTracks(id, menu.trackIds),
                   onRemove: () => onRemove?.(menu.trackIds),
                   onExport: () => onExport?.(menu.trackIds),
