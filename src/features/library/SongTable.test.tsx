@@ -1,11 +1,11 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SortField, Track, TrackQuery } from "../../ipc";
 import { addToPlaylist, libraryStats, queryTracks, revealTrack } from "../../ipc";
-import { readTrackIds, TRACK_IDS_MIME } from "../playlists/drag";
 import { usePlaylistsStore } from "../playlists/store";
+import { trackDragIds } from "../playlists/trackDrag";
 import { SongTable } from "./SongTable";
 import { useLibraryStore } from "./store";
 
@@ -111,40 +111,38 @@ beforeEach(() => {
   );
 });
 
-/** A writable stand-in for `DataTransfer`, which jsdom does not provide. */
-function dragData() {
-  const store = new Map<string, string>();
-  return {
-    setData: (format: string, data: string) => void store.set(format, data),
-    getData: (format: string) => store.get(format) ?? "",
-    get types() {
-      return [...store.keys()];
-    },
-    effectAllowed: "none",
-    dropEffect: "none",
-  };
-}
+// The drag session is module state, so a test that leaves the pointer down
+// leaves it down for the next one. Releasing is what the OS would do anyway.
+afterEach(() => fireEvent.pointerUp(window));
 
-/** An incoming drag already carrying ids, as a drop handler would see it. */
-function trackDrag(ids: number[]) {
-  return {
-    types: [TRACK_IDS_MIME],
-    getData: () => JSON.stringify(ids),
-    dropEffect: "none",
-  };
+function rowOf(title: string): HTMLElement {
+  return screen.getByText(title).closest(".song-row") as HTMLElement;
 }
 
 /**
- * Fires a drag event with a pointer position on it.
+ * Drags rows out of the table the way the app does.
  *
- * jsdom has no `DragEvent`, so Testing Library builds a plain `Event` and
- * `clientY` from the init is dropped on the floor; it has to be defined on the
- * event itself. Which half of the row was hit is the whole point here.
+ * There is no shortcut past the gesture any more: the payload lives in a
+ * module that the drag itself fills, so a drop target cannot be handed a drag
+ * that was never started. A press, then a move past `DRAG_THRESHOLD_PX` -
+ * dispatched on the window, so recognition owes nothing to which row the
+ * pointer happened to be over.
  */
-function fireDrag(type: "dragOver" | "drop", row: HTMLElement, ids: number[], clientY: number) {
-  const event = createEvent[type](row, { dataTransfer: trackDrag(ids) });
-  Object.defineProperty(event, "clientY", { value: clientY });
-  fireEvent(row, event);
+function startDrag(title: string): HTMLElement {
+  const source = rowOf(title);
+  fireEvent.pointerDown(source, { button: 0, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { clientX: 0, clientY: 40 });
+  return source;
+}
+
+/**
+ * Moves the drag over `row` and, for `pointerUp`, drops it there.
+ *
+ * `clientY` is the offset within the row: jsdom lays nothing out, so every
+ * rect it reports is at zero.
+ */
+function dragOver(type: "pointerMove" | "pointerUp", row: HTMLElement, clientY: number) {
+  fireEvent[type](row, { clientX: 0, clientY });
 }
 
 async function renderTable() {
@@ -292,12 +290,23 @@ describe("SongTable", () => {
     await user.click(screen.getByText("Track 3"));
     await user.keyboard("{/Shift}");
 
-    const data = dragData();
-    fireEvent.dragStart(screen.getByText("Track 2").closest(".song-row") as HTMLElement, {
-      dataTransfer: data,
-    });
+    startDrag("Track 2");
 
-    expect(readTrackIds(data)).toEqual([1, 2, 3]);
+    expect(trackDragIds()).toEqual([1, 2, 3]);
+  });
+
+  it("is still a click until the pointer has travelled", async () => {
+    await renderTable();
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Track 1"));
+
+    fireEvent.pointerDown(rowOf("Track 5"), { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 2, clientY: 1 });
+
+    // The shake in an ordinary click must not move the selection, which is
+    // what recognising a drag does.
+    expect(trackDragIds()).toEqual([]);
+    expect([...useLibraryStore.getState().selection.ids]).toEqual([1]);
   });
 
   it("dragging a row outside the selection makes it the selection", async () => {
@@ -305,14 +314,11 @@ describe("SongTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByText("Track 1"));
 
-    const data = dragData();
-    fireEvent.dragStart(screen.getByText("Track 5").closest(".song-row") as HTMLElement, {
-      dataTransfer: data,
-    });
+    startDrag("Track 5");
 
     // What moves has to be what the pointer grabbed, not what happened to be
     // selected somewhere else in the list.
-    expect(readTrackIds(data)).toEqual([5]);
+    expect(trackDragIds()).toEqual([5]);
     await waitFor(() => expect([...useLibraryStore.getState().selection.ids]).toEqual([5]));
   });
 
@@ -321,35 +327,64 @@ describe("SongTable", () => {
     await useLibraryStore.getState().refresh();
     render(<SongTable onReorder={onReorder} />);
     await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
-    const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
 
-    fireDrag("drop", row, [9], 2);
+    startDrag("Track 9");
+    dragOver("pointerUp", rowOf("Track 4"), 2);
     expect(onReorder).toHaveBeenLastCalledWith([9], 4);
 
-    fireDrag("drop", row, [9], 20);
+    startDrag("Track 9");
+    dragOver("pointerUp", rowOf("Track 4"), 20);
     expect(onReorder).toHaveBeenLastCalledWith([9], 5);
   });
 
-  it("shows where a drop would land", async () => {
+  it("does not re-select the row a drag was released on", async () => {
     await useLibraryStore.getState().refresh();
     render(<SongTable onReorder={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
-    const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Track 1"));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByText("Track 3"));
+    await user.keyboard("{/Shift}");
 
-    fireDrag("dragOver", row, [9], 2);
+    const source = startDrag("Track 2");
+    dragOver("pointerUp", source, 2);
+    fireEvent.click(source);
 
-    expect(row).toHaveClass("drop-before");
+    // `pointerup` precedes `click`, so without the swallow dragging three rows
+    // and dropping them back would collapse the selection to the one row the
+    // pointer was on.
+    expect([...useLibraryStore.getState().selection.ids]).toEqual([1, 2, 3]);
+
+    // Swallowed once: the next click is an ordinary one.
+    fireEvent.click(rowOf("Track 6"));
+    expect([...useLibraryStore.getState().selection.ids]).toEqual([6]);
+  });
+
+  it("shows where a drop would land, and stops when the drag does", async () => {
+    await useLibraryStore.getState().refresh();
+    render(<SongTable onReorder={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Track 4")).toBeInTheDocument());
+
+    startDrag("Track 9");
+    dragOver("pointerMove", rowOf("Track 4"), 2);
+    expect(rowOf("Track 4")).toHaveClass("drop-before");
+
+    // Escape leaves the pointer where it is, so nothing else would take the
+    // indicator off the row it was over.
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(rowOf("Track 4")).not.toHaveClass("drop-before"));
   });
 
   it("takes no drops at all in a view with no order of its own", async () => {
     await renderTable();
-    const row = screen.getByText("Track 4").closest(".song-row") as HTMLElement;
 
     // No `onReorder`: the library's order is derived from a column sort, so
     // there is nothing a drop could persist.
-    fireDrag("dragOver", row, [9], 2);
+    startDrag("Track 9");
+    dragOver("pointerMove", rowOf("Track 4"), 2);
 
-    expect(row).not.toHaveClass("drop-before");
+    expect(rowOf("Track 4")).not.toHaveClass("drop-before");
   });
 
   it("removes the selection on Delete when the view supports it", async () => {

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addToPlaylist,
   createPlaylist,
@@ -11,9 +11,9 @@ import {
   renamePlaylist,
 } from "../../ipc";
 import { useLibraryStore } from "../library/store";
-import { TRACK_IDS_MIME } from "./drag";
 import { PlaylistSidebar } from "./PlaylistSidebar";
 import { usePlaylistsStore } from "./store";
+import { pressTrackRow } from "./trackDrag";
 
 vi.mock("../../ipc", () => ({
   INVALIDATE_DEBOUNCE_MS: 250,
@@ -41,14 +41,23 @@ function smart(id: number, name: string, trackCount = 0): Playlist {
   return { id, name, kind: "smart", trackCount, createdAt: 0 };
 }
 
-/** A drag carrying track ids, as the songs table would produce. */
-function trackDrag(ids: number[]) {
-  return {
-    types: [TRACK_IDS_MIME],
-    getData: () => JSON.stringify(ids),
-    dropEffect: "none",
-  };
+/**
+ * Starts a real drag, the way a song row does.
+ *
+ * There is no payload left to fabricate: the session is module state that only
+ * a press can fill. The source is a stand-in rather than a rendered
+ * `SongTable` - the table-to-sidebar path is covered end to end in
+ * `App.test.tsx`, and mounting one here would be a virtualizer, a library and
+ * an opener plugin in a spec about a sidebar.
+ */
+function startDrag(ids: number[]) {
+  pressTrackRow({ clientX: 0, clientY: 0 }, () => ids);
+  fireEvent.pointerMove(window, { clientX: 0, clientY: 40 });
 }
+
+// The drag session outlives a render, so a spec that leaves the pointer down
+// leaves it down for the next one.
+afterEach(() => fireEvent.pointerUp(window));
 
 const initialLibrary = useLibraryStore.getState();
 const initialPlaylists = usePlaylistsStore.getState();
@@ -104,7 +113,8 @@ describe("PlaylistSidebar", () => {
       "li",
     ) as HTMLElement;
 
-    fireEvent.drop(row, { dataTransfer: trackDrag([10, 11, 12]) });
+    startDrag([10, 11, 12]);
+    fireEvent.pointerUp(row);
 
     await waitFor(() => expect(addToPlaylist).toHaveBeenCalledWith(1, [10, 11, 12]));
   });
@@ -115,23 +125,57 @@ describe("PlaylistSidebar", () => {
       "li",
     ) as HTMLElement;
 
-    fireEvent.dragOver(row, { dataTransfer: trackDrag([10]) });
+    startDrag([10]);
+    fireEvent.pointerMove(row);
     expect(row).toHaveClass("drop-target");
 
-    fireEvent.dragLeave(row);
+    fireEvent.pointerLeave(row);
     expect(row).not.toHaveClass("drop-target");
   });
 
-  it("ignores a drag that is not tracks", async () => {
+  it("unmarks the row when the drag is abandoned under it", async () => {
     render(<PlaylistSidebar />);
     const row = (await screen.findByRole("button", { name: "Evening" })).closest(
       "li",
     ) as HTMLElement;
 
-    // A file dragged in from Explorer, say - phase 15's problem, not this one.
-    fireEvent.dragOver(row, { dataTransfer: { types: ["Files"], getData: () => "" } });
+    startDrag([10]);
+    fireEvent.pointerMove(row);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Escape leaves the pointer where it is, so no `pointerleave` follows to
+    // take the highlight off.
+    await waitFor(() => expect(row).not.toHaveClass("drop-target"));
+  });
+
+  it("ignores a pointer that is not dragging anything", async () => {
+    render(<PlaylistSidebar />);
+    const row = (await screen.findByRole("button", { name: "Evening" })).closest(
+      "li",
+    ) as HTMLElement;
+
+    // Moving the mouse over a playlist is not a drag, and a click on one is a
+    // navigation - neither may light the row up as a drop target.
+    fireEvent.pointerMove(row);
+    fireEvent.pointerUp(row);
 
     expect(row).not.toHaveClass("drop-target");
+    expect(addToPlaylist).not.toHaveBeenCalled();
+  });
+
+  it("refuses a drop on a smart playlist, whose contents are its filter", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([smart(3, "Recent", 7)]);
+    render(<PlaylistSidebar />);
+    const row = (await screen.findByRole("button", { name: "Recent" })).closest(
+      "li",
+    ) as HTMLElement;
+
+    startDrag([10]);
+    fireEvent.pointerMove(row);
+    expect(row).not.toHaveClass("drop-target");
+
+    fireEvent.pointerUp(row);
+    expect(addToPlaylist).not.toHaveBeenCalled();
   });
 
   it("renames on double click, committing with Enter", async () => {
@@ -386,9 +430,8 @@ describe("PlaylistSidebar", () => {
     render(<PlaylistSidebar />);
     await screen.findByRole("button", { name: "Evening" });
 
-    fireEvent.drop(screen.getByTestId("playlist-dropzone"), {
-      dataTransfer: trackDrag([10, 11]),
-    });
+    startDrag([10, 11]);
+    fireEvent.pointerUp(screen.getByTestId("playlist-dropzone"));
 
     await waitFor(() => expect(addToPlaylist).toHaveBeenCalledWith(9, [10, 11]));
     // The songs land first, so the rename that follows is over a playlist that
@@ -397,15 +440,14 @@ describe("PlaylistSidebar", () => {
     await waitFor(() => expect(usePlaylistsStore.getState().renaming).toBe(9));
   });
 
-  it("ignores an empty drop on the new-playlist zone", async () => {
+  it("starts no playlist from a release that was never a drag", async () => {
     render(<PlaylistSidebar />);
     await screen.findByRole("button", { name: "Evening" });
 
-    fireEvent.drop(screen.getByTestId("playlist-dropzone"), {
-      dataTransfer: { types: [], getData: () => "" },
-    });
+    fireEvent.pointerUp(screen.getByTestId("playlist-dropzone"));
 
-    // A drag that carried nothing should not leave an empty playlist behind.
+    // Clicking the empty space below the list is not a gesture that means
+    // anything, and it must not leave an empty playlist behind.
     expect(createPlaylist).not.toHaveBeenCalled();
   });
 });

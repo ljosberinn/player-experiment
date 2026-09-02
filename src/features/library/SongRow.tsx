@@ -1,12 +1,12 @@
 import type React from "react";
 import type { Track } from "../../ipc";
 import {
+  consumeTrackDragClick,
   dropIndexFor,
-  hasTrackIds,
-  readTrackIds,
-  setDragImage,
-  setTrackIds,
-} from "../playlists/drag";
+  isTrackDragging,
+  pressTrackRow,
+  trackDragIds,
+} from "../playlists/trackDrag";
 import type { ColumnDef } from "./columns";
 import { RowStatusCell } from "./RowStatusCell";
 import { isSelected } from "./selection";
@@ -41,7 +41,7 @@ export interface RowActions {
  * whichever descendant the pointer happens to be over - a cell, not the row -
  * and so would put the halfway line in a different place per column.
  */
-function offsetWithin(event: React.DragEvent<HTMLElement>): number {
+function offsetWithin(event: React.PointerEvent<HTMLElement>): number {
   return event.clientY - event.currentTarget.getBoundingClientRect().top;
 }
 
@@ -102,7 +102,6 @@ export function SongRow({
       aria-rowindex={rowIndex + 1}
       aria-selected={track ? selected : undefined}
       tabIndex={0}
-      draggable={track !== null}
       className={[
         "song-row",
         rowIndex % 2 === 1 ? "odd" : "",
@@ -115,7 +114,14 @@ export function SongRow({
         .filter(Boolean)
         .join(" ")}
       style={{ height: ROW_HEIGHT, transform: `translateY(${top}px)` }}
-      onClick={select}
+      onClick={(event) => {
+        // The drag that just ended produced this click, and a reorder is not
+        // also a selection.
+        if (consumeTrackDragClick()) {
+          return;
+        }
+        select(event);
+      }}
       onDoubleClick={() => onActivate?.(rowIndex)}
       onContextMenu={() => {
         // No preventDefault and no stopPropagation: the trigger on <tbody>
@@ -138,44 +144,39 @@ export function SongRow({
           rowIndex,
         });
       }}
-      onDragStart={(event) => {
-        if (!track) {
-          event.preventDefault();
+      onPointerDown={(event) => {
+        if (event.button !== 0 || !track) {
           return;
         }
-        // Dragging a row outside the selection makes that row the selection
-        // first, so what moves is what the pointer grabbed rather than
-        // something scrolled off elsewhere.
-        const { selection, clickRow } = useLibraryStore.getState();
-        const wasSelected = isSelected(selection, track.id);
-        if (!wasSelected) {
-          clickRow(rowIndex, track.id, {});
-        }
-        const dragged = wasSelected ? [...selection.ids] : [track.id];
-        setTrackIds(event.dataTransfer, dragged);
-        event.dataTransfer.effectAllowed = "copyMove";
-        // Torn down on the next frame: the badge has to be in the document
-        // long enough to be rasterized, and gone before it can be seen sitting
-        // off-screen.
-        const cleanUp = setDragImage(event, dragged.length);
-        requestAnimationFrame(cleanUp);
+        // A press, not yet a drag: what it carries is decided at the moment it
+        // is recognised as one, because until then this is a click.
+        pressTrackRow(event, () => {
+          // Dragging a row outside the selection makes that row the selection
+          // first, so what moves is what the pointer grabbed rather than
+          // something scrolled off elsewhere.
+          const { selection, clickRow } = useLibraryStore.getState();
+          const wasSelected = isSelected(selection, track.id);
+          if (!wasSelected) {
+            clickRow(rowIndex, track.id, {});
+          }
+          return wasSelected ? [...selection.ids] : [track.id];
+        });
       }}
-      onDragOver={(event) => {
-        if (!onReorder || !hasTrackIds(event.dataTransfer)) {
+      onPointerMove={(event) => {
+        if (!onReorder || !isTrackDragging()) {
           return;
         }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
         setDropIndex(dropIndexFor(rowIndex, offsetWithin(event), ROW_HEIGHT));
       }}
-      onDrop={(event) => {
-        if (!onReorder) {
+      onPointerUp={(event) => {
+        // No stopPropagation anywhere on this path: the session's own window
+        // listener tears the drag down on this same event, after the drop.
+        if (!onReorder || !isTrackDragging()) {
           return;
         }
-        event.preventDefault();
         const target = dropIndexFor(rowIndex, offsetWithin(event), ROW_HEIGHT);
         setDropIndex(null);
-        const ids = readTrackIds(event.dataTransfer);
+        const ids = trackDragIds();
         if (ids.length > 0) {
           onReorder(ids, target);
         }

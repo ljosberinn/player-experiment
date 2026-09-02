@@ -10,19 +10,18 @@ import {
   type Track,
   type WriteProgress,
 } from "../../ipc";
-import { hasTrackIds } from "../playlists/drag";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
 
 /**
  * Whether a drag over the artwork is a file worth taking.
  *
- * `dragover` sees the payload's types and nothing else, so both halves of the
- * question have to be answerable from those: a song dragged out of the table
- * carries ids and is not artwork, and anything else has to actually be a file
- * rather than, say, text from a field.
+ * `dragover` sees the payload's types and nothing else, so the question has to
+ * be answerable from those. This is the app's last HTML5 drop target, and
+ * deliberately so: it is an *OS* file drop, which a pointer gesture inside the
+ * window cannot be.
  */
 function isFileDrag(data: Pick<DataTransfer, "types">): boolean {
-  return !hasTrackIds(data) && Array.from(data.types).includes("Files");
+  return Array.from(data.types).includes("Files");
 }
 
 /**

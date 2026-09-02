@@ -1,4 +1,3 @@
-import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -6,8 +5,8 @@ import { ContextMenu } from "../../components/ui/ContextMenu";
 import { SidebarSection } from "../../components/ui/SidebarSection";
 import type { Playlist } from "../../ipc";
 import { useLibraryStore } from "../library/store";
-import { hasTrackIds, readTrackIds } from "./drag";
 import { NEW_PLAYLIST_NAME, usePlaylistsStore } from "./store";
+import { isTrackDragging, onTrackDragEnd, trackDragIds } from "./trackDrag";
 
 /**
  * Stands in for "the new playlist a drop would create" in `dropTargetId`.
@@ -69,6 +68,10 @@ export function PlaylistSidebar({
     void load();
     void loadSections();
   }, [load, loadSections]);
+
+  // Escape and `pointercancel` end a drag without the pointer ever leaving the
+  // row it was over, so the highlight has nothing else to take it off.
+  useEffect(() => onTrackDragEnd(() => setDropTargetId(null)), []);
 
   useEffect(() => {
     // The counts. A scan changes what half of these rows say and nothing else
@@ -138,29 +141,27 @@ export function PlaylistSidebar({
           ]
             .filter(Boolean)
             .join(" ")}
-          onDragOver={(event: React.DragEvent<HTMLLIElement>) => {
+          // `pointermove` rather than `pointerenter`: enter and leave are
+          // synthesized by React out of `pointerover`/`pointerout` pairs,
+          // and a move bubbles as itself. The guard makes it free
+          // whenever nothing is being dragged, which is almost always.
+          onPointerMove={() => {
             // A smart playlist's contents come from its filter, so
             // there is nothing a drop could add. Refusing the drag
             // outright says so more clearly than accepting it and
             // doing nothing.
-            if (playlist.kind !== "static" || !hasTrackIds(event.dataTransfer)) {
+            if (playlist.kind !== "static" || !isTrackDragging()) {
               return;
             }
-            // Both are required: without preventDefault the browser
-            // refuses the drop outright, and the effect is what makes
-            // the cursor say "copy" rather than "move".
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
             setDropTargetId(playlist.id);
           }}
-          onDragLeave={() => setDropTargetId((id) => (id === playlist.id ? null : id))}
-          onDrop={(event: React.DragEvent<HTMLLIElement>) => {
-            if (playlist.kind !== "static") {
+          onPointerLeave={() => setDropTargetId((id) => (id === playlist.id ? null : id))}
+          onPointerUp={() => {
+            if (playlist.kind !== "static" || !isTrackDragging()) {
               return;
             }
-            event.preventDefault();
             setDropTargetId(null);
-            void addTracks(playlist.id, readTrackIds(event.dataTransfer));
+            void addTracks(playlist.id, trackDragIds());
           }}
         />
       }
@@ -254,24 +255,31 @@ export function PlaylistSidebar({
             follows is over something real rather than an empty row.
 
             Inside this section, so folding it away takes the drop target with
-            it - a hidden drop target is a thing a drag can still find. */}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target, not a control - the keyboard route to the same result is the + button above and the row menu's Add to Playlist. */}
+            it - a hidden drop target is a thing a drag can still find.
+
+            No a11y suppression any more: it is not a control, and the keyboard
+            route to the same result is the + button above and the row menu's
+            Add to Playlist. Pointer handlers alone do not make it look like
+            one. */}
         <div
           className={`sidebar-dropzone${dropTargetId === NEW_PLAYLIST_TARGET ? " drop-target" : ""}`}
           data-testid="playlist-dropzone"
-          onDragOver={(event) => {
-            if (!hasTrackIds(event.dataTransfer)) {
+          onPointerMove={() => {
+            if (!isTrackDragging()) {
               return;
             }
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
             setDropTargetId(NEW_PLAYLIST_TARGET);
           }}
-          onDragLeave={() => setDropTargetId((id) => (id === NEW_PLAYLIST_TARGET ? null : id))}
-          onDrop={(event) => {
-            event.preventDefault();
+          onPointerLeave={() => setDropTargetId((id) => (id === NEW_PLAYLIST_TARGET ? null : id))}
+          onPointerUp={() => {
+            if (!isTrackDragging()) {
+              return;
+            }
             setDropTargetId(null);
-            void createFrom(readTrackIds(event.dataTransfer));
+            const ids = trackDragIds();
+            if (ids.length > 0) {
+              void createFrom(ids);
+            }
           }}
         >
           {statics.length === 0 ? null : "Drop songs here for a new playlist"}

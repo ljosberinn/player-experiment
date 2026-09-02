@@ -3,10 +3,11 @@
 Known, decided, and not scheduled. Anything with work attached lives in
 [issues/upcoming/](../issues/upcoming/) instead.
 
-- **No folder drag-and-drop ingest.** `dragDropEnabled` must stay `false` for
-  in-app dragging to work at all, and Tauri v2 cannot toggle it at runtime.
-  Adding music is a folder picker. Settled by the user: the daily gesture beats
-  the occasional one. Revisit only if Tauri gains a runtime toggle.
+- **No folder drag-and-drop ingest.** Adding music is a folder picker. What made
+  this a limitation rather than a task was that `dragDropEnabled` had to stay
+  `false` for in-app dragging to work at all; phase 74 removed that, and the
+  work now lives in
+  [85](../issues/upcoming/85-drop-files-and-folders.md).
 - **No crash reporting off the machine.** A local panic log covers the failure
   class; a network reporter contradicts the product.
 - **Installers are unsigned.** SmartScreen warns on first run of each version.
@@ -51,11 +52,15 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **Dragging is mouse-only**, but nothing behind it is any more: the Menu key
   opens the row menu on the selection, Alt+Arrow nudges it within a playlist,
   and Delete removes from one. What has no keyboard route is the gesture, not
-  the actions.
+  the actions. Load-bearing since phase 74 rather than incidental: in-app
+  dragging routes each `pointermove` to whatever is under the pointer, which
+  Chromium's implicit pointer capture for touch and pen would undo.
 - **The frameless window is not covered end to end** — the e2e build pins
   `decorations: true` or the embedded driver never sees the webview.
-- **e2e cannot perform an OS drag**, and no test asserts that sound came out or
-  that the OS delivers a media key to an unfocused window.
+- **e2e cannot perform an OS drag** — a file from Explorer onto the artwork
+  square. In-app dragging is covered from a dispatched `PointerEvent` sequence
+  down. No test asserts that sound came out, or that the OS delivers a media key
+  to an unfocused window.
 - **`npm audit` reports a dev-only advisory** in `serialize-javascript` via the
   `@wdio/*` chain. Production dependencies are clean; not force-fixing.
 - **The last.fm session key is stored unencrypted**, in one `settings` row,

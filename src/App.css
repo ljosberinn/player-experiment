@@ -1979,8 +1979,18 @@ body:not(:focus-within) .sidebar-row.current {
 }
 
 /* What the pointer carries during a row drag - a count, not a smear of table.
-   Positioned off-screen by the code that builds it; these are its looks. */
+   The code that builds it only moves it, by `transform`; everything else is
+   here. `pointer-events: none` is load-bearing rather than tidy: the badge
+   sits under the pointer, and without it the badge is the element every
+   `pointermove` and the `pointerup` are delivered to, which is every drop
+   target in the window swallowed at once. Above 60, the highest anything else
+   claims, because it is on top of whatever the drag crossed. */
 .drag-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  pointer-events: none;
   padding: 5px 12px;
   border-radius: 4px;
   background: var(--accent);

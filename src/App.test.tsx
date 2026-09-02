@@ -5,7 +5,6 @@ import { App } from "./App";
 import { useEditorStore } from "./features/editor/store";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
-import { TRACK_IDS_MIME } from "./features/playlists/drag";
 import { usePlaylistsStore } from "./features/playlists/store";
 import { useStatusStore } from "./features/shell/statusStore";
 import { useUpdaterStore } from "./features/updater/store";
@@ -473,6 +472,20 @@ describe("App playback", () => {
     });
   }
 
+  /**
+   * Drags a row, the way the app does: a press, then a move past
+   * `DRAG_THRESHOLD_PX`. What it carries is the selection the press leaves
+   * behind, so there is nothing to hand it.
+   */
+  function startDrag(title: string) {
+    fireEvent.pointerDown(screen.getByText(title).closest(".song-row") as HTMLElement, {
+      button: 0,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerMove(window, { clientX: 0, clientY: 40 });
+  }
+
   /** A library of three tracks the table can render and play. */
   async function renderWithLibrary({ waitForRows = true } = {}) {
     stubLayout();
@@ -621,13 +634,13 @@ describe("App playback", () => {
     await user.click(await screen.findByRole("button", { name: "Evening" }));
     await screen.findByText("Track 1");
 
-    const drop = () =>
-      fireEvent.drop(screen.getByText("Track 2").closest(".song-row") as HTMLElement, {
-        dataTransfer: {
-          types: [TRACK_IDS_MIME],
-          getData: () => JSON.stringify([10]),
-        },
+    const drop = () => {
+      startDrag("Track 0");
+      fireEvent.pointerUp(screen.getByText("Track 2").closest(".song-row") as HTMLElement, {
+        clientX: 0,
+        clientY: 0,
       });
+    };
 
     drop();
     await waitFor(() => expect(moveInPlaylist).toHaveBeenCalledWith(1, [10], 2));
@@ -638,6 +651,29 @@ describe("App playback", () => {
     await screen.findByText("Track 1");
     drop();
     expect(moveInPlaylist).not.toHaveBeenCalled();
+  });
+
+  it("carries a selection from the table to a playlist in the sidebar", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 0)]);
+    vi.mocked(addToPlaylist).mockResolvedValue(2);
+    await renderWithLibrary();
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Track 0"));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByText("Track 1"));
+    await user.keyboard("{/Shift}");
+
+    // The whole route in one gesture: the table fills the session, the sidebar
+    // row reads it, and neither of them ever sees a `DataTransfer`.
+    const target = (await screen.findByRole("button", { name: "Evening" })).closest(
+      "li",
+    ) as HTMLElement;
+    startDrag("Track 1");
+    fireEvent.pointerMove(target);
+    expect(target).toHaveClass("drop-target");
+    fireEvent.pointerUp(target);
+
+    await waitFor(() => expect(addToPlaylist).toHaveBeenCalledWith(1, [10, 11]));
   });
 
   it("reports how much of a drop landed when a playlist already had some of it", async () => {
@@ -727,9 +763,8 @@ describe("App playback", () => {
 
     // Its membership is its filter - editing it means editing that.
     expect(removeFromPlaylist).not.toHaveBeenCalled();
-    fireEvent.drop(row, {
-      dataTransfer: { types: [TRACK_IDS_MIME], getData: () => JSON.stringify([10]) },
-    });
+    startDrag("Track 1");
+    fireEvent.pointerUp(row, { clientX: 0, clientY: 0 });
     expect(moveInPlaylist).not.toHaveBeenCalled();
   });
 

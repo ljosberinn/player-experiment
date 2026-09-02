@@ -94,8 +94,8 @@ The boundary that *does* pay is one level down. **A row is its own component**
 uncompiled behind `"use no memo"`. That puts the whole weight on prop
 stability, and the rule is that a row is given per-row facts and never table
 state: `selected` and `playing` rather than the selection and the playing id,
-`drop` rather than the drop index — passed raw, one dragover would invalidate
-every row in the window instead of the one under the pointer. The handlers
+`drop` rather than the drop index — passed raw, one pointer move over a row
+would invalidate every row in the window instead of the one under it. The handlers
 travel with the row and read `useLibraryStore.getState()` where they need the
 selection, the way the table's window keydown listener already does, so a row
 subscribes to nothing and forty-odd subscriptions are not the trade. What the
@@ -159,9 +159,10 @@ absences are what nobody notices coming back — hence the guards in
   entries are real functionality.
 - The three `<select>`s stay native: a native select opens a real OS popup,
   which is closer to native than any listbox.
-- A drag badge ("7 songs") replaces the browser's translucent row screenshot.
-  It is built off-screen, not hidden — `display: none` and `visibility: hidden`
-  both make an element unrasterizable.
+- A drag badge ("7 songs") replaces the browser's translucent row screenshot. It
+  is a `position: fixed` element on the body, moved by `transform` every frame
+  from outside React, and it carries `pointer-events: none` — without that it is
+  the element under the pointer and swallows every drop target in the window.
 
 ## Chrome and state
 
@@ -246,10 +247,23 @@ absences are what nobody notices coming back — hence the guards in
   otherwise a white flash at the default size. The `show()` call sits **outside**
   the restore's try: a window that never appears is worse than one misplaced.
 - A maximized window stores the flag, not the bounds.
-- Drag payloads travel under a private MIME type, so a row cannot be dropped
-  into a text field. `dragover` sees only the *types*, which is why the check and
-  the read are separate functions — and why the tag editor's artwork decides
-  from those alone that a drag is a file and not a song.
+- **In-app dragging is a pointer gesture, not HTML5 drag and drop**
+  (`playlists/trackDrag.ts`, since phase 74). The session is module state rather
+  than store state — the badge moves every frame and a row subscribes to
+  nothing — and drop targets read it synchronously in their own handlers. No
+  `setPointerCapture`: capture retargets every later event to the capturing
+  element, so a row that captured could never see the sidebar under the pointer,
+  and the source row is virtualized and can unmount mid-drag. Nothing on the
+  path may `stopPropagation` — the session's window listener tears the drag down
+  on the same `pointerup` the target dropped on, after it. What the webview was
+  giving away for free and now has to be written: recognition past
+  `DRAG_THRESHOLD_PX` (on `Math.hypot`, because a row drag is vertical for a
+  reorder and horizontal for the sidebar), swallowing the `click` that follows a
+  `pointerup`, `pointercancel` and Escape, and edge auto-scroll.
+- The tag editor's artwork square is the one HTML5 drop target left, because an
+  OS file drop is the one thing a pointer gesture inside the window cannot be.
+  `dragover` sees only the payload's *types*, which is all it needs now that no
+  song drag carries a `DataTransfer` at all.
 - The tag editor's square shows a pending replacement from `cover://staged`,
   not from the library — it has no hash until it is saved. The URL carries a
   counter because the staging file's name never changes; a pending *removal*
@@ -259,7 +273,8 @@ absences are what nobody notices coming back — hence the guards in
   nothing handles it is *opened* by the webview, which navigates the window away
   from the app; the guard runs at the window, skips anything a target already
   called `preventDefault` on, and sets `dropEffect = "none"` so the pointer
-  still reads honestly outside a target.
+  still reads honestly outside a target. Since phase 74 the artwork square is
+  the only target it is guarding.
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.

@@ -18,10 +18,13 @@ Each of these cost real time once. They are here so they cost it once.
   registration is not an error, and only keys actually claimed get released.
   Never register Space or the arrows: a global shortcut is exclusive and would
   break them in every other application.
-- **`dragDropEnabled` must stay `false`.** While true the webview hands OS drag
-  events to the native file-drop handler instead of the page, which kills HTML5
-  drag and drop inside the window on Windows. It cannot be toggled at runtime in
-  Tauri v2 — the flag is fixed at window creation.
+- **`dragDropEnabled` kills HTML5 drag and drop.** While true the webview hands
+  OS drag events to the native file-drop handler instead of the page, and there
+  is no `dragover` or `drop` inside the window on Windows. It cannot be toggled
+  at runtime in Tauri v2 — the flag is fixed at window creation. Since phase 74
+  the only thing this still costs is the tag editor's artwork drop; every drag
+  that stays inside the window is a pointer gesture and does not care. Flipping
+  it is [85](../issues/upcoming/85-drop-files-and-folders.md)'s to do.
 - **Raw bytes over IPC are all-or-nothing.** Tauri sends an `invoke` payload as
   a raw body only when the *whole* payload is an `ArrayBuffer` or a view of one;
   a `Uint8Array` inside an args object is JSON, one number per byte. Wrapping it
