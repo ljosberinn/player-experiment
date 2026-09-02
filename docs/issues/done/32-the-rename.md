@@ -17,5 +17,7 @@ The version string stayed in the status bar rather than moving to the title bar
 here — phase 34 rebuilds that bar from scratch, so moving it early meant CSS
 thrown away and four tests edited twice.
 
-**The repository was deliberately not renamed** — see
-[57 — repository rename](../upcoming/57-repository-rename.md).
+**The repository was deliberately not renamed**, and the follow-up for it was
+later dropped. GitHub redirects the old name, so the only real cost is the raw
+`ci/screenshots` URLs in every merged pull request body, which a rename breaks
+for good.

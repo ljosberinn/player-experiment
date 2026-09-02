@@ -36,7 +36,6 @@ Known, decided, and not scheduled. Anything with work attached lives in
   that the OS delivers a media key to an unfocused window.
 - **`npm audit` reports a dev-only advisory** in `serialize-javascript` via the
   `@wdio/*` chain. Production dependencies are clean; not force-fixing.
-- **Statistics is shipped dimmed and inert**, as the design draws it.
 - **The last.fm session key is stored unencrypted**, in one `settings` row,
   labelled as such in the code and in the Settings pane. Decided in
   [plans/lastfm.md](../plans/lastfm.md): DPAPI would cost the crate's
