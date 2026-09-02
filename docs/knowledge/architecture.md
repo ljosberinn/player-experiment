@@ -61,6 +61,15 @@ enum. It emits `player://position` (throttled ~4/s), `player://state`,
 `export://progress`. The domain functions take an `on_progress` closure rather
 than a Tauri handle, so each stays testable with no running app.
 
+**Every write that commits announces itself on `library://changed`**, through
+`commands::announcing` — a scan, a tag write and its undo, removing missing
+rows, and each of the eight playlist commands. A bare ping with no payload:
+nearly every write changes both the tracks and the playlists, so a scope would
+say "both" at almost every site while being one more thing two stores have to
+agree on. Only on success, since a rejected write changed nothing. This is the
+one invalidation channel — a mutation does not tell each view what to reload,
+it says the library moved and the views re-ask.
+
 - **The play queue is a list of ids sent to Rust**, not a view the backend
   re-derives: `player_play` takes the ordered ids of the current view plus the
   activated index, and paths are looked up backend-side, so a queue cannot carry

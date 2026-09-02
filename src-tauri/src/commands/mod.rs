@@ -22,6 +22,26 @@ use crate::{crash, lastfm, scan, tags};
 const TAG_PROGRESS: &str = "tags://progress";
 const EXPORT_PROGRESS: &str = "export://progress";
 
+/// The one channel that says the library is no longer what a view thinks.
+///
+/// A bare ping with no payload. Scope was considered and declined: nearly
+/// every write changes both the tracks and the playlists - a tag edit moves
+/// smart playlist membership, a playlist edit changes the open view - so a
+/// payload would say `true, true` at almost every site while being one more
+/// thing two stores have to agree on.
+pub(crate) const LIBRARY_CHANGED: &str = "library://changed";
+
+/// Runs a write and announces it, so no caller has to remember to.
+///
+/// Only on success: a rejected filter or a name collision changed nothing, and
+/// telling every view to re-query over it is work for no reason. A dropped
+/// event is not worth failing a write that has already committed.
+fn announcing<T>(app: &tauri::AppHandle, write: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+    let done = write()?;
+    let _ = app.emit(LIBRARY_CHANGED, ());
+    Ok(done)
+}
+
 /// Runs `work` off the async runtime, naming the task if the thread dies.
 ///
 /// Four commands do enough file I/O to freeze the window on the IPC thread -
@@ -75,9 +95,14 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
     blocking("scan", move || {
         let db = app.state::<Db>();
         let mut conn = db.conn()?;
-        scan::scan(&mut conn, |progress| {
-            // A dropped progress event is not worth failing a scan over.
-            let _ = app.emit("scan://progress", &progress);
+        // Announced once at the end rather than per file: `scan://progress`
+        // already drives the bar, and a ping per file would put one re-query
+        // per file behind it.
+        announcing(&app, || {
+            scan::scan(&mut conn, |progress| {
+                // A dropped progress event is not worth failing a scan over.
+                let _ = app.emit("scan://progress", &progress);
+            })
         })
     })
     .await
@@ -107,9 +132,9 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
 /// recoverable. Throwing those rows away - and the playlist entries pointing at
 /// them - is a decision, so it is a button.
 #[tauri::command]
-pub fn remove_missing_tracks(db: State<'_, Db>) -> AppResult<u32> {
+pub fn remove_missing_tracks(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<u32> {
     let conn = db.conn()?;
-    scan::remove_missing(&conn)
+    announcing(&app, || scan::remove_missing(&conn))
 }
 
 #[tauri::command]
@@ -147,33 +172,45 @@ pub fn list_playlists(db: State<'_, Db>) -> AppResult<Vec<Playlist>> {
 }
 
 #[tauri::command]
-pub fn create_playlist(db: State<'_, Db>, name: String) -> AppResult<Playlist> {
+pub fn create_playlist(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    name: String,
+) -> AppResult<Playlist> {
     let conn = db.conn()?;
-    playlists::create(&conn, &name, crate::now_seconds())
+    announcing(&app, || {
+        playlists::create(&conn, &name, crate::now_seconds())
+    })
 }
 
 /// Creates a smart playlist. Its contents are its filter and cutoff, evaluated
 /// live.
 #[tauri::command]
 pub fn create_smart_playlist(
+    app: tauri::AppHandle,
     db: State<'_, Db>,
     name: String,
     filter: FilterGroup,
     order: SmartOrder,
 ) -> AppResult<Playlist> {
     let conn = db.conn()?;
-    playlists::create_smart(&conn, &name, &filter, &order, crate::now_seconds())
+    announcing(&app, || {
+        playlists::create_smart(&conn, &name, &filter, &order, crate::now_seconds())
+    })
 }
 
 #[tauri::command]
 pub fn set_playlist_filter(
+    app: tauri::AppHandle,
     db: State<'_, Db>,
     playlist_id: i64,
     filter: FilterGroup,
     order: SmartOrder,
 ) -> AppResult<()> {
     let conn = db.conn()?;
-    playlists::set_smart(&conn, playlist_id, &filter, &order, crate::now_seconds())
+    announcing(&app, || {
+        playlists::set_smart(&conn, playlist_id, &filter, &order, crate::now_seconds())
+    })
 }
 
 /// The stored filter, for the editor to open.
@@ -192,15 +229,24 @@ pub fn playlist_order(db: State<'_, Db>, playlist_id: i64) -> AppResult<SmartOrd
 }
 
 #[tauri::command]
-pub fn rename_playlist(db: State<'_, Db>, playlist_id: i64, name: String) -> AppResult<()> {
+pub fn rename_playlist(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    playlist_id: i64,
+    name: String,
+) -> AppResult<()> {
     let conn = db.conn()?;
-    playlists::rename(&conn, playlist_id, &name)
+    announcing(&app, || playlists::rename(&conn, playlist_id, &name))
 }
 
 #[tauri::command]
-pub fn delete_playlist(db: State<'_, Db>, playlist_id: i64) -> AppResult<()> {
+pub fn delete_playlist(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    playlist_id: i64,
+) -> AppResult<()> {
     let conn = db.conn()?;
-    playlists::delete(&conn, playlist_id)
+    announcing(&app, || playlists::delete(&conn, playlist_id))
 }
 
 /// Appends tracks to a playlist, returning how many were actually added.
@@ -209,31 +255,44 @@ pub fn delete_playlist(db: State<'_, Db>, playlist_id: i64) -> AppResult<()> {
 /// playlist that already holds four of them added six, and saying so is more
 /// useful than claiming ten.
 #[tauri::command]
-pub fn add_to_playlist(db: State<'_, Db>, playlist_id: i64, track_ids: Vec<i64>) -> AppResult<u32> {
-    let mut conn = db.conn()?;
-    playlists::add_tracks(&mut conn, playlist_id, &track_ids)
-}
-
-#[tauri::command]
-pub fn remove_from_playlist(
+pub fn add_to_playlist(
+    app: tauri::AppHandle,
     db: State<'_, Db>,
     playlist_id: i64,
     track_ids: Vec<i64>,
 ) -> AppResult<u32> {
     let mut conn = db.conn()?;
-    playlists::remove_tracks(&mut conn, playlist_id, &track_ids)
+    announcing(&app, || {
+        playlists::add_tracks(&mut conn, playlist_id, &track_ids)
+    })
+}
+
+#[tauri::command]
+pub fn remove_from_playlist(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    playlist_id: i64,
+    track_ids: Vec<i64>,
+) -> AppResult<u32> {
+    let mut conn = db.conn()?;
+    announcing(&app, || {
+        playlists::remove_tracks(&mut conn, playlist_id, &track_ids)
+    })
 }
 
 /// Moves tracks so they sit immediately before the row at `target_index`.
 #[tauri::command]
 pub fn move_in_playlist(
+    app: tauri::AppHandle,
     db: State<'_, Db>,
     playlist_id: i64,
     track_ids: Vec<i64>,
     target_index: u32,
 ) -> AppResult<()> {
     let mut conn = db.conn()?;
-    playlists::move_tracks(&mut conn, playlist_id, &track_ids, target_index as usize)
+    announcing(&app, || {
+        playlists::move_tracks(&mut conn, playlist_id, &track_ids, target_index as usize)
+    })
 }
 
 /// The rows behind a selection, so the editor can show what they hold.
@@ -260,9 +319,12 @@ pub async fn write_tags(
     blocking("tag write", move || {
         let db = app.state::<Db>();
         let mut conn = db.conn()?;
-        tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds(), |p| {
-            // A dropped progress event is not worth failing a write over.
-            let _ = app.emit(TAG_PROGRESS, &p);
+        // Once, when the batch returns. `TAG_PROGRESS` stays per track.
+        announcing(&app, || {
+            tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds(), |p| {
+                // A dropped progress event is not worth failing a write over.
+                let _ = app.emit(TAG_PROGRESS, &p);
+            })
         })
     })
     .await
@@ -380,8 +442,10 @@ pub async fn undo_tag_edit(app: tauri::AppHandle) -> AppResult<TagWriteSummary> 
     blocking("tag undo", move || {
         let db = app.state::<Db>();
         let mut conn = db.conn()?;
-        tags::write::undo_last(&mut conn, |p| {
-            let _ = app.emit(TAG_PROGRESS, &p);
+        announcing(&app, || {
+            tags::write::undo_last(&mut conn, |p| {
+                let _ = app.emit(TAG_PROGRESS, &p);
+            })
         })
     })
     .await
@@ -679,7 +743,7 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
         let seeded = crate::db::synthetic::seed(&mut conn, count)?;
         // What tells the open view to re-count and re-fetch. Without it the
         // table would keep the row count it had before the insert.
-        let _ = app.emit("library://changed", ());
+        let _ = app.emit(LIBRARY_CHANGED, ());
         Ok(seeded)
     })
     .await
