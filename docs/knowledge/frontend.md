@@ -202,7 +202,12 @@ absences are what nobody notices coming back — hence the guards in
   scrolling costs no render. An index rather than a pixel offset: the window
   can be resized while another tab is open, and an index survives a changed
   column count. A search or a move into a playlist clears all three, because
-  the list they point into is no longer the same list. The write is skipped
+  the list they point into is no longer the same list, and bumps a
+  `browseListToken` in the same write: clearing is enough for the two tabs that
+  are closed, since they read the offsets when they open, while the one on
+  screen has read them already and stays where it was. That token is the single
+  thing about the offsets `BrowseView` subscribes to, and it places itself again
+  whenever it changes. The write is skipped
   until the instance has restored: before that `topGroupRef` still reads 0, and
   StrictMode's extra mount-teardown-remount in development lands that teardown
   while the groups are still in flight — writing a zero over the very offset

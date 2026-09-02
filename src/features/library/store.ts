@@ -128,6 +128,15 @@ interface LibraryState {
    */
   browseOffsets: Record<BrowseKind, number>;
   /**
+   * Identifies the list `browseOffsets` describes.
+   *
+   * Clearing the offsets is enough for a tab that is closed, since it reads
+   * them when it opens. The tab on screen has read them already, so it is told
+   * instead: `BrowseView` watches this and places itself again whenever it
+   * changes. Bumped in the same write that clears the offsets, never alone.
+   */
+  browseListToken: number;
+  /**
    * Which columns this view shows, in what order, at what widths.
    *
    * Per view rather than global: `playlists.columns_json` has been in the
@@ -329,6 +338,16 @@ function sortForEntry(
  */
 const NO_BROWSE_OFFSETS: Record<BrowseKind, number> = { albums: 0, artists: 0, genres: 0 };
 
+/**
+ * Forgets every browse offset, and says so to the tab on screen.
+ *
+ * One helper for both callers so the token cannot part company with the
+ * offsets it identifies. See `browseListToken`.
+ */
+function forgetBrowseOffsets(state: LibraryState): Partial<LibraryState> {
+  return { browseOffsets: NO_BROWSE_OFFSETS, browseListToken: state.browseListToken + 1 };
+}
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
   stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0 },
@@ -342,6 +361,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   groups: [],
   groupsLoading: false,
   browseOffsets: NO_BROWSE_OFFSETS,
+  browseListToken: 0,
   columns: DEFAULT_COLUMN_CONFIG,
   fittedWidths: {},
   fitPending: false,
@@ -648,7 +668,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             sortBeforeSearch: null,
             // A playlist's albums are not the library's, so where the grid was
             // left describes a list that is not the one being opened.
-            browseOffsets: NO_BROWSE_OFFSETS,
+            ...forgetBrowseOffsets(state),
           }
         : {}),
     });
@@ -867,7 +887,8 @@ async function pushEntry(entry: HistoryEntry): Promise<void> {
  * column sort that was in use before, unless the user chose one meanwhile.
  */
 async function applySearch(search: string): Promise<void> {
-  const { search: previous, sortBy, direction, sortBeforeSearch } = useLibraryStore.getState();
+  const state = useLibraryStore.getState();
+  const { search: previous, sortBy, direction, sortBeforeSearch } = state;
   if (search === previous) {
     return;
   }
@@ -879,7 +900,7 @@ async function applySearch(search: string): Promise<void> {
   const next: Partial<LibraryState> = {
     search,
     selection: emptySelection,
-    browseOffsets: NO_BROWSE_OFFSETS,
+    ...forgetBrowseOffsets(state),
   };
 
   if (nowSearching && !wasSearching) {

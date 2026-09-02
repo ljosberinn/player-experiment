@@ -1134,13 +1134,26 @@ describe("where each browse tab was left", () => {
     });
   });
 
+  it("tells the open tab that the list it was placed in is gone", async () => {
+    useLibraryStore.setState({ browseOffsets: scrolled });
+    const before = useLibraryStore.getState().browseListToken;
+
+    await search("shoegaze");
+
+    // Cleared offsets reach a tab that is closed, which reads them when it
+    // opens; the one on screen has read them already.
+    expect(useLibraryStore.getState().browseListToken).not.toBe(before);
+  });
+
   it("keeps them across a move that leaves the group list alone", async () => {
     useLibraryStore.setState({ browseOffsets: scrolled });
+    const token = useLibraryStore.getState().browseListToken;
 
     // Albums to Artists is two lists of the same library; each keeps its own
     // place, which is the point of remembering them separately.
     await useLibraryStore.getState().showTab("artists");
 
     expect(useLibraryStore.getState().browseOffsets).toEqual(scrolled);
+    expect(useLibraryStore.getState().browseListToken).toBe(token);
   });
 });

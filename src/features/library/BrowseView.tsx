@@ -41,6 +41,11 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   const loading = useLibraryStore((state) => state.groupsLoading);
   const openGroup = useLibraryStore((state) => state.openGroup);
   const search = useLibraryStore((state) => state.search);
+  // The one piece of the remembered position that is subscribed to: the
+  // offsets themselves are read through `getState`, so scrolling costs no
+  // render, while this changes only when a search or a playlist has thrown
+  // every offset away.
+  const listToken = useLibraryStore((state) => state.browseListToken);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isGrid = kind === "albums";
@@ -127,19 +132,29 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   // container to scroll, and an offset means nothing to the virtualizer before
   // it has a count. After the effect above, so the first measurement is on
   // record and cannot mistake this for a reflow.
-  const restoredRef = useRef(false);
+  //
+  // Keyed to the list token rather than latched, so a search that changes what
+  // the tabs list puts the open one back at the top as well: it has read the
+  // offsets already, and clearing them alone would leave it where it was, on a
+  // row of a list that is gone.
+  const restoredTokenRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    if (restoredRef.current || element === null || width === 0 || rowCount === 0) {
+    if (
+      restoredTokenRef.current === listToken ||
+      element === null ||
+      width === 0 ||
+      rowCount === 0
+    ) {
       return;
     }
-    restoredRef.current = true;
+    restoredTokenRef.current = listToken;
     const topGroup = useLibraryStore.getState().browseOffsets[kind];
     // Recorded as well as applied: leaving again without scrolling must not
     // write back a zero over the place being restored.
     topGroupRef.current = topGroup;
     element.scrollTop = Math.floor(topGroup / columns) * rowHeight;
-  }, [kind, width, rowCount, columns, rowHeight]);
+  }, [kind, width, rowCount, columns, rowHeight, listToken]);
 
   // On unmount, because that is the moment the place is worth keeping and the
   // only one at which a single write covers a whole visit. Through `getState`,
@@ -152,7 +167,7 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   // remounts, and the teardown lands while the groups are still in flight.
   useEffect(() => {
     return () => {
-      if (!restoredRef.current) {
+      if (restoredTokenRef.current === null) {
         return;
       }
       useLibraryStore.getState().rememberBrowseOffset(kind, topGroupRef.current);

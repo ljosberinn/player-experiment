@@ -106,6 +106,14 @@ function groups(count: number): BrowseGroup[] {
   return Array.from({ length: count }, (_, index) => group({ key: `Group ${index}` }));
 }
 
+/** What the store writes when a search changes what the tabs list. */
+function forgetOffsets(): void {
+  useLibraryStore.setState((state) => ({
+    browseOffsets: { albums: 0, artists: 0, genres: 0 },
+    browseListToken: state.browseListToken + 1,
+  }));
+}
+
 function rowsIn(container: HTMLElement): Element[] {
   return [...container.querySelectorAll(".browse-row")];
 }
@@ -413,6 +421,28 @@ describe("where each tab was left", () => {
 
     expect(useLibraryStore.getState().browseOffsets.albums).toBe(32);
     expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+  });
+
+  it("goes back to the top when a search changes what every tab lists", () => {
+    useLibraryStore.setState({ groups: groups(80) });
+    stubLayout(600, WIDE);
+
+    const open = render(<BrowseView kind="albums" />);
+    const scroll = screen.getByTestId("browse-scroll");
+    scroll.scrollTop = 8 * 235;
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    act(() => forgetOffsets());
+
+    // The tab on screen has already read the offsets, so a clearing is a
+    // message it has to be given rather than one it will go and fetch.
+    expect(scroll.scrollTop).toBe(0);
+
+    // And the index it was left on points into a list that is gone.
+    open.unmount();
+    expect(useLibraryStore.getState().browseOffsets.albums).toBe(0);
   });
 
   it("keeps a restored offset rather than writing a zero back over it", () => {
