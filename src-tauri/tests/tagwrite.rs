@@ -374,7 +374,7 @@ fn undoing_with_nothing_to_undo_says_so() {
 }
 
 #[test]
-fn cover_art_can_be_replaced_and_removed_and_put_back() {
+fn cover_art_can_be_replaced_and_removed_but_an_undo_does_not_bring_it_back() {
     let h = harness();
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
@@ -420,16 +420,12 @@ fn cover_art_can_be_replaced_and_removed_and_put_back() {
     assert!(tags::read(&path_of(&h.db, track)).unwrap().cover.is_none());
     assert_eq!(row(&h.db, track).3, None);
 
-    // Undoing the removal has to find the bytes again, which is why `covers`
-    // is never pruned.
+    // The undo restores the tags and leaves the picture alone: what `covers`
+    // holds is a re-encode of what the file carried, so writing it back would
+    // bake a 500px thumbnail into the mp3.
     write::undo_last(&mut conn, |_| {}).unwrap();
-    assert_eq!(
-        tags::read(&path_of(&h.db, track))
-            .unwrap()
-            .cover
-            .map(|c| c.hash),
-        Some(swapped.hash)
-    );
+    assert!(tags::read(&path_of(&h.db, track)).unwrap().cover.is_none());
+    assert_eq!(row(&h.db, track).3, None);
 }
 
 #[test]

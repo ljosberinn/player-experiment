@@ -38,8 +38,10 @@ const PROGRESS_INTERVAL: usize = 25;
 
 /// Everything an edit can change, as it was before the edit.
 ///
-/// Stored as JSON in `tag_undo`. Cover art is referenced by hash rather than
-/// copied - the bytes are already in `covers`, which nothing deletes.
+/// Stored as JSON in `tag_undo`. `cover_hash` is written but no longer read:
+/// undo stopped restoring artwork once `covers` began holding a re-encode
+/// rather than the file's own bytes. It stays in the snapshot because it costs
+/// a hash to record and is the only trace of what a file's artwork was.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TagSnapshot {
     pub title: Option<String>,
@@ -479,7 +481,7 @@ pub fn undo_last(
             }
         };
 
-        let resolved = match to_resolved(conn, &before) {
+        let resolved = match to_resolved(&before) {
             Ok(resolved) => resolved,
             Err(error) => {
                 failures.push(error.to_string());
@@ -521,26 +523,18 @@ pub fn undo_last(
 
 /// Turns a snapshot into an edit that sets every field to what it was.
 ///
-/// Undo has to clear a field the edit *added*, so every field is `Some` here -
-/// including the ones that were empty before.
-fn to_resolved(conn: &Connection, before: &TagSnapshot) -> AppResult<Resolved> {
-    let cover = match &before.cover_hash {
-        None => CoverChange::Remove,
-        Some(hash) => {
-            let found = crate::db::query::cover_bytes(conn, hash)?;
-            match found {
-                Some((mime, bytes)) => CoverChange::Replace(Cover {
-                    hash: hash.clone(),
-                    mime,
-                    bytes,
-                }),
-                // The bytes are gone, so the best available truth is "no
-                // cover" - better than refusing to undo the rest of the tags.
-                None => CoverChange::Remove,
-            }
-        }
-    };
-
+/// Undo has to clear a field the edit *added*, so every text field is `Some`
+/// here - including the ones that were empty before.
+///
+/// **Artwork is the exception, and no longer comes back.** `covers` holds a
+/// 500px JPEG re-encode of what the file carried rather than the bytes
+/// themselves, so restoring from it would bake a thumbnail into the mp3 -
+/// worse than not undoing at all. `cover` is therefore `None`, which means
+/// leave the file's picture exactly as the edit left it, and an edit that
+/// replaced or removed artwork is no longer undoable. Recorded in
+/// `docs/knowledge/limitations.md`; it is also what frees `covers` from having
+/// to keep every cover it has ever seen.
+fn to_resolved(before: &TagSnapshot) -> AppResult<Resolved> {
     Ok(Resolved {
         title: Some(before.title.clone()),
         artist: Some(before.artist.clone()),
@@ -551,7 +545,7 @@ fn to_resolved(conn: &Connection, before: &TagSnapshot) -> AppResult<Resolved> {
         year: Some(before.year),
         track_no: Some(before.track_no),
         disc_no: Some(before.disc_no),
-        cover: Some(cover),
+        cover: None,
     })
 }
 
@@ -638,5 +632,26 @@ mod tests {
     #[test]
     fn a_missing_cover_file_is_reported_rather_than_panicking() {
         assert!(read_cover("C:\\nowhere\\missing.jpg").is_err());
+    }
+
+    #[test]
+    fn an_undo_restores_every_tag_and_leaves_the_artwork_on_disk_alone() {
+        // The hash names artwork that is still in `covers`, which is exactly
+        // the case that used to be restored from.
+        let before = TagSnapshot {
+            title: Some("Maki".to_owned()),
+            cover_hash: Some("a".to_owned()),
+            ..Default::default()
+        };
+
+        let resolved = to_resolved(&before).unwrap();
+
+        assert_eq!(resolved.title, Some(Some("Maki".to_owned())));
+        // Absent means leave alone. What the `covers` table holds is a 500px
+        // re-encode, so writing it back would bake a thumbnail into the file.
+        assert!(
+            resolved.cover.is_none(),
+            "undo would write stored artwork into the mp3"
+        );
     }
 }

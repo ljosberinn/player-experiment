@@ -119,6 +119,7 @@ pub fn run() {
                 volume,
                 muted,
             ));
+            normalize_covers(db.clone());
             app.manage(db);
             Ok(())
         })
@@ -230,6 +231,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Re-encodes artwork a previous build stored whole, off the setup path.
+///
+/// A thread rather than a migration: a library's covers are half a minute of
+/// CPU to decode, and a migration runs in one transaction before the window is
+/// shown. It is silent and needs no ordering against anything - a scan or a
+/// tag write meeting it mid-pass waits at most one chunk for the write lock -
+/// so the handle is dropped and nothing joins it. A quit part-way through
+/// resumes on the next launch.
+fn normalize_covers(db: Db) {
+    // Nothing here was asked for, so nothing here reports. A pass that fails
+    // leaves the flag unset, and the next launch picks up where it stopped.
+    let _ = std::thread::Builder::new()
+        .name("cover-normalize".to_owned())
+        .spawn(move || {
+            let _ = db
+                .conn()
+                .and_then(|mut conn| db::covers::normalize_stored(&mut conn));
+        });
 }
 
 /// Starts the player thread and forwards its events to the webview.
