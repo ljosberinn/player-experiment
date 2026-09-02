@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 import { addWatchFolder, onScanProgress, type ScanProgress, scanLibrary } from "../../ipc";
+import { dismiss, report } from "../shell/statusStore";
 import { useLibraryStore } from "./store";
 
 /**
@@ -18,11 +19,9 @@ import { useLibraryStore } from "./store";
 export interface ScanState {
   progress: ScanProgress | null;
   busy: boolean;
-  error: string | null;
   /** Asks for folders, adds them, and scans. Does nothing if the user cancels. */
   addFolder: () => Promise<void>;
   rescan: () => Promise<void>;
-  dismissError: () => void;
   /** Subscribes to `scan://progress`; returns its own teardown. */
   watch: () => Promise<() => void>;
 }
@@ -30,13 +29,12 @@ export interface ScanState {
 export const useScanStore = create<ScanState>((set, get) => ({
   progress: null,
   busy: false,
-  error: null,
 
   addFolder: async () => {
     if (get().busy) {
       return;
     }
-    set({ error: null });
+    dismiss();
     try {
       const selected = await open({ directory: true, multiple: true, title: "Add music folders" });
       if (!Array.isArray(selected) || selected.length === 0) {
@@ -50,7 +48,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       // each of the rest.
       await get().rescan();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -60,18 +58,17 @@ export const useScanStore = create<ScanState>((set, get) => ({
     if (get().busy) {
       return;
     }
-    set({ busy: true, error: null });
+    dismiss();
+    set({ busy: true });
     try {
       await scanLibrary();
       await useLibraryStore.getState().refresh();
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     } finally {
       set({ busy: false, progress: null });
     }
   },
-
-  dismissError: () => set({ error: null }),
 
   watch: async () => {
     // Progress arrives as events rather than by polling, and the library

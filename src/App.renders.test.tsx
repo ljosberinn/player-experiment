@@ -245,7 +245,7 @@ beforeEach(() => {
   renders.browseView = 0;
   renders.menuBar = 0;
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
-  usePlayerStore.setState({ ...initialPlayer, positionMs: 0, error: null });
+  usePlayerStore.setState({ ...initialPlayer, positionMs: 0 });
 });
 
 describe("what the last.fm status re-renders", () => {
