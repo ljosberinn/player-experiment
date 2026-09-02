@@ -391,6 +391,22 @@ fn read_tags(paths: &[PathBuf]) -> Vec<(PathBuf, TrackTags)> {
         .collect()
 }
 
+/// What a scan did, as a log line's worth of fields.
+///
+/// Here rather than at either call site because both of them write it: the
+/// scan the user asked for and the pass nobody did are the same work, and
+/// their lines have to be comparable to be worth reading.
+///
+/// `unchanged` is left out. It counts the files that were looked at and left
+/// alone, which is the one number that says nothing about what happened.
+pub fn summary_fields(summary: &ScanSummary) -> crate::log::Fields {
+    crate::log::Fields::new()
+        .add("added", summary.added)
+        .add("updated", summary.updated)
+        .add("missing", summary.missing)
+        .add("returned", summary.returned)
+}
+
 /// Runs a full incremental scan of every configured watch folder.
 ///
 /// The entry point for a scan the user asked for, and what the answer to

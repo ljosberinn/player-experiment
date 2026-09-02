@@ -88,6 +88,8 @@ describe("the menu bar", () => {
     // which folders are watched at all. The existing screenshot below now
     // carries it.
     await expect(dialog).toHaveText(/Music Folders/);
+    // Issue 86's row, and the only route to `main.log` there is.
+    await expect(dialog).toHaveText(/Activity Log/);
 
     await capture("settings");
 

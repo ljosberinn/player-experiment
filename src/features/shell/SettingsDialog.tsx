@@ -1,7 +1,9 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { revealMainLog } from "../../ipc";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
 import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
+import { report } from "./statusStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
 
@@ -30,12 +32,27 @@ import { useZoomStore } from "./zoomStore";
  * The music folders join it in issue 71, between the two: they are the first
  * thing here that is not about appearance, and they are where the app is told
  * what to do to the library while nobody is watching.
+ *
+ * The activity log joins it in issue 86, at the end: it is not a preference at
+ * all, and the only other route to a file this app writes - the crash log - is
+ * behind a notice that only appears after a crash.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const factor = useZoomStore((s) => s.factor);
   const step = useZoomStore((s) => s.step);
   const dynamicBackground = useDynamicBackgroundStore((s) => s.enabled);
   const setDynamicBackground = useDynamicBackgroundStore((s) => s.set);
+
+  // Reported on the status bar rather than in the dialog: the failure is a
+  // file manager that would not open, which is neither about the log nor
+  // worth a line of its own inside Settings.
+  const showLog = async () => {
+    try {
+      await revealMainLog();
+    } catch (cause) {
+      report(cause);
+    }
+  };
 
   return (
     <Dialog.Root
@@ -98,10 +115,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               does on its own to the library, then what leaves the machine. */}
           <WatchFolderSettings />
 
-          {/* Last, and set apart: everything above it is a preference about
-              how the app looks, and this is the one thing in Settings that
-              makes the app talk to a server. */}
+          {/* Set apart: everything above it is a preference about how the app
+              looks, and this is the one thing in Settings that makes the app
+              talk to a server. */}
           <LastfmSettings />
+
+          {/* Last, and the one row here that is not a preference: it opens the
+              file every backend operation is written down in. Settings is
+              where somebody already goes when the app has done something they
+              cannot account for, and a log nobody can find is not one. */}
+          <div className="settings-row">
+            <span>Activity Log</span>
+            <button type="button" onClick={() => void showLog()}>
+              Show Log File
+            </button>
+          </div>
 
           <div className="modal-actions">
             <Dialog.Close render={<button type="button" className="primary" />}>Done</Dialog.Close>

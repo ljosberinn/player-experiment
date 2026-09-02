@@ -182,9 +182,13 @@ const CHUNK: usize = 50;
 /// what comes next: a removal orphans a row, and a release lookup fetches
 /// thousands of covers. VACUUM is what actually shrinks the file; the 885 MB
 /// the re-encode frees is merely free pages until it runs.
-pub fn normalize_stored(conn: &mut Connection) -> AppResult<()> {
+///
+/// Answers whether there was anything to do, which is false on every launch
+/// after the one that finished the pass: a caller that logged it either way
+/// would write a line per launch saying nothing happened.
+pub fn normalize_stored(conn: &mut Connection) -> AppResult<bool> {
     if settings::get(conn, settings::COVERS_NORMALIZED)?.is_some() {
-        return Ok(());
+        return Ok(false);
     }
 
     let mut cursor = settings::get(conn, settings::COVERS_NORMALIZED_THROUGH)?.unwrap_or_default();
@@ -239,7 +243,7 @@ pub fn normalize_stored(conn: &mut Connection) -> AppResult<()> {
     conn.execute_batch("VACUUM")?;
     settings::set(conn, settings::COVERS_NORMALIZED, "true")?;
 
-    Ok(())
+    Ok(true)
 }
 
 /// The stored palette for a cover, if it has one.
