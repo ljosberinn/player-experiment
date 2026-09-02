@@ -476,12 +476,24 @@ export function onExportProgress(handler: (progress: WriteProgress) => void): Pr
 }
 
 /**
- * Something changed the library behind the view's back.
+ * How long a subscriber waits after the library changes before reloading.
  *
- * Emitted sparingly and only when a row really changed - today, when playing a
- * track clears a missing mark left over from an unplugged drive. The player
- * reports every load, so a handler that ran on all of them would drop every
- * cached page once per song.
+ * A scan announces itself once, but a burst is ordinary - a tag write over a
+ * selection, an undo, and a scan finishing can land together - and each
+ * reload is a count, a page and a `list_playlists` that recounts every
+ * playlist, smart ones by re-running their compiled filter. A quarter of a
+ * second is under the threshold at which a number feels stale and well above
+ * the rate a burst arrives at.
+ */
+export const INVALIDATE_DEBOUNCE_MS = 250;
+
+/**
+ * The library is no longer what the view thinks it is.
+ *
+ * A bare ping, no payload: every write that commits emits it - a scan, a tag
+ * write and its undo, removing missing rows, and each of the eight playlist
+ * commands - and a subscriber reloads whatever it holds rather than being told
+ * what changed. Debounce it by `INVALIDATE_DEBOUNCE_MS`; both subscribers do.
  */
 export function onLibraryChanged(handler: () => void): Promise<UnlistenFn> {
   return listen("library://changed", () => handler());

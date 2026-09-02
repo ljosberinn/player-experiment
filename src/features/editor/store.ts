@@ -9,7 +9,6 @@ import {
   type WriteProgress,
   writeTags,
 } from "../../ipc";
-import { useLibraryStore } from "../library/store";
 import { dismiss, notify, report } from "../shell/statusStore";
 
 interface EditorState {
@@ -95,7 +94,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ tracks: null });
       notify(describe("Updated", summary));
       await get().refreshUndo();
-      await useLibraryStore.getState().refresh();
     } catch (cause) {
       // The dialog stays open so a rejected edit can be corrected rather than
       // retyped.
@@ -113,7 +111,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const summary = await undoTagEdit();
       notify(describe("Reverted", summary));
       await get().refreshUndo();
-      await useLibraryStore.getState().refresh();
     } catch (cause) {
       report(cause);
     } finally {

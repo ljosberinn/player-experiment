@@ -355,7 +355,7 @@ fn forward(
             // nothing.
             if let Ok(conn) = db.conn() {
                 if scan::clear_missing(&conn, *track_id).unwrap_or(false) {
-                    let _ = app.emit("library://changed", ());
+                    let _ = app.emit(crate::commands::LIBRARY_CHANGED, ());
                 }
             }
         }

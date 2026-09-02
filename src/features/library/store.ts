@@ -5,9 +5,11 @@ import {
   type BrowseGroup,
   type BrowseKind,
   browseGroups,
+  INVALIDATE_DEBOUNCE_MS,
   type LibraryStats,
   libraryStats,
   loadColumnConfig,
+  onLibraryChanged,
   queryTracks,
   removeMissingTracks,
   type SortDirection,
@@ -168,6 +170,14 @@ interface LibraryState {
 
   /** Reloads the count and drops cached pages; call after any query change. */
   refresh: () => Promise<void>;
+  /**
+   * Reloads on `library://changed`, debounced; returns its own teardown.
+   *
+   * What replaced every mutation reaching into this store to say what it
+   * invalidated. A write announces itself and this re-asks; nothing has to
+   * remember which views a given edit could have made wrong.
+   */
+  watch: () => Promise<() => void>;
   /**
    * Deletes every track whose file is gone, and reloads the view.
    *
@@ -388,6 +398,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         history: dropGroupEntry(state.history, dead),
       });
     }
+  },
+
+  watch: async () => {
+    // Debounced around the event rather than inside `refresh`, so a burst
+    // collapses into one reload instead of one per emission.
+    const reload = debounce(() => void get().refresh(), INVALIDATE_DEBOUNCE_MS);
+    const off = await onLibraryChanged(reload);
+    return () => {
+      reload.cancel();
+      off();
+    };
   },
 
   removeMissing: async () => {

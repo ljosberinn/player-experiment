@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addWatchFolder, scanLibrary } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
 import { useScanStore } from "./scan";
-import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
   addWatchFolder: vi.fn(),
@@ -12,7 +11,6 @@ vi.mock("../../ipc", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 const summary = { added: 0, updated: 0, missing: 0, returned: 0, unchanged: 0 };
-const refresh = vi.fn(async () => {});
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -21,9 +19,6 @@ beforeEach(async () => {
   vi.mocked(open).mockResolvedValue(null);
   useScanStore.setState({ progress: null, busy: false });
   useStatusStore.setState({ message: null, notice: null });
-  // Only the one action this store reaches for; the rest of the library store
-  // is not its business.
-  useLibraryStore.setState({ refresh } as never);
 });
 
 /**
@@ -43,8 +38,9 @@ describe("the scan store", () => {
     await useScanStore.getState().addFolder();
 
     expect(addWatchFolder).toHaveBeenCalledWith("D:/Music");
+    // And nothing else: `scan_library` announces itself, and the view reloads
+    // off that rather than off a call from here.
     expect(scanLibrary).toHaveBeenCalled();
-    expect(refresh).toHaveBeenCalled();
   });
 
   it("adds every folder chosen and scans once for the lot", async () => {

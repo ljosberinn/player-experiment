@@ -49,13 +49,7 @@ import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import {
-  type AppInfo,
-  getAppInfo,
-  onLibraryChanged,
-  stageDroppedCover,
-  stagePickedCover,
-} from "./ipc";
+import { type AppInfo, getAppInfo, stageDroppedCover, stagePickedCover } from "./ipc";
 
 export function App() {
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
@@ -91,6 +85,7 @@ export function App() {
   // out of a search that found nothing. An action, so it never changes.
   const clearSearch = useLibraryStore((s) => s.clearSearch);
   const refresh = useLibraryStore((s) => s.refresh);
+  const watchLibrary = useLibraryStore((s) => s.watch);
   const removeMissing = useLibraryStore((s) => s.removeMissing);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
@@ -194,13 +189,11 @@ export function App() {
   }, [refreshUndo]);
 
   useEffect(() => {
-    // Playing a track whose file has come back clears its missing mark, and
-    // the view has no other way to find out: the row still shows the marker
-    // and the toolbar still offers to remove it. The backend only emits this
-    // when a row actually changed, so the reload is rare rather than per song.
+    // Every write announces itself on `library://changed`, and this is what
+    // re-asks. The same teardown dance as the other two subscriptions.
     let stop: (() => void) | undefined;
     let cancelled = false;
-    void onLibraryChanged(() => void refresh()).then((off) => {
+    void watchLibrary().then((off) => {
       if (cancelled) {
         off();
       } else {
@@ -211,7 +204,7 @@ export function App() {
       cancelled = true;
       stop?.();
     };
-  }, [refresh]);
+  }, [watchLibrary]);
 
   useEffect(() => {
     // Read once from the backend rather than baked in at build time: the Rust
