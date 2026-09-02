@@ -7,8 +7,13 @@
 //! trait instead of against `rodio`.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
+use std::sync::Arc;
 use std::time::Duration;
+
+use rodio::cpal;
+use rodio::cpal::traits::{DeviceTrait, HostTrait};
 
 /// Somewhere decoded audio can be sent.
 ///
@@ -33,6 +38,23 @@ pub trait AudioSink: Send {
     fn position(&self) -> Duration;
     /// Whether the loaded source has run out. `true` when nothing is loaded.
     fn finished(&self) -> bool;
+    /// Re-establishes output on the current default device.
+    ///
+    /// `Ok(true)` when the output actually changed and the caller must reload -
+    /// whatever was loaded is bound to the old output and does not survive.
+    /// The sink never learns which path that was; putting the reload back is
+    /// the engine's job, which is also the only way it gets tested.
+    fn reopen_output(&mut self) -> Result<bool, String> {
+        Ok(false)
+    }
+}
+
+/// The id of the current default output device, or `None` when there is none.
+///
+/// [`DeviceTrait::id`] rather than the deprecated `name`: WASAPI implements it
+/// as `IMMDevice::GetId`, which is stable across reboots and reconnections.
+pub fn default_output_id() -> Option<cpal::DeviceId> {
+    cpal::default_host().default_output_device()?.id().ok()
 }
 
 /// [`AudioSink`] backed by `rodio` (cpal output, symphonia decode).
@@ -40,6 +62,29 @@ pub struct RodioSink {
     /// Owns the cpal stream: dropping it silences everything, so it is held
     /// for as long as the player thread lives even though nothing reads it.
     device: rodio::stream::MixerDeviceSink,
+    /// Which device [`Self::device`] was opened on, for
+    /// [`AudioSink::reopen_output`] to compare the default against.
+    ///
+    /// `None` when cpal would not tell us, which reads as "not the default"
+    /// and so costs a reopen we did not need rather than missing one we did.
+    device_id: Option<cpal::DeviceId>,
+    /// Raised by the cpal error callback when the stream dies - an endpoint
+    /// that was unplugged, disabled, or had its session moved.
+    ///
+    /// Shared with the output watcher, which is what turns it into a
+    /// [`Command::OutputChanged`](super::Command::OutputChanged): the callback
+    /// runs on a cpal thread and does nothing but set this.
+    faulted: Arc<AtomicBool>,
+    /// Whether [`Self::device`] is known to be a stream nothing pulls.
+    ///
+    /// [`Self::faulted`] is a one-shot signal and the verdict it produces
+    /// outlives it: a reopen that found no device to move to leaves this set,
+    /// and the flag it was read from cleared. Without the distinction a device
+    /// unplugged and plugged back in would come back under the same
+    /// `DeviceId` - stable across reconnections is the point of it - and the
+    /// id comparison in [`AudioSink::reopen_output`] would decide there was
+    /// nothing to do, over a stream that is still dead.
+    dead: bool,
     /// One `rodio::Player` per loaded track rather than one for the whole
     /// session. `Player`'s queue semantics (`clear` blocks until the mixer
     /// drains) are more than we need, and dropping it stops the sound, so a
@@ -67,15 +112,75 @@ impl RodioSink {
     /// caller keeps the app running without audio rather than refusing to
     /// start.
     pub fn open() -> Result<Self, String> {
-        let device = rodio::stream::DeviceSinkBuilder::open_default_sink()
-            .map_err(|e| format!("no audio output device: {e}"))?;
+        let faulted = Arc::new(AtomicBool::new(false));
+        let (device, device_id) = open_default(&faulted)?;
         Ok(Self {
             device,
+            device_id,
+            faulted,
+            dead: false,
             player: None,
             volume: 1.0,
             pending: None,
         })
     }
+
+    /// The flag the stream's error callback raises, for the output watcher.
+    pub fn faulted(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.faulted)
+    }
+
+    /// Whether the open stream has died, consuming the callback's flag.
+    fn dead(&mut self) -> bool {
+        self.dead |= self.faulted.swap(false, Ordering::AcqRel);
+        self.dead
+    }
+}
+
+/// Whether output has to be re-established, given what is open and what the
+/// OS now calls default.
+///
+/// Split out because it is the whole of the decision and the only part of it
+/// that can be tested without a sound card.
+fn needs_reopen(
+    dead: bool,
+    open: Option<&cpal::DeviceId>,
+    default: Option<&cpal::DeviceId>,
+) -> bool {
+    // A device with no id reads as "not the default", so an unknown costs a
+    // reopen that was not needed rather than missing one that was.
+    dead || open.is_none() || open != default
+}
+
+/// Opens a stream on the default output device, raising `faulted` if it dies.
+///
+/// Acquires the [`cpal::Device`] itself rather than calling
+/// `DeviceSinkBuilder::open_default_sink`, which reports neither the device it
+/// settled on nor a way to hear about stream errors - and both are what
+/// following the OS default is built out of. `open_sink_or_fallback` keeps
+/// rodio's fallback across *configurations* of the chosen device; its wider
+/// fallback across every other device is given up with it.
+fn open_default(
+    faulted: &Arc<AtomicBool>,
+) -> Result<(rodio::stream::MixerDeviceSink, Option<cpal::DeviceId>), String> {
+    let device = cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| "no audio output device".to_owned())?;
+    let device_id = device.id().ok();
+    let raise = Arc::clone(faulted);
+    let mut sink = rodio::stream::DeviceSinkBuilder::from_device(device)
+        // A device that is there but will not describe itself, which is not
+        // the same as no device and should not read like it.
+        .map_err(|e| format!("the audio output device would not open: {e}"))?
+        // Runs on a cpal thread, so it must not block: it raises the flag and
+        // returns, and the watcher's next poll turns that into a reopen.
+        .with_error_callback(move |_| raise.store(true, Ordering::Release))
+        .open_sink_or_fallback()
+        .map_err(|e| format!("the audio output device would not open: {e}"))?;
+    // Drops are no longer a shutdown-only event, so the one-line notice rodio
+    // prints on each of them would now appear mid-session.
+    sink.log_on_drop(false);
+    Ok((sink, device_id))
 }
 
 /// Opens `path` and builds a decoder for it. All of the first-read I/O a load
@@ -122,6 +227,14 @@ impl AudioSink for RodioSink {
     }
 
     fn load(&mut self, path: &Path) -> Result<(), String> {
+        // A load is the free moment to recover a dead stream - nothing is
+        // playing to interrupt - and it is reachable before the watcher's next
+        // poll is. Skipping it would connect this track to a mixer nothing
+        // pulls: silence, and a track that never reports itself finished.
+        if self.dead() {
+            self.reopen_output()?;
+        }
+
         let decoder = match self.take_prepared(path) {
             Some(decoder) => decoder,
             None => decode(path)?,
@@ -163,6 +276,14 @@ impl AudioSink for RodioSink {
     }
 
     fn seek(&mut self, position: Duration) -> Result<(), String> {
+        // Refused rather than attempted on a dead stream: `try_seek` waits on
+        // a reply from the mixer's periodic-access closure, which a dead
+        // stream never pulls again, and the pending order holds the sender -
+        // so the wait has nothing to time it out. A scrubber drag in the
+        // moment before the reopen lands would hang the player thread.
+        if self.dead() {
+            return Err("the audio output device went away".to_owned());
+        }
         match &self.player {
             Some(player) => player.try_seek(position).map_err(|e| e.to_string()),
             None => Err("nothing is loaded".to_owned()),
@@ -177,6 +298,26 @@ impl AudioSink for RodioSink {
 
     fn finished(&self) -> bool {
         self.player.as_ref().is_none_or(rodio::Player::empty)
+    }
+
+    fn reopen_output(&mut self) -> Result<bool, String> {
+        let dead = self.dead();
+        if !needs_reopen(dead, self.device_id.as_ref(), default_output_id().as_ref()) {
+            return Ok(false);
+        }
+
+        // On failure `dead` stays set, so the next change in the default -
+        // typically the device being plugged back in - tries again. The
+        // watcher is not asked to retry on a timer: it fires on transitions,
+        // and there is nothing to move to until one happens.
+        let (device, device_id) = open_default(&self.faulted)?;
+        // Before the old sink goes: the player is connected to its mixer, and
+        // the decoder inside it cannot be moved to another one.
+        self.player = None;
+        self.device = device;
+        self.device_id = device_id;
+        self.dead = false;
+        Ok(true)
     }
 }
 
@@ -317,6 +458,10 @@ pub struct FakeSink {
     pub loads: Vec<std::path::PathBuf>,
     /// Every path `prepare` was called with.
     pub prepares: Vec<std::path::PathBuf>,
+    /// What the next `reopen_output` returns. `None` is the trait default.
+    pub reopen: Option<Result<bool, String>>,
+    /// How many times `reopen_output` was called.
+    pub reopens: usize,
 }
 
 #[cfg(test)]
@@ -371,11 +516,51 @@ impl AudioSink for FakeSink {
     fn finished(&self) -> bool {
         self.loaded.is_none() || self.exhausted
     }
+
+    fn reopen_output(&mut self) -> Result<bool, String> {
+        self.reopens += 1;
+        match self.reopen.take() {
+            // A real reopen takes the loaded source with it, so a caller that
+            // forgets to reload is left with nothing loaded here too.
+            Some(Ok(true)) => {
+                self.loaded = None;
+                self.playing = false;
+                self.position = Duration::ZERO;
+                Ok(true)
+            }
+            Some(outcome) => outcome,
+            None => Ok(false),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn device_id(name: &str) -> cpal::DeviceId {
+        cpal::DeviceId(cpal::default_host().id(), name.to_owned())
+    }
+
+    #[test]
+    fn output_is_reopened_only_when_it_has_to_be() {
+        let open = device_id("speakers");
+        let other = device_id("headphones");
+
+        // The duplicate command the watcher's coalescing leans on: the poll
+        // fires on a transition, and more than one can name the same device.
+        assert!(!needs_reopen(false, Some(&open), Some(&open)));
+        assert!(needs_reopen(false, Some(&open), Some(&other)));
+
+        // Unplugged and plugged back in. `DeviceId` is stable across a
+        // reconnection, so the ids agree and only the dead stream says
+        // otherwise.
+        assert!(needs_reopen(true, Some(&open), Some(&open)));
+
+        // Nothing to move to yet, and nothing that could be made worse by
+        // trying: a failed reopen leaves `dead` set for the next transition.
+        assert!(needs_reopen(true, Some(&open), None));
+    }
 
     #[test]
     fn the_silent_sink_advances_only_while_it_is_playing() {

@@ -251,7 +251,15 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool) -> Play
     }
 
     match RodioSink::open() {
-        Ok(sink) => Player::spawn(sink, volume, muted, forward(app, db)),
+        Ok(sink) => {
+            // Read off the sink before it moves onto the player thread: the
+            // watcher needs the same stream-error flag the sink was opened
+            // with, and the channel it sends into only exists after `spawn`.
+            let faulted = sink.faulted();
+            let player = Player::spawn(sink, volume, muted, forward(app, db));
+            player.watch_output(faulted);
+            player
+        }
         Err(message) => {
             let _ = app.emit("player://error", &message);
             // No forwarding: nothing can load, so there is no state to report.

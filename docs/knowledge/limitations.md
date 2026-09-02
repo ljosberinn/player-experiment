@@ -15,6 +15,12 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **No gapless playback.** The join is down to roughly 10ms, not to nothing:
   sample accuracy needs the next decoder appended to the same `rodio::Player`,
   which costs the one-`Player`-per-track design the engine relies on.
+- **An output device change is noticed by a poll**, once a second, not by
+  `IMMNotificationClient`. Implementing that COM interface means `unsafe`, and
+  the crate forbids it - the same trade as DPAPI below. A device switch is
+  therefore heard up to a second late, and a scrubber drag inside that second
+  is refused with an error rather than served.
+- **The output device is always the OS default.** Settings cannot pin one.
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.

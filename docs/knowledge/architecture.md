@@ -87,6 +87,14 @@ it says the library moved and the views re-ask.
 - **A missing audio device is not fatal.** `RodioSink::open` failing installs a
   null sink behind the same interface and reports why on `player://error` —
   headless CI is exactly this case.
+- **Playback follows the OS default output device.** An `output-watch` thread
+  polls `cpal`'s default output every second and sends `Command::OutputChanged`
+  when its `DeviceId` moved since the last poll, or when the cpal error
+  callback flagged the open stream as dead. `AudioSink::reopen_output` then
+  swaps in a stream on the new default and reports whether anything changed;
+  the engine reloads the current entry, seeks back to where it was, and
+  restores play or pause. Same play throughout — nothing is re-announced or
+  re-scrobbled — and no device left to move to stops with an error.
 - **"Played" means 50% of the track.** One constant (`PLAYED_FRACTION`) behind
   play counts and scrobbling alike. A repeat loop counts as a play, and
   `Event::Played` carries the wall-clock second the track *started* — derived
