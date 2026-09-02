@@ -144,8 +144,17 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   // On unmount, because that is the moment the place is worth keeping and the
   // only one at which a single write covers a whole visit. Through `getState`,
   // so a scroll never wakes a subscriber.
+  //
+  // Only once this instance has restored, because until then it knows nothing:
+  // `topGroupRef` still reads 0, and writing that back is writing over the
+  // offset it is waiting for the groups to arrive so it can use. StrictMode
+  // makes exactly that happen in development - it mounts, tears down and
+  // remounts, and the teardown lands while the groups are still in flight.
   useEffect(() => {
     return () => {
+      if (!restoredRef.current) {
+        return;
+      }
       useLibraryStore.getState().rememberBrowseOffset(kind, topGroupRef.current);
     };
   }, [kind]);

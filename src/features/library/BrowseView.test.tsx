@@ -1,5 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowseGroup } from "../../ipc";
 import { BrowseView } from "./BrowseView";
@@ -390,6 +391,27 @@ describe("where each tab was left", () => {
 
     render(<BrowseView kind="albums" />);
 
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+  });
+
+  it("survives the extra mount and unmount StrictMode runs in development", () => {
+    useLibraryStore.getState().rememberBrowseOffset("albums", 32);
+    // Arriving after the mount, which is the ordering that broke it: the first
+    // mount has no rows to restore into, so the simulated unmount that follows
+    // it recorded a scroll position of zero over the offset being waited for.
+    useLibraryStore.setState({ groups: [], groupsLoading: true });
+    stubLayout(600, WIDE);
+
+    render(
+      <StrictMode>
+        <BrowseView kind="albums" />
+      </StrictMode>,
+    );
+    act(() => {
+      useLibraryStore.setState({ groups: groups(80), groupsLoading: false });
+    });
+
+    expect(useLibraryStore.getState().browseOffsets.albums).toBe(32);
     expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
   });
 

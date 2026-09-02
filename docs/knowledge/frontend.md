@@ -202,7 +202,12 @@ absences are what nobody notices coming back — hence the guards in
   scrolling costs no render. An index rather than a pixel offset: the window
   can be resized while another tab is open, and an index survives a changed
   column count. A search or a move into a playlist clears all three, because
-  the list they point into is no longer the same list.
+  the list they point into is no longer the same list. The write is skipped
+  until the instance has restored: before that `topGroupRef` still reads 0, and
+  StrictMode's extra mount-teardown-remount in development lands that teardown
+  while the groups are still in flight — writing a zero over the very offset
+  being waited for, which is what made the feature look dead in `tauri dev`
+  while every test passed.
 - **Every view change goes through `applyEntry`.** A view is
   `{ tab, browse, playlistId }`, written in one `set` and refreshed once; the
   four actions that used to write those fields separately are entry
