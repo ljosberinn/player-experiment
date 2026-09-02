@@ -95,6 +95,10 @@ export const config: WebdriverIO.Config = {
     // fifty thousand rows in the shared library and nothing before it would
     // recognise the place afterwards.
     "./specs/virtualization.test.ts",
+    // After `virtualization`, which is what makes it possible: a tab has to be
+    // taller than the window before it has a scroll position to remember, and
+    // the seeded library's three albums fit on one row.
+    "./specs/browse-scroll.test.ts",
     // Truly last. It crashes the app on purpose, and the notice that reports
     // the crash sits above the table until something dismisses it - which this
     // spec does, but only if it gets that far.

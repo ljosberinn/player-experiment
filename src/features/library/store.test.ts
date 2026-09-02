@@ -103,6 +103,7 @@ beforeEach(() => {
     groupsLoading: false,
     columns: DEFAULT_COLUMN_CONFIG,
     selection: { ids: new Set(), anchorIndex: null },
+    browseOffsets: { albums: 0, artists: 0, genres: 0 },
     queryToken: 0,
     history: historyAt({ tab: "songs", browse: null, playlistId: null }),
   });
@@ -1090,5 +1091,69 @@ describe("reloading when the library changes underneath", () => {
 
     expect(statsMock).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+});
+
+describe("where each browse tab was left", () => {
+  const scrolled = { albums: 32, artists: 12, genres: 4 };
+
+  it("keeps an offset per tab", () => {
+    useLibraryStore.getState().rememberBrowseOffset("albums", 32);
+    useLibraryStore.getState().rememberBrowseOffset("artists", 12);
+
+    expect(useLibraryStore.getState().browseOffsets).toEqual({
+      albums: 32,
+      artists: 12,
+      genres: 0,
+    });
+  });
+
+  it("forgets all three when a search changes what is listed", async () => {
+    useLibraryStore.setState({ browseOffsets: scrolled });
+
+    await search("shoegaze");
+
+    // The term decides what is in the list at all, so a remembered index
+    // points at a different album.
+    expect(useLibraryStore.getState().browseOffsets).toEqual({
+      albums: 0,
+      artists: 0,
+      genres: 0,
+    });
+  });
+
+  it("forgets all three when the view crosses into a playlist", async () => {
+    useLibraryStore.setState({ browseOffsets: scrolled });
+
+    await useLibraryStore.getState().showPlaylist(3);
+
+    expect(useLibraryStore.getState().browseOffsets).toEqual({
+      albums: 0,
+      artists: 0,
+      genres: 0,
+    });
+  });
+
+  it("tells the open tab that the list it was placed in is gone", async () => {
+    useLibraryStore.setState({ browseOffsets: scrolled });
+    const before = useLibraryStore.getState().browseListToken;
+
+    await search("shoegaze");
+
+    // Cleared offsets reach a tab that is closed, which reads them when it
+    // opens; the one on screen has read them already.
+    expect(useLibraryStore.getState().browseListToken).not.toBe(before);
+  });
+
+  it("keeps them across a move that leaves the group list alone", async () => {
+    useLibraryStore.setState({ browseOffsets: scrolled });
+    const token = useLibraryStore.getState().browseListToken;
+
+    // Albums to Artists is two lists of the same library; each keeps its own
+    // place, which is the point of remembering them separately.
+    await useLibraryStore.getState().showTab("artists");
+
+    expect(useLibraryStore.getState().browseOffsets).toEqual(scrolled);
+    expect(useLibraryStore.getState().browseListToken).toBe(token);
   });
 });

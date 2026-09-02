@@ -354,7 +354,10 @@ export function App() {
           ) : null}
 
           {tab !== "songs" && browse === null ? (
-            <BrowseView kind={tab} />
+            // Keyed on the tab, so each of the three is its own instance
+            // with its own scroll container: unkeyed they shared one, and
+            // Artists opened wherever the album grid had been left.
+            <BrowseView key={tab} kind={tab} />
           ) : total === 0 && playlistId !== null && search === "" ? (
             // An empty playlist is neither an empty library nor a search that
             // found nothing, and both of those give unhelpful advice here.

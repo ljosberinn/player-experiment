@@ -193,6 +193,26 @@ absences are what nobody notices coming back — hence the guards in
   to. Failures nobody asked for still stay silent — `loadColumns`,
   `loadSections`, `toggleSection`, `refreshUndo` and `getAppInfo` keep their
   bare `catch`.
+- **Each browse tab is its own instance**, keyed on the tab in `App`. Unkeyed,
+  the three shared one component and one scroll container — `song-body` and
+  `song-body browse-body` are both a `div` in the same slot, so React reused
+  the element even across the empty-state frame between them and `scrollTop`
+  rode along. Where each was left is an index into `groups` in the library
+  store, written on unmount through `getState()` and never subscribed to, so
+  scrolling costs no render. An index rather than a pixel offset: the window
+  can be resized while another tab is open, and an index survives a changed
+  column count. A search or a move into a playlist clears all three, because
+  the list they point into is no longer the same list, and bumps a
+  `browseListToken` in the same write: clearing is enough for the two tabs that
+  are closed, since they read the offsets when they open, while the one on
+  screen has read them already and stays where it was. That token is the single
+  thing about the offsets `BrowseView` subscribes to, and it places itself again
+  whenever it changes. The write is skipped
+  until the instance has restored: before that `topGroupRef` still reads 0, and
+  StrictMode's extra mount-teardown-remount in development lands that teardown
+  while the groups are still in flight — writing a zero over the very offset
+  being waited for, which is what made the feature look dead in `tauri dev`
+  while every test passed.
 - **Every view change goes through `applyEntry`.** A view is
   `{ tab, browse, playlistId }`, written in one `set` and refreshed once; the
   four actions that used to write those fields separately are entry

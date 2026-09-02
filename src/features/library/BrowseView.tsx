@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type BrowseGroup, type BrowseKind, coverUrl } from "../../ipc";
 import { formatDuration } from "../../lib/format";
 import { groupId, groupMeta, groupSubtitle, groupTitle } from "./browse";
@@ -24,6 +24,13 @@ const OVERSCAN = 6;
  * Virtualized by row rather than by item: a grid's unit of scrolling is the
  * row, and the number of columns depends on the width, so the two are computed
  * together from the measured container.
+ *
+ * One instance per tab, keyed on it in `App`. Albums and Artists are two
+ * places rather than two renderings of one: unkeyed they shared a scroll
+ * container, so opening Artists landed wherever the album grid had been left,
+ * and the reflow correction below then rewrote that offset in the grid's row
+ * height. Each tab keeps its own place instead, through the store, since the
+ * instance holding it is gone by the time it is wanted again.
  */
 export function BrowseView({ kind }: { kind: BrowseKind }) {
   // See the same directive in `SongTable`: a `useVirtualizer` in the body is
@@ -34,9 +41,15 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   const loading = useLibraryStore((state) => state.groupsLoading);
   const openGroup = useLibraryStore((state) => state.openGroup);
   const search = useLibraryStore((state) => state.search);
+  // The one piece of the remembered position that is subscribed to: the
+  // offsets themselves are read through `getState`, so scrolling costs no
+  // render, while this changes only when a search or a playlist has thrown
+  // every offset away.
+  const listToken = useLibraryStore((state) => state.browseListToken);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isGrid = kind === "albums";
+  const rowHeight = isGrid ? TILE_HEIGHT : LIST_ROW_HEIGHT;
   // Measured into state rather than read off the ref during render: a ref read
   // is whatever the last commit left there, so the column count was fixed at
   // the first measurement and the grid never reflowed with the window.
@@ -82,27 +95,84 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => (isGrid ? TILE_HEIGHT : LIST_ROW_HEIGHT),
+    estimateSize: () => rowHeight,
     overscan: OVERSCAN,
   });
+
+  /** The group at the top, kept up to date without a render. */
+  const topGroupRef = useRef(0);
 
   // A resize changes how many groups a row holds without changing how tall a
   // row is, so the scroll offset survives it while the data under it does not:
   // the same pixel is now a different album. Re-anchor on the group that was at
   // the top, and drop the size cache, whose entries are keyed by a row index
   // that no longer means the same thing.
-  const columnsRef = useRef(columns);
+  //
+  // `null` until the first measurement, and skipped there: `columns` falls
+  // back to 1 until `attachRow` reports a width, so the first commit at four
+  // columns looks exactly like a reflow. Harmless against a scrollTop of 0,
+  // but it would divide a restored offset by four.
+  const columnsRef = useRef<number | null>(null);
   useLayoutEffect(() => {
-    const previous = columnsRef.current;
-    columnsRef.current = columns;
     const element = scrollRef.current;
-    if (previous === columns || element === null) {
+    if (width === 0 || element === null) {
       return;
     }
-    const topGroup = Math.floor(element.scrollTop / TILE_HEIGHT) * previous;
-    element.scrollTop = Math.floor(topGroup / columns) * TILE_HEIGHT;
+    const previous = columnsRef.current;
+    columnsRef.current = columns;
+    if (previous === null || previous === columns) {
+      return;
+    }
+    const topGroup = Math.floor(element.scrollTop / rowHeight) * previous;
+    element.scrollTop = Math.floor(topGroup / columns) * rowHeight;
     virtualizer.measure();
-  }, [columns, virtualizer]);
+  }, [columns, width, rowHeight, virtualizer]);
+
+  // Restored once the groups are in, not on mount: the empty state has no
+  // container to scroll, and an offset means nothing to the virtualizer before
+  // it has a count. After the effect above, so the first measurement is on
+  // record and cannot mistake this for a reflow.
+  //
+  // Keyed to the list token rather than latched, so a search that changes what
+  // the tabs list puts the open one back at the top as well: it has read the
+  // offsets already, and clearing them alone would leave it where it was, on a
+  // row of a list that is gone.
+  const restoredTokenRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (
+      restoredTokenRef.current === listToken ||
+      element === null ||
+      width === 0 ||
+      rowCount === 0
+    ) {
+      return;
+    }
+    restoredTokenRef.current = listToken;
+    const topGroup = useLibraryStore.getState().browseOffsets[kind];
+    // Recorded as well as applied: leaving again without scrolling must not
+    // write back a zero over the place being restored.
+    topGroupRef.current = topGroup;
+    element.scrollTop = Math.floor(topGroup / columns) * rowHeight;
+  }, [kind, width, rowCount, columns, rowHeight, listToken]);
+
+  // On unmount, because that is the moment the place is worth keeping and the
+  // only one at which a single write covers a whole visit. Through `getState`,
+  // so a scroll never wakes a subscriber.
+  //
+  // Only once this instance has restored, because until then it knows nothing:
+  // `topGroupRef` still reads 0, and writing that back is writing over the
+  // offset it is waiting for the groups to arrive so it can use. StrictMode
+  // makes exactly that happen in development - it mounts, tears down and
+  // remounts, and the teardown lands while the groups are still in flight.
+  useEffect(() => {
+    return () => {
+      if (restoredTokenRef.current === null) {
+        return;
+      }
+      useLibraryStore.getState().rememberBrowseOffset(kind, topGroupRef.current);
+    };
+  }, [kind]);
 
   if (!loading && groups.length === 0) {
     return (
@@ -115,7 +185,14 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   }
 
   return (
-    <div className="song-body browse-body" ref={attachScroll} data-testid="browse-scroll">
+    <div
+      className="song-body browse-body"
+      ref={attachScroll}
+      data-testid="browse-scroll"
+      onScroll={(event) => {
+        topGroupRef.current = Math.floor(event.currentTarget.scrollTop / rowHeight) * columns;
+      }}
+    >
       {/* A labelled section rather than role="list": the virtualizer needs a
           row wrapper between the container and each item, which breaks the
           list/listitem relationship a screen reader relies on, and claiming it
