@@ -55,6 +55,34 @@ enum. It emits `player://position` (throttled ~4/s), `player://state`,
 `player://ended`, `player://error`. Scanning runs on a `rayon` pool and emits
 `scan://progress` and `library://changed`. Neither ever blocks a command handler.
 
+**A watch folder is polled, not watched.** A `library-watch` thread wakes every
+15 seconds, reads `library.watchInterval` from `settings` — so a change in
+Settings applies without a restart and needs no channel — and runs one
+incremental pass when the interval is up, plus one shortly after launch, which
+is what notices whatever moved while the app was closed. Not
+`notify`/ReadDirectoryChangesW: an event stream drops events on network and
+removable volumes and sees nothing that happened while the app was closed, so
+it would need the startup walk anyway and be a second code path rather than a
+replacement. Two rules make an unattended pass safe to run at all:
+
+- **A root that is not on disk is skipped, not walked.** `walk` yields nothing
+  for a missing root and `plan` would then mark every track under it missing —
+  correct when the user asked for a scan, ruinous on a timer. So the pass
+  filters roots by existence and passes the absent ones to `plan`, which leaves
+  their tracks alone. A manual Rescan keeps the old behaviour: the user asked
+  for the answer, and those marks are what feeds Remove Missing.
+- **A pass that changed nothing says nothing.** It emits no `scan://progress`
+  while there is no work (which would flash "Scanning 0 of 0"), and announces
+  on `library://changed` only when `added + updated + missing + returned` is
+  non-zero.
+
+**One lock serializes everything that rewrites rows from files on disk.**
+`scan::ScanLock`, managed beside `Db`, taken by `scan_library`, `undo_tag_edit`
+and the poll. The poll `try_lock`s and skips the pass entirely; a user-asked
+scan waits, because a Rescan that silently did nothing is worse than one that
+starts its walk late. Poison-tolerant: a panicking scan must not leave the
+library unscannable for the rest of the session.
+
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
 `scan://progress`, a tag edit and its undo on `tags://progress`, an export on

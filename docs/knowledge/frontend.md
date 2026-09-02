@@ -199,6 +199,11 @@ absences are what nobody notices coming back — hence the guards in
   to. Failures nobody asked for still stay silent — `loadColumns`,
   `loadSections`, `toggleSection`, `refreshUndo` and `getAppInfo` keep their
   bare `catch`.
+- **A dialog-only section keeps its state local.** `WatchFolderSettings` reads
+  the folder list and the interval in a `useEffect` and holds them in
+  `useState`. `SettingsDialog` is mounted when it opens, so there is nothing to
+  keep in step while it is closed, and a store would be a subscription the
+  shell pays for on every launch to serve a pane most sessions never open.
 - **Each browse tab is its own instance**, keyed on the tab in `App`. Unkeyed,
   the three shared one component and one scroll container — `song-body` and
   `song-body browse-body` are both a `div` in the same slot, so React reused

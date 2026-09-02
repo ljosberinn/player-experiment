@@ -713,6 +713,17 @@ pub struct ScanSummary {
     pub unchanged: u32,
 }
 
+impl ScanSummary {
+    /// Whether the library is different for this scan having run.
+    ///
+    /// `unchanged` is deliberately not part of it: it counts the files that
+    /// were looked at and left alone, which is what a pass that did nothing
+    /// looks like. What the unattended pass consults before announcing.
+    pub fn changed(&self) -> bool {
+        self.added + self.updated + self.missing + self.returned > 0
+    }
+}
+
 /// A panic the previous run wrote down.
 ///
 /// Carries the full text as well as the one-line summary so that "show me the

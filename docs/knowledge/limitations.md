@@ -21,6 +21,18 @@ Known, decided, and not scheduled. Anything with work attached lives in
   therefore heard up to a second late, and a scrubber drag inside that second
   is refused with an error rather than served.
 - **The output device is always the OS default.** Settings cannot pin one.
+- **A change under a watch folder is noticed by a poll**, within the chosen
+  interval, not when it happens. Same trade as the output device above:
+  `notify`/ReadDirectoryChangesW drops events on network and removable volumes
+  and sees nothing that happened while the app was closed, so it would be a
+  second code path beside the walk rather than a replacement for it. Fifteen
+  minutes by default; Off, 5, 30 and 60 are the alternatives.
+- **An unattended pass leaves an unplugged drive alone entirely.** A root that
+  is not on disk contributes nothing to a pass — neither its files nor their
+  absence — so songs on a drive that has been unplugged are neither marked
+  missing nor removed until the user runs a Rescan.
+- **A failed unattended pass is silent.** There is nowhere to put it: the pass
+  was not asked for, so it is not an error popover, and there is no log yet.
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.

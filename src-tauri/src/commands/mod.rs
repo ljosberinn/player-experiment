@@ -16,11 +16,15 @@ use crate::model::{
     LibraryStats, PlayerSnapshot, Playlist, ScanSummary, SmartOrder, TagEdit, TagValueField,
     TagWriteSummary, Track, TrackQuery,
 };
+use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags};
 
-/// Progress channels for the two writes long enough to watch.
+/// Progress channels for the writes long enough to watch.
 const TAG_PROGRESS: &str = "tags://progress";
 const EXPORT_PROGRESS: &str = "export://progress";
+/// Named rather than inline since the unattended pass in `lib.rs` reports on
+/// it too - the bar does not care which of the two started the work.
+pub(crate) const SCAN_PROGRESS: &str = "scan://progress";
 
 /// The one channel that says the library is no longer what a view thinks.
 ///
@@ -85,6 +89,16 @@ pub fn list_watch_folders(db: State<'_, Db>) -> AppResult<Vec<String>> {
         .collect())
 }
 
+/// Stops watching a folder. The songs already in the library stay.
+///
+/// No `library://changed`: the list this changes is the one in Settings, and
+/// the tracks are exactly as they were until a pass does not find them.
+#[tauri::command]
+pub fn remove_watch_folder(db: State<'_, Db>, path: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    scan::remove_watch_folder(&conn, &PathBuf::from(path))
+}
+
 /// Runs a scan on a worker thread, streaming `scan://progress` as it goes.
 ///
 /// Scanning tens of thousands of files must never occupy the IPC thread, so
@@ -94,6 +108,11 @@ pub fn list_watch_folders(db: State<'_, Db>) -> AppResult<Vec<String>> {
 pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
     blocking("scan", move || {
         let db = app.state::<Db>();
+        // Waits, unlike the unattended pass, which skips: the user asked for
+        // this answer, and a Rescan that silently did nothing is worse than
+        // one that starts its walk late.
+        let lock = app.state::<ScanLock>();
+        let _guard = lock.acquire();
         let mut conn = db.conn()?;
         // Announced once at the end rather than per file: `scan://progress`
         // already drives the bar, and a ping per file would put one re-query
@@ -101,7 +120,7 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
         announcing(&app, || {
             scan::scan(&mut conn, |progress| {
                 // A dropped progress event is not worth failing a scan over.
-                let _ = app.emit("scan://progress", &progress);
+                let _ = app.emit(SCAN_PROGRESS, &progress);
             })
         })
     })
@@ -468,6 +487,11 @@ fn staged_cover_path(dir: &std::path::Path, mime: &str) -> PathBuf {
 pub async fn undo_tag_edit(app: tauri::AppHandle) -> AppResult<TagWriteSummary> {
     blocking("tag undo", move || {
         let db = app.state::<Db>();
+        // Behind the same lock as a scan: it rewrites the files a pass reads
+        // its (mtime, size) from, and until the lock existed nothing stopped
+        // the two from running over each other.
+        let lock = app.state::<ScanLock>();
+        let _guard = lock.acquire();
         let mut conn = db.conn()?;
         announcing(&app, || {
             tags::write::undo_last(&mut conn, |p| {
@@ -590,6 +614,22 @@ pub fn load_zoom(db: State<'_, Db>) -> AppResult<Option<String>> {
 pub fn save_zoom(db: State<'_, Db>, factor: String) -> AppResult<()> {
     let conn = db.conn()?;
     settings::set(&conn, settings::ZOOM, &factor)
+}
+
+/// Minutes between unattended library passes; zero means off.
+///
+/// A number rather than the opaque strings above, because Rust is what reads
+/// it: the `library-watch` thread asks for it on every wake.
+#[tauri::command]
+pub fn load_watch_interval(db: State<'_, Db>) -> AppResult<u32> {
+    let conn = db.conn()?;
+    settings::watch_interval(&conn)
+}
+
+#[tauri::command]
+pub fn save_watch_interval(db: State<'_, Db>, minutes: u32) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::WATCH_INTERVAL, &minutes.to_string())
 }
 
 /// Which sidebar sections are collapsed, as the frontend wrote them.

@@ -1,12 +1,17 @@
 //! Bringing the database in line with what is on disk.
 //!
-//! Scanning is explicit rather than filesystem-watched, and incremental: a
-//! file whose (mtime, size) is unchanged is never re-parsed, so a rescan of a
-//! large library costs a directory walk rather than tens of thousands of tag
-//! reads.
+//! Scanning is polled rather than filesystem-watched, and incremental: a file
+//! whose (mtime, size) is unchanged is never re-parsed, so a pass over a large
+//! library costs a directory walk rather than tens of thousands of tag reads.
+//! That is what makes the [`watch`] thread's unattended pass affordable on a
+//! timer, and why an event stream was not worth a second code path - see the
+//! module's own header.
+
+pub mod watch;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rayon::prelude::*;
@@ -24,6 +29,41 @@ pub const AUDIO_EXTENSIONS: &[&str] = &["mp3"];
 /// How many files are parsed between progress emissions. Emitting per file
 /// would flood the IPC channel on a large library.
 const PROGRESS_INTERVAL: usize = 200;
+
+/// Held for the length of anything that rewrites rows from files on disk.
+///
+/// Managed alongside [`crate::db::Db`] and taken by `scan_library`,
+/// `undo_tag_edit` and the unattended pass. Nothing before it did this job:
+/// the frontend's `busy` flag guards one button in one window, and the undo
+/// was never behind it at all - which was survivable only while every such
+/// write started with a click.
+///
+/// Poison-tolerant on purpose. A panicking scan must not leave the library
+/// unscannable for the rest of the session; the guard protects an ordering,
+/// not a value that could be left half-written.
+#[derive(Debug, Clone, Default)]
+pub struct ScanLock(Arc<Mutex<()>>);
+
+impl ScanLock {
+    /// Waits for whoever holds it.
+    ///
+    /// What a user-asked scan does: a Rescan that silently did nothing would
+    /// be worse than one that starts its walk a little late.
+    pub fn acquire(&self) -> MutexGuard<'_, ()> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// `None` when something else holds it, for a caller with nobody waiting.
+    pub fn try_acquire(&self) -> Option<MutexGuard<'_, ()>> {
+        match self.0.try_lock() {
+            Ok(guard) => Some(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        }
+    }
+}
 
 /// What the database already knows about a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,10 +152,18 @@ pub fn now_secs() -> i64 {
 /// what stops the next Rescan from undoing the removal. It cannot appear in
 /// `known` either - the row went with it - so the missing loop below never sees
 /// one.
+///
+/// `absent` is the roots that were not on disk when the walk started, and is
+/// empty for every scan the user asked for. A track underneath one of them is
+/// neither found nor lost by this pass: `walk` yields nothing for a root that
+/// is not there, so without this an unplugged external drive would mark every
+/// track on it missing - which is the answer a Rescan is asking for and the
+/// last thing the unattended pass should do on its own.
 pub fn plan(
     known: &HashMap<String, Known>,
     on_disk: &[(PathBuf, i64, i64)],
     removed: &HashSet<String>,
+    absent: &[PathBuf],
 ) -> ScanPlan {
     let mut plan = ScanPlan::default();
     let mut seen = HashSet::with_capacity(on_disk.len());
@@ -146,12 +194,21 @@ pub fn plan(
     }
 
     for (key, entry) in known {
-        if !seen.contains(key) && !entry.missing {
+        if !seen.contains(key) && !entry.missing && !is_under(key, absent) {
             plan.missing.push(entry.id);
         }
     }
 
     plan
+}
+
+/// Whether `path` lies inside any of `roots`.
+///
+/// Compared by component rather than as text: `C:\Music2` starts with the
+/// string `C:\Music` and is a different folder.
+fn is_under(path: &str, roots: &[PathBuf]) -> bool {
+    let path = Path::new(path);
+    roots.iter().any(|root| path.starts_with(root))
 }
 
 fn load_known(conn: &Connection) -> AppResult<HashMap<String, Known>> {
@@ -309,6 +366,20 @@ pub fn add_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
     Ok(())
 }
 
+/// Stops watching `path`, and does nothing else.
+///
+/// The tracks under it stay in the library until a pass does not find them and
+/// marks them missing, which is the route that already exists - a second kind
+/// of removal, deleting rows because a folder left the list, would take the
+/// play counts and playlist places on them with it.
+pub fn remove_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
+    conn.execute(
+        "DELETE FROM watch_folders WHERE path = ?1",
+        [path.to_string_lossy().as_ref()],
+    )?;
+    Ok(())
+}
+
 /// Reads tags for `paths` in parallel.
 ///
 /// Files that fail to parse are dropped, not propagated: a corrupt file in a
@@ -320,18 +391,37 @@ fn read_tags(paths: &[PathBuf]) -> Vec<(PathBuf, TrackTags)> {
         .collect()
 }
 
-/// Runs a full incremental scan of the configured watch folders.
+/// Runs a full incremental scan of every configured watch folder.
+///
+/// The entry point for a scan the user asked for, and what the answer to
+/// "Rescan" has always been: an unreachable root is walked like any other,
+/// yields nothing, and the tracks under it are marked missing - which is what
+/// feeds Remove Missing. [`watch::pass`] is the same scan with the roots
+/// filtered first, for the case where nobody asked.
 ///
 /// `on_progress` is called periodically; it is a closure rather than a Tauri
 /// handle so the whole scan can be exercised in tests without a running app.
 pub fn scan(
     conn: &mut Connection,
-    mut on_progress: impl FnMut(ScanProgress),
+    on_progress: impl FnMut(ScanProgress),
 ) -> AppResult<ScanSummary> {
     let roots = watch_folders(conn)?;
-    let on_disk = walk(&roots);
+    scan_roots(conn, &roots, &[], on_progress)
+}
+
+/// The scan itself, over the roots it is given.
+///
+/// `absent` names roots deliberately left out of `roots`, so that the tracks
+/// under them are not mistaken for files that have gone; see [`plan`].
+pub fn scan_roots(
+    conn: &mut Connection,
+    roots: &[PathBuf],
+    absent: &[PathBuf],
+    mut on_progress: impl FnMut(ScanProgress),
+) -> AppResult<ScanSummary> {
+    let on_disk = walk(roots);
     let known = load_known(conn)?;
-    let plan = plan(&known, &on_disk, &load_removed(conn)?);
+    let plan = plan(&known, &on_disk, &load_removed(conn)?, absent);
 
     let total = (plan.added.len() + plan.updated.len()) as u32;
     let mut summary = ScanSummary {
@@ -545,9 +635,9 @@ mod tests {
         paths.iter().map(|p| (*p).to_owned()).collect()
     }
 
-    /// `plan` with no tombstones, which is every case but the two below.
+    /// `plan` as a scan the user asked for: no tombstones, every root walked.
     fn plan(known: &HashMap<String, Known>, on_disk: &[(PathBuf, i64, i64)]) -> ScanPlan {
-        super::plan(known, on_disk, &HashSet::new())
+        super::plan(known, on_disk, &HashSet::new(), &[])
     }
 
     #[test]
@@ -651,6 +741,7 @@ mod tests {
             &known(&[]),
             &on_disk(&[("/m/unwanted.mp3", 10, 100)]),
             &tombstones(&["/m/unwanted.mp3"]),
+            &[],
         );
 
         assert!(plan.added.is_empty());
@@ -664,9 +755,43 @@ mod tests {
             &known(&[]),
             &on_disk(&[("/m/unwanted.mp3", 10, 100), ("/m/wanted.mp3", 10, 100)]),
             &tombstones(&["/m/unwanted.mp3"]),
+            &[],
         );
 
         assert_eq!(plan.added, [PathBuf::from("/m/wanted.mp3")]);
+    }
+
+    #[test]
+    fn a_root_that_is_not_there_loses_nothing_under_it() {
+        // What the unattended pass passes. `walk` yields nothing for a root
+        // that is gone, so the absence has to be told from a deletion here -
+        // or an unplugged drive marks its whole library missing on a timer.
+        let plan = super::plan(
+            &known(&[("/drive/a.mp3", 10, 100), ("/m/b.mp3", 10, 100)]),
+            &on_disk(&[("/m/b.mp3", 10, 100)]),
+            &HashSet::new(),
+            &[PathBuf::from("/drive")],
+        );
+
+        assert!(plan.missing.is_empty());
+        assert_eq!(
+            plan.unchanged, 1,
+            "and the root that is there is still read"
+        );
+    }
+
+    #[test]
+    fn a_missing_root_shields_only_what_is_inside_it() {
+        // By component, not by prefix: `/drive2` starts with the string
+        // `/drive` and is a different folder.
+        let plan = super::plan(
+            &known(&[("/drive2/a.mp3", 10, 100)]),
+            &on_disk(&[]),
+            &HashSet::new(),
+            &[PathBuf::from("/drive")],
+        );
+
+        assert_eq!(plan.missing.len(), 1);
     }
 
     #[test]
