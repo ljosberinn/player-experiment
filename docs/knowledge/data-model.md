@@ -54,6 +54,19 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   its own row in `settings`. `None` stays distinguishable from "configured to
   show nothing" — a playlist with no layout inherits the library's.
 
+## Cover art
+
+- **`covers.hash` is the hash of the file's bytes, not of the row's.**
+  `db::covers::store` re-encodes what it stores; hashing the result instead
+  would mean decoding before knowing whether the row already exists, which is
+  55,781 decodes on a first scan rather than 5,799, inside the serial write
+  transactions.
+- **Normalizing an existing library is a thread, not a migration** — the
+  reasoning migration 6 already settled. `covers.normalized` marks it done in
+  the shape of `playlists.seeded`, and `covers.normalizedThrough` holds the
+  last hash finished, so a quit part-way through resumes. No schema change, so
+  the migration table above is unchanged.
+
 ## The scrobble queue
 
 `scrobble_queue` holds the **resolved** play — artist, title, album, duration,

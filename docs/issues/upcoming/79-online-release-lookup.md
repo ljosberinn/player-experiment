@@ -20,7 +20,7 @@ equivalent. That trade flips only if user-contributed sources are ever wanted.
   calls and there is no way to make it cost one.
 - **Cover Art Archive** — keyed by the same release MBID, no auth, and
   **no rate limit**, so covers fetch in parallel while MusicBrainz is the
-  bottleneck. `/release/<mbid>/front-500` is exactly what [72](72-covers-are-most-of-the-database.md)
+  bottleneck. `/release/<mbid>/front-500` is exactly what [72](../done/72-covers-are-most-of-the-database.md)
   stores. A 404 is "no cover", not an error.
 - **Discogs** — richer for electronic and vinyl, auth mandatory, and image URLs
   require it. Use a **personal access token** entered by the user, not OAuth

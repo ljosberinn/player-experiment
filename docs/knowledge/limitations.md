@@ -24,8 +24,20 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.
-- **`covers` is never pruned.** Undo depends on old artwork still being there,
-  and removing a song leaves its cover behind for the same reason.
+- **Orphaned covers accumulate again after the one prune.** `covers` is pruned
+  at the end of the normalizing pass and never afterwards, so a song removed
+  later leaves its artwork behind. At a normalized 37 KB a cover this is no
+  longer the megabyte-a-row it was.
+- **Undo does not restore artwork.** `covers` holds a 500px JPEG re-encode
+  rather than the bytes a file carried, so restoring from it would bake a
+  thumbnail into the mp3. An undo leaves the file's picture exactly as the edit
+  left it, and an edit that replaced or removed artwork cannot be taken back.
+  `TagSnapshot.cover_hash` is still written and no longer read.
+- **Stored artwork is not the file's artwork.** Anything larger than 500px is
+  downscaled and everything decodable is re-encoded at q85, so `cover://`
+  serves a smaller picture than the mp3 holds. A cover the user picks still
+  reaches the file at full resolution — `read_cover` reads the path the edit
+  names and never consults `covers`.
 - **Removing the song that is playing blanks the transport, mid-song.**
   `QueueEntry` carries a path and a duration, so playback is not interrupted -
   but `db::playback::snapshot` fills `track` from the row by id, so the next

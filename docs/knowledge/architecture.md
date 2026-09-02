@@ -108,6 +108,21 @@ are served through a custom `cover://<hash>` protocol handler so the webview
 caches them. Mime types are sniffed from the bytes, not the extension
 (`tags::write::check_cover`, which also caps the size).
 
+**`bytes` is not what the file carried.** `db::covers::store` fits every cover
+inside 500px and re-encodes it as JPEG q85 — artwork was 96% of a real
+library's database, and re-encoding it is 81% off. **The hash stays the hash of
+the source bytes**, so `tracks.cover_hash`, `tag_undo` and the scan's parallel
+hashing are untouched and an already-stored hash returns without decoding
+anything; the column simply stops describing its own bytes. Anything that will
+not decode, and anything the re-encode would grow, is stored verbatim.
+
+Covers stored by an earlier build are converted by the `cover-normalize`
+thread `lib.rs` spawns beside the player — chunked, resumable through two
+`settings` keys, and silent, since the picture on screen does not change. It
+finishes by pruning covers no track references and running `VACUUM`, which is
+what actually returns the pages to the filesystem. Both are only safe because
+undo no longer reads artwork back out.
+
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
 whichever way it was chosen, and both ways **stage**: `stage_dropped_cover`
 takes the bytes as the whole invoke payload (a drop has no path — an HTML5 drop

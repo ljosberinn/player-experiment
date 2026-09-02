@@ -52,21 +52,30 @@ const SAMPLE_EDGE: u32 = 64;
 /// a scan over - it means no blobs behind that album, which is the same thing
 /// as a track with no artwork at all.
 pub fn extract(bytes: &[u8]) -> Option<Vec<Colour>> {
-    let decoded = image::load_from_memory(bytes).ok()?;
+    of_image(&image::load_from_memory(bytes).ok()?)
+}
+
+/// The same, for an image that has already been decoded.
+///
+/// `db::covers::store` decodes every new cover in order to re-encode it, and
+/// decoding it a second time here is the most expensive thing either of them
+/// does.
+pub fn of_image(decoded: &image::DynamicImage) -> Option<Vec<Colour>> {
     // Downscale only. `resize` scales in both directions, and enlarging a
     // cover that is already small blends its colours with a filter kernel
     // instead of counting them - a smaller image is not a less accurate
     // sample, it is a cheaper one.
     let sampled = if decoded.width() > SAMPLE_EDGE || decoded.height() > SAMPLE_EDGE {
-        decoded.resize(
-            SAMPLE_EDGE,
-            SAMPLE_EDGE,
-            image::imageops::FilterType::Triangle,
-        )
-    } else {
         decoded
-    }
-    .to_rgb8();
+            .resize(
+                SAMPLE_EDGE,
+                SAMPLE_EDGE,
+                image::imageops::FilterType::Triangle,
+            )
+            .to_rgb8()
+    } else {
+        decoded.to_rgb8()
+    };
 
     let pixels: Vec<Colour> = sampled
         .pixels()
