@@ -35,7 +35,7 @@ export function viewSummary({
     return formatLibrarySummary(trackCount, durationMs, bytes);
   }
 
-  const noun = tab === "albums" ? "album" : tab === "artists" ? "artist" : "genre";
+  const noun = tab === "albums" ? "release" : tab === "artists" ? "artist" : "genre";
   if (groupCount === 0) {
     return `No ${noun}s`;
   }

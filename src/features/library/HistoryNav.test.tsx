@@ -79,7 +79,7 @@ describe("HistoryNav", () => {
 
     expect(screen.getByRole("button", { name: "Back" })).toHaveAttribute(
       "title",
-      "Back to Unknown Album",
+      "Back to Unknown Release",
     );
   });
 
@@ -122,7 +122,7 @@ describe("HistoryNav", () => {
     expect(screen.getByRole("button", { name: "Forward" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Forward" })).toHaveAttribute(
       "title",
-      "Forward to Albums",
+      "Forward to Releases",
     );
   });
 });

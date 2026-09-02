@@ -425,7 +425,7 @@ describe("a library with something in it", () => {
       const wholeLibrary = await headerWidth("artist");
 
       await browser
-        .$("//button[contains(@class,'sidebar-item')][normalize-space()='Albums']")
+        .$("//button[contains(@class,'sidebar-item')][normalize-space()='Releases']")
         .click();
       await browser.$(".browse-grid").waitForExist({ timeout: 10_000 });
       await browser.$("//button[contains(@class,'browse-tile')][.//text()='Harbour']").click();

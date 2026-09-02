@@ -134,7 +134,7 @@ describe("BrowseView", () => {
 
     render(<BrowseView kind="albums" />);
 
-    expect(screen.getByText("Unknown Album")).toBeInTheDocument();
+    expect(screen.getByText("Unknown Release")).toBeInTheDocument();
     expect(screen.getByText("Unknown Artist")).toBeInTheDocument();
   });
 

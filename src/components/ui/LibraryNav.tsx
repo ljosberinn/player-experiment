@@ -1,12 +1,12 @@
-import type { ViewTab } from "../../features/library/store";
+import { VIEW_TITLES, type ViewTab } from "../../features/library/store";
 import { Icon } from "../icons/Icon";
 
 /**
- * The LIBRARY section of the source list: Songs, Albums, Artists, Genres.
+ * The LIBRARY section of the source list: Songs, Releases, Artists, Genres.
  *
  * These were a segmented tab bar above the table until phase 35. The design puts
  * them in the sidebar with the playlists, which is where they belong: switching
- * between Songs and Albums is the same kind of act as opening a playlist, and
+ * between Songs and Releases is the same kind of act as opening a playlist, and
  * having two controls that both choose what the content pane shows meant the
  * selected playlist and the selected tab were highlighted in different places.
  *
@@ -17,12 +17,8 @@ import { Icon } from "../icons/Icon";
 /** The sidebar's icon box, which `.sidebar-icon` sizes to match. */
 const ICON_SIZE = 15;
 
-const VIEWS: { id: ViewTab; label: string }[] = [
-  { id: "songs", label: "Songs" },
-  { id: "albums", label: "Albums" },
-  { id: "artists", label: "Artists" },
-  { id: "genres", label: "Genres" },
-];
+/** Order only; the words are `VIEW_TITLES`, which the history arrows share. */
+const VIEWS: ViewTab[] = ["songs", "albums", "artists", "genres"];
 
 export function LibraryNav({
   active,
@@ -37,15 +33,15 @@ export function LibraryNav({
       <h2 className="sidebar-title">Library</h2>
       <ul>
         {VIEWS.map((view) => (
-          <li key={view.id}>
+          <li key={view}>
             <button
               type="button"
               className="sidebar-item"
-              aria-current={view.id === active ? "page" : undefined}
-              onClick={() => onSelect(view.id)}
+              aria-current={view === active ? "page" : undefined}
+              onClick={() => onSelect(view)}
             >
-              <Icon name={view.id} size={ICON_SIZE} className="sidebar-icon" />
-              <span className="sidebar-label">{view.label}</span>
+              <Icon name={view} size={ICON_SIZE} className="sidebar-icon" />
+              <span className="sidebar-label">{VIEW_TITLES[view]}</span>
             </button>
           </li>
         ))}

@@ -11,8 +11,8 @@ import { capture } from "../screenshot";
  * sidebar out rather than only in a jsdom attribute.
  *
  * Runs over an empty library, before anything seeds one: switching between
- * Songs and Albums needs no songs, and the arrows do not care what is in the
- * view they move between.
+ * Songs and Releases needs no songs, and the arrows do not care what is in
+ * the view they move between.
  */
 
 const BACK = "button[aria-label='Back']";
@@ -53,8 +53,8 @@ describe("back and forward", () => {
   });
 
   it("goes back to the view that was open before, and names it first", async () => {
-    await view("Albums").click();
-    await expect(view("Albums")).toHaveAttribute("aria-current", "page");
+    await view("Releases").click();
+    await expect(view("Releases")).toHaveAttribute("aria-current", "page");
 
     await expect(browser.$(BACK)).toBeEnabled();
     // The tooltip names the destination rather than the gesture: a back button
@@ -71,11 +71,11 @@ describe("back and forward", () => {
 
   it("goes forward again to where back came from", async () => {
     await expect(browser.$(FORWARD)).toBeEnabled();
-    await expect(browser.$(FORWARD)).toHaveAttribute("title", "Forward to Albums");
+    await expect(browser.$(FORWARD)).toHaveAttribute("title", "Forward to Releases");
 
     await browser.$(FORWARD).click();
 
-    await expect(view("Albums")).toHaveAttribute("aria-current", "page");
+    await expect(view("Releases")).toHaveAttribute("aria-current", "page");
     await expect(browser.$(FORWARD)).toBeDisabled();
   });
 });

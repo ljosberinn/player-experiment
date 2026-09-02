@@ -353,7 +353,7 @@ export function App() {
 
           {browse !== null ? (
             // The way back out of a drill-in. A breadcrumb rather than the tab
-            // itself: clicking Albums again while inside an album should be a
+            // itself: clicking Releases again while inside a release should be a
             // no-op, not a hidden back button.
             <button type="button" className="browse-back" onClick={() => void closeGroup()}>
               ‹ All {VIEW_TITLES[tab]}

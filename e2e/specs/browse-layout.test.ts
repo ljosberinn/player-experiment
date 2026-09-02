@@ -58,7 +58,7 @@ describe("browse layout", () => {
   });
 
   it("reflows the album grid when the window is resized", async () => {
-    await view("Albums").click();
+    await view("Releases").click();
     await browser.$(".browse-grid").waitForExist({ timeout: 10_000 });
 
     await browser.setWindowSize(1400, original.height);
