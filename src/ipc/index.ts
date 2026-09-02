@@ -343,6 +343,18 @@ export function stageDroppedCover(bytes: ArrayBuffer): Promise<string> {
   return invoke<string>("stage_dropped_cover", bytes);
 }
 
+/**
+ * Copies a picked image into the same staging file, and resolves to its path.
+ *
+ * The picker's own path would do for the save, but only what the backend can
+ * serve can be previewed - and staging both routes is what makes a picked
+ * image refused while the dialog is open rather than at save time. Rejects
+ * with the sentence to show.
+ */
+export function stagePickedCover(path: string): Promise<string> {
+  return invoke<string>("stage_picked_cover", { path });
+}
+
 export function undoTagEdit(): Promise<TagWriteSummary> {
   return invoke<TagWriteSummary>("undo_tag_edit");
 }
@@ -565,6 +577,18 @@ export function onPlayerError(handler: (message: string) => void): Promise<Unlis
  */
 export function coverUrl(hash: string): string {
   return convertFileSrc(hash, "cover");
+}
+
+/**
+ * The image the tag editor has staged but not written yet.
+ *
+ * `staged` is the one path under `cover://` that is not a hash. Its file has a
+ * fixed name, so the URL is the only thing that can tell the webview this is
+ * not the image it fetched a moment ago - hence `version`, bumped by whoever
+ * staged.
+ */
+export function stagedCoverUrl(version: number): string {
+  return `${convertFileSrc("staged", "cover")}?v=${version}`;
 }
 
 export const defaultTrackQuery: TrackQuery = {

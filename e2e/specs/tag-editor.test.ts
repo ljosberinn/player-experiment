@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { png } from "../fixtures";
 import { capture } from "../screenshot";
 
 /**
@@ -72,6 +73,24 @@ async function openEditorOn(title: string): Promise<void> {
     .waitForExist({ timeout: 10_000, timeoutMsg: `the editor never opened on ${title}` });
 }
 
+/** What the square is pointing at, or "" when it is the empty placeholder. */
+function artworkSource(): Promise<string> {
+  return browser.execute(() => document.querySelector(".tag-cover-art")?.getAttribute("src") ?? "");
+}
+
+/**
+ * Whether the square actually decoded what it was pointed at.
+ *
+ * `src` proves the URL was built; `naturalWidth` proves the protocol handler
+ * answered with an image, which is the half that lives in Rust.
+ */
+function artworkDecoded(): Promise<boolean> {
+  return browser.execute(() => {
+    const art = document.querySelector(".tag-cover-art");
+    return art instanceof HTMLImageElement && art.complete && art.naturalWidth > 0;
+  });
+}
+
 /**
  * Drops a file of `bytes` on the artwork block, and says whether it found it.
  *
@@ -142,21 +161,28 @@ describe("the tag editor's artwork", () => {
     await capture("tag-editor-no-artwork");
   });
 
-  it("takes an image dropped on the square", async () => {
+  it("takes an image dropped on the square and shows it", async () => {
     // The one thing no unit test can reach: the bytes travel as the whole
-    // invoke payload, and the command that stages them hands back a path. A
-    // wrapper object around the buffer would still typecheck, still pass every
-    // mocked test, and arrive here as a JSON array of numbers.
+    // invoke payload, the command that stages them hands back a path, and the
+    // square then loads that file back over `cover://staged`. A wrapper object
+    // around the buffer would still typecheck, still pass every mocked test,
+    // and arrive here as a JSON array of numbers.
     //
-    // Only the first four bytes decide - staging sniffs, it does not decode -
-    // and nothing is saved, so a whole PNG would prove nothing more.
+    // A real PNG rather than four magic bytes, because what is asserted is
+    // that the webview *decoded* what came back.
     await openEditorOn("Drift");
 
-    expect(await dropOnArtwork([0x89, 0x50, 0x4e, 0x47, 1, 2, 3], "art.png", "image/png")).toBe(
-      true,
-    );
+    expect(await dropOnArtwork([...png([[20, 120, 200]])], "art.png", "image/png")).toBe(true);
 
     await expect(browser.$(".tag-cover-note")).toHaveText("New artwork selected.");
+    await browser.waitUntil(async () => (await artworkSource()).includes("staged"), {
+      timeout: 10_000,
+      timeoutMsg: "the square never pointed at the staged image",
+    });
+    expect(await artworkDecoded()).toBe(true);
+    expect(await artworkBox()).toEqual({ width: 120, height: 120 });
+
+    await capture("tag-editor-dropped-artwork");
   });
 
   it("says why a dropped file that is not artwork was refused", async () => {

@@ -268,12 +268,18 @@ pub async fn write_tags(
     .await
 }
 
-/// The staged drop's file name, minus the extension the sniff decides.
+/// The staged cover's file name, minus the extension the sniff decides.
 ///
-/// One name, so a second drop overwrites the first: the file is needed only
-/// until the save reads it back, and a name per drop would leave a cache full
-/// of album covers behind.
-const STAGED_COVER_STEM: &str = "dropped-cover";
+/// One name, so a second choice overwrites the first: the file is needed only
+/// until the save reads it back, and a name per choice would leave a cache
+/// full of album covers behind.
+const STAGED_COVER_STEM: &str = "chosen-cover";
+
+/// The one path under `cover://` that is not a hash.
+///
+/// What the editor is about to write rather than what is in the library, so it
+/// answers from the staging file instead of from `covers`.
+pub(crate) const STAGED_COVER: &str = "staged";
 
 /// Writes a dropped image into the cache directory and hands back its path.
 ///
@@ -302,30 +308,67 @@ pub fn stage_dropped_cover(
             "A dropped image has to arrive as raw bytes.".to_owned(),
         ));
     };
-    let mime = tags::write::check_cover(bytes)?;
+    stage_cover(&staging_dir(&app)?, bytes)
+}
 
+/// Copies a picked image into the same staging file, and hands back its path.
+///
+/// The picker's own path would do for the save - it did until this phase - but
+/// only what the backend can serve can be previewed, and the webview cannot
+/// read an arbitrary path. Staging both routes is also what makes a picked
+/// image refused while the dialog is open rather than at save time.
+#[tauri::command]
+pub fn stage_picked_cover(app: tauri::AppHandle, path: String) -> AppResult<String> {
+    let bytes = std::fs::read(&path).map_err(|e| crate::error::AppError::io(&path, e))?;
+    stage_cover(&staging_dir(&app)?, &bytes)
+}
+
+/// The staged image, for the `cover://staged` route: its mime and its bytes.
+///
+/// `None` covers every way there is nothing to show - no directory, no file,
+/// or a file that is no longer an image - because the answer to all three is
+/// the same 404.
+pub(crate) fn staged_cover(app: &tauri::AppHandle) -> Option<(String, Vec<u8>)> {
+    let dir = app.path().app_cache_dir().ok()?;
+    ["image/png", "image/jpeg"]
+        .into_iter()
+        .filter_map(|mime| std::fs::read(staged_cover_path(&dir, mime)).ok())
+        // Sniffed rather than taken from the name that was just matched: the
+        // extension is a label this app wrote, and the bytes outrank it.
+        .find_map(|bytes| Some((tags::write::check_cover(&bytes).ok()?.to_owned(), bytes)))
+}
+
+/// The cache directory, made if it is not there yet.
+fn staging_dir(app: &tauri::AppHandle) -> AppResult<PathBuf> {
     let dir = app
         .path()
         .app_cache_dir()
         .map_err(|e| crate::error::AppError::Internal(format!("no cache directory: {e}")))?;
     std::fs::create_dir_all(&dir).map_err(|e| crate::error::AppError::io(dir.display(), e))?;
+    Ok(dir)
+}
 
-    let staged = staged_cover_path(&dir, mime);
+/// Checks `bytes` and writes them to the one staging file, returning its path.
+fn stage_cover(dir: &std::path::Path, bytes: &[u8]) -> AppResult<String> {
+    let mime = tags::write::check_cover(bytes)?;
+
+    let staged = staged_cover_path(dir, mime);
     std::fs::write(&staged, bytes).map_err(|e| crate::error::AppError::io(staged.display(), e))?;
-    // The other format's file, left by an earlier drop. Without this the fixed
-    // name holds once per extension rather than once for the staging area.
+    // The other format's file, left by an earlier choice. Without this the
+    // fixed name holds once per extension rather than once for the staging
+    // area - and `staged_cover` would have two files to choose between.
     let other = if mime == "image/png" {
         "image/jpeg"
     } else {
         "image/png"
     };
-    let _ = std::fs::remove_file(staged_cover_path(&dir, other));
+    let _ = std::fs::remove_file(staged_cover_path(dir, other));
 
     Ok(staged.to_string_lossy().into_owned())
 }
 
 /// Where a cover of `mime` is staged, named for what the bytes turned out to
-/// be rather than for what the dropped file was called.
+/// be rather than for what the chosen file was called.
 fn staged_cover_path(dir: &std::path::Path, mime: &str) -> PathBuf {
     let extension = if mime == "image/png" { "png" } else { "jpg" };
     dir.join(format!("{STAGED_COVER_STEM}.{extension}"))
@@ -859,17 +902,35 @@ mod tests {
     fn a_staged_cover_is_named_for_what_its_bytes_are() {
         let dir = std::path::Path::new(r"C:\cache");
 
-        // Both drops land on one name per format, so nothing accumulates - and
-        // the extension follows the sniff, not the dropped file's name, which
-        // is what `File.type` would have given us.
+        // The extension follows the sniff, not the chosen file's name, which
+        // is all `File.type` would have given us.
         assert_eq!(
             staged_cover_path(dir, "image/png"),
-            dir.join("dropped-cover.png")
+            dir.join("chosen-cover.png")
         );
         assert_eq!(
             staged_cover_path(dir, "image/jpeg"),
-            dir.join("dropped-cover.jpg")
+            dir.join("chosen-cover.jpg")
         );
+    }
+
+    #[test]
+    fn staging_leaves_exactly_one_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let png = stage_cover(dir.path(), &[0x89, b'P', b'N', b'G', 1, 2, 3]).unwrap();
+        assert!(std::path::Path::new(&png).exists());
+
+        // A second choice in the other format. Both land on the fixed stem, so
+        // without the sweep the cache would hold the last PNG *and* the last
+        // JPEG - and `staged_cover` would have two files to pick between.
+        let jpg = stage_cover(dir.path(), &[0xFF, 0xD8, 0xFF, 9]).unwrap();
+        assert!(std::path::Path::new(&jpg).exists());
+        assert!(!std::path::Path::new(&png).exists());
+
+        // And a refusal leaves what was staged alone rather than clearing it.
+        assert!(stage_cover(dir.path(), b"not an image").is_err());
+        assert!(std::path::Path::new(&jpg).exists());
     }
 
     #[test]

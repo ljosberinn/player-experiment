@@ -167,6 +167,11 @@ absences are what nobody notices coming back — hence the guards in
   into a text field. `dragover` sees only the *types*, which is why the check and
   the read are separate functions — and why the tag editor's artwork decides
   from those alone that a drag is a file and not a song.
+- The tag editor's square shows a pending replacement from `cover://staged`,
+  not from the library — it has no hash until it is saved. The URL carries a
+  counter because the staging file's name never changes; a pending *removal*
+  keeps showing the art it is about to take away, and the caption is what says
+  it is going.
 - `useNativeFeel` swallows any drag the app did not claim. A file dropped where
   nothing handles it is *opened* by the webview, which navigates the window away
   from the app; the guard runs at the window, skips anything a target already

@@ -29,7 +29,7 @@ import { deflateSync } from "node:zlib";
  * the string "not an image" - which is what the file beside these tracks is -
  * proves only the failure path.
  */
-function png(colours: ReadonlyArray<readonly [number, number, number]>): Buffer {
+export function png(colours: ReadonlyArray<readonly [number, number, number]>): Buffer {
   // One scanline: the mandatory filter byte, then three bytes a pixel.
   const raw = Buffer.concat([Buffer.from([0x00]), Buffer.from(colours.flat())]);
 
