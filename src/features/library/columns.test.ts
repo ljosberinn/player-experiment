@@ -121,6 +121,25 @@ describe("column configuration", () => {
     ]);
   });
 
+  it("fills a column the config says nothing about with its fitted width", () => {
+    const resolved = resolveColumns(config(["title", "artist"]), { artist: 90 });
+
+    const titleDefault = ALL_COLUMNS.find((c) => c.id === "title")?.width;
+
+    expect(resolved.map((c) => [c.id, c.width])).toEqual([
+      ["title", titleDefault],
+      ["artist", 90],
+    ]);
+  });
+
+  it("lets a stored width beat a fitted one", () => {
+    const resolved = resolveColumns(config(["artist"], { artist: 400 }), { artist: 90 });
+
+    // A width the user dragged is persisted; a fit painting over it would
+    // leave the stored number with no way to ever be seen again.
+    expect(resolved[0]?.width).toBe(400);
+  });
+
   it("hides and shows a column, appending what it cannot place", () => {
     const hidden = toggleColumn(config(["title", "artist", "album"]), "artist");
     expect(hidden.ids).toEqual(["title", "album"]);

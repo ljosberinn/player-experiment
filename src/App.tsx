@@ -14,7 +14,6 @@ import { type ExportChoice, exportChoice } from "./features/export/scope";
 import { useExportStore } from "./features/export/store";
 import { useLastfmStore } from "./features/lastfm/store";
 import { BrowseView } from "./features/library/BrowseView";
-import { resolveColumns } from "./features/library/columns";
 import { HistoryNav } from "./features/library/HistoryNav";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
@@ -88,7 +87,6 @@ export function App() {
   // Only for the footer's count of how many albums, artists or genres a browse
   // view is listing; the view itself reads them for rendering.
   const groups = useLibraryStore((s) => s.groups);
-  const columnConfig = useLibraryStore((s) => s.columns);
   const loadColumns = useLibraryStore((s) => s.loadColumns);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
@@ -291,9 +289,6 @@ export function App() {
     }
   };
 
-  // Resolved from the store rather than fixed, so a hidden column, a reorder
-  // or a drag-resize reaches the table - and so a playlist can have its own.
-  const columns = resolveColumns(columnConfig);
   const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
   const currentPlaylistName = currentPlaylist?.name ?? "This playlist";
   // A smart playlist's membership is its filter, so it has neither an order to
@@ -422,7 +417,6 @@ export function App() {
             </p>
           ) : (
             <SongTable
-              columns={columns}
               onActivate={(rowIndex) => void activateRow(rowIndex)}
               onReorder={
                 reorderable && playlistId !== null

@@ -20,6 +20,7 @@ import { debounce } from "../../lib/debounce";
 import {
   type ColumnConfig,
   DEFAULT_COLUMN_CONFIG,
+  type FittedWidths,
   moveColumn,
   parseColumnConfig,
   resizeColumn,
@@ -120,6 +121,22 @@ interface LibraryState {
    * from the library.
    */
   columns: ColumnConfig;
+  /**
+   * Widths measured off the rows on screen when the view opened.
+   *
+   * Apart from `columns` because they are apart in kind: a `ColumnConfig` is
+   * saved and belongs to the view for good, while these are recomputed on the
+   * next navigation and never written anywhere.
+   */
+  fittedWidths: FittedWidths;
+  /**
+   * A navigation is waiting for rows to fit itself to.
+   *
+   * Raised by `applyEntry` rather than by `refresh`, which every sort toggle
+   * and every debounced keystroke also reaches - and columns that resize while
+   * typing are worse than columns that are too wide.
+   */
+  fitPending: boolean;
   sortBy: SortField;
   direction: SortDirection;
   /**
@@ -172,6 +189,14 @@ interface LibraryState {
   resizeColumn: (id: SortField, width: number) => Promise<void>;
   /** Puts the columns back to the defaults for this view. */
   resetColumns: () => Promise<void>;
+  /**
+   * Fits the visible columns to `widths`, consuming the pending flag.
+   *
+   * One `set`, no save and no refresh: a width cannot move the sort, so
+   * `applyColumns` has nothing to offer here and five columns would otherwise
+   * be five writes of a config that must not be written at all.
+   */
+  fitColumns: (widths: FittedWidths) => void;
   /** Reads the stored layout for the current view. Internal. */
   loadColumns: () => Promise<void>;
   /** Stores a column change and re-queries if it moved the sort. Internal. */
@@ -289,6 +314,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   groups: [],
   groupsLoading: false,
   columns: DEFAULT_COLUMN_CONFIG,
+  fittedWidths: {},
+  fitPending: false,
   sortBy: "artist",
   direction: "asc",
   sortBeforeSearch: null,
@@ -478,8 +505,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   resetColumns: async () => {
+    // The fit goes with the config, or "Reset Columns" appears to do nothing
+    // at all to the columns that were fitted.
+    set({ fittedWidths: {} });
     await get().applyColumns(DEFAULT_COLUMN_CONFIG);
   },
+
+  fitColumns: (widths) => set({ fittedWidths: widths, fitPending: false }),
 
   showTab: async (tab) => {
     // Clicking the open tab again is a no-op, not a hidden way out of a
@@ -545,6 +577,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       browse: entry.browse,
       playlistId: entry.playlistId,
       selection: emptySelection,
+      // Dropped rather than held until the new fit lands: the outgoing widths
+      // describe rows that are already gone.
+      fittedWidths: {},
+      fitPending: true,
       // Kept where they still describe the view - a drill-in and the list it
       // came from share one group list - and cleared otherwise, so a browse
       // tab cannot show the previous tab's groups while its own are in flight.

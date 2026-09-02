@@ -817,6 +817,67 @@ describe("column layout", () => {
     expect(useLibraryStore.getState().columns).toEqual(DEFAULT_COLUMN_CONFIG);
     expect(saveColumnConfigMock).toHaveBeenCalled();
   });
+
+  it("drops the fit along with the config when the columns are reset", async () => {
+    useLibraryStore.setState({ fittedWidths: { title: 90 } });
+
+    await useLibraryStore.getState().resetColumns();
+
+    // Left in place, "Reset Columns" would appear to do nothing at all to the
+    // columns that had been fitted.
+    expect(useLibraryStore.getState().fittedWidths).toEqual({});
+  });
+});
+
+describe("fitting the columns to a view", () => {
+  it("does not persist a fit", async () => {
+    saveColumnConfigMock.mockClear();
+
+    useLibraryStore.getState().fitColumns({ title: 120, artist: 90 });
+
+    expect(useLibraryStore.getState().fittedWidths).toEqual({ title: 120, artist: 90 });
+    // Transient by design: recomputed on the next navigation, so storing it
+    // would freeze the answer this view happened to give first.
+    expect(saveColumnConfigMock).not.toHaveBeenCalled();
+    expect(statsMock).not.toHaveBeenCalled();
+  });
+
+  it("consumes the pending flag, so a later page landing does not refit", () => {
+    useLibraryStore.setState({ fitPending: true });
+
+    useLibraryStore.getState().fitColumns({ title: 120 });
+
+    expect(useLibraryStore.getState().fitPending).toBe(false);
+  });
+
+  it("asks for a fit on every navigation that lands rows", async () => {
+    useLibraryStore.setState({ fitPending: false });
+
+    await useLibraryStore.getState().showTab("albums");
+
+    expect(useLibraryStore.getState().fitPending).toBe(true);
+  });
+
+  it("drops the previous view's fit as it navigates", async () => {
+    useLibraryStore.setState({ fittedWidths: { artist: 90 } });
+
+    await useLibraryStore.getState().showTab("albums");
+
+    // Not held until the new fit arrives: the outgoing widths describe rows
+    // that are already gone.
+    expect(useLibraryStore.getState().fittedWidths).toEqual({});
+  });
+
+  it("does not ask for a fit when the sort changes", async () => {
+    useLibraryStore.setState({ fitPending: false });
+
+    await useLibraryStore.getState().toggleSort("album");
+
+    // Every navigation reaches `refresh`, but so does every sort toggle and
+    // every debounced keystroke - and columns that resize while typing are
+    // worse than columns that are too wide.
+    expect(useLibraryStore.getState().fitPending).toBe(false);
+  });
 });
 
 describe("navigation history", () => {

@@ -4,6 +4,7 @@ import { contrast, flatten, GRAPHIC_MINIMUM, TEXT_MINIMUM } from "../contrast";
 import { LIBRARY, writeLibrary } from "../fixtures";
 import { invoke } from "../invoke";
 import { chooseFromMenu } from "../menu";
+import { capture } from "../screenshot";
 
 /**
  * The suite that has rows in it.
@@ -394,6 +395,53 @@ describe("a library with something in it", () => {
         );
 
       expect(illegible).toEqual([]);
+    });
+  });
+
+  /**
+   * The columns fit what a view actually holds, which only an engine with
+   * layout can show. `SongTable.test.tsx` proves the fit fires and what it
+   * measures, against a stubbed `Range`; jsdom reports every cell as zero
+   * wide, so nothing there can tell a column that shrank from one that did
+   * not.
+   */
+  describe("opening a view", () => {
+    /** The width the header of `column` is rendered at. */
+    function headerWidth(column: string): Promise<number> {
+      return browser.execute(
+        (id: string) =>
+          document.querySelector(`th[data-column='${id}']`)?.getBoundingClientRect().width ?? 0,
+        column,
+      );
+    }
+
+    after(async () => {
+      await browser
+        .$("//button[contains(@class,'sidebar-item')][normalize-space()='Songs']")
+        .click();
+    });
+
+    it("fits the columns to the rows a drill-in landed", async () => {
+      const wholeLibrary = await headerWidth("artist");
+
+      await browser
+        .$("//button[contains(@class,'sidebar-item')][normalize-space()='Albums']")
+        .click();
+      await browser.$(".browse-grid").waitForExist({ timeout: 10_000 });
+      await browser.$("//button[contains(@class,'browse-tile')][.//text()='Harbour']").click();
+
+      // Two tracks, both by Blue Room: the whole point is that the Artist
+      // column no longer holds 216px for one short word.
+      await browser.waitUntil(async () => (await browser.$$("tr.song-row").length) === 2, {
+        timeout: 15_000,
+        timeoutMsg: "the Harbour drill-in never landed its two rows",
+      });
+      await browser.waitUntil(async () => (await headerWidth("artist")) < wholeLibrary, {
+        timeout: 15_000,
+        timeoutMsg: `the Artist column stayed at ${wholeLibrary}px inside a one-artist album`,
+      });
+
+      await capture("column-fit-album-drill-in");
     });
   });
 });
