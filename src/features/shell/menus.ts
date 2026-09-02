@@ -30,7 +30,9 @@ export const REPOSITORY = "https://github.com/ljosberinn/player-experiment";
  * can.
  */
 export function menus({
+  selectionCount,
   missingCount,
+  removedCount,
   canUndoTags,
   hasExportTarget,
   exportSelectionLabel,
@@ -39,7 +41,9 @@ export function menus({
   rowItems,
   onAddFolder,
   onRescan,
+  onRemoveFromLibrary,
   onRemoveMissing,
+  onForgetRemoved,
   onUndoTags,
   onSettings,
   onExportAll,
@@ -47,7 +51,11 @@ export function menus({
   onLastfmDisconnect,
   onOpenRepository,
 }: {
+  /** How many songs are selected; what File's removal entry acts on. */
+  selectionCount: number;
   missingCount: number;
+  /** How many paths a removal has tombstoned. See migration 8. */
+  removedCount: number;
   canUndoTags: boolean;
   /** Whether Export Selection has anything to write. */
   hasExportTarget: boolean;
@@ -61,7 +69,10 @@ export function menus({
   rowItems: MenuItem[];
   onAddFolder: () => void;
   onRescan: () => void;
+  /** Asks to remove the selection from the library. */
+  onRemoveFromLibrary: () => void;
   onRemoveMissing: () => void;
+  onForgetRemoved: () => void;
   onUndoTags: () => void;
   onSettings: () => void;
   onExportAll: () => void;
@@ -74,18 +85,37 @@ export function menus({
     { label: "Rescan", onSelect: onRescan },
   ];
 
-  // Only when there is something to clear, which in a library whose drives are
-  // all plugged in is never. This is the entry the design had nowhere for - a
-  // mockup has no missing files - and the File menu is where it belongs, beside
-  // the scan that discovers them.
+  // The three row-destroying entries, each absent when it has nothing to act
+  // on - which for the last two, in a library whose drives are all plugged in
+  // and whose songs the user has all kept, is always. They were the entries
+  // the design had nowhere for - a mockup has no missing files - and the File
+  // menu is where they belong, beside the scan that discovers them.
+  //
+  // Removing the selection is here rather than in Edit alongside the other
+  // song actions because the user asked for it beside the other two: the three
+  // are one group, and splitting them across two menus would be one group in
+  // two places.
+  const destructive: MenuItem[] = [];
+  if (selectionCount > 0) {
+    destructive.push({
+      label: `Remove ${selectionCount} Song${selectionCount === 1 ? "" : "s"} from Library…`,
+      onSelect: onRemoveFromLibrary,
+    });
+  }
   if (missingCount > 0) {
-    file.push(
-      { kind: "separator" },
-      {
-        label: `Remove ${missingCount} Missing Song${missingCount === 1 ? "" : "s"}…`,
-        onSelect: onRemoveMissing,
-      },
-    );
+    destructive.push({
+      label: `Remove ${missingCount} Missing Song${missingCount === 1 ? "" : "s"}…`,
+      onSelect: onRemoveMissing,
+    });
+  }
+  if (removedCount > 0) {
+    destructive.push({
+      label: `Forget ${removedCount} Removed Song${removedCount === 1 ? "" : "s"}…`,
+      onSelect: onForgetRemoved,
+    });
+  }
+  if (destructive.length > 0) {
+    file.push({ kind: "separator" }, ...destructive);
   }
 
   return [

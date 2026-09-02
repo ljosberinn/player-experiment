@@ -56,3 +56,6 @@ leaving behind. The resume point is which releases are done, not which files.
   release is keyed: suffix it rather than overwrite.
 - **The Library root has to be a watch folder** or the moved files leave the
   library on the next scan.
+- **The mover lifts the tombstone**
+  [73](../done/73-remove-a-song-from-the-library.md) left on the source path,
+  and does not write one for it: the row is following the file, not going.

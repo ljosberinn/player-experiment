@@ -21,6 +21,7 @@ export function rowMenuItems({
   onEdit,
   onAddTo,
   onRemove,
+  onRemoveFromLibrary,
   onExport,
   onReveal,
   onOpenUrl,
@@ -39,6 +40,16 @@ export function rowMenuItems({
   onEdit: () => void;
   onAddTo: (playlistId: number) => void;
   onRemove: () => void;
+  /**
+   * Removes the rows from the library itself, or absent where that is not on
+   * offer here.
+   *
+   * The one entry the Edit menu does not serve: the user wants it in File,
+   * beside the other row-destroying entry, so `AppMenus` leaves this undefined
+   * and `menus()` builds its own. Present on right-click, present in File, not
+   * twice.
+   */
+  onRemoveFromLibrary?: (() => void) | undefined;
   onExport: () => void;
   onReveal: () => void;
   onOpenUrl: (url: string) => void;
@@ -64,12 +75,21 @@ export function rowMenuItems({
   ];
 
   // Only inside a static playlist, where there is a membership row to remove.
-  // In the library this action would have to mean deleting the file, which is
-  // not something a menu should offer next to "Edit".
+  // Elsewhere the only thing removal could mean is the entry below it.
   if (openPlaylist?.kind === "static") {
     items.push({
       label: count === 1 ? "Remove from Playlist" : `Remove ${songs} from Playlist`,
       onSelect: onRemove,
+    });
+  }
+
+  // Under the playlist entry rather than instead of it: inside a static
+  // playlist both readings are available, and the pair reads as the choice it
+  // is. Ellipsized because it asks first, which the playlist one does not.
+  if (onRemoveFromLibrary !== undefined) {
+    items.push({
+      label: count === 1 ? "Remove from Library…" : `Remove ${songs} from Library…`,
+      onSelect: onRemoveFromLibrary,
     });
   }
 

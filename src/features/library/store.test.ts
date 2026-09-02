@@ -3,11 +3,13 @@ import type { BrowseGroup, Track, TrackQuery } from "../../ipc";
 import {
   allTrackIds,
   browseGroups,
+  forgetRemovedTracks,
   INVALIDATE_DEBOUNCE_MS,
   libraryStats,
   loadColumnConfig,
   onLibraryChanged,
   queryTracks,
+  removeTracks,
   saveColumnConfig,
 } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
@@ -20,19 +22,28 @@ vi.mock("../../ipc", () => ({
   INVALIDATE_DEBOUNCE_MS: 250,
   onLibraryChanged: vi.fn(async () => () => {}),
   countTracks: vi.fn(),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   browseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
   saveColumnConfig: vi.fn(async () => undefined),
+  removeMissingTracks: vi.fn(async () => 0),
+  removeTracks: vi.fn(async () => 0),
+  forgetRemovedTracks: vi.fn(async () => 0),
 }));
 
 const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
     these tests are about. */
 function stats(tracks: number) {
-  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000, missing: 0 };
+  return {
+    tracks,
+    durationMs: tracks * 200_000,
+    bytes: tracks * 5_000_000,
+    missing: 0,
+    removed: 0,
+  };
 }
 
 const queryTracksMock = vi.mocked(queryTracks);
@@ -105,6 +116,7 @@ beforeEach(() => {
     selection: { ids: new Set(), anchorIndex: null },
     browseOffsets: { albums: 0, artists: 0, genres: 0 },
     queryToken: 0,
+    pendingRemoval: null,
     history: historyAt({ tab: "songs", browse: null, playlistId: null }),
   });
   useStatusStore.setState({ message: null, notice: null });
@@ -115,6 +127,62 @@ beforeEach(() => {
   queryTracksMock.mockImplementation(async (query) => rowsFor(query));
 });
 
+describe("removing songs from the library", () => {
+  it("asks before it does anything", async () => {
+    useLibraryStore.getState().askRemoval([4, 7]);
+
+    // Destructive in a way nothing else the table offers is, so the store
+    // holds the question rather than the answer.
+    expect(useLibraryStore.getState().pendingRemoval).toEqual([4, 7]);
+    expect(removeTracks).not.toHaveBeenCalled();
+  });
+
+  it("does not ask about nothing", () => {
+    useLibraryStore.getState().askRemoval([]);
+
+    expect(useLibraryStore.getState().pendingRemoval).toBeNull();
+  });
+
+  it("drops the selection and re-queries the view", async () => {
+    vi.mocked(removeTracks).mockResolvedValue(2);
+    useLibraryStore.setState({ selection: { ids: new Set([4, 7]), anchorIndex: 0 } });
+
+    const removed = await useLibraryStore.getState().removeFromLibrary([4, 7]);
+
+    expect(removed).toBe(2);
+    // The ids the selection named are gone, and every page, count and group
+    // in the view is now wrong.
+    expect(useLibraryStore.getState().selection.ids.size).toBe(0);
+    expect(statsMock).toHaveBeenCalled();
+  });
+
+  it("calls nothing for an empty list", async () => {
+    expect(await useLibraryStore.getState().removeFromLibrary([])).toBe(0);
+
+    expect(removeTracks).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure rather than pretending rows went", async () => {
+    vi.mocked(removeTracks).mockRejectedValue(new Error("database is locked"));
+
+    expect(await useLibraryStore.getState().removeFromLibrary([4])).toBe(0);
+
+    expect(useStatusStore.getState().message).toMatch(/database is locked/);
+  });
+
+  it("says a rescan is what brings forgotten songs back", async () => {
+    vi.mocked(forgetRemovedTracks).mockResolvedValue(3);
+
+    await useLibraryStore.getState().forgetRemoved();
+
+    // Nothing on screen changes until a scan looks again, so the notice has
+    // to say what the next step is.
+    expect(useStatusStore.getState().notice).toBe(
+      "Forgot 3 removed songs. Rescan to add them back.",
+    );
+  });
+});
+
 describe("refresh", () => {
   it("keeps the totals the footer needs, not just the count", async () => {
     statsMock.mockResolvedValue({
@@ -122,6 +190,7 @@ describe("refresh", () => {
       durationMs: 3_000_000,
       bytes: 214_000_000,
       missing: 0,
+      removed: 0,
     });
 
     await useLibraryStore.getState().refresh();
@@ -134,6 +203,7 @@ describe("refresh", () => {
       durationMs: 3_000_000,
       bytes: 214_000_000,
       missing: 0,
+      removed: 0,
     });
   });
 

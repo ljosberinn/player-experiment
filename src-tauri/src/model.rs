@@ -693,6 +693,10 @@ pub struct LibraryStats {
     /// offers to clear them out at all; in a healthy library it is zero and
     /// nothing about missing files appears anywhere.
     pub missing: u32,
+    /// How many paths a removal has tombstoned, for File ▸ Forget Removed
+    /// Songs. Whole-library rather than scoped, unlike `missing`: the rows are
+    /// gone, so there is no view left for them to be inside.
+    pub removed: u32,
 }
 
 /// What a completed scan changed.

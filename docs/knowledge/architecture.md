@@ -62,8 +62,8 @@ enum. It emits `player://position` (throttled ~4/s), `player://state`,
 than a Tauri handle, so each stays testable with no running app.
 
 **Every write that commits announces itself on `library://changed`**, through
-`commands::announcing` — a scan, a tag write and its undo, removing missing
-rows, and each of the eight playlist commands. A bare ping with no payload:
+`commands::announcing` — a scan, a tag write and its undo, the three removal
+commands, and each of the eight playlist commands. A bare ping with no payload:
 nearly every write changes both the tracks and the playlists, so a scope would
 say "both" at almost every site while being one more thing two stores have to
 agree on. Only on success, since a rejected write changed nothing. This is the

@@ -61,8 +61,10 @@ describe("the menu bar", () => {
   it("opens File on the actions that used to be a toolbar", async () => {
     await openMenu("File");
 
-    // No missing songs in a freshly seeded library, so no third entry - which
-    // is the conditional this menu exists to get right.
+    // Nothing selected, nothing missing and nothing removed, so none of the
+    // three destructive entries is here - which is the conditional this menu
+    // exists to get right. The library is also empty at this point in the run,
+    // so there is nothing that could be selected.
     expect(await itemsOf("File")).toEqual(["Add Folders…", "Rescan"]);
   });
 

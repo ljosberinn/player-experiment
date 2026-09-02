@@ -100,13 +100,38 @@ export function scanLibrary(): Promise<ScanSummary> {
 /**
  * Deletes the rows of files that are no longer on disk, returning how many.
  *
- * The only call that destroys library rows. A scan marks what it cannot find
- * instead of deleting it, so an unplugged drive is recoverable - and throwing
- * those rows away, along with the playlist entries pointing at them, is a
- * decision the user makes rather than a side effect of scanning.
+ * A scan marks what it cannot find instead of deleting it, so an unplugged
+ * drive is recoverable - and throwing those rows away, along with the playlist
+ * entries pointing at them, is a decision the user makes rather than a side
+ * effect of scanning.
+ *
+ * Writes no tombstones, unlike `removeTracks`: a drive coming back should
+ * restore what was on it.
  */
 export function removeMissingTracks(): Promise<number> {
   return invoke<number>("remove_missing_tracks");
+}
+
+/**
+ * Removes the named songs from the library, leaving the files on disk.
+ *
+ * The other call that destroys library rows, and the one reached per row rather
+ * than per condition. It also tombstones the paths, which is what stops the
+ * next rescan from adding those files straight back - the file is still sitting
+ * under a watch folder. Resolves to how many rows went.
+ */
+export function removeTracks(trackIds: number[]): Promise<number> {
+  return invoke<number>("remove_tracks", { trackIds });
+}
+
+/**
+ * Forgets every removal, so the next rescan finds those files again.
+ *
+ * The way back from a mis-click, and all there is: the rows are gone and their
+ * ids with them, so this lifts the suppression rather than restoring anything.
+ */
+export function forgetRemovedTracks(): Promise<number> {
+  return invoke<number>("forget_removed_tracks");
 }
 
 export function queryTracks(query: TrackQuery): Promise<Track[]> {

@@ -180,6 +180,12 @@ absences are what nobody notices coming back — hence the guards in
   action, so the debounced reload always lands after them. `create` and
   `createFrom` also keep a direct `load()`, because the row they put into
   inline rename has to be on screen for the input to open.
+- **A pending library removal lives in the library store**, not in `App`'s
+  `useState` beside the missing-songs flag. Three routes ask the question - the
+  row menu, the File menu and Delete - and the last is a window-level shortcut
+  with no props to be handed a setter through. `App` subscribes to
+  `pendingRemoval` and renders the one `ConfirmDialog`, so the question is asked
+  the same way whichever route asked it.
 - **There is one status channel**, `features/shell/statusStore.ts`: one
   `message` behind the error popover and one `notice` behind the content line,
   written through the free `report`, `notify` and `dismiss`. No feature store

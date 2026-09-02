@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefin
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(async () => []),
   // Reached through the row menu, via the playlists and editor stores.
@@ -30,7 +30,13 @@ const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
     these tests are about. */
 function stats(tracks: number) {
-  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000, missing: 0 };
+  return {
+    tracks,
+    durationMs: tracks * 200_000,
+    bytes: tracks * 5_000_000,
+    missing: 0,
+    removed: 0,
+  };
 }
 
 const queryTracksMock = vi.mocked(queryTracks);
@@ -360,6 +366,38 @@ describe("SongTable", () => {
     expect(onRemove).toHaveBeenCalledWith([2]);
   });
 
+  it("removes from the library on Delete where the view has no playlist to leave", async () => {
+    const onRemoveFromLibrary = vi.fn();
+    await useLibraryStore.getState().refresh();
+    render(<SongTable onRemoveFromLibrary={onRemoveFromLibrary} />);
+    await waitFor(() => expect(screen.getByText("Track 2")).toBeInTheDocument());
+    const user = userEvent.setup();
+
+    await user.click(screen.getByText("Track 2"));
+    (screen.getByText("Track 2").closest(".song-row") as HTMLElement).focus();
+    await user.keyboard("{Delete}");
+
+    expect(onRemoveFromLibrary).toHaveBeenCalledWith([2]);
+  });
+
+  it("prefers the playlist reading of Delete where both are on offer", async () => {
+    const onRemove = vi.fn();
+    const onRemoveFromLibrary = vi.fn();
+    await useLibraryStore.getState().refresh();
+    render(<SongTable onRemove={onRemove} onRemoveFromLibrary={onRemoveFromLibrary} />);
+    await waitFor(() => expect(screen.getByText("Track 2")).toBeInTheDocument());
+    const user = userEvent.setup();
+
+    await user.click(screen.getByText("Track 2"));
+    (screen.getByText("Track 2").closest(".song-row") as HTMLElement).focus();
+    await user.keyboard("{Delete}");
+
+    // Inside a static playlist Delete is the less destructive of the two, and
+    // the one the view is about.
+    expect(onRemove).toHaveBeenCalledWith([2]);
+    expect(onRemoveFromLibrary).not.toHaveBeenCalled();
+  });
+
   it("renders placeholder rows for pages that have not arrived", async () => {
     // Never resolve, so every page stays in flight.
     queryTracksMock.mockImplementation(() => new Promise<Track[]>(() => {}));
@@ -513,6 +551,24 @@ describe("SongTable", () => {
 
       expect([...useLibraryStore.getState().selection.ids]).toEqual(before);
       expect(await screen.findByRole("menuitem", { name: /Edit 3 Songs/ })).toBeInTheDocument();
+    });
+
+    it("offers the library removal on the rows under the pointer", async () => {
+      const onRemoveFromLibrary = vi.fn();
+      const user = await openRowMenu({ onRemoveFromLibrary });
+
+      await user.click(await screen.findByRole("menuitem", { name: "Remove from Library…" }));
+
+      expect(onRemoveFromLibrary).toHaveBeenCalledWith([0]);
+    });
+
+    it("leaves the library removal out when the caller offers none", async () => {
+      await openRowMenu();
+
+      expect(await screen.findByRole("menu", { name: "Song actions" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("menuitem", { name: /Remove .*from Library/ }),
+      ).not.toBeInTheDocument();
     });
 
     it("plays the row it was opened on", async () => {

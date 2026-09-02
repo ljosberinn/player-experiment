@@ -6,6 +6,8 @@ function playlist(id: number, name: string, kind: Playlist["kind"] = "static"): 
   return { id, name, kind, trackCount: 0, createdAt: 0 };
 }
 
+const noop = () => {};
+
 const handlers = {
   onPlay: vi.fn(),
   onEdit: vi.fn(),
@@ -82,9 +84,9 @@ describe("rowMenuItems", () => {
     expect(labels(menu)).toContain("Remove 2 Songs from Playlist");
   });
 
-  it("does not offer removal in the library", () => {
-    // In the library this could only mean deleting the file, which is not a
-    // thing to sit one entry below "Edit".
+  it("does not offer removal from a playlist in the library", () => {
+    // There is no membership row to take out - only the library row, which is
+    // the separate entry below.
     expect(labels(items())).not.toContain("Remove from Playlist");
   });
 
@@ -92,6 +94,42 @@ describe("rowMenuItems", () => {
     const menu = items({ openPlaylist: playlist(2, "Recent", "smart") });
 
     expect(labels(menu).some((label) => label.includes("Remove"))).toBe(false);
+  });
+
+  describe("removal from the library", () => {
+    it("appears only where the caller offers it", () => {
+      // The Edit menu is the caller that does not: the entry belongs in File,
+      // beside the other row-destroying one, and offering it in both would be
+      // the same action twice.
+      expect(labels(items())).not.toContain("Remove from Library…");
+      expect(labels(items({ onRemoveFromLibrary: noop }))).toContain("Remove from Library…");
+    });
+
+    it("counts what it is about to act on", () => {
+      expect(labels(items({ count: 3, onRemoveFromLibrary: noop }))).toContain(
+        "Remove 3 Songs from Library…",
+      );
+    });
+
+    it("sits under the playlist removal inside a static playlist", () => {
+      // Both readings are on offer there, and the pair is what makes the
+      // choice legible.
+      const menu = labels(
+        items({ count: 2, openPlaylist: playlist(1, "Evening"), onRemoveFromLibrary: noop }),
+      );
+
+      expect(menu.indexOf("Remove 2 Songs from Library…")).toBe(
+        menu.indexOf("Remove 2 Songs from Playlist") + 1,
+      );
+    });
+
+    it("wires the entry to its handler", () => {
+      const onRemoveFromLibrary = vi.fn();
+
+      entry(items({ onRemoveFromLibrary }), "Remove from Library…")?.onSelect?.();
+
+      expect(onRemoveFromLibrary).toHaveBeenCalled();
+    });
   });
 
   it("disables Show in Explorer unless exactly one song is selected", () => {
