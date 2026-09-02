@@ -92,6 +92,17 @@ export function listWatchFolders(): Promise<string[]> {
   return invoke<string[]>("list_watch_folders");
 }
 
+/**
+ * Stops watching a folder, leaving the songs already in the library alone.
+ *
+ * They stay until a scan does not find them and marks them missing, which is
+ * the path that already exists - a second kind of removal would take the play
+ * counts and playlist places on those rows with it.
+ */
+export function removeWatchFolder(path: string): Promise<void> {
+  return invoke<void>("remove_watch_folder", { path });
+}
+
 /** Resolves when the scan finishes; follow progress with {@link onScanProgress}. */
 export function scanLibrary(): Promise<ScanSummary> {
   return invoke<ScanSummary>("scan_library");
@@ -197,6 +208,21 @@ export function loadZoom(): Promise<string | null> {
 
 export function saveZoom(factor: string): Promise<void> {
   return invoke<void>("save_zoom", { factor });
+}
+
+/**
+ * Minutes between unattended passes over the watch folders; zero means off.
+ *
+ * A number rather than the opaque strings around it, because Rust is what acts
+ * on it: the `library-watch` thread reads this setting on every wake, so a
+ * change here applies without a restart.
+ */
+export function loadWatchInterval(): Promise<number> {
+  return invoke<number>("load_watch_interval");
+}
+
+export function saveWatchInterval(minutes: number): Promise<void> {
+  return invoke<void>("save_watch_interval", { minutes });
 }
 
 /**

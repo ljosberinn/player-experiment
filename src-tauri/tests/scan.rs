@@ -431,6 +431,159 @@ fn a_corrupt_file_does_not_abort_the_scan() {
     );
 }
 
+/// One unattended pass, collecting whatever progress it reported.
+fn watch_pass(
+    db: &Db,
+) -> (
+    apex_lib::model::ScanSummary,
+    Vec<apex_lib::model::ScanProgress>,
+) {
+    let mut conn = db.conn().unwrap();
+    let mut events = Vec::new();
+    let summary = scan::watch::pass(&mut conn, |progress| events.push(progress)).expect("pass");
+    (summary, events)
+}
+
+#[test]
+fn an_unattended_pass_leaves_a_root_that_is_not_there_alone() {
+    // The unplugged external drive. `walk` yields nothing for a root that is
+    // gone, so without the filter every track under it would be marked missing
+    // on a timer, with nobody looking.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+    std::fs::remove_dir_all(&h.music).unwrap();
+
+    let (summary, _) = watch_pass(&h.db);
+
+    assert_eq!(
+        summary.missing, 0,
+        "a root that is gone is skipped, not walked"
+    );
+    let conn = h.db.conn().unwrap();
+    assert!(all_tracks(&conn).iter().all(|t| t.missing_since.is_none()));
+}
+
+#[test]
+fn a_rescan_over_that_same_root_still_marks_everything() {
+    // The other half of the pair: the user asked, so the answer is the truth
+    // about the disk - and those marks are what feeds Remove Missing.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+    std::fs::remove_dir_all(&h.music).unwrap();
+
+    assert_eq!(scan_now(&h.db).missing, 5);
+
+    let conn = h.db.conn().unwrap();
+    assert!(all_tracks(&conn).iter().all(|t| t.missing_since.is_some()));
+}
+
+#[test]
+fn a_pass_that_finds_nothing_reports_no_progress_and_nothing_to_announce() {
+    // What almost every pass is. A progress event would flash "Scanning 0 of
+    // 0" over a window the user is using, and an announcement behind it would
+    // drop every cached page for nothing.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let (summary, events) = watch_pass(&h.db);
+
+    assert!(events.is_empty(), "expected silence, got {events:?}");
+    assert!(!summary.changed());
+    assert_eq!(summary.unchanged, 5, "it did look, it just found nothing");
+}
+
+#[test]
+fn a_pass_that_finds_work_reports_it_like_any_other_scan() {
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+    fixture::write_mp3(
+        &h.music.join("Guitar/Tokyo/03 Akiko.mp3"),
+        45,
+        &fixture::Meta {
+            title: Some("Akiko"),
+            ..Default::default()
+        },
+    );
+
+    let (summary, events) = watch_pass(&h.db);
+
+    assert_eq!(summary.added, 1);
+    assert!(summary.changed());
+    assert!(
+        events.last().is_some_and(|last| last.done),
+        "expected the same progress a Rescan emits: {events:?}"
+    );
+}
+
+#[test]
+fn a_pass_skips_while_something_else_is_walking_the_library() {
+    // `try_acquire` rather than `acquire`: whatever holds the lock is already
+    // doing this work, and a pass queued behind it would walk everything again
+    // to find the same nothing.
+    let lock = scan::ScanLock::default();
+    let held = lock.acquire();
+
+    assert!(lock.try_acquire().is_none());
+
+    drop(held);
+    assert!(
+        lock.try_acquire().is_some(),
+        "and it is available again after"
+    );
+}
+
+#[test]
+fn the_lock_survives_the_panic_of_whoever_held_it() {
+    // A panicking scan must not leave the library unscannable for the rest of
+    // the session: the guard protects an ordering, not a value that could be
+    // left half-written.
+    let lock = scan::ScanLock::default();
+    let poisoner = lock.clone();
+    std::thread::spawn(move || {
+        let _guard = poisoner.acquire();
+        panic!("mid-scan");
+    })
+    .join()
+    .expect_err("the thread is meant to panic");
+
+    assert!(lock.try_acquire().is_some());
+}
+
+#[test]
+fn a_folder_that_is_no_longer_watched_keeps_its_songs() {
+    // Removing a watch folder deletes that row and nothing else - the tracks
+    // stay until a pass does not find them, which is the route that already
+    // exists rather than a second kind of removal.
+    let h = harness();
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let conn = h.db.conn().unwrap();
+    scan::remove_watch_folder(&conn, &h.music).unwrap();
+
+    assert!(scan::watch_folders(&conn).unwrap().is_empty());
+    assert_eq!(all_tracks(&conn).len(), 5);
+    assert!(all_tracks(&conn).iter().all(|t| t.missing_since.is_none()));
+
+    // And then the pass does the marking, which is what the row in Settings
+    // has to say it will.
+    assert_eq!(watch_pass(&h.db).0.missing, 5);
+}
+
+#[test]
+fn removing_a_folder_that_was_never_watched_is_not_an_error() {
+    let h = harness();
+    let conn = h.db.conn().unwrap();
+
+    scan::remove_watch_folder(&conn, Path::new("/nowhere")).unwrap();
+
+    assert_eq!(scan::watch_folders(&conn).unwrap().len(), 1);
+}
+
 #[test]
 fn adding_a_watch_folder_rejects_a_path_that_is_not_a_directory() {
     let h = harness();

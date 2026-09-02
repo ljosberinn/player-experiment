@@ -84,6 +84,10 @@ describe("the menu bar", () => {
     const dialog = browser.$("[role='dialog']");
     await dialog.waitForExist({ timeout: 10_000 });
     await expect(dialog).toHaveText(/Interface Zoom/);
+    // The section issue 71 added, and the only place in the app that shows
+    // which folders are watched at all. The existing screenshot below now
+    // carries it.
+    await expect(dialog).toHaveText(/Music Folders/);
 
     await capture("settings");
 

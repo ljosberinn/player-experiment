@@ -17,6 +17,8 @@ pub const WINDOW_GEOMETRY: &str = "window.geometry";
 pub const COLUMNS: &str = "library.columns";
 /// Webview zoom factor, applied before the window is shown.
 pub const ZOOM: &str = "window.zoom";
+/// Minutes between unattended library passes, or `"0"` for off.
+pub const WATCH_INTERVAL: &str = "library.watchInterval";
 /// Which sidebar sections the user has collapsed. Opaque JSON, like the column
 /// layout: which sections exist is the frontend's business, and mirroring that
 /// here would be two definitions to keep in step for nothing.
@@ -132,6 +134,22 @@ pub fn volume(conn: &Connection) -> AppResult<f32> {
 pub fn muted(conn: &Connection) -> AppResult<bool> {
     Ok(get(conn, MUTED)?.as_deref() == Some("true"))
 }
+
+/// Minutes between unattended library passes; zero means off.
+///
+/// An allowlist rather than a range, unlike [`volume`]: the Settings dialog
+/// offers four intervals and off, so a value outside that set was not written
+/// by this app and reads as the default rather than as a poll every second.
+pub fn watch_interval(conn: &Connection) -> AppResult<u32> {
+    const DEFAULT: u32 = 15;
+    Ok(get(conn, WATCH_INTERVAL)?
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|minutes| WATCH_INTERVALS.contains(minutes))
+        .unwrap_or(DEFAULT))
+}
+
+/// The intervals the dialog offers, off first. Minutes.
+pub const WATCH_INTERVALS: &[u32] = &[0, 5, 15, 30, 60];
 
 /// Whether the cover-coloured background is on.
 ///
@@ -252,6 +270,33 @@ mod tests {
         // And a value neither of those, which must not turn the design off.
         set(&conn, DYNAMIC_BACKGROUND, "maybe").unwrap();
         assert!(dynamic_background(&conn).unwrap());
+    }
+
+    #[test]
+    fn the_watch_interval_defaults_to_a_quarter_of_an_hour_and_round_trips() {
+        let (_dir, conn) = conn();
+        assert_eq!(watch_interval(&conn).unwrap(), 15);
+
+        set(&conn, WATCH_INTERVAL, "60").unwrap();
+        assert_eq!(watch_interval(&conn).unwrap(), 60);
+
+        // Off is a value the dialog writes, not an absent setting - so it has
+        // to survive the fallback that catches everything else.
+        set(&conn, WATCH_INTERVAL, "0").unwrap();
+        assert_eq!(watch_interval(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_watch_interval_this_app_did_not_write_falls_back_to_the_default() {
+        let (_dir, conn) = conn();
+
+        set(&conn, WATCH_INTERVAL, "often").unwrap();
+        assert_eq!(watch_interval(&conn).unwrap(), 15);
+
+        // In range for a u32 and still not one of the five: a hand-edited row
+        // must not turn the pass into a busy loop.
+        set(&conn, WATCH_INTERVAL, "1").unwrap();
+        assert_eq!(watch_interval(&conn).unwrap(), 15);
     }
 
     #[test]

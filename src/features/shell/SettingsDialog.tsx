@@ -1,5 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
+import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
@@ -25,6 +26,10 @@ import { useZoomStore } from "./zoomStore";
  * last.fm joins it in phase 10b, last and set apart: the two rows above are
  * preferences about how the app looks, and that section is the only thing in
  * the app that makes it talk to a server.
+ *
+ * The music folders join it in issue 71, between the two: they are the first
+ * thing here that is not about appearance, and they are where the app is told
+ * what to do to the library while nobody is watching.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const factor = useZoomStore((s) => s.factor);
@@ -87,6 +92,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               onChange={(event) => void setDynamicBackground(event.target.checked)}
             />
           </div>
+
+          {/* Below the two appearance rows and above last.fm, which is the
+              order of how far each reaches: how the app looks, then what it
+              does on its own to the library, then what leaves the machine. */}
+          <WatchFolderSettings />
 
           {/* Last, and set apart: everything above it is a preference about
               how the app looks, and this is the one thing in Settings that

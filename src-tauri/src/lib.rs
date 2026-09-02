@@ -120,6 +120,12 @@ pub fn run() {
                 muted,
             ));
             normalize_covers(db.clone());
+            // One lock for everything that rewrites rows from files on disk,
+            // so the unattended pass can tell whether it would be racing a
+            // scan or an undo the user started.
+            let lock = scan::ScanLock::default();
+            watch_library(app.handle().clone(), db.clone(), lock.clone());
+            app.manage(lock);
             app.manage(db);
             Ok(())
         })
@@ -168,6 +174,7 @@ pub fn run() {
             commands::get_app_info,
             commands::add_watch_folder,
             commands::list_watch_folders,
+            commands::remove_watch_folder,
             commands::scan_library,
             commands::remove_missing_tracks,
             commands::remove_tracks,
@@ -194,6 +201,8 @@ pub fn run() {
             commands::save_column_config,
             commands::load_zoom,
             commands::save_zoom,
+            commands::load_watch_interval,
+            commands::save_watch_interval,
             commands::load_sidebar_sections,
             commands::save_sidebar_sections,
             commands::load_dynamic_background,
@@ -231,6 +240,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Starts the timer that keeps the watch folders watched.
+///
+/// The two channels a scan already speaks, and nothing else: real work shows
+/// the same progress bar a Rescan does, and a pass that changed something says
+/// so on `library://changed`. A pass that found nothing is silent on both -
+/// which is why `scan::watch` calls back rather than emitting for itself.
+fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock) {
+    let progress = app.clone();
+    scan::watch::spawn(
+        db,
+        lock,
+        move |p| {
+            let _ = progress.emit(crate::commands::SCAN_PROGRESS, &p);
+        },
+        move || {
+            let _ = app.emit(crate::commands::LIBRARY_CHANGED, ());
+        },
+    );
 }
 
 /// Re-encodes artwork a previous build stored whole, off the setup path.

@@ -9,6 +9,10 @@ vi.mock("../../ipc", () => ({
   saveDynamicBackground: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
+  listWatchFolders: vi.fn(async () => []),
+  loadWatchInterval: vi.fn(async () => 15),
+  removeWatchFolder: vi.fn(async () => undefined),
+  saveWatchInterval: vi.fn(async () => undefined),
 }));
 
 function checkbox(): HTMLInputElement {
@@ -54,5 +58,14 @@ describe("the Settings dialog", () => {
     // replacement.
     expect(screen.getByText("Interface Zoom")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+  });
+
+  it("carries the music folders section", () => {
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    // The dialog is where the watch folders became visible at all - the same
+    // argument as the row above, one section later.
+    expect(screen.getByText("Music Folders")).toBeInTheDocument();
+    expect(screen.getByLabelText("Check For Changes")).toBeInTheDocument();
   });
 });
