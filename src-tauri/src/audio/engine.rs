@@ -47,6 +47,12 @@ pub enum Command {
     SetMuted(bool),
     /// Play the current track forever instead of advancing at its end.
     SetRepeatOne(bool),
+    /// The OS default output device may have changed, so playback has to be
+    /// re-established on whatever is default now. Sent by the output watcher,
+    /// which is also where the "may" comes from: it fires on the default
+    /// having moved since its last poll, and the sink decides whether that
+    /// means anything.
+    OutputChanged,
 }
 
 /// Something the owning thread should act on.
@@ -280,6 +286,71 @@ impl<S: AudioSink> Engine<S> {
             Command::SetVolume(volume) => self.set_volume(volume),
             Command::SetMuted(muted) => self.set_muted(muted),
             Command::SetRepeatOne(repeat) => self.set_repeat_one(repeat),
+            Command::OutputChanged => self.output_changed(),
+        }
+    }
+
+    /// Moves the current track onto the new output device, where it was.
+    ///
+    /// The sink hands back a fresh output and nothing else - it never knew
+    /// what was loaded - so putting the track back is here: reload it, seek to
+    /// the position read before the swap, and restore play or pause. None of
+    /// the per-load bookkeeping is touched, because this is the same play:
+    /// `started_at`, `announced` and `counted` all survive it, and a track
+    /// that has already scrobbled does not scrobble again for changing device.
+    fn output_changed(&mut self) -> Vec<Event> {
+        let position = self.sink.position();
+        let was_playing = self.status == PlaybackStatus::Playing;
+
+        match self.sink.reopen_output() {
+            Ok(false) => Vec::new(),
+            // No device to move to. The transport says Playing over an output
+            // that no longer exists, so stopping is the honest end of it.
+            Err(message) => {
+                let mut events = vec![Event::Error(message)];
+                events.extend(self.stop());
+                events
+            }
+            Ok(true) => {
+                // Nothing playing, so there is nothing to put back: the
+                // reopen was all of it, and the next play uses the new output.
+                if self.status == PlaybackStatus::Stopped {
+                    return Vec::new();
+                }
+                let Some(entry) = self.current().cloned() else {
+                    return Vec::new();
+                };
+
+                let mut events = Vec::new();
+                if let Err(message) = self.sink.load(Path::new(&entry.path)) {
+                    // The file went away mid-switch, which is an ordinary
+                    // failed load and ends the same way.
+                    events.push(Event::LoadFailed(entry.track_id));
+                    events.push(Event::Error(message));
+                    events.extend(self.stop());
+                    return events;
+                }
+
+                // A seek that fails leaves the track at zero rather than
+                // stopping it: the sound is on the right device, which is what
+                // the user asked for, and the position is recoverable by hand.
+                match self.sink.seek(position) {
+                    Ok(()) => {
+                        self.last_position_ms =
+                            i64::try_from(position.as_millis()).unwrap_or(i64::MAX);
+                    }
+                    Err(message) => {
+                        self.last_position_ms = 0;
+                        events.push(Event::Error(message));
+                    }
+                }
+
+                if was_playing {
+                    self.sink.play();
+                }
+                events.push(Event::StateChanged);
+                events
+            }
         }
     }
 
@@ -1324,5 +1395,129 @@ mod tests {
         engine.tick();
 
         assert_eq!(engine.sink.prepares, [track_path(2), track_path(3)]);
+    }
+
+    #[test]
+    fn a_reopened_output_resumes_where_it_left_off() {
+        let mut engine = engine_with(2);
+        engine.sink.position = Duration::from_millis(42_000);
+        engine.sink.reopen = Some(Ok(true));
+
+        assert_eq!(
+            engine.handle(Command::OutputChanged),
+            vec![Event::StateChanged]
+        );
+
+        assert_eq!(engine.sink.loaded, Some(track_path(1)));
+        assert_eq!(engine.sink.position, Duration::from_millis(42_000));
+        assert!(
+            engine.sink.playing,
+            "playback did not resume on the new output"
+        );
+        assert_eq!(engine.state().status, PlaybackStatus::Playing);
+        assert_eq!(engine.state().track_id, Some(1));
+    }
+
+    #[test]
+    fn a_reopened_output_stays_paused_if_it_was_paused() {
+        let mut engine = engine_with(2);
+        engine.sink.position = Duration::from_millis(42_000);
+        engine.handle(Command::Pause);
+        engine.sink.reopen = Some(Ok(true));
+
+        engine.handle(Command::OutputChanged);
+
+        assert!(
+            !engine.sink.playing,
+            "a paused track started playing on the new output"
+        );
+        assert_eq!(engine.state().status, PlaybackStatus::Paused);
+        assert_eq!(engine.state().position_ms, 42_000);
+    }
+
+    #[test]
+    fn an_unchanged_output_is_left_alone() {
+        let mut engine = engine_with(2);
+        engine.sink.position = Duration::from_millis(42_000);
+
+        // `Ok(false)`, the sink's answer to a duplicate command.
+        assert_eq!(engine.handle(Command::OutputChanged), Vec::new());
+
+        assert_eq!(engine.sink.reopens, 1);
+        assert_eq!(
+            engine.sink.loads,
+            [track_path(1)],
+            "reloaded without being asked to"
+        );
+        assert_eq!(engine.sink.position, Duration::from_millis(42_000));
+    }
+
+    #[test]
+    fn a_reopen_with_no_device_left_stops_with_an_error() {
+        let mut engine = engine_with(2);
+        engine.sink.reopen = Some(Err("no audio output device".to_owned()));
+
+        assert_eq!(
+            engine.handle(Command::OutputChanged),
+            vec![
+                Event::Error("no audio output device".to_owned()),
+                Event::StateChanged,
+            ]
+        );
+        assert_eq!(engine.state().status, PlaybackStatus::Stopped);
+    }
+
+    #[test]
+    fn a_file_that_vanished_mid_switch_stops_with_an_error() {
+        let mut engine = engine_with(2);
+        engine.sink.reopen = Some(Ok(true));
+        engine.sink.fail_load = true;
+
+        let events = engine.handle(Command::OutputChanged);
+
+        assert_eq!(events.first(), Some(&Event::LoadFailed(1)));
+        assert_eq!(engine.state().status, PlaybackStatus::Stopped);
+        // Not the next track: the queue does not advance because the output
+        // moved, only because a track ended or the user asked.
+        assert_eq!(engine.sink.loads, [track_path(1), track_path(1)]);
+    }
+
+    #[test]
+    fn a_reopen_does_not_re_announce_or_re_count_the_track() {
+        // The same play, on a different device. A scrobble already sent must
+        // not be sent again, and its timestamp is still when the track began.
+        let mut engine = Engine::with_clock(FakeSink::default(), 1.0, false, ticking_clock(1_000));
+        engine.handle(Command::SetQueue {
+            entries: vec![entry(7, 10_000)],
+            index: 0,
+        });
+        engine.sink.position = Duration::from_millis(9_000);
+        let events = engine.tick();
+        assert_eq!(announced(&events), Some(7));
+        assert_eq!(played(&events), Some(7));
+
+        engine.sink.reopen = Some(Ok(true));
+        engine.handle(Command::OutputChanged);
+
+        let events = engine.tick();
+        assert_eq!(announced(&events), None, "announced the same play twice");
+        assert_eq!(played(&events), None, "counted the same play twice");
+    }
+
+    #[test]
+    fn a_reopen_with_nothing_playing_only_swaps_the_output() {
+        let mut engine = engine_with(2);
+        engine.handle(Command::Stop);
+        engine.sink.reopen = Some(Ok(true));
+
+        assert_eq!(engine.handle(Command::OutputChanged), Vec::new());
+
+        assert_eq!(engine.sink.reopens, 1, "the output was not reopened");
+        assert_eq!(
+            engine.sink.loads,
+            [track_path(1)],
+            "reloaded a stopped player"
+        );
+        assert_eq!(engine.state().status, PlaybackStatus::Stopped);
     }
 }

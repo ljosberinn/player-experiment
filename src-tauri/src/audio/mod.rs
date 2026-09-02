@@ -9,8 +9,10 @@
 pub mod engine;
 pub mod sink;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::error::{AppError, AppResult};
 
@@ -26,6 +28,14 @@ pub struct Player {
     commands: Sender<Command>,
     state: Arc<Mutex<EngineState>>,
 }
+
+/// How often the OS default output device is polled.
+///
+/// A poll rather than `IMMNotificationClient`, which is the correct Windows
+/// answer and instant: implementing a COM interface here means `unsafe`, and
+/// the crate forbids it. A second is under the threshold where a device switch
+/// stops feeling like it followed the click.
+const OUTPUT_POLL: Duration = Duration::from_secs(1);
 
 impl Player {
     /// Starts the player thread.
@@ -78,6 +88,43 @@ impl Player {
         self.commands
             .send(command)
             .map_err(|_| AppError::Internal("the player thread is not running".to_owned()))
+    }
+
+    /// Follows the OS default output device, asking the engine to move
+    /// playback whenever it changes.
+    ///
+    /// Its own thread, not the player thread: that one owns the sink and has
+    /// to stay responsive near a track boundary, where it ticks every 10ms, so
+    /// it must not be the thread enumerating WASAPI endpoints. `faulted` is
+    /// the sink's stream-error flag, which covers the case an id comparison
+    /// cannot see - the open device failing without the default moving.
+    pub fn watch_output(&self, faulted: Arc<AtomicBool>) {
+        let commands = self.commands.clone();
+        let mut last = sink::default_output_id();
+
+        std::thread::Builder::new()
+            .name("output-watch".to_owned())
+            .spawn(move || loop {
+                std::thread::sleep(OUTPUT_POLL);
+
+                // A transition, never a mismatch against what is open: the
+                // sink is allowed to be on a non-default endpoint, because
+                // `open_sink_or_fallback` picks whatever will open. Comparing
+                // the default to that would fire a reopen, and a decode,
+                // every second forever.
+                let current = sink::default_output_id();
+                let changed = current != last || faulted.load(Ordering::Acquire);
+                last = current;
+                if !changed {
+                    continue;
+                }
+
+                // A closed channel is how this thread learns the app is gone.
+                if commands.send(Command::OutputChanged).is_err() {
+                    return;
+                }
+            })
+            .ok();
     }
 
     /// The last state the engine reported.
