@@ -17,6 +17,7 @@ import {
   type TrackQuery,
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
+import { dismiss, report } from "../shell/statusStore";
 import {
   type ColumnConfig,
   DEFAULT_COLUMN_CONFIG,
@@ -148,7 +149,6 @@ interface LibraryState {
   sortBeforeSearch: { sortBy: SortField; direction: SortDirection } | null;
   selection: Selection;
   loading: boolean;
-  error: string | null;
   /**
    * Identifies the query currently in flight.
    *
@@ -175,8 +175,6 @@ interface LibraryState {
    * marks, hides or reorders. Resolves to how many went.
    */
   removeMissing: () => Promise<number>;
-  /** Clears the last error. The shell shows one at a time and dismisses it. */
-  dismissError: () => void;
   /** Reloads the open tab's groups under `refresh`'s token. Internal. */
   loadGroups: (token: number) => Promise<void>;
   /** Switches the view to a playlist, or back to the whole library. */
@@ -321,16 +319,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   sortBeforeSearch: null,
   selection: emptySelection,
   loading: false,
-  error: null,
   queryToken: 0,
   // Seeded with the view the app opens in, so the first navigation has
   // somewhere to go back to.
   history: historyAt({ tab: "songs", browse: null, playlistId: null }),
 
-  dismissError: () => set({ error: null }),
-
   refresh: async () => {
     const token = get().queryToken + 1;
+    dismiss();
     // Pages are dropped before the count returns rather than after: they
     // belong to the previous query, and keeping them would show the old
     // results underneath a new search. The table renders placeholders in the
@@ -338,10 +334,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({
       queryToken: token,
       loading: true,
-      error: null,
       pages: new Map(),
       inFlight: new Set(),
     });
+    // Local, because the message it stands for no longer lives here: what the
+    // drill-in check below needs to know is whether the count it is about to
+    // trust actually arrived.
+    let counted = true;
     try {
       const stats = await libraryStats(queryFor(get()));
       // A superseded count is dropped, but `loading` is left alone rather than
@@ -355,7 +354,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (get().queryToken !== token) {
         return;
       }
-      set({ error: String(cause), loading: false });
+      counted = false;
+      report(cause);
+      set({ loading: false });
     }
     await get().loadGroups(token);
 
@@ -367,7 +368,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // ejecting a view a newer one has already replaced.
     if (
       state.queryToken === token &&
-      state.error === null &&
+      counted &&
       state.browse !== null &&
       state.search.trim() === "" &&
       state.total === 0
@@ -398,7 +399,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       await get().refresh();
       return removed;
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
       return 0;
     }
   },
@@ -432,7 +433,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (get().queryToken !== token) {
         return;
       }
-      set({ error: String(cause), groupsLoading: false });
+      report(cause);
+      set({ groupsLoading: false });
     }
   },
 
@@ -484,7 +486,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     } catch (cause) {
       // Worth saying: the layout is on screen, so silence would look like it
       // saved and it would be gone next launch.
-      set({ error: String(cause) });
+      report(cause);
     }
 
     if (sortBy !== previousSort) {
@@ -654,13 +656,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             return { pages: evictFarPages(next, visible), inFlight: stillInFlight };
           });
         } catch (cause) {
+          // Reported outside the updater: it is a cross-store write, and an
+          // updater runs under zustand's own set.
+          if (get().queryToken === token) {
+            report(cause);
+          }
           set((state) => {
             if (state.queryToken !== token) {
               return {};
             }
             const stillInFlight = new Set(state.inFlight);
             stillInFlight.delete(page);
-            return { error: String(cause), inFlight: stillInFlight };
+            return { inFlight: stillInFlight };
           });
         }
       }),
@@ -723,7 +730,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const ids = await allTrackIds(queryFor(get()));
       set({ selection: { ids: new Set(ids), anchorIndex: 0 } });
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
     }
   },
 
@@ -736,7 +743,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       return await allTrackIds(queryFor(get()));
     } catch (cause) {
-      set({ error: String(cause) });
+      report(cause);
       return [];
     }
   },

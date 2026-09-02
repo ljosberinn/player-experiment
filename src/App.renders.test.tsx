@@ -244,7 +244,7 @@ beforeEach(() => {
   renders.playlistSidebar = 0;
   renders.browseView = 0;
   renders.menuBar = 0;
-  useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map(), error: null });
+  useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0, error: null });
 });
 

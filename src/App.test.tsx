@@ -7,6 +7,7 @@ import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
 import { TRACK_IDS_MIME } from "./features/playlists/drag";
 import { usePlaylistsStore } from "./features/playlists/store";
+import { useStatusStore } from "./features/shell/statusStore";
 import { useUpdaterStore } from "./features/updater/store";
 import {
   addToPlaylist,
@@ -147,7 +148,8 @@ function playlist(id: number, name: string, trackCount = 0): Playlist {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  useLibraryStore.setState({ ...initial, total: 0, pages: new Map(), error: null });
+  useLibraryStore.setState({ ...initial, total: 0, pages: new Map() });
+  useStatusStore.setState({ message: null, notice: null });
   usePlaylistsStore.setState({
     ...initialPlaylists,
     playlists: [],
@@ -1052,7 +1054,7 @@ describe("the error popover", () => {
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
     act(() => {
-      useLibraryStore.setState({ error: "the library is locked" });
+      useStatusStore.setState({ message: "the library is locked" });
       usePlayerStore.setState({ error: "that file will not open" });
     });
 

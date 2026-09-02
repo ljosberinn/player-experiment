@@ -35,6 +35,7 @@ import { AppMenus } from "./features/shell/AppMenus";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
+import { useStatusStore } from "./features/shell/statusStore";
 import { TaskProgress } from "./features/shell/TaskProgress";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
 import { useLibraryShortcuts } from "./features/shell/useLibraryShortcuts";
@@ -96,7 +97,6 @@ export function App() {
   const clearSearch = useLibraryStore((s) => s.clearSearch);
   const refresh = useLibraryStore((s) => s.refresh);
   const removeMissing = useLibraryStore((s) => s.removeMissing);
-  const error = useLibraryStore((s) => s.error);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
   const nowPlaying = usePlayerStore((s) => s.track);
@@ -127,7 +127,8 @@ export function App() {
   const closeEditor = usePlaylistsStore((s) => s.closeEditor);
   const saveSmart = usePlaylistsStore((s) => s.saveSmart);
 
-  const dismissLibraryError = useLibraryStore((s) => s.dismissError);
+  const statusMessage = useStatusStore((s) => s.message);
+  const dismissStatus = useStatusStore((s) => s.dismiss);
   const dismissPlayerError = usePlayerStore((s) => s.dismissError);
   const dismissPlaylistError = usePlaylistsStore((s) => s.dismissError);
   const dismissTagError = useEditorStore((s) => s.dismissError);
@@ -140,9 +141,9 @@ export function App() {
    * rather than uncovering the next one, which would read as the message
    * refusing to go away.
    */
-  const problem = error ?? playerError ?? playlistError ?? tagError ?? scanError ?? null;
+  const problem = statusMessage ?? playerError ?? playlistError ?? tagError ?? scanError ?? null;
   const dismissProblem = () => {
-    dismissLibraryError();
+    dismissStatus();
     dismissPlayerError();
     dismissPlaylistError();
     dismissTagError();
