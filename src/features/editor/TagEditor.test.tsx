@@ -176,13 +176,42 @@ describe("TagEditor", () => {
     // Off `document` rather than the render container: the dialog is portalled
     // to the body now. The cover is decorative (`alt=""`), so it has no role to
     // query it by.
-    expect(document.querySelector(".status-cover")).toHaveAttribute("src", "cover-url:abc");
+    expect(document.querySelector(".tag-cover-art")).toHaveAttribute("src", "cover-url:abc");
   });
 
   it("says artwork differs across a mixed selection", () => {
     open([track({ cover_hash: "abc" }), track({ id: 2, cover_hash: "def" })]);
 
     expect(screen.getByText(/Artwork differs/)).toBeInTheDocument();
+  });
+
+  // The square is the block's shape, so it is drawn in every state rather than
+  // being one of the things the state picks between. Phase 51 drops a file on
+  // it, which needs it to be there when there is no artwork to show.
+  it("draws an empty square when a song has no artwork", () => {
+    open([track({ cover_hash: null })]);
+
+    const square = document.querySelector(".tag-cover-art");
+
+    expect(square).toHaveClass("tag-cover-art-empty");
+    expect(square).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("keeps the square while a removal is pending", async () => {
+    const { user } = open([track({ cover_hash: "abc" })]);
+
+    await user.click(screen.getByRole("button", { name: "Remove Artwork" }));
+
+    expect(document.querySelector(".tag-cover-art")).toBeInTheDocument();
+  });
+
+  it("keeps the square while a replacement is pending", async () => {
+    const { user } = open([track({ cover_hash: "abc" })], "C:/art/cover.png");
+
+    await user.click(screen.getByRole("button", { name: "Choose Artwork…" }));
+    await screen.findByText("New artwork selected.");
+
+    expect(document.querySelector(".tag-cover-art")).toBeInTheDocument();
   });
 
   it("saves on Enter from a field", async () => {

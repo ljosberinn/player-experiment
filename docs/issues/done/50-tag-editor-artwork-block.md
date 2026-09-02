@@ -35,21 +35,18 @@ sentence is a caption beside it, not a replacement for it.
 - Rename `.status-cover` while touching it — it names a status column this
   dialog has nothing to do with. `.tag-cover-art` matches the block.
 
-To decide:
+Settled:
 
-- **The size.** The two squares in the app bracket it — 44px in the transport
-  strip, 158px in the albums grid — and neither suits a dialog. 96px is the
-  proposal. `docs/knowledge/design.md` lists no mockup of this dialog, so there
-  is nothing to reproduce; re-fetch the design project before assuming that.
-- **Whether a pending replacement previews.** It cannot today: `CoverEdit`
-  carries a path, and the asset protocol is not enabled
-  (`src-tauri/capabilities/default.json`, and no `assetProtocol` block in
-  `tauri.conf.json`), so the webview cannot read a picked file. The caption
-  stands for now; [phase 51](51-drop-artwork-into-the-editor.md) brings bytes,
-  which a preview could use.
-- **Whether this is worth a photograph.** No e2e spec opens the editor, so a
-  `capture()` of it would be new ground rather than a line added to an existing
-  spec.
+- **The size is 120px**, between the 44px in the transport strip and the 158px
+  in the albums grid. `docs/knowledge/design.md` lists no mockup of this dialog.
+- **A pending replacement does not preview.** `CoverEdit` carries a path, and
+  the asset protocol is not enabled (`src-tauri/capabilities/default.json`, and
+  no `assetProtocol` block in `tauri.conf.json`), so the webview cannot read a
+  picked file. The square holds what is still on the files and the caption says
+  what the save will do; [phase 51](51-drop-artwork-into-the-editor.md) brings
+  bytes, which a preview could use.
+- **It is worth a photograph.** `e2e/specs/tag-editor.test.ts` measures the
+  square with artwork and without, and captures both.
 
 Pinning it: `App.css.test.ts` already asserts a stated height and `object-fit`
 for `.now-playing-cover` (the "fixed height, not a growing one" test) and the
