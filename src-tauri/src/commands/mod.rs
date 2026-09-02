@@ -127,14 +127,41 @@ pub fn count_tracks(db: State<'_, Db>, query: TrackQuery) -> AppResult<u32> {
 /// rather than asking twice.
 /// Deletes the rows of files that are no longer on disk.
 ///
-/// The only command that destroys library rows, and it exists because scanning
-/// no longer does: a scan marks what it cannot find, so an unplugged drive is
-/// recoverable. Throwing those rows away - and the playlist entries pointing at
-/// them - is a decision, so it is a button.
+/// It exists because scanning no longer does: a scan marks what it cannot find,
+/// so an unplugged drive is recoverable. Throwing those rows away - and the
+/// playlist entries pointing at them - is a decision, so it is a button.
+///
+/// No tombstones: see `scan::remove_missing`.
 #[tauri::command]
 pub fn remove_missing_tracks(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<u32> {
     let conn = db.conn()?;
     announcing(&app, || scan::remove_missing(&conn))
+}
+
+/// Deletes the named rows and tombstones their paths, leaving the files alone.
+///
+/// The other command that destroys library rows, and the one the user reaches
+/// per row rather than per condition. The tombstone is what makes it stick: the
+/// file is still under a watch folder, so a rescan would otherwise add it back.
+#[tauri::command]
+pub fn remove_tracks(
+    app: tauri::AppHandle,
+    db: State<'_, Db>,
+    track_ids: Vec<i64>,
+) -> AppResult<u32> {
+    let mut conn = db.conn()?;
+    announcing(&app, || scan::remove_tracks(&mut conn, &track_ids))
+}
+
+/// Drops every tombstone, so the next scan finds those files again.
+///
+/// Announced like a write even though no row moved: the count behind File ▸
+/// Forget Removed Songs comes off `library_stats`, and the entry has to stop
+/// offering itself once there is nothing left to forget.
+#[tauri::command]
+pub fn forget_removed_tracks(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<u32> {
+    let conn = db.conn()?;
+    announcing(&app, || scan::forget_removed(&conn))
 }
 
 #[tauri::command]

@@ -5,6 +5,7 @@ import {
   type BrowseGroup,
   type BrowseKind,
   browseGroups,
+  forgetRemovedTracks,
   INVALIDATE_DEBOUNCE_MS,
   type LibraryStats,
   libraryStats,
@@ -12,6 +13,7 @@ import {
   onLibraryChanged,
   queryTracks,
   removeMissingTracks,
+  removeTracks,
   type SortDirection,
   type SortField,
   saveColumnConfig,
@@ -19,7 +21,7 @@ import {
   type TrackQuery,
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
-import { dismiss, report } from "../shell/statusStore";
+import { dismiss, notify, report } from "../shell/statusStore";
 import {
   type ColumnConfig,
   DEFAULT_COLUMN_CONFIG,
@@ -203,10 +205,32 @@ interface LibraryState {
   /**
    * Deletes every track whose file is gone, and reloads the view.
    *
-   * The one action in the app that destroys library rows; everything else
-   * marks, hides or reorders. Resolves to how many went.
+   * Resolves to how many went. Leaves no tombstones - a drive coming back
+   * should restore what was on it, unlike `removeFromLibrary`.
    */
   removeMissing: () => Promise<number>;
+  /**
+   * The rows a removal is waiting to be confirmed on, or null when none is.
+   *
+   * Here rather than in `App` because three routes ask the question - the row
+   * menu, the File menu and Delete - and the last of those is a window-level
+   * shortcut with no props to be handed a setter through.
+   */
+  pendingRemoval: number[] | null;
+  /** Asks to remove `trackIds` from the library. Ignores an empty list. */
+  askRemoval: (trackIds: number[]) => void;
+  cancelRemoval: () => void;
+  /**
+   * Deletes the named rows and tombstones their paths. Resolves to how many
+   * went.
+   *
+   * Destructive in a way `removeMissing` is not: those files are still on
+   * disk and still under a watch folder, so the removal has to outlive a
+   * rescan - which is what makes `forgetRemoved` the only way back.
+   */
+  removeFromLibrary: (trackIds: number[]) => Promise<number>;
+  /** Drops the tombstones, so the next rescan re-adds those files. */
+  forgetRemoved: () => Promise<void>;
   /** Reloads the open tab's groups under `refresh`'s token. Internal. */
   loadGroups: (token: number) => Promise<void>;
   /** Switches the view to a playlist, or back to the whole library. */
@@ -350,7 +374,7 @@ function forgetBrowseOffsets(state: LibraryState): Partial<LibraryState> {
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
-  stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0 },
+  stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 },
   pages: new Map(),
   inFlight: new Set(),
   searchInput: "",
@@ -467,6 +491,46 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     } catch (cause) {
       report(cause);
       return 0;
+    }
+  },
+
+  pendingRemoval: null,
+
+  askRemoval: (trackIds) => {
+    if (trackIds.length > 0) {
+      set({ pendingRemoval: trackIds });
+    }
+  },
+
+  cancelRemoval: () => set({ pendingRemoval: null }),
+
+  removeFromLibrary: async (trackIds) => {
+    if (trackIds.length === 0) {
+      return 0;
+    }
+    try {
+      const removed = await removeTracks(trackIds);
+      // Selection first: the ids it names are gone, and `refresh` would
+      // otherwise leave a selection pointing at nothing behind it.
+      set({ selection: emptySelection });
+      await get().refresh();
+      return removed;
+    } catch (cause) {
+      report(cause);
+      return 0;
+    }
+  },
+
+  forgetRemoved: async () => {
+    try {
+      const forgotten = await forgetRemovedTracks();
+      // Nothing comes back until a scan looks again, so the notice says so
+      // rather than leaving the user to wonder why the table did not change.
+      notify(
+        `Forgot ${forgotten} removed song${forgotten === 1 ? "" : "s"}. Rescan to add them back.`,
+      );
+    } catch (cause) {
+      report(cause);
     }
   },
 

@@ -54,18 +54,25 @@ export function useSelectionShortcuts(): void {
       // This is the case it cannot cover: Ctrl+A and a click on the sidebar
       // both leave focus off the table, and Delete has to keep working.
       if (event.key === "Delete" && !event.defaultPrevented) {
-        const { playlistId, selection } = useLibraryStore.getState();
-        if (playlistId === null || selection.ids.size === 0) {
+        const { playlistId, selection, askRemoval } = useLibraryStore.getState();
+        if (selection.ids.size === 0) {
           return;
         }
-        const open = usePlaylistsStore.getState().playlists.find((one) => one.id === playlistId);
-        // Smart playlists are a query, not a list - there is no membership to
-        // remove a song from, and deleting the file is not what Delete means.
-        if (open?.kind !== "static") {
-          return;
-        }
+        const open =
+          playlistId === null
+            ? undefined
+            : usePlaylistsStore.getState().playlists.find((one) => one.id === playlistId);
         event.preventDefault();
-        void usePlaylistsStore.getState().removeTracks(playlistId, [...selection.ids]);
+        // Inside a static playlist Delete takes the membership row: the less
+        // destructive reading, and the one the view is about. Everywhere else -
+        // the library, a browse drill-in, a smart playlist, whose membership is
+        // its filter - there is nothing to take a song out of but the library,
+        // which is why that route asks first.
+        if (open?.kind === "static" && playlistId !== null) {
+          void usePlaylistsStore.getState().removeTracks(playlistId, [...selection.ids]);
+        } else {
+          askRemoval([...selection.ids]);
+        }
       }
     };
 

@@ -24,7 +24,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefin
 
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(async () => []),
   revealTrack: vi.fn(async () => undefined),
@@ -118,6 +118,7 @@ beforeEach(() => {
     durationMs: 0,
     bytes: 0,
     missing: 0,
+    removed: 0,
   });
   vi.mocked(queryTracks).mockImplementation(async (query: TrackQuery) =>
     Array.from({ length: query.limit }, (_, i) => track(query.offset + i)),

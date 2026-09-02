@@ -18,6 +18,7 @@ import {
   createPlaylist,
   createSmartPlaylist,
   exportLibrary,
+  forgetRemovedTracks,
   getAppInfo,
   libraryStats,
   listPlaylists,
@@ -31,6 +32,7 @@ import {
   queryTracks,
   removeFromPlaylist,
   removeMissingTracks,
+  removeTracks,
   scanLibrary,
   tracksByIds,
   undoTagEdit,
@@ -46,7 +48,7 @@ vi.mock("./ipc", () => ({
   acknowledgeCrash: vi.fn(),
   revealCrashLog: vi.fn(),
   getAppInfo: vi.fn(async () => ({ name: "apex", version: "0.4.2" })),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 })),
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   addWatchFolder: vi.fn(),
@@ -89,6 +91,8 @@ vi.mock("./ipc", () => ({
   addToPlaylist: vi.fn(),
   removeFromPlaylist: vi.fn(),
   removeMissingTracks: vi.fn(async () => 0),
+  removeTracks: vi.fn(async () => 0),
+  forgetRemovedTracks: vi.fn(async () => 0),
   moveInPlaylist: vi.fn(),
   browseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
@@ -133,7 +137,13 @@ const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the footer's other totals are not what
     these tests are about. */
 function stats(tracks: number) {
-  return { tracks, durationMs: tracks * 200_000, bytes: tracks * 5_000_000, missing: 0 };
+  return {
+    tracks,
+    durationMs: tracks * 200_000,
+    bytes: tracks * 5_000_000,
+    missing: 0,
+    removed: 0,
+  };
 }
 
 const queryTracksMock = vi.mocked(queryTracks);
@@ -237,6 +247,7 @@ describe("App", () => {
       durationMs: 3_000_000,
       bytes: 214_000_000,
       missing: 0,
+      removed: 0,
     });
 
     render(<App />);
@@ -255,6 +266,7 @@ describe("App", () => {
       durationMs: 3_000_000,
       bytes: 214_000_000,
       missing: 0,
+      removed: 0,
     });
 
     render(<App />);
@@ -271,12 +283,19 @@ describe("App", () => {
       durationMs: 36_000_000,
       bytes: 1_000_000_000,
       missing: 0,
+      removed: 0,
     });
     render(<App />);
     await screen.findAllByText(/200 songs/);
     const user = userEvent.setup();
 
-    statsMock.mockResolvedValue({ tracks: 2, durationMs: 600_000, bytes: 9_000_000, missing: 0 });
+    statsMock.mockResolvedValue({
+      tracks: 2,
+      durationMs: 600_000,
+      bytes: 9_000_000,
+      missing: 0,
+      removed: 0,
+    });
     await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki");
 
     // A search showing two songs while the footer claims the library's total
@@ -974,6 +993,90 @@ describe("removing missing songs", () => {
 
     expect(removeMissingTracks).toHaveBeenCalled();
     expect(await screen.findByText("Removed 2 missing songs.")).toBeInTheDocument();
+  });
+});
+
+describe("removing songs from the library", () => {
+  /** Selects the whole (mocked) library, which is what File's entry acts on. */
+  async function selectAll(user: UserEvent) {
+    vi.mocked(allTrackIds).mockResolvedValue([1, 2]);
+    statsMock.mockResolvedValue(stats(2));
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+    await user.click(document.body);
+    await user.keyboard("{Control>}a{/Control}");
+    await waitFor(() => expect(useLibraryStore.getState().selection.ids.size).toBe(2));
+  }
+
+  it("offers nothing in File while no song is selected", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+
+    await user.click(within(screen.getByRole("menubar")).getByRole("menuitem", { name: "File" }));
+
+    expect(screen.queryByRole("menuitem", { name: /from Library/ })).not.toBeInTheDocument();
+  });
+
+  it("asks first, and says what the removal costs", async () => {
+    const user = userEvent.setup();
+    await selectAll(user);
+
+    await chooseFromMenu(user, "File", "Remove 2 Songs from Library…");
+
+    // The three things someone needs to know before confirming: the files
+    // survive, the playlists do not, and a rescan will not undo this.
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/2 songs will be taken out of your library/);
+    expect(dialog).toHaveTextContent(/out of every playlist/);
+    expect(dialog).toHaveTextContent(/are not touched/);
+    expect(dialog).toHaveTextContent(/a rescan will not bring them back/);
+  });
+
+  it("removes nothing when the question is declined", async () => {
+    const user = userEvent.setup();
+    await selectAll(user);
+
+    await chooseFromMenu(user, "File", "Remove 2 Songs from Library…");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(removeTracks).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("removes them on confirmation and re-reads what is left to undo", async () => {
+    const user = userEvent.setup();
+    vi.mocked(removeTracks).mockResolvedValue(2);
+    await selectAll(user);
+    const undoCalls = vi.mocked(canUndoTagEdit).mock.calls.length;
+
+    await chooseFromMenu(user, "File", "Remove 2 Songs from Library…");
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(removeTracks).toHaveBeenCalledWith([1, 2]);
+    expect(await screen.findByText("Removed 2 songs from your library.")).toBeInTheDocument();
+    // The delete cascades through `tag_undo`, so Undo Tag Edit can be left
+    // pointing at an older batch - or enabled over an empty journal.
+    await waitFor(() =>
+      expect(vi.mocked(canUndoTagEdit).mock.calls.length).toBeGreaterThan(undoCalls),
+    );
+  });
+
+  it("offers to forget the removals once the backend reports some", async () => {
+    const user = userEvent.setup();
+    vi.mocked(forgetRemovedTracks).mockResolvedValue(2);
+    statsMock.mockResolvedValue({ ...stats(5), removed: 2 });
+    render(<App />);
+    await waitFor(() => expect(useLibraryStore.getState().stats.removed).toBe(2));
+
+    await chooseFromMenu(user, "File", "Forget 2 Removed Songs…");
+
+    // No dialog: it undoes a removal rather than making one. What it owes the
+    // user is the next step, because nothing on screen changes.
+    expect(forgetRemovedTracks).toHaveBeenCalled();
+    expect(
+      await screen.findByText("Forgot 2 removed songs. Rescan to add them back."),
+    ).toBeInTheDocument();
   });
 });
 

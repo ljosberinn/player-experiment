@@ -244,4 +244,26 @@ CREATE TABLE scrobble_queue (
 
 CREATE INDEX idx_scrobble_queue_due ON scrobble_queue(next_try_at, id);
 "#,
+    // 8 - the files the user has said they do not want
+    //
+    // Removing a row is not enough on its own: `scan::plan` adds every audio
+    // file under a watch folder it does not already know, so a removal with no
+    // record behind it lasts until the next Rescan. A tombstoned path is
+    // skipped by the scan, and File ▸ Forget Removed Songs drops the
+    // tombstones so a rescan re-adds them.
+    //
+    // Keyed on the path rather than on anything about the file, because the
+    // row is gone and the path is all that is left - and it is the same string
+    // `load_known` matches `tracks.path` on, so case behaves here exactly as
+    // it already does there.
+    //
+    // Only an explicit per-row removal writes one. `remove_missing` does not:
+    // a drive coming back should restore what was on it, which is what
+    // migration 4 exists for.
+    r#"
+CREATE TABLE removed_paths (
+    path       TEXT PRIMARY KEY,
+    removed_at INTEGER NOT NULL
+);
+"#,
 ];

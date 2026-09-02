@@ -9,7 +9,7 @@ import { useSelectionShortcuts } from "./useSelectionShortcuts";
 vi.mock("../../ipc", () => ({
   allTrackIds: vi.fn(),
   countTracks: vi.fn(async () => 0),
-  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),
+  libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 })),
   queryTracks: vi.fn(async () => []),
   listPlaylists: vi.fn(async () => []),
   removeFromPlaylist: vi.fn(async () => 2),
@@ -36,6 +36,7 @@ beforeEach(() => {
     ...initial,
     selection: { ids: new Set(), anchorIndex: null },
     playlistId: null,
+    pendingRemoval: null,
     search: "",
   });
   vi.mocked(allTrackIds).mockResolvedValue([1, 2, 3]);
@@ -167,19 +168,21 @@ describe("useSelectionShortcuts", () => {
       expect(removeFromPlaylist).toHaveBeenCalledWith(4, [1, 2]);
     });
 
-    it("leaves a smart playlist alone", async () => {
+    it("asks to remove from the library inside a smart playlist", async () => {
       usePlaylistsStore.setState({ playlists: [playlist(4, "smart")] });
       render(<Harness />);
       const user = userEvent.setup();
 
       await user.keyboard("{Delete}");
 
-      // A smart playlist is a query - there is no membership row to remove,
-      // and Delete must never be read as "delete the file".
+      // A smart playlist is a query - there is no membership row to take out,
+      // so the only thing left to remove from is the library. It asks first,
+      // which is what `pendingRemoval` being set rather than a call means.
       expect(removeFromPlaylist).not.toHaveBeenCalled();
+      expect(useLibraryStore.getState().pendingRemoval).toEqual([1, 2]);
     });
 
-    it("does nothing in the library view", async () => {
+    it("asks to remove from the library in the library view", async () => {
       useLibraryStore.setState({ playlistId: null });
       render(<Harness />);
       const user = userEvent.setup();
@@ -187,6 +190,20 @@ describe("useSelectionShortcuts", () => {
       await user.keyboard("{Delete}");
 
       expect(removeFromPlaylist).not.toHaveBeenCalled();
+      expect(useLibraryStore.getState().pendingRemoval).toEqual([1, 2]);
+    });
+
+    it("removes nothing at all with an empty selection", async () => {
+      useLibraryStore.setState({
+        playlistId: null,
+        selection: { ids: new Set(), anchorIndex: null },
+      });
+      render(<Harness />);
+      const user = userEvent.setup();
+
+      await user.keyboard("{Delete}");
+
+      expect(useLibraryStore.getState().pendingRemoval).toBeNull();
     });
 
     it("does not act twice when a row already handled it", async () => {
@@ -201,6 +218,7 @@ describe("useSelectionShortcuts", () => {
       window.dispatchEvent(event);
 
       expect(removeFromPlaylist).not.toHaveBeenCalled();
+      expect(useLibraryStore.getState().pendingRemoval).toBeNull();
     });
   });
 });

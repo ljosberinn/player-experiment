@@ -288,9 +288,12 @@ pub fn library_stats(conn: &Connection, query: &TrackQuery) -> AppResult<Library
     // The missing count rides along for the same reason: it is asked for
     // exactly when the totals are, and `count(...)` over a filtered expression
     // is free next to a scan that is already happening.
+    // The tombstone count rides along as a scalar subquery rather than a
+    // second round trip, and deliberately outside `scope`: the rows those
+    // paths named are gone, so there is no view for them to be narrowed to.
     let sql = format!(
         "SELECT count(*), coalesce(sum(tracks.duration_ms), 0), coalesce(sum(tracks.size), 0), \
-         count(tracks.missing_since) {}",
+         count(tracks.missing_since), (SELECT count(*) FROM removed_paths) {}",
         scope.from_where
     );
 
@@ -303,6 +306,7 @@ pub fn library_stats(conn: &Connection, query: &TrackQuery) -> AppResult<Library
                 duration_ms: row.get(1)?,
                 bytes: row.get(2)?,
                 missing: row.get::<_, i64>(3)? as u32,
+                removed: row.get::<_, i64>(4)? as u32,
             })
         },
     )?;

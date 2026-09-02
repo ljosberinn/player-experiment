@@ -24,7 +24,17 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.
-- **`covers` is never pruned.** Undo depends on old artwork still being there.
+- **`covers` is never pruned.** Undo depends on old artwork still being there,
+  and removing a song leaves its cover behind for the same reason.
+- **Removing the song that is playing blanks the transport, mid-song.**
+  `QueueEntry` carries a path and a duration, so playback is not interrupted -
+  but `db::playback::snapshot` fills `track` from the row by id, so the next
+  `player://state` renders "Nothing playing" over audio that is still going,
+  until the queue moves on. Accepted over stopping the music for a library
+  edit, or refusing to remove one row out of a selection.
+- **A removal cannot be undone, only forgotten.** File ▸ Forget Removed Songs
+  lifts the tombstones so a rescan re-adds the files; the rows they had, and
+  the ids, play counts and playlist places on them, are gone.
 - **The undo journal is unbounded** — one row per track per edit, forever.
 - **Dragging is mouse-only**, but nothing behind it is any more: the Menu key
   opens the row menu on the selection, Alt+Arrow nudges it within a playlist,

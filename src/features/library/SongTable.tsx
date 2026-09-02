@@ -32,6 +32,7 @@ export function SongTable({
   onActivate,
   onReorder,
   onRemove,
+  onRemoveFromLibrary,
   onExport,
   nowPlayingId = null,
 }: {
@@ -47,6 +48,14 @@ export function SongTable({
   onReorder?: ((trackIds: number[], targetIndex: number) => void) | undefined;
   /** Delete on a selection: take those rows out of the current playlist. */
   onRemove?: ((trackIds: number[]) => void) | undefined;
+  /**
+   * Take those rows out of the library itself.
+   *
+   * Its own prop rather than a second meaning for `onRemove`, which keeps
+   * saying "out of this playlist": inside a static playlist both are on offer
+   * at once, and Delete has to pick the less destructive one.
+   */
+  onRemoveFromLibrary?: ((trackIds: number[]) => void) | undefined;
   /**
    * Export the rows named. Lives with the caller because it opens a save
    * dialog, which is the shell's business rather than the table's.
@@ -120,8 +129,15 @@ export function SongTable({
   // click or a dragover leaves every row's props `Object.is`-equal and React
   // bails out on the cells beneath them.
   const actions: RowActions = useMemo(
-    () => ({ onActivate, onReorder, onRemove, onContextMenu: setMenu, setDropIndex }),
-    [onActivate, onReorder, onRemove],
+    () => ({
+      onActivate,
+      onReorder,
+      onRemove,
+      onRemoveFromLibrary,
+      onContextMenu: setMenu,
+      setDropIndex,
+    }),
+    [onActivate, onReorder, onRemove, onRemoveFromLibrary],
   );
 
   const items = virtualizer.getVirtualItems();
@@ -283,6 +299,12 @@ export function SongTable({
                   onEdit: () => void openEditor(menu.trackIds),
                   onAddTo: (id) => void addTracks(id, menu.trackIds),
                   onRemove: () => onRemove?.(menu.trackIds),
+                  // Passed through as undefined where the caller gave none, so
+                  // the entry is absent rather than present and inert - which
+                  // is also how the Edit menu keeps from carrying it.
+                  onRemoveFromLibrary: onRemoveFromLibrary
+                    ? () => onRemoveFromLibrary(menu.trackIds)
+                    : undefined,
                   onExport: () => onExport?.(menu.trackIds),
                   // One id: the menu disables this entry unless exactly one row
                   // is selected, so there is no question of which file to show.

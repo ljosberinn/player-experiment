@@ -13,6 +13,7 @@ edit a shipped one.
 | 5 | `tag_values` — the distinct values a library uses, for autocompletion |
 | 6 | `covers.palette` — the dominant colours of a cover |
 | 7 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
+| 8 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
 
 ## One query, narrowed
 

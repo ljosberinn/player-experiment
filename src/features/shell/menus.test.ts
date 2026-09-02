@@ -7,7 +7,9 @@ const noop = () => {};
 /** A menu bar with nothing selected, no missing files and nothing to undo. */
 function build(overrides: Partial<Parameters<typeof menus>[0]> = {}) {
   return menus({
+    selectionCount: 0,
     missingCount: 0,
+    removedCount: 0,
     canUndoTags: false,
     hasExportTarget: false,
     exportSelectionLabel: "Export Selection…",
@@ -16,7 +18,9 @@ function build(overrides: Partial<Parameters<typeof menus>[0]> = {}) {
     rowItems: [],
     onAddFolder: noop,
     onRescan: noop,
+    onRemoveFromLibrary: noop,
     onRemoveMissing: noop,
+    onForgetRemoved: noop,
     onUndoTags: noop,
     onSettings: noop,
     onExportAll: noop,
@@ -111,6 +115,42 @@ describe("the menu bar", () => {
 
     it("counts one missing song in the singular", () => {
       expect(labels(menu("File", { missingCount: 1 }).items)).toContain("Remove 1 Missing Song…");
+    });
+
+    it("offers to remove the selection from the library, counting it", () => {
+      // Here rather than in Edit with the other song actions: the user wants
+      // it beside the other two row-destroying entries, and the three read as
+      // one group.
+      expect(labels(menu("File", { selectionCount: 3 }).items)).toEqual([
+        "Add Folders…",
+        "Rescan",
+        "---",
+        "Remove 3 Songs from Library…",
+      ]);
+      expect(labels(menu("File", { selectionCount: 1 }).items)).toContain(
+        "Remove 1 Song from Library…",
+      );
+    });
+
+    it("offers to forget the removals only once there are some", () => {
+      expect(labels(menu("File").items)).not.toContain("Forget 0 Removed Songs…");
+      expect(labels(menu("File", { removedCount: 2 }).items)).toContain("Forget 2 Removed Songs…");
+      expect(labels(menu("File", { removedCount: 1 }).items)).toContain("Forget 1 Removed Song…");
+    });
+
+    it("groups all three behind one separator", () => {
+      // Three conditions, each independent, and a separator per entry would
+      // put three rules through a menu of five things.
+      expect(
+        labels(menu("File", { selectionCount: 2, missingCount: 1, removedCount: 4 }).items),
+      ).toEqual([
+        "Add Folders…",
+        "Rescan",
+        "---",
+        "Remove 2 Songs from Library…",
+        "Remove 1 Missing Song…",
+        "Forget 4 Removed Songs…",
+      ]);
     });
   });
 

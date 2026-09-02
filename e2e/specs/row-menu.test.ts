@@ -27,6 +27,11 @@ import { capture } from "../screenshot";
  *
  * Runs after `library.test.ts`, which is what puts songs in the shared
  * library: an empty table has no row to right-click.
+ *
+ * Phase 73's library removal is driven here as far as the confirmation and no
+ * further. The library is shared with every spec after this one, and
+ * confirming would take a song out from under them - so what is asserted is
+ * the route to the question, not the answer.
  */
 
 /** The song whose row the menu is opened on, and what it is tagged with. */
@@ -197,6 +202,45 @@ describe("the row menu", () => {
     expect(items).toContain("Undo Tag Edit");
 
     await capture("menubar-edit-with-a-selection");
+  });
+
+  it("offers the library removal on right-click but not in Edit", async () => {
+    // The one entry the two menus deliberately disagree on: the user wants it
+    // in File, beside the other row-destroying entry, so `AppMenus` leaves the
+    // callback undefined and `rowMenuItems` drops it. Present once, not twice.
+    await openRowMenu();
+    expect(await itemsOf("Song actions")).toContain("Remove from Library…");
+    await browser.keys("Escape");
+
+    await browser.$("tr.song-row").click();
+    await browser.waitUntil(async () => await browser.$("tr.song-row.selected").isExisting());
+    await openMenu("Edit");
+
+    expect(await itemsOf("Edit")).not.toContain("Remove from Library…");
+  });
+
+  it("asks before removing anything, and takes Cancel for an answer", async () => {
+    // Followed as far as the question and no further: the library is shared
+    // with every spec after this one, and confirming would take a song out
+    // from under them. What is worth driving is the route - a right-click
+    // reaching a dialog that names what it is about to do.
+    await openRowMenu();
+    await browser
+      .$(
+        "//*[@role='menu'][@aria-label='Song actions']//*[@role='menuitem'][normalize-space()='Remove from Library…']",
+      )
+      .click();
+
+    const dialog = browser.$("[role='alertdialog']");
+    await dialog.waitForExist({ timeout: 10_000, timeoutMsg: "the confirmation never opened" });
+    await expect(dialog).toHaveText(/rescan will not bring it back/);
+
+    await capture("remove-from-library");
+
+    await browser.$("//button[normalize-space()='Cancel']").click();
+    await dialog.waitForExist({ timeout: 10_000, reverse: true });
+    // And the row it was asked about is still there.
+    await expect(browser.$("tr.song-row")).toBeExisting();
   });
 
   it("opens the tag editor on Edit, titled the same as the entry", async () => {

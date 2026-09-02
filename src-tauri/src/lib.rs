@@ -169,6 +169,8 @@ pub fn run() {
             commands::list_watch_folders,
             commands::scan_library,
             commands::remove_missing_tracks,
+            commands::remove_tracks,
+            commands::forget_removed_tracks,
             commands::query_tracks,
             commands::count_tracks,
             commands::browse_groups,

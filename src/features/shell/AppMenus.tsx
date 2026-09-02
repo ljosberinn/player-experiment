@@ -45,6 +45,9 @@ export function AppMenus({
   const trackById = useLibraryStore((s) => s.trackById);
   const playlistId = useLibraryStore((s) => s.playlistId);
   const missingCount = useLibraryStore((s) => s.stats.missing);
+  const removedCount = useLibraryStore((s) => s.stats.removed);
+  const askRemoval = useLibraryStore((s) => s.askRemoval);
+  const forgetRemoved = useLibraryStore((s) => s.forgetRemoved);
 
   const playlists = usePlaylistsStore((s) => s.playlists);
   const addTracks = usePlaylistsStore((s) => s.addTracks);
@@ -74,7 +77,9 @@ export function AppMenus({
   return (
     <MenuBar
       menus={menus({
+        selectionCount: selectedIds.length,
         missingCount,
+        removedCount,
         canUndoTags,
         hasExportTarget: selectedIds.length > 0 || currentPlaylist !== null,
         exportSelectionLabel: exportSelectionLabel(
@@ -114,7 +119,9 @@ export function AppMenus({
               }),
         onAddFolder: () => void addFolder(),
         onRescan: () => void rescan(),
+        onRemoveFromLibrary: () => askRemoval(selectedIds),
         onRemoveMissing,
+        onForgetRemoved: () => void forgetRemoved(),
         onUndoTags: () => void undoTags(),
         onSettings,
         onExportAll: () => onExport(exportChoice([], null)),

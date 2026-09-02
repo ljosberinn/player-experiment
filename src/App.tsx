@@ -87,6 +87,13 @@ export function App() {
   const refresh = useLibraryStore((s) => s.refresh);
   const watchLibrary = useLibraryStore((s) => s.watch);
   const removeMissing = useLibraryStore((s) => s.removeMissing);
+  // Null on all but the handful of renders where the question is being asked,
+  // so this costs the same as the `useState` above it - and unlike one, the
+  // Delete shortcut can reach it.
+  const pendingRemoval = useLibraryStore((s) => s.pendingRemoval);
+  const askRemoval = useLibraryStore((s) => s.askRemoval);
+  const cancelRemoval = useLibraryStore((s) => s.cancelRemoval);
+  const removeFromLibrary = useLibraryStore((s) => s.removeFromLibrary);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
   const nowPlaying = usePlayerStore((s) => s.track);
@@ -393,6 +400,9 @@ export function App() {
                   ? (trackIds) => void removeTracks(playlistId, trackIds)
                   : undefined
               }
+              // Unconditional, unlike the one above: every view a row can be
+              // seen in is a view its library row can be removed from.
+              onRemoveFromLibrary={askRemoval}
               onExport={(trackIds) => void runExport(exportChoice(trackIds, null))}
               nowPlayingId={nowPlaying?.id ?? null}
             />
@@ -519,6 +529,26 @@ export function App() {
             });
           }}
           onCancel={() => setConfirmRemoveMissing(false)}
+        />
+      ) : null}
+
+      {pendingRemoval ? (
+        <ConfirmDialog
+          title={pendingRemoval.length === 1 ? "Remove this song?" : "Remove these songs?"}
+          body={`${pendingRemoval.length} song${pendingRemoval.length === 1 ? "" : "s"} will be taken out of your library, and out of every playlist too. The file${pendingRemoval.length === 1 ? "" : "s"} on disk ${pendingRemoval.length === 1 ? "is" : "are"} not touched, but a rescan will not bring ${pendingRemoval.length === 1 ? "it" : "them"} back - use File ▸ Forget Removed Songs for that.`}
+          confirmLabel="Remove"
+          onConfirm={() => {
+            const ids = pendingRemoval;
+            cancelRemoval();
+            void removeFromLibrary(ids).then((removed) => {
+              notify(`Removed ${removed} song${removed === 1 ? "" : "s"} from your library.`);
+              // The delete cascades through `tag_undo`, so Undo Tag Edit may
+              // now point at an older batch - or at nothing at all, while the
+              // entry sits enabled over an empty journal.
+              void refreshUndo();
+            });
+          }}
+          onCancel={cancelRemoval}
         />
       ) : null}
 

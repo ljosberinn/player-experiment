@@ -29,6 +29,8 @@ So: `dragDropEnabled` to `true`, and `onDragDropEvent` carries real paths.
   folder instead would pull an entire Downloads directory into the library.
 - **Non-audio in a dropped selection is ignored**, not an error. `is_audio_file`
   already decides this.
+- **A drop lifts the tombstone** [73](../done/73-remove-a-song-from-the-library.md)
+  left, or dropping a song that was removed once would silently do nothing.
 
 `stage_dropped_cover` goes, and the raw-bytes IPC route with it: an artwork drop
 now carries a path, so `stage_picked_cover` handles both and `CoverEdit::Replace`

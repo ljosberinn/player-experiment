@@ -28,6 +28,7 @@ export interface RowActions {
   onActivate?: ((rowIndex: number) => void) | undefined;
   onReorder?: ((trackIds: number[], targetIndex: number) => void) | undefined;
   onRemove?: ((trackIds: number[]) => void) | undefined;
+  onRemoveFromLibrary?: ((trackIds: number[]) => void) | undefined;
   /** What the row menu is about to act on, decided before the menu opens. */
   onContextMenu: (menu: { trackIds: number[]; rowIndex: number } | null) => void;
   setDropIndex: (index: number | null) => void;
@@ -84,7 +85,8 @@ export function SongRow({
   columns: ColumnDef[];
   actions: RowActions;
 }) {
-  const { onActivate, onReorder, onRemove, onContextMenu, setDropIndex } = actions;
+  const { onActivate, onReorder, onRemove, onRemoveFromLibrary, onContextMenu, setDropIndex } =
+    actions;
 
   const select = (event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
     if (track) {
@@ -183,12 +185,16 @@ export function SongRow({
           event.preventDefault();
           select(event);
           onActivate?.(rowIndex);
-        } else if (event.key === "Delete" && onRemove) {
+        } else if (event.key === "Delete" && (onRemove || onRemoveFromLibrary)) {
           event.preventDefault();
           const { selection } = useLibraryStore.getState();
           const ids = track && !isSelected(selection, track.id) ? [track.id] : [...selection.ids];
           if (ids.length > 0) {
-            onRemove(ids);
+            // The playlist reading wins where both are on offer: it is the
+            // less destructive one, and the one the view is about. Outside a
+            // static playlist there is no membership to take a row out of, so
+            // what is left is the library itself.
+            (onRemove ?? onRemoveFromLibrary)?.(ids);
           }
         }
         // Space is deliberately not handled: it is the global play/pause
