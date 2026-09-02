@@ -28,9 +28,17 @@ function group(over: Partial<BrowseGroup> = {}): BrowseGroup {
 
 const initial = useLibraryStore.getState();
 
+/** `.browse-body`'s `padding: 0 30px 30px` in `App.css`. */
+const BODY_PADDING = 60;
+
 /**
  * jsdom reports every element as zero-sized, so the virtualizer would render
  * no rows and the grid would compute zero columns. Pin a real viewport.
+ *
+ * `width` is the width of the *section*, which is the box a row of tiles has
+ * to fit in. The scroll container around it reports that plus its padding, the
+ * way a real one does - measuring that box instead is what made the grid
+ * overflow sideways.
  */
 function stubLayout(height = 600, width = 320) {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
@@ -50,7 +58,9 @@ function stubLayout(height = 600, width = 320) {
   });
   Object.defineProperty(HTMLElement.prototype, "clientWidth", {
     configurable: true,
-    value: width,
+    get(this: HTMLElement) {
+      return this.classList.contains("browse-body") ? width + BODY_PADDING : width;
+    },
   });
 }
 
@@ -178,7 +188,7 @@ describe("BrowseView", () => {
 
     const { container } = render(<BrowseView kind="albums" />);
 
-    // 200px fits one 178px tile.
+    // 200px fits one 168px tile and nothing of a second.
     expect(rowsIn(container)).toHaveLength(8);
 
     stubLayout(600, 800);
@@ -190,6 +200,19 @@ describe("BrowseView", () => {
 
     // 800px fits four, so the same eight albums are two rows.
     expect(rowsIn(container)).toHaveLength(2);
+  });
+
+  it("counts the columns against the row's width, not the padding around it", () => {
+    useLibraryStore.setState({ groups: groups(8) });
+    // Two tiles need 346px and three need 524, so a 520px row holds two. The
+    // container reports 580, which is where a third tile came from - and it
+    // then hung 4px past the last one the user could see.
+    stubLayout(600, 520);
+
+    const { container } = render(<BrowseView kind="albums" />);
+
+    expect(rowsIn(container)[0]?.querySelectorAll(".browse-tile")).toHaveLength(2);
+    expect(rowsIn(container)).toHaveLength(4);
   });
 
   it("keeps the album at the top of the view there across a reflow", () => {

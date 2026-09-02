@@ -36,7 +36,13 @@ export function VolumeControl({
   // reports on every pointer move, and re-binding a DOM listener at that rate
   // is exactly the cost this component was split out to avoid.
   const latest = useRef({ volume, onVolumeChange });
-  latest.current = { volume, onVolumeChange };
+  // Written after commit, not during render: a ref write in the render body is
+  // a rules-of-React violation that makes React Compiler skip the component.
+  // The only reader is the wheel handler, which cannot run before the commit
+  // that would have updated the ref.
+  useEffect(() => {
+    latest.current = { volume, onVolumeChange };
+  });
 
   useEffect(() => {
     const element = wrapper.current;
