@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.7.0](https://github.com/ljosberinn/player-experiment/compare/v0.6.0...v0.7.0) (2026-09-02)
+
+
+### Features
+
+* give the tag editor's artwork a shape ([#116](https://github.com/ljosberinn/player-experiment/issues/116)) ([67d84f3](https://github.com/ljosberinn/player-experiment/commit/67d84f3feafed107807b53ba14034137d9268a67))
+* name a new smart playlist after its one rule ([#107](https://github.com/ljosberinn/player-experiment/issues/107)) ([699a74b](https://github.com/ljosberinn/player-experiment/commit/699a74b846ac7ca29e597cb12ca5d2b79fd4d2b0))
+* show the artwork that is about to be written ([#118](https://github.com/ljosberinn/player-experiment/issues/118)) ([84c8def](https://github.com/ljosberinn/player-experiment/commit/84c8defe88a82701b80e663d14df22dbe5d703d6))
+
+
+### Bug Fixes
+
+* expire the tag editor's notice like the other two ([#106](https://github.com/ljosberinn/player-experiment/issues/106)) ([d74a748](https://github.com/ljosberinn/player-experiment/commit/d74a74885bf21819f8406dce199286bc30f0638f))
+* leave a drill-in whose group has emptied ([#108](https://github.com/ljosberinn/player-experiment/issues/108)) ([793eb2e](https://github.com/ljosberinn/player-experiment/commit/793eb2efd19e28646b374babce2116e39af15189))
+
+
+### Performance
+
+* close the gap between tracks ([#120](https://github.com/ljosberinn/player-experiment/issues/120)) ([f73d4b7](https://github.com/ljosberinn/player-experiment/commit/f73d4b7ca52289965be9ec5447e30990df47fbbc))
+* give a row its own component ([#123](https://github.com/ljosberinn/player-experiment/issues/123)) ([7ec4e59](https://github.com/ljosberinn/player-experiment/commit/7ec4e59a6bee91a8c87ea353ce1904d2b687a0ca))
+* subscribe the menu bar to the selection, not App ([#110](https://github.com/ljosberinn/player-experiment/issues/110)) ([c07112e](https://github.com/ljosberinn/player-experiment/commit/c07112e1c8112cc7bf88e247c8ea158f81a8171d))
+
+
+### Refactoring
+
+* generate the filter field/operator table from Rust ([#105](https://github.com/ljosberinn/player-experiment/issues/105)) ([04c62cf](https://github.com/ljosberinn/player-experiment/commit/04c62cf586b78647f4aeea49e90db8a341c5c3cb))
+
+
+### Documentation
+
+* number the upcoming phases and queue the next ones ([#112](https://github.com/ljosberinn/player-experiment/issues/112)) ([aee7fb7](https://github.com/ljosberinn/player-experiment/commit/aee7fb77fb63bea295b7f2a84bb100c663620123))
+
 ## [0.6.0](https://github.com/ljosberinn/player-experiment/compare/v0.5.0...v0.6.0) (2026-09-01)
 
 
