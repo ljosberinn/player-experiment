@@ -24,6 +24,9 @@ design wins.
 - **It has no missing files, no scan in progress and nothing to undo.** Those
   states have no mockup; their placement was decided in the phases that built
   them.
+- **It calls the second library item Albums.** Ours says Releases: an EP, a
+  single, a split and a compilation all live in that view and none of them is an
+  album. A deliberate departure, not a drift to correct on the next re-fetch.
 
 ## Tokens
 
@@ -59,10 +62,10 @@ from a font CDN — the app is offline-first and the CSP forbids it.
   keeps the drag and double-click-to-maximize behaviour and carries nothing else.
 - A 78px transport strip: prev/play/next pill, playhead with elapsed and total,
   cover art and track text, mute and volume, repeat, search.
-- The sidebar is the navigation — LIBRARY (Songs, Albums, Artists, Genres, and a
-  dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
+- The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and
+  a dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
   sections with counts. There is no tab bar and no library toolbar.
-- **The Songs view has no title header.** Albums, Artists and Genres keep the
+- **The Songs view has no title header.** Releases, Artists and Genres keep the
   heading and its accent underline; the view with 150k rows cannot spend a third
   of the fold on the word "Songs".
 - A 27px translucent status bar: zoom stepper left, view summary centred, version

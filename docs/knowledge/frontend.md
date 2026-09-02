@@ -42,7 +42,7 @@ classes that already exist.
 
 ## The browse views
 
-- Albums is a grid, artists and genres are lists, and both are virtualized **by
+- Releases is a grid, artists and genres are lists, and both are virtualized **by
   row**: the column count comes from the container width, so the two are
   computed together.
 - The width is measured into state through a `ResizeObserver`. A ref read during

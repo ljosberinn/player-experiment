@@ -371,7 +371,10 @@ describe("LibraryNav", () => {
   it("marks the open view", () => {
     render(<LibraryNav active="albums" onSelect={() => {}} />);
 
-    expect(screen.getByRole("button", { name: "Albums" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Releases" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(screen.getByRole("button", { name: "Songs" })).not.toHaveAttribute("aria-current");
   });
 
@@ -380,7 +383,7 @@ describe("LibraryNav", () => {
     // of what the content pane is showing.
     render(<LibraryNav active={null} onSelect={() => {}} />);
 
-    for (const name of ["Songs", "Albums", "Artists", "Genres"]) {
+    for (const name of ["Songs", "Releases", "Artists", "Genres"]) {
       expect(screen.getByRole("button", { name })).not.toHaveAttribute("aria-current");
     }
   });
@@ -393,7 +396,7 @@ describe("LibraryNav", () => {
     const onSelect = vi.fn();
     render(<LibraryNav active="songs" onSelect={onSelect} />);
 
-    for (const name of ["Songs", "Albums", "Artists", "Genres"]) {
+    for (const name of ["Songs", "Releases", "Artists", "Genres"]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();
     }
 

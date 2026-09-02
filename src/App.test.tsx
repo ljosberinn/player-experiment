@@ -1100,7 +1100,7 @@ describe("the browse tabs", () => {
     render(<App />);
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: "Albums" }));
+    await user.click(screen.getByRole("button", { name: "Releases" }));
     const albums = await screen.findByTestId("browse-scroll");
 
     await user.click(screen.getByRole("button", { name: "Artists" }));

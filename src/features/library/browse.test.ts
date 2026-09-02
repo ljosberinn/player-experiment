@@ -16,17 +16,17 @@ function group(over: Partial<BrowseGroup> = {}): BrowseGroup {
 
 describe("browse labels", () => {
   it("names each untagged group after what it is missing", () => {
-    expect(unknownLabel("albums")).toBe("Unknown Album");
+    expect(unknownLabel("albums")).toBe("Unknown Release");
     expect(unknownLabel("artists")).toBe("Unknown Artist");
     expect(unknownLabel("genres")).toBe("Unknown Genre");
   });
 
   it("falls back to the untagged label only when the key is absent", () => {
     expect(groupTitle(group(), "albums")).toBe("Shields");
-    expect(groupTitle(group({ key: null }), "albums")).toBe("Unknown Album");
-    // An album genuinely named "Unknown Album" is a different group from the
-    // untagged one, and must keep reading as itself.
-    expect(groupTitle(group({ key: "Unknown Album" }), "albums")).toBe("Unknown Album");
+    expect(groupTitle(group({ key: null }), "albums")).toBe("Unknown Release");
+    // "Unknown Artist" is a value files really carry, and that group is a
+    // different one from the untagged group, which must keep reading as itself.
+    expect(groupTitle(group({ key: "Unknown Artist" }), "artists")).toBe("Unknown Artist");
   });
 
   it("gives only albums a subtitle", () => {

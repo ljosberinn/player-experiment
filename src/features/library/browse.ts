@@ -4,13 +4,14 @@ import type { BrowseGroup, BrowseKind } from "../../ipc";
  * What an untagged group is called.
  *
  * The database stores absence as NULL rather than a string, so the label lives
- * here: "Unknown Album" in the data would collide with an album genuinely
- * named that, and the two must stay distinguishable.
+ * here: "Unknown Artist" is a value files genuinely carry in their tags, and a
+ * group of those has to stay distinguishable from the group with no artist at
+ * all.
  */
 export function unknownLabel(kind: BrowseKind): string {
   switch (kind) {
     case "albums":
-      return "Unknown Album";
+      return "Unknown Release";
     case "artists":
       return "Unknown Artist";
     case "genres":

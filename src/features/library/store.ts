@@ -82,7 +82,7 @@ export type ViewTab = "songs" | BrowseKind;
  */
 export const VIEW_TITLES: Record<ViewTab, string> = {
   songs: "Songs",
-  albums: "Albums",
+  albums: "Releases",
   artists: "Artists",
   genres: "Genres",
 };

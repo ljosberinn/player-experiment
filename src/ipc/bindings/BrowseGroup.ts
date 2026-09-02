@@ -4,9 +4,9 @@
  * One row of a browse view: an album, an artist or a genre.
  *
  * `key` is `None` for untagged files rather than an empty string, so "no
- * album" is one group instead of colliding with a real album literally named
- * "Unknown Album". The frontend supplies the label; the database says only
- * that the tag is absent.
+ * artist" is one group instead of colliding with the artists literally tagged
+ * "Unknown Artist", which files really carry. The frontend supplies the
+ * label; the database says only that the tag is absent.
  */
 export type BrowseGroup = { key: string | null, 
 /**

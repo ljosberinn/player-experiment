@@ -63,14 +63,14 @@ describe("application shell", () => {
   });
 
   it("switches to a browse view, which was dead chrome until phase 19", async () => {
-    // Albums/Artists/Genres rendered `disabled` from phase 3 onward. An empty
-    // library has no albums, so what this proves is that the entry is live and
+    // Releases/Artists/Genres rendered `disabled` from phase 3 onward. An
+    // empty library has no releases, so this proves the entry is live and
     // the view behind it renders - not what it renders.
     //
     // Sidebar entries since phase 35, so `.` rather than `text()`: the label
     // is a span inside the button, and `text()` only sees direct text nodes.
-    await browser.$("//button[.='Albums']").click();
-    await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Albums");
+    await browser.$("//button[.='Releases']").click();
+    await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Releases");
     await expect(browser.$(".empty-state")).toBeExisting();
 
     await browser.$("//button[.='Songs']").click();

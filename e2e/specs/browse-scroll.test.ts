@@ -80,7 +80,7 @@ describe("where a browse tab was left", () => {
   });
 
   it("comes back to the row the grid was scrolled to", async () => {
-    await open("Albums");
+    await open("Releases");
     // A whole number of rows, so the restore - which anchors on the group at
     // the top - has nothing to round away. Column-count independent for the
     // same reason: row 20 is row 20 however many tiles are on it.
@@ -90,7 +90,7 @@ describe("where a browse tab was left", () => {
     await open("Artists");
     await expectRestored(0);
 
-    await open("Albums");
+    await open("Releases");
     await expectRestored(grid);
   });
 
@@ -99,7 +99,7 @@ describe("where a browse tab was left", () => {
     const list = 40 * LIST_ROW_HEIGHT;
     await scrollTo(list);
 
-    await open("Albums");
+    await open("Releases");
     await expectRestored(20 * TILE_HEIGHT);
 
     await open("Artists");
@@ -107,7 +107,7 @@ describe("where a browse tab was left", () => {
   });
 
   it("comes back to the album that was opened rather than to the top", async () => {
-    await open("Albums");
+    await open("Releases");
     await expectRestored(20 * TILE_HEIGHT);
 
     await browser.$(`${SCROLL} .browse-tile`).click();
@@ -134,7 +134,7 @@ describe("where a browse tab was left", () => {
     // tab is showing now.
     await expectRestored(0);
 
-    await open("Albums");
+    await open("Releases");
     await expectRestored(0);
   });
 });
