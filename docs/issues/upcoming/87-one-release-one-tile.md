@@ -35,7 +35,7 @@ release MBID for this; every file measured carrying one carried the other, so th
 coverage is the same and the identity is the right one.
 
 **No migration.** `tracks.release_group_mbid` and its partial index shipped with
-79a, in migration 9. This phase is a query and a type, and touches no schema.
+79a, in migration 8. This phase is a query and a type, and touches no schema.
 
 ## One identity expression
 

@@ -2,33 +2,27 @@ import { useEffect } from "react";
 import type { WriteProgress } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { useExportStore } from "../export/store";
-import { useTagsourceStore } from "../tagsource/store";
 
 /**
  * What a long write in progress looks like, for the ones with no dialog.
  *
- * Beside `ScanBar` and shaped like it: a scan, an export and a tag undo are
- * the three things that can hold the app for a minute, and a readout that
- * appears somewhere different each time is three things to find rather than
- * one place to look.
+ * Beside `ScanBar` and shaped like it: a scan and an export are what can hold
+ * the app for a minute without a dialog of their own, and a readout that
+ * appears somewhere different each time is two things to find rather than one
+ * place to look.
  *
- * A tag *save* is deliberately not here. Its dialog is already on screen and
- * stays open while the write runs, so the progress belongs in it - putting it
- * behind the modal instead would be reporting from a place the user cannot see.
+ * It also subscribes to `tags://progress` without drawing it. Every sender on
+ * that channel reports in a dialog that is already on screen - a tag save in
+ * the editor, the lookup's apply in its own - so this owns the subscription
+ * that fills the editor store for the same reason `ScanBar` owns its own:
+ * something mounted for the whole session has to, and putting it in the dialog
+ * would mean subscribing as the write it reports on is already starting.
  */
 export function TaskProgress() {
   const exportProgress = useExportStore((s) => s.progress);
   const exporting = useExportStore((s) => s.busy);
   const watchExport = useExportStore((s) => s.watch);
 
-  const editorProgress = useEditorStore((s) => s.progress);
-  // `tags://progress` is one channel for every tag write, and the release
-  // lookup's apply is the third thing on it - reported in its own dialog, and
-  // not an undo however much the editor store's progress looks like one.
-  const lookingUp = useTagsourceStore((s) => s.stage === "applying" && s.queue !== null);
-  const editorTracks = useEditorStore((s) => s.tracks);
-  // An undo is a write with no dialog; a save has one, and reports there.
-  const undoing = !lookingUp && editorTracks === null && editorProgress !== null;
   const watchTags = useEditorStore((s) => s.watch);
 
   useEffect(() => {
@@ -55,18 +49,14 @@ export function TaskProgress() {
   if (exporting) {
     return <TaskLine verb="Exporting" progress={exportProgress} />;
   }
-  if (undoing) {
-    return <TaskLine verb="Reverting" progress={editorProgress} />;
-  }
   return null;
 }
 
 /**
  * One line of progress, or just the verb.
  *
- * A total of zero is not a fraction worth drawing: an undo learns its size
- * from the backend, so there is a moment before the first event where the
- * honest thing to say is only that it is running.
+ * A total of zero is not a fraction worth drawing: there is a moment before the
+ * first event where the honest thing to say is only that it is running.
  */
 function TaskLine({ verb, progress }: { verb: string; progress: WriteProgress | null }) {
   return (

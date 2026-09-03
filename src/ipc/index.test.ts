@@ -5,7 +5,6 @@ import {
   addToPlaylist,
   addWatchFolder,
   allTrackIds,
-  canUndoTagEdit,
   countTracks,
   coverUrl,
   createPlaylist,
@@ -52,7 +51,6 @@ import {
   stagePickedCover,
   type TagEdit,
   tracksByIds,
-  undoTagEdit,
   writeTags,
 } from "./index";
 
@@ -258,16 +256,6 @@ describe("ipc", () => {
       expect(invokeMock).toHaveBeenCalledWith("stage_picked_cover", {
         path: "C:/art/sleeve.jpg",
       });
-    });
-
-    it("undoes and reports whether there is anything to undo", async () => {
-      invokeMock.mockResolvedValue({ written: 1, failed: 0, errors: [] });
-      await undoTagEdit();
-      expect(invokeMock).toHaveBeenCalledWith("undo_tag_edit");
-
-      invokeMock.mockResolvedValue(true);
-      await expect(canUndoTagEdit()).resolves.toBe(true);
-      expect(invokeMock).toHaveBeenCalledWith("can_undo_tag_edit");
     });
   });
 

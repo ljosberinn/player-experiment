@@ -14,7 +14,6 @@ vi.mock("../../ipc", () => ({
   listPlaylists: vi.fn(async () => []),
   removeFromPlaylist: vi.fn(async () => 2),
   tracksByIds: vi.fn(async () => []),
-  canUndoTagEdit: vi.fn(async () => false),
 }));
 
 function playlist(id: number, kind: Playlist["kind"]): Playlist {

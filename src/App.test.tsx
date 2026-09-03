@@ -13,7 +13,6 @@ import {
   addWatchFolder,
   allTrackIds,
   browseGroups,
-  canUndoTagEdit,
   createPlaylist,
   createSmartPlaylist,
   exportLibrary,
@@ -34,7 +33,6 @@ import {
   removeTracks,
   scanLibrary,
   tracksByIds,
-  undoTagEdit,
   writeTags,
 } from "./ipc";
 
@@ -76,8 +74,6 @@ vi.mock("./ipc", () => ({
   loadWindowGeometry: vi.fn(),
   tracksByIds: vi.fn(),
   writeTags: vi.fn(),
-  undoTagEdit: vi.fn(),
-  canUndoTagEdit: vi.fn(),
   suggestTagValues: vi.fn(async () => []),
   listPlaylists: vi.fn(),
   createPlaylist: vi.fn(),
@@ -174,7 +170,6 @@ beforeEach(async () => {
   // keeps implementations, so the one test that makes this reject was leaking
   // a versionless footer into every test declared after it.
   vi.mocked(getAppInfo).mockResolvedValue({ name: "apex", version: "0.4.2" });
-  vi.mocked(canUndoTagEdit).mockResolvedValue(false);
   statsMock.mockResolvedValue(stats(0));
   queryTracksMock.mockResolvedValue([]);
   scanLibraryMock.mockResolvedValue({
@@ -790,19 +785,6 @@ describe("App playback", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Updated 1 song.");
   });
 
-  it("offers Undo Tag Edit only once there is one to undo", async () => {
-    vi.mocked(canUndoTagEdit).mockResolvedValue(true);
-    vi.mocked(undoTagEdit).mockResolvedValue({ written: 2, failed: 0, errors: [] });
-    render(<App />);
-    const user = userEvent.setup();
-
-    await waitFor(() => expect(useEditorStore.getState().canUndo).toBe(true));
-    await chooseFromMenu(user, "Edit", "Undo Tag Edit");
-
-    expect(undoTagEdit).toHaveBeenCalled();
-    expect(await screen.findByRole("status")).toHaveTextContent("Reverted 2 songs.");
-  });
-
   it("exports the library, the open playlist, or the selection", async () => {
     const { save } = await import("@tauri-apps/plugin-dialog");
     vi.mocked(save).mockResolvedValue("D:/out.json");
@@ -1079,22 +1061,16 @@ describe("removing songs from the library", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("removes them on confirmation and re-reads what is left to undo", async () => {
+  it("removes them on confirmation", async () => {
     const user = userEvent.setup();
     vi.mocked(removeTracks).mockResolvedValue(2);
     await selectAll(user);
-    const undoCalls = vi.mocked(canUndoTagEdit).mock.calls.length;
 
     await chooseFromMenu(user, "File", "Remove 2 Songs from Library…");
     await user.click(screen.getByRole("button", { name: "Remove" }));
 
     expect(removeTracks).toHaveBeenCalledWith([1, 2]);
     expect(await screen.findByText("Removed 2 songs from your library.")).toBeInTheDocument();
-    // The delete cascades through `tag_undo`, so Undo Tag Edit can be left
-    // pointing at an older batch - or enabled over an empty journal.
-    await waitFor(() =>
-      expect(vi.mocked(canUndoTagEdit).mock.calls.length).toBeGreaterThan(undoCalls),
-    );
   });
 
   it("offers to forget the removals once the backend reports some", async () => {

@@ -23,7 +23,6 @@ vi.mock("../../ipc", () => ({
   listPlaylists: vi.fn(async () => []),
   addToPlaylist: vi.fn(async () => 1),
   tracksByIds: vi.fn(async () => []),
-  canUndoTagEdit: vi.fn(async () => false),
 }));
 
 const statsMock = vi.mocked(libraryStats);

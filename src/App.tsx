@@ -109,7 +109,6 @@ export function App() {
   const editorTracks = useEditorStore((s) => s.tracks);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
-  const refreshUndo = useEditorStore((s) => s.refreshUndo);
   const tagProgress = useEditorStore((s) => s.progress);
   const runExportTo = useExportStore((s) => s.run);
 
@@ -191,10 +190,6 @@ export function App() {
   useWindowTitle();
 
   useNoticeExpiry(notice, dismissNotice, NOTICE_MS);
-
-  useEffect(() => {
-    void refreshUndo();
-  }, [refreshUndo]);
 
   useEffect(() => {
     // Every write announces itself on `library://changed`, and this is what
@@ -330,9 +325,9 @@ export function App() {
               the ordinary case - but it stays mounted either way, because it
               is what subscribes to the progress events. */}
           <ScanBar />
-          {/* The other two writes long enough to watch: an export, and a tag
-              undo started from the Edit menu. Mounted unconditionally for the
-              same reason `ScanBar` is - it is what subscribes to them. */}
+          {/* The other write long enough to watch: an export. Mounted
+              unconditionally for the same reason `ScanBar` is - it is what
+              subscribes to it, and to `tags://progress` for the editor. */}
           <TaskProgress />
 
           {/* Songs has no heading, deliberately: it is the view with 150k rows
@@ -548,10 +543,6 @@ export function App() {
             cancelRemoval();
             void removeFromLibrary(ids).then((removed) => {
               notify(`Removed ${removed} song${removed === 1 ? "" : "s"} from your library.`);
-              // The delete cascades through `tag_undo`, so Undo Tag Edit may
-              // now point at an older batch - or at nothing at all, while the
-              // entry sits enabled over an empty journal.
-              void refreshUndo();
             });
           }}
           onCancel={cancelRemoval}

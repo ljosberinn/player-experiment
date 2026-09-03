@@ -1,5 +1,5 @@
-//! Tag writing against real mp3 files: write, re-read with an independent
-//! reader, undo, re-read again.
+//! Tag writing against real mp3 files: write, then re-read with an
+//! independent reader.
 
 mod fixture;
 
@@ -159,7 +159,6 @@ fn a_write_round_trips_through_the_file_and_into_the_library() {
             year: set("2019"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -192,7 +191,6 @@ fn a_field_the_edit_does_not_mention_survives_untouched() {
             genre: set("Dream Pop"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -223,7 +221,6 @@ fn an_empty_value_clears_the_field_rather_than_writing_an_empty_one() {
             year: Some(String::new()),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -247,7 +244,6 @@ fn one_edit_covers_a_whole_selection() {
             genre: set("Compilation"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -264,10 +260,9 @@ fn one_edit_covers_a_whole_selection() {
 }
 
 /// The case a broadcast edit cannot express: a tracklist, where the title and
-/// the track number differ per file. One batch, so undo restores the release
-/// rather than one track of it.
+/// the track number differ per file.
 #[test]
-fn a_batch_of_per_track_edits_writes_each_one_and_undoes_as_a_whole() {
+fn a_batch_of_per_track_edits_writes_each_one() {
     let h = harness();
     let mut conn = h.db.conn().unwrap();
     let first = id_of(&h.db, "Maki");
@@ -295,7 +290,6 @@ fn a_batch_of_per_track_edits_writes_each_one_and_undoes_as_a_whole() {
                 },
             ),
         ],
-        0,
         |_| {},
     )
     .unwrap();
@@ -312,23 +306,10 @@ fn a_batch_of_per_track_edits_writes_each_one_and_undoes_as_a_whole() {
         (Some("Track Two"), Some(2), Some(2))
     );
 
-    // One batch: a single undo has to take both files back.
-    write::undo_last(&mut conn, |_| {}).unwrap();
-    assert!(
-        !write::can_undo(&conn).unwrap(),
-        "a release restored in one step, not one track at a time"
-    );
-    assert_eq!(
-        tags::read(&path_of(&h.db, first)).unwrap().title.as_deref(),
-        Some("Maki")
-    );
-    assert_eq!(
-        tags::read(&path_of(&h.db, second))
-            .unwrap()
-            .title
-            .as_deref(),
-        Some("Sleeping Ute")
-    );
+    // The rows are the only other thing the batch touches, and they agree
+    // without a rescan.
+    assert_eq!(row(&h.db, first).0.as_deref(), Some("Track One"));
+    assert_eq!(row(&h.db, second).0.as_deref(), Some("Track Two"));
 }
 
 /// A malformed field anywhere in the batch refuses all of it, which only holds
@@ -358,7 +339,6 @@ fn an_unparseable_number_in_a_later_edit_stops_the_earlier_ones() {
                 },
             ),
         ],
-        0,
         |_| {},
     )
     .unwrap_err();
@@ -386,7 +366,6 @@ fn both_musicbrainz_ids_round_trip_into_the_file_and_the_row() {
             release_group_mbid: set(RELEASE_GROUP),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -432,7 +411,6 @@ fn an_edit_that_does_not_mention_the_mbids_leaves_the_ones_the_file_has() {
             genre: set("Indie"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -446,9 +424,8 @@ fn an_edit_that_does_not_mention_the_mbids_leaves_the_ones_the_file_has() {
         on_disk.release_group_mbid.as_deref(),
         Some(fixture::SHIELDS_RELEASE_GROUP)
     );
-
-    // And an undo of that edit does not take them with it.
-    write::undo_last(&mut conn, |_| {}).unwrap();
+    // And the row still caches them, which is what lets a later pass skip the
+    // release without opening the file.
     assert_eq!(
         mbids(&h.db, track),
         (
@@ -474,7 +451,6 @@ fn an_empty_mbid_clears_the_one_the_file_had() {
             release_group_mbid: Some(String::new()),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -484,146 +460,10 @@ fn an_empty_mbid_clears_the_one_the_file_had() {
         None
     );
     assert_eq!(mbids(&h.db, track), (None, None));
-
-    // Undo restores "what was there", which for these is a value again.
-    write::undo_last(&mut conn, |_| {}).unwrap();
-    assert_eq!(
-        mbids(&h.db, track),
-        (
-            Some(fixture::SHIELDS_RELEASE.to_owned()),
-            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
-        )
-    );
 }
 
 #[test]
-fn undo_puts_every_field_of_a_batch_back() {
-    let h = harness();
-    let mut conn = h.db.conn().unwrap();
-    let tracks = [id_of(&h.db, "Maki"), id_of(&h.db, "Sleeping Ute")];
-    let before: Vec<_> = tracks
-        .iter()
-        .map(|&track| tags::read(&path_of(&h.db, track)).unwrap())
-        .collect();
-
-    write::apply_to_each(
-        &mut conn,
-        &tracks,
-        &TagEdit {
-            genre: set("Compilation"),
-            comment: set("bulk edited"),
-            year: set("1999"),
-            ..edit()
-        },
-        0,
-        |_| {},
-    )
-    .unwrap();
-    assert!(write::can_undo(&conn).unwrap());
-
-    let summary = write::undo_last(&mut conn, |_| {}).unwrap();
-
-    assert_eq!((summary.written, summary.failed), (2, 0));
-    for (index, &track) in tracks.iter().enumerate() {
-        let after = tags::read(&path_of(&h.db, track)).unwrap();
-        assert_eq!(after.genre, before[index].genre);
-        assert_eq!(after.comment, before[index].comment);
-        assert_eq!(after.year, before[index].year);
-    }
-    assert!(
-        !write::can_undo(&conn).unwrap(),
-        "the batch should be spent"
-    );
-}
-
-#[test]
-fn undo_clears_a_field_the_edit_had_added() {
-    let h = harness();
-    let mut conn = h.db.conn().unwrap();
-    // This one has no comment of its own.
-    let track = id_of(&h.db, "Sleeping Ute");
-    assert_eq!(tags::read(&path_of(&h.db, track)).unwrap().comment, None);
-
-    write::apply_to_each(
-        &mut conn,
-        &[track],
-        &TagEdit {
-            comment: set("added"),
-            ..edit()
-        },
-        0,
-        |_| {},
-    )
-    .unwrap();
-    write::undo_last(&mut conn, |_| {}).unwrap();
-
-    // Restoring "what was there" has to include restoring "nothing".
-    assert_eq!(tags::read(&path_of(&h.db, track)).unwrap().comment, None);
-    assert_eq!(
-        h.db.conn()
-            .unwrap()
-            .query_row("SELECT comment FROM tracks WHERE id = ?1", [track], |r| {
-                r.get::<_, Option<String>>(0)
-            })
-            .unwrap(),
-        None
-    );
-}
-
-#[test]
-fn undo_goes_back_one_batch_at_a_time() {
-    let h = harness();
-    let mut conn = h.db.conn().unwrap();
-    let track = id_of(&h.db, "Maki");
-
-    write::apply_to_each(
-        &mut conn,
-        &[track],
-        &TagEdit {
-            genre: set("First"),
-            ..edit()
-        },
-        1,
-        |_| {},
-    )
-    .unwrap();
-    write::apply_to_each(
-        &mut conn,
-        &[track],
-        &TagEdit {
-            genre: set("Second"),
-            ..edit()
-        },
-        2,
-        |_| {},
-    )
-    .unwrap();
-
-    write::undo_last(&mut conn, |_| {}).unwrap();
-    assert_eq!(
-        tags::read(&path_of(&h.db, track)).unwrap().genre.as_deref(),
-        Some("First")
-    );
-
-    write::undo_last(&mut conn, |_| {}).unwrap();
-    assert_eq!(
-        tags::read(&path_of(&h.db, track)).unwrap().genre.as_deref(),
-        Some("Post Shoegaze"),
-        "the second undo should reach the original"
-    );
-}
-
-#[test]
-fn undoing_with_nothing_to_undo_says_so() {
-    let h = harness();
-    let mut conn = h.db.conn().unwrap();
-
-    assert!(!write::can_undo(&conn).unwrap());
-    assert!(write::undo_last(&mut conn, |_| {}).is_err());
-}
-
-#[test]
-fn cover_art_can_be_replaced_and_removed_but_an_undo_does_not_bring_it_back() {
+fn cover_art_can_be_replaced_and_removed() {
     let h = harness();
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
@@ -646,7 +486,6 @@ fn cover_art_can_be_replaced_and_removed_but_an_undo_does_not_bring_it_back() {
             }),
             ..edit()
         },
-        1,
         |_| {},
     )
     .unwrap();
@@ -662,17 +501,9 @@ fn cover_art_can_be_replaced_and_removed_but_an_undo_does_not_bring_it_back() {
             cover: Some(CoverEdit::Remove),
             ..edit()
         },
-        2,
         |_| {},
     )
     .unwrap();
-    assert!(tags::read(&path_of(&h.db, track)).unwrap().cover.is_none());
-    assert_eq!(row(&h.db, track).3, None);
-
-    // The undo restores the tags and leaves the picture alone: what `covers`
-    // holds is a re-encode of what the file carried, so writing it back would
-    // bake a 500px thumbnail into the mp3.
-    write::undo_last(&mut conn, |_| {}).unwrap();
     assert!(tags::read(&path_of(&h.db, track)).unwrap().cover.is_none());
     assert_eq!(row(&h.db, track).3, None);
 }
@@ -694,7 +525,6 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
             genre: set("Mixed"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -704,13 +534,7 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
     assert_eq!(
         tags::read(&path_of(&h.db, good)).unwrap().genre.as_deref(),
         Some("Mixed"),
-        "one bad file must not undo the good ones"
-    );
-    // And the failure is not in the journal, so undo will not try to restore it.
-    write::undo_last(&mut conn, |_| {}).unwrap();
-    assert_eq!(
-        tags::read(&path_of(&h.db, good)).unwrap().genre.as_deref(),
-        Some("Post Shoegaze")
+        "one bad file must not cost the good ones"
     );
 }
 
@@ -727,7 +551,6 @@ fn a_write_leaves_no_temporary_files_behind() {
             genre: set("Dream Pop"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -758,7 +581,6 @@ fn the_written_file_is_still_a_playable_mp3() {
             title: set("Still Audio"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -786,7 +608,6 @@ fn a_rescan_after_an_edit_finds_nothing_to_do() {
             genre: set("Dream Pop"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -817,7 +638,6 @@ fn an_unparseable_number_is_refused_before_anything_is_written() {
             year: set("twenty twelve"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap_err();
@@ -843,7 +663,6 @@ fn editing_a_track_the_library_no_longer_has_is_skipped_not_fatal() {
             genre: set("Fine"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -868,7 +687,6 @@ fn progress_starts_at_zero_and_lands_on_the_count_it_was_asked_for() {
             genre: set("Ambient"),
             ..edit()
         },
-        0,
         |p| seen.push(p),
     )
     .unwrap();
@@ -877,34 +695,6 @@ fn progress_starts_at_zero_and_lands_on_the_count_it_was_asked_for() {
     assert_eq!(seen.first().unwrap().done, 0);
     assert!(seen.iter().all(|p| p.total == 2));
     assert_eq!(seen.last().unwrap().done, 2);
-}
-
-#[test]
-fn an_undo_reports_progress_too() {
-    let h = harness();
-    let mut conn = h.db.conn().unwrap();
-    let track = id_of(&h.db, "Maki");
-
-    write::apply_to_each(
-        &mut conn,
-        &[track],
-        &TagEdit {
-            genre: set("Ambient"),
-            ..edit()
-        },
-        0,
-        |_| {},
-    )
-    .unwrap();
-
-    let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
-    write::undo_last(&mut conn, |p| seen.push(p)).unwrap();
-
-    // An undo writes files exactly as an edit does, so a dialog watching one
-    // has to be able to watch the other.
-    assert_eq!(seen.first().unwrap().done, 0);
-    assert_eq!(seen.last().unwrap().done, 1);
-    assert!(seen.iter().all(|p| p.total == 1));
 }
 
 /// The scanner has to keep seeing the file as unchanged, which only holds if
@@ -923,7 +713,6 @@ fn the_file_keeps_its_name_and_place() {
             title: set("Renamed Tag"),
             ..edit()
         },
-        0,
         |_| {},
     )
     .unwrap();
@@ -953,7 +742,6 @@ fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
             genre: set("Bulk Edited"),
             ..edit()
         },
-        0,
         |p| seen.push(p),
     )
     .unwrap();
@@ -968,33 +756,4 @@ fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
             Some("Bulk Edited")
         );
     }
-}
-
-/// An undo of the same batch. It writes every one of those files again, so it
-/// is the same wait and needs the same readout - and reports it where a save
-/// cannot, since an undo has no dialog of its own.
-#[test]
-fn an_undo_of_a_long_batch_reports_all_the_way_along_too() {
-    let h = harness_with_bulk(BULK);
-    let mut conn = h.db.conn().unwrap();
-    let ids = bulk_ids(&h.db);
-
-    write::apply_to_each(
-        &mut conn,
-        &ids,
-        &TagEdit {
-            genre: set("Bulk Edited"),
-            ..edit()
-        },
-        0,
-        |_| {},
-    )
-    .unwrap();
-
-    let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
-    let summary = write::undo_last(&mut conn, |p| seen.push(p)).unwrap();
-
-    assert_eq!((summary.written, summary.failed), (BULK as u32, 0));
-    assert_reports_as_it_goes(&seen, BULK as u32);
-    assert_eq!(tags::read(&path_of(&h.db, ids[0])).unwrap().genre, None);
 }

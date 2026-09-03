@@ -20,8 +20,8 @@ export const REPOSITORY = "https://github.com/ljosberinn/player-experiment";
  * Pure, and the reason it is: which entries appear, which are disabled and what
  * they say are the whole of this feature, and every one of them depends on
  * something - whether a row is selected, whether a playlist is open, whether
- * there is anything to undo. Asserting that with a rendered menu means opening
- * five popups per case; asserting it here is a function call.
+ * any file is missing. Asserting that with a rendered menu means opening five
+ * popups per case; asserting it here is a function call.
  *
  * `MenuBar` renders the result, and `rowMenuItems` supplies the Edit menu's
  * middle so that the right-click menu and the Edit menu cannot drift apart -
@@ -33,7 +33,6 @@ export function menus({
   selectionCount,
   missingCount,
   removedCount,
-  canUndoTags,
   hasExportTarget,
   exportSelectionLabel,
   lastfmConfigured,
@@ -44,7 +43,6 @@ export function menus({
   onRemoveFromLibrary,
   onRemoveMissing,
   onForgetRemoved,
-  onUndoTags,
   onSettings,
   onExportAll,
   onExportSelection,
@@ -54,9 +52,8 @@ export function menus({
   /** How many songs are selected; what File's removal entry acts on. */
   selectionCount: number;
   missingCount: number;
-  /** How many paths a removal has tombstoned. See migration 8. */
+  /** How many paths a removal has tombstoned. See migration 7. */
   removedCount: number;
-  canUndoTags: boolean;
   /** Whether Export Selection has anything to write. */
   hasExportTarget: boolean;
   /** What Export Selection is about to export - a count, or a playlist. */
@@ -73,7 +70,6 @@ export function menus({
   onRemoveFromLibrary: () => void;
   onRemoveMissing: () => void;
   onForgetRemoved: () => void;
-  onUndoTags: () => void;
   onSettings: () => void;
   onExportAll: () => void;
   onExportSelection: () => void;
@@ -124,12 +120,11 @@ export function menus({
       label: "Edit",
       items: [
         // The song actions first, acting on the selection. With nothing
-        // selected there are none, and what is left is Undo and Settings -
-        // both of which act on the app rather than on songs.
+        // selected there are none, and Settings is all that is left - it acts
+        // on the app rather than on songs, so it needs no separator of its own
+        // to sit under.
         ...rowItems,
         ...(rowItems.length > 0 ? [{ kind: "separator" as const }] : []),
-        { label: "Undo Tag Edit", disabled: !canUndoTags, onSelect: onUndoTags },
-        { kind: "separator" },
         { label: "Settings…", onSelect: onSettings },
       ],
     },

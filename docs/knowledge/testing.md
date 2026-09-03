@@ -6,7 +6,7 @@ current frontend coverage is well above it.
 | Layer | Tool | What |
 | --- | --- | --- |
 | Rust unit | `cargo test` | filter → SQL compilation (incl. injection attempts, depth cap), scan diffing, playlist position math, export shape, palette extraction, panic formatting, log line format and rotation |
-| Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, undo restores prior bytes, atomic write survives failure, a 120-file batch reports progress the whole way |
+| Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, a fresh database with no undo journal, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
 | last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |

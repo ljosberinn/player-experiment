@@ -16,7 +16,7 @@ above them knows HTTP exists.
 src-tauri/src/
   db/         rusqlite: schema, queries, playlists, settings, covers, tag values
   scan/       walkdir + rayon ingest, incremental by (mtime, size)
-  tags/       lofty read/write, atomic writer, undo journal
+  tags/       lofty read/write, atomic writer
   audio/      symphonia + rodio player thread, command/event channels
   smart/      filter tree -> parameterized SQL
   export/     JSON export
@@ -83,21 +83,21 @@ replacement. Two rules make an unattended pass safe to run at all:
   non-zero.
 
 **One lock serializes everything that rewrites rows from files on disk.**
-`scan::ScanLock`, managed beside `Db`, taken by `scan_library`, `undo_tag_edit`
-and the poll. The poll `try_lock`s and skips the pass entirely; a user-asked
-scan waits, because a Rescan that silently did nothing is worse than one that
-starts its walk late. Poison-tolerant: a panicking scan must not leave the
+`scan::ScanLock`, managed beside `Db`, taken by `scan_library`,
+`tagsource_apply` and the poll. The poll `try_lock`s and skips the pass
+entirely; a user-asked scan waits, because a Rescan that silently did nothing
+is worse than one that starts its walk late. Poison-tolerant: a panicking scan must not leave the
 library unscannable for the rest of the session.
 
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
-`scan://progress`, a tag edit and its undo on `tags://progress`, an export on
+`scan://progress`, a tag edit on `tags://progress`, an export on
 `export://progress`. The domain functions take an `on_progress` closure rather
 than a Tauri handle, so each stays testable with no running app.
 
 **Every write that commits announces itself on `library://changed`**, through
-`commands::announcing` — a scan, a tag write and its undo, the three removal
-commands, and each of the eight playlist commands. A bare ping with no payload:
+`commands::announcing` — a scan, a tag write, the three removal commands, and
+each of the eight playlist commands. A bare ping with no payload:
 nearly every write changes both the tracks and the playlists, so a scope would
 say "both" at almost every site while being one more thing two stores have to
 agree on. Only on success, since a rejected write changed nothing. This is the
@@ -206,9 +206,9 @@ caches them. Mime types are sniffed from the bytes, not the extension
 **`bytes` is not what the file carried.** `db::covers::store` fits every cover
 inside 500px and re-encodes it as JPEG q85 — artwork was 96% of a real
 library's database, and re-encoding it is 81% off. **The hash stays the hash of
-the source bytes**, so `tracks.cover_hash`, `tag_undo` and the scan's parallel
-hashing are untouched and an already-stored hash returns without decoding
-anything; the column simply stops describing its own bytes. Anything that will
+the source bytes**, so `tracks.cover_hash` and the scan's parallel hashing are
+untouched and an already-stored hash returns without decoding anything; the
+column simply stops describing its own bytes. Anything that will
 not decode, and anything the re-encode would grow, is stored verbatim.
 
 Covers stored by an earlier build are converted by the `cover-normalize`
@@ -216,7 +216,8 @@ thread `lib.rs` spawns beside the player — chunked, resumable through two
 `settings` keys, and silent, since the picture on screen does not change. It
 finishes by pruning covers no track references and running `VACUUM`, which is
 what actually returns the pages to the filesystem. Both are only safe because
-undo no longer reads artwork back out.
+nothing reads artwork back out of `covers` at all — the bytes go to the window
+and nowhere else.
 
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
 whichever way it was chosen, and both ways **stage**: `stage_dropped_cover`

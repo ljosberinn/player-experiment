@@ -21,7 +21,7 @@ design wins.
   markup does not.
 - **Its 22 songs are in memory**, so every count is `array.length`. Ours come
   from `COUNT(*)`, which makes a sidebar count a question of *when to recompute*.
-- **It has no missing files, no scan in progress and nothing to undo.** Those
+- **It has no missing files and no scan in progress.** Those
   states have no mockup; their placement was decided in the phases that built
   them.
 - **It calls the second library item Albums.** Ours says Releases: an EP, a

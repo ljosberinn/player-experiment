@@ -3,6 +3,12 @@
 //! Each entry is applied in order inside a transaction, and `PRAGMA
 //! user_version` records how far we got. Migrations are append-only: never
 //! edit a shipped one, add a new entry instead.
+//!
+//! Once, before v1: the tag-edit undo journal was migration 3 and 82a deleted
+//! the entry rather than adding one that drops the table, so the numbering
+//! shifted under every database in existence and `migrate` refuses them all.
+//! That is only survivable while the fix is "delete the file and rescan", so
+//! the rule stands and this stays the exception.
 
 pub const MIGRATIONS: &[&str] = &[
     // 1 - initial library schema
@@ -96,26 +102,7 @@ CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
     VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre, new.comment);
 END;
 "#,
-    // 3 - the tag-edit undo journal
-    //
-    // Planned with the original schema but only built now, with the writer
-    // that fills it. One row per track per edit; `batch_id` groups the tracks
-    // one user action touched, so undo restores all of them together.
-    //
-    // ON DELETE CASCADE rather than keeping orphans: a track removed from the
-    // library has no file left to restore tags to.
-    r#"
-CREATE TABLE tag_undo (
-    id             INTEGER PRIMARY KEY,
-    batch_id       INTEGER NOT NULL,
-    track_id       INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-    prev_tags_json TEXT NOT NULL,
-    applied_at     INTEGER NOT NULL
-);
-
-CREATE INDEX idx_tag_undo_batch ON tag_undo(batch_id);
-"#,
-    // 4 - a file that is gone is marked, not deleted
+    // 3 - a file that is gone is marked, not deleted
     //
     // Until now a scan deleted the rows of files it could not find, which made
     // an unplugged external drive indistinguishable from a deliberate deletion
@@ -135,7 +122,7 @@ ALTER TABLE tracks ADD COLUMN missing_since INTEGER;
 
 CREATE INDEX idx_tracks_missing ON tracks(missing_since) WHERE missing_since IS NOT NULL;
 "#,
-    // 5 - the vocabulary a library already uses
+    // 4 - the vocabulary a library already uses
     //
     // Autocompletion needs the distinct values of a handful of fields, ranked
     // by how many tracks carry each one. `SELECT DISTINCT artist FROM tracks`
@@ -195,7 +182,7 @@ INSERT INTO tag_values (field, value, uses)
     WHERE year IS NOT NULL AND trim(CAST(year AS TEXT)) <> ''
     GROUP BY CAST(year AS TEXT);
 "#,
-    // 6 - the colours a cover is made of
+    // 5 - the colours a cover is made of
     //
     // For the background that follows the music: three dominant colours per
     // cover, extracted once when the bytes are stored and read back with the
@@ -206,7 +193,7 @@ INSERT INTO tag_values (field, value, uses)
     // SQL - nothing filters, sorts or aggregates on a colour - and one text
     // column is one thing to migrate if the palette ever grows a fourth entry.
     //
-    // No backfill, unlike migration 5. The rename in phase 32 orphaned every
+    // No backfill, unlike migration 4. The rename in phase 32 orphaned every
     // existing data directory, so in practice every install starts with an
     // empty `covers`; a database carried over from before simply has null
     // palettes, and each cover gets one the next time a scan or a tag write
@@ -216,7 +203,7 @@ INSERT INTO tag_values (field, value, uses)
     r#"
 ALTER TABLE covers ADD COLUMN palette TEXT;
 "#,
-    // 7 - plays waiting to reach last.fm
+    // 6 - plays waiting to reach last.fm
     //
     // The resolved scrobble rather than a track id, on purpose: a play is a
     // historical fact about what was on at a moment, and the row it came from
@@ -244,7 +231,7 @@ CREATE TABLE scrobble_queue (
 
 CREATE INDEX idx_scrobble_queue_due ON scrobble_queue(next_try_at, id);
 "#,
-    // 8 - the files the user has said they do not want
+    // 7 - the files the user has said they do not want
     //
     // Removing a row is not enough on its own: `scan::plan` adds every audio
     // file under a watch folder it does not already know, so a removal with no
@@ -259,14 +246,14 @@ CREATE INDEX idx_scrobble_queue_due ON scrobble_queue(next_try_at, id);
     //
     // Only an explicit per-row removal writes one. `remove_missing` does not:
     // a drive coming back should restore what was on it, which is what
-    // migration 4 exists for.
+    // migration 3 exists for.
     r#"
 CREATE TABLE removed_paths (
     path       TEXT PRIMARY KEY,
     removed_at INTEGER NOT NULL
 );
 "#,
-    // 9 - which release a file belongs to
+    // 8 - which release a file belongs to
     //
     // Both MusicBrainz identifiers, cached off the tags the same way every
     // other column here is: `tags::read` fills them, so a rescan keeps them

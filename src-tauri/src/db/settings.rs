@@ -39,7 +39,7 @@ pub const PLAYLISTS_SEEDED: &str = "playlists.seeded";
 ///
 /// A flag in the shape of [`PLAYLISTS_SEEDED`] rather than a migration:
 /// re-encoding a library's worth of artwork is half a minute of CPU, and
-/// migration 6 already settled that this must not happen in the transaction
+/// migration 5 already settled that this must not happen in the transaction
 /// that runs before the window is shown.
 pub const COVERS_NORMALIZED: &str = "covers.normalized";
 /// The last hash that pass finished, so a run cut short by a quit resumes

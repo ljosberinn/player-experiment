@@ -199,7 +199,7 @@ describe("the row menu", () => {
     // the reason phase 49 did not invent a second name for the entry.
     const items = await itemsOf("Edit");
     expect(items.slice(0, 2)).toEqual(["Play", "Edit"]);
-    expect(items).toContain("Undo Tag Edit");
+    expect(items).toContain("Settings…");
 
     await capture("menubar-edit-with-a-selection");
   });

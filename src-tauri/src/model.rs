@@ -344,7 +344,7 @@ pub enum CoverEdit {
 /// What a tag write actually managed to do.
 ///
 /// A locked or read-only file in the middle of a 500-track edit should not
-/// undo the other 499, so failures are counted and reported rather than
+/// cost the other 499, so failures are counted and reported rather than
 /// aborting the batch.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -780,7 +780,7 @@ pub struct ScanProgress {
     pub total: u32,
     pub added: u32,
     pub updated: u32,
-    /// Files that have gone from disk. Marked, not deleted - see migration 4.
+    /// Files that have gone from disk. Marked, not deleted - see migration 3.
     pub missing: u32,
     pub done: bool,
 }

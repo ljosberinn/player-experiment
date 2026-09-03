@@ -34,8 +34,8 @@ const QUALITY: u8 = 85;
 /// points at - not the hash of what is stored, which normalizing changes. That
 /// is the trade that keeps this cheap: a hash already in the table returns
 /// without decoding anything, so a first scan decodes 5,799 covers rather than
-/// the 55,781 tracks that share them, and `tracks.cover_hash`, `tag_undo` and
-/// the backfill all keep pointing at what they already point at. The column
+/// the 55,781 tracks that share them, and `tracks.cover_hash` and the backfill
+/// both keep pointing at what they already point at. The column
 /// stops describing its own bytes, which is the whole cost.
 ///
 /// The two paths are separate on purpose. A new cover is normalized and gets
@@ -177,11 +177,11 @@ const CHUNK: usize = 50;
 /// Palettes are left alone. q85 does not move three dominant colours, and a
 /// row that has none is a row that would not decode.
 ///
-/// The prune is only safe because nothing reads artwork back out of here any
-/// more - undo stopped restoring it. It is worth little today and is about
-/// what comes next: a removal orphans a row, and a release lookup fetches
-/// thousands of covers. VACUUM is what actually shrinks the file; the 885 MB
-/// the re-encode frees is merely free pages until it runs.
+/// The prune is only safe because nothing reads artwork back out of here at
+/// all - the bytes go to the window and nowhere else. It is worth little today
+/// and is about what comes next: a removal orphans a row, and a release lookup
+/// fetches thousands of covers. VACUUM is what actually shrinks the file; the
+/// 885 MB the re-encode frees is merely free pages until it runs.
 ///
 /// Answers whether there was anything to do, which is false on every launch
 /// after the one that finished the pass: a caller that logged it either way
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn a_cover_stored_without_a_palette_gains_one_the_next_time_it_is_seen() {
         let (_dir, conn) = conn();
-        // Exactly the shape a database from before migration 6 is in: bytes
+        // Exactly the shape a database from before migration 5 is in: bytes
         // present, palette null.
         let art = cover("a", png(&[[10, 20, 30], [200, 210, 220]]));
         conn.execute(

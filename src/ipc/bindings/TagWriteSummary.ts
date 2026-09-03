@@ -4,7 +4,7 @@
  * What a tag write actually managed to do.
  *
  * A locked or read-only file in the middle of a 500-track edit should not
- * undo the other 499, so failures are counted and reported rather than
+ * cost the other 499, so failures are counted and reported rather than
  * aborting the batch.
  */
 export type TagWriteSummary = { written: number, failed: number, errors: Array<string>, };

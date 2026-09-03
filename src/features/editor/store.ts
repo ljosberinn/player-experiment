@@ -1,11 +1,9 @@
 import { create } from "zustand";
 import {
-  canUndoTagEdit,
   onTagWriteProgress,
   type TagEdit,
   type Track,
   tracksByIds,
-  undoTagEdit,
   type WriteProgress,
   writeTags,
 } from "../../ipc";
@@ -14,8 +12,6 @@ import { dismiss, notify, report } from "../shell/statusStore";
 interface EditorState {
   /** The tracks the dialog is open on, or null when it is closed. */
   tracks: Track[] | null;
-  /** Whether there is an edit to take back. */
-  canUndo: boolean;
   /**
    * How far the write in flight has got, or null when none is.
    *
@@ -29,9 +25,6 @@ interface EditorState {
   open: (trackIds: number[]) => Promise<void>;
   close: () => void;
   save: (edit: TagEdit) => Promise<void>;
-  undo: () => Promise<void>;
-  /** Reads whether an undo is available, for enabling the control. */
-  refreshUndo: () => Promise<void>;
   /** Subscribes to `tags://progress`; returns its own teardown. */
   watch: () => Promise<() => void>;
 }
@@ -56,7 +49,6 @@ function describe(
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   tracks: null,
-  canUndo: false,
   progress: null,
 
   open: async (trackIds) => {
@@ -93,7 +85,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       );
       set({ tracks: null });
       notify(describe("Updated", summary));
-      await get().refreshUndo();
     } catch (cause) {
       // The dialog stays open so a rejected edit can be corrected rather than
       // retyped.
@@ -103,35 +94,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  undo: async () => {
-    // An undo has no dialog and knows its size only once the backend reports
-    // it, so the readout starts as a bare "Reverting" rather than a fraction.
-    set({ progress: { done: 0, total: 0 } });
-    try {
-      const summary = await undoTagEdit();
-      notify(describe("Reverted", summary));
-      await get().refreshUndo();
-    } catch (cause) {
-      report(cause);
-    } finally {
-      set({ progress: null });
-    }
-  },
-
-  refreshUndo: async () => {
-    try {
-      set({ canUndo: await canUndoTagEdit() });
-    } catch {
-      // Not worth surfacing: the worst case is a control that stays disabled.
-      set({ canUndo: false });
-    }
-  },
-
   watch: async () => {
-    // Unconditional: the only source of these events is a command this store
-    // started, and both of them clear `progress` when they finish. Where it is
-    // drawn is the renderer's business - the dialog while it is open, the
-    // content header for an undo started from the Edit menu.
+    // Unconditional: the only source of these events is the save this store
+    // started, and it clears `progress` when it finishes. Where it is drawn is
+    // the renderer's business.
     return onTagWriteProgress((progress) => set({ progress }));
   },
 }));

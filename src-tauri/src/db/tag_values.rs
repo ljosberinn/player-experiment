@@ -7,8 +7,8 @@
 //! # Why a rebuild rather than incremental bookkeeping
 //!
 //! The plan called for `uses` to be adjusted in step with every write - a scan
-//! ingest, a tag edit, an undo, a removal - and noted that this is where it
-//! would break. It was right, so this does not do it.
+//! ingest, a tag edit, a removal - and noted that this is where it would
+//! break. It was right, so this does not do it.
 //!
 //! Instead the whole table is recomputed from `tracks` whenever the tracks
 //! could have changed. That is five grouped aggregates over a table that is
@@ -334,13 +334,13 @@ mod tests {
     fn an_existing_library_has_a_vocabulary_the_moment_it_migrates() {
         // The case autocompletion is *for* is the library that already has a
         // vocabulary, and that library was scanned before this table existed.
-        // Migration 5 therefore backfills; leaving it to the next scan would
+        // Migration 4 therefore backfills; leaving it to the next scan would
         // mean the feature quietly does nothing until someone happens to
         // rescan, which is indistinguishable from it being broken.
         let mut conn = Connection::open_in_memory().expect("in-memory database");
         // Stop one migration short of the vocabulary, so the tracks below are
         // written by a build that has never heard of `tag_values`.
-        for (index, sql) in crate::db::schema::MIGRATIONS.iter().enumerate().take(4) {
+        for (index, sql) in crate::db::schema::MIGRATIONS.iter().enumerate().take(3) {
             conn.execute_batch(sql).expect("migration applies");
             conn.pragma_update(None, "user_version", (index + 1) as i64)
                 .expect("version recorded");

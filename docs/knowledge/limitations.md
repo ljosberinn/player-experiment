@@ -41,11 +41,11 @@ Known, decided, and not scheduled. Anything with work attached lives in
   at the end of the normalizing pass and never afterwards, so a song removed
   later leaves its artwork behind. At a normalized 37 KB a cover this is no
   longer the megabyte-a-row it was.
-- **Undo does not restore artwork.** `covers` holds a 500px JPEG re-encode
-  rather than the bytes a file carried, so restoring from it would bake a
-  thumbnail into the mp3. An undo leaves the file's picture exactly as the edit
-  left it, and an edit that replaced or removed artwork cannot be taken back.
-  `TagSnapshot.cover_hash` is still written and no longer read.
+- **A tag edit cannot be taken back.** There is no undo: 82a removed the
+  journal rather than bounding it, because a single-level undo over an
+  unattended pass's thousands of batches reverts whichever release the pass
+  finished with rather than the user's own last edit. What guards an automatic
+  write is the lookup's confidence threshold and its review queue.
 - **Stored artwork is not the file's artwork.** Anything larger than 500px is
   downscaled and everything decodable is re-encoded at q85, so `cover://`
   serves a smaller picture than the mp3 holds. A cover the user picks still
@@ -60,7 +60,7 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **A removal cannot be undone, only forgotten.** File ▸ Forget Removed Songs
   lifts the tombstones so a rescan re-adds the files; the rows they had, and
   the ids, play counts and playlist places on them, are gone.
-- **The undo journal is unbounded** — one row per track per edit, forever.
+
 - **Dragging is mouse-only**, but nothing behind it is any more: the Menu key
   opens the row menu on the selection, Alt+Arrow nudges it within a playlist,
   and Delete removes from one. What has no keyboard route is the gesture, not

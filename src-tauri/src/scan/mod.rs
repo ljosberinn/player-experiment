@@ -33,10 +33,9 @@ const PROGRESS_INTERVAL: usize = 200;
 /// Held for the length of anything that rewrites rows from files on disk.
 ///
 /// Managed alongside [`crate::db::Db`] and taken by `scan_library`,
-/// `undo_tag_edit` and the unattended pass. Nothing before it did this job:
-/// the frontend's `busy` flag guards one button in one window, and the undo
-/// was never behind it at all - which was survivable only while every such
-/// write started with a click.
+/// `tagsource_apply` and the unattended pass. Nothing before it did this job:
+/// the frontend's `busy` flag guards one button in one window, which was
+/// survivable only while every such write started with a click.
 ///
 /// Poison-tolerant on purpose. A panicking scan must not leave the library
 /// unscannable for the rest of the session; the guard protects an ordering,
@@ -82,7 +81,7 @@ pub struct ScanPlan {
     pub updated: Vec<PathBuf>,
     /// Known files that are no longer on disk and are not already marked.
     ///
-    /// Not deleted: see migration 4. Already-marked files are left out so the
+    /// Not deleted: see migration 3. Already-marked files are left out so the
     /// timestamp keeps saying when the file first went, not when it was last
     /// looked for.
     pub missing: Vec<i64>,
@@ -147,7 +146,7 @@ pub fn now_secs() -> i64 {
 ///
 /// Split out from the scan so the decision logic is testable on its own.
 ///
-/// `removed` is the tombstones of migration 8: paths the user took out of the
+/// `removed` is the tombstones of migration 7: paths the user took out of the
 /// library by hand. Such a file is skipped outright rather than added, which is
 /// what stops the next Rescan from undoing the removal. It cannot appear in
 /// `known` either - the row went with it - so the missing loop below never sees
@@ -227,7 +226,7 @@ fn load_known(conn: &Connection) -> AppResult<HashMap<String, Known>> {
     Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
 }
 
-/// The paths a removal has tombstoned. See migration 8.
+/// The paths a removal has tombstoned. See migration 7.
 fn load_removed(conn: &Connection) -> AppResult<HashSet<String>> {
     let mut stmt = conn.prepare("SELECT path FROM removed_paths")?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
@@ -278,7 +277,7 @@ pub fn clear_missing(conn: &Connection, id: i64) -> AppResult<bool> {
 /// deliberate action rather than something a scan does on the user's behalf.
 ///
 /// No tombstones, unlike `remove_tracks`: a drive coming back should restore
-/// what was on it, which is the whole point of migration 4. Only an explicit
+/// what was on it, which is the whole point of migration 3. Only an explicit
 /// per-row removal is a statement about wanting the song gone.
 pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
     let removed = conn.execute("DELETE FROM tracks WHERE missing_since IS NOT NULL", [])?;
@@ -293,7 +292,7 @@ pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
 /// The file on disk is not touched. What makes this different from
 /// `remove_missing` is the tombstone: the file is still under a watch folder,
 /// so without a record of the removal the next Rescan would add it straight
-/// back. See migration 8.
+/// back. See migration 7.
 ///
 /// One statement per id rather than an `IN` list, for the reason `set_missing`
 /// gives: Ctrl+A puts the whole library in this list, and SQLite's parameter
@@ -758,7 +757,7 @@ mod tests {
 
     #[test]
     fn a_removed_file_is_not_added_back_by_a_rescan() {
-        // The whole point of migration 8: the file is still under a watch
+        // The whole point of migration 7: the file is still under a watch
         // folder, so without the tombstone this would be an `added`.
         let plan = super::plan(
             &known(&[]),

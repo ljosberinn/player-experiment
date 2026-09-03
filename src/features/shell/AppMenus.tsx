@@ -54,10 +54,8 @@ export function AppMenus({
   const addTracks = usePlaylistsStore((s) => s.addTracks);
   const removeTracks = usePlaylistsStore((s) => s.removeTracks);
 
-  const canUndoTags = useEditorStore((s) => s.canUndo);
   const openEditor = useEditorStore((s) => s.open);
   const openLookup = useTagsourceStore((s) => s.open);
-  const undoTags = useEditorStore((s) => s.undo);
 
   // Three scalars, all of which change only when the user connects or
   // disconnects - so the Account menu can say who is signed in without anything
@@ -82,7 +80,6 @@ export function AppMenus({
         selectionCount: selectedIds.length,
         missingCount,
         removedCount,
-        canUndoTags,
         hasExportTarget: selectedIds.length > 0 || currentPlaylist !== null,
         exportSelectionLabel: exportSelectionLabel(
           selectedIds.length,
@@ -125,7 +122,6 @@ export function AppMenus({
         onRemoveFromLibrary: () => askRemoval(selectedIds),
         onRemoveMissing,
         onForgetRemoved: () => void forgetRemoved(),
-        onUndoTags: () => void undoTags(),
         onSettings,
         onExportAll: () => onExport(exportChoice([], null)),
         onExportSelection: () => onExport(exportChoice(selectedIds, currentPlaylist)),

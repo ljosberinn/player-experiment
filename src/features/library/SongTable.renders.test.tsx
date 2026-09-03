@@ -31,7 +31,6 @@ vi.mock("../../ipc", () => ({
   listPlaylists: vi.fn(async () => []),
   addToPlaylist: vi.fn(async () => 1),
   tracksByIds: vi.fn(async () => []),
-  canUndoTagEdit: vi.fn(async () => false),
 }));
 
 /** The five columns the table opens with, so the arithmetic below is the real one. */

@@ -74,7 +74,7 @@ describe("the menu bar", () => {
 
     // Nothing is selected here, so the song actions are absent and what is
     // left acts on the app rather than on songs.
-    expect(items).toEqual(["Undo Tag Edit", "Settings…"]);
+    expect(items).toEqual(["Settings…"]);
   });
 
   it("reaches Settings from the Edit menu", async () => {
