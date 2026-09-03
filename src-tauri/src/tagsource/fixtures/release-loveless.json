@@ -16,6 +16,18 @@
     "title": "Loveless",
     "primary-type": "Album"
   },
+  "genres": [
+    {
+      "id": "9b1e2a3c-4d5e-4f60-8a71-2b3c4d5e6f70",
+      "name": "noise pop",
+      "count": 4
+    },
+    {
+      "id": "aa2f3b4d-5e6f-4071-9b82-3c4d5e6f7081",
+      "name": "shoegaze",
+      "count": 12
+    }
+  ],
   "media": [
     {
       "position": 1,

@@ -450,6 +450,12 @@ pub struct ReleaseDetail {
     pub album_artist: String,
     #[ts(type = "number | null")]
     pub year: Option<i64>,
+    /// The genre the most people voted for, or none. Filled into files that
+    /// have none and never written over one that has: MusicBrainz's genre data
+    /// is thin next to a library tagged by hand.
+    pub genre: Option<String>,
+    /// The release group's primary type - Album, EP, Single.
+    pub release_type: Option<String>,
     pub tracks: Vec<RemoteTrack>,
     /// Where the fetched cover was staged, or null when the archive has none.
     ///
