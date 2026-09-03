@@ -39,7 +39,8 @@ pub fn dry_run() -> bool {
 /// How many times a request that could work later is asked again.
 const RETRIES: usize = 2;
 
-/// Runs `call`, asking again on a failure that could work later.
+/// Runs `call`, asking again on a failure that could work later, counting the
+/// times it had to into `asked_again`.
 ///
 /// No waiting of its own: every attempt goes through
 /// [`crate::tagsource::rate`], which already holds the next request back by
@@ -48,14 +49,30 @@ const RETRIES: usize = 2;
 /// query MusicBrainz rejected, a body that would not parse - is given up on at
 /// once, because the second answer would be the first one again five seconds
 /// later.
-fn retrying<T>(mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
+///
+/// The count is the only sign a retry leaves. One that works is invisible
+/// otherwise - the release resolves, and the five seconds it cost look like a
+/// slow request rather than a 503 that was absorbed.
+fn retrying<T>(asked_again: &mut usize, mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
     for _ in 0..RETRIES {
         match call() {
-            Err(error) if error.transient() => {}
+            Err(error) if error.transient() => *asked_again += 1,
             result => return result,
         }
     }
     call()
+}
+
+/// What one release came to, and what it cost to find out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outcome {
+    pub verdict: Verdict,
+    /// How many requests had to be asked again before one was answered.
+    ///
+    /// Zero for almost every release. A release that failed outright reports
+    /// nothing at all - it returns an error rather than an outcome - but its
+    /// own log line already says it exhausted them.
+    pub retries: usize,
 }
 
 /// What one release came to.
@@ -89,7 +106,8 @@ pub fn look_up(
     staging: &Path,
     dry_run: bool,
     now: i64,
-) -> AppResult<Verdict> {
+) -> AppResult<Outcome> {
+    let mut retries = 0;
     let members =
         query::release_members(conn, release.album.as_deref(), release.artist.as_deref())?;
     let local = LocalRelease {
@@ -97,7 +115,7 @@ pub fn look_up(
         durations_ms: members.iter().map(|member| member.duration_ms).collect(),
     };
 
-    let candidates = retrying(|| {
+    let candidates = retrying(&mut retries, || {
         tagsource::musicbrainz::search(
             transport,
             release.album.as_deref(),
@@ -117,10 +135,15 @@ pub fn look_up(
                 now,
             )?;
         }
-        return Ok(Verdict::NotFound);
+        return Ok(Outcome {
+            verdict: Verdict::NotFound,
+            retries,
+        });
     };
 
-    let (detail, cover) = retrying(|| tagsource::fetch_release(transport, &best.mbid, &local))?;
+    let (detail, cover) = retrying(&mut retries, || {
+        tagsource::fetch_release(transport, &best.mbid, &local)
+    })?;
     let score = detail.candidate.score;
 
     // The track count has to agree, not merely score well. A perfect text
@@ -141,18 +164,24 @@ pub fn look_up(
                 now,
             )?;
         }
-        return Ok(Verdict::Queued {
-            score,
-            candidates: candidates.len(),
+        return Ok(Outcome {
+            verdict: Verdict::Queued {
+                score,
+                candidates: candidates.len(),
+            },
+            retries,
         });
     }
 
     let tracks = u32::try_from(detail.tracks.len()).unwrap_or(u32::MAX);
     if dry_run {
-        return Ok(Verdict::Written {
-            mbid: detail.candidate.mbid,
-            score,
-            tracks,
+        return Ok(Outcome {
+            verdict: Verdict::Written {
+                mbid: detail.candidate.mbid,
+                score,
+                tracks,
+            },
+            retries,
         });
     }
 
@@ -188,10 +217,13 @@ pub fn look_up(
         now,
     )?;
 
-    Ok(Verdict::Written {
-        mbid: detail.candidate.mbid,
-        score,
-        tracks,
+    Ok(Outcome {
+        verdict: Verdict::Written {
+            mbid: detail.candidate.mbid,
+            score,
+            tracks,
+        },
+        retries,
     })
 }
 
@@ -259,7 +291,33 @@ fn edits_for(
 pub(crate) mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::tagsource::transport::{FakeTransport, TransportError};
+    use crate::tagsource::transport::{FakeTransport, Fetched, TransportError};
+
+    /// A transport that refuses the first few requests and then answers.
+    ///
+    /// `FakeTransport` gives the same answer every time, so a retry that
+    /// *works* is a case no fixture can express - and it is the case that
+    /// matters, because it is the one that leaves no other trace.
+    struct Flaky {
+        refusals: std::sync::Mutex<usize>,
+        then: FakeTransport,
+    }
+
+    impl Transport for Flaky {
+        fn get(&self, url: &str, params: &[(&str, String)]) -> Fetched {
+            {
+                let mut left = self.refusals.lock().unwrap();
+                if *left > 0 {
+                    *left -= 1;
+                    return Err(TransportError::Server {
+                        host: "musicbrainz.org".to_owned(),
+                        status: 503,
+                    });
+                }
+            }
+            self.then.get(url, params)
+        }
+    }
 
     const SEARCH_JSON: &str = include_str!("fixtures/search-loveless.json");
     const RELEASE_JSON: &str = include_str!("fixtures/release-loveless.json");
@@ -392,7 +450,10 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        assert!(matches!(verdict, Verdict::Written { .. }), "{verdict:?}");
+        assert!(
+            matches!(verdict.verdict, Verdict::Written { .. }),
+            "{verdict:?}"
+        );
         assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
 
         let (status, mbid, release_type): (String, String, Option<String>) = conn
@@ -428,7 +489,10 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        assert!(matches!(verdict, Verdict::Queued { .. }), "{verdict:?}");
+        assert!(
+            matches!(verdict.verdict, Verdict::Queued { .. }),
+            "{verdict:?}"
+        );
         assert_eq!(untitled(&conn), 0, "below the bar nothing is written");
 
         let (status, candidates): (String, String) = conn
@@ -462,7 +526,7 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        assert_eq!(verdict, Verdict::NotFound);
+        assert_eq!(verdict.verdict, Verdict::NotFound);
         assert_eq!(untitled(&conn), 0);
         assert_eq!(
             conn.query_row("SELECT status FROM release_lookup", [], |row| row
@@ -508,7 +572,10 @@ pub(crate) mod tests {
         )
         .unwrap();
         // Or the assertions below would hold over a pass that wrote nothing.
-        assert!(matches!(verdict, Verdict::Written { .. }), "{verdict:?}");
+        assert!(
+            matches!(verdict.verdict, Verdict::Written { .. }),
+            "{verdict:?}"
+        );
 
         let genres: Vec<Option<String>> = conn
             .prepare("SELECT genre FROM tracks ORDER BY track_no")
@@ -565,7 +632,10 @@ pub(crate) mod tests {
         )
         .unwrap();
         // Or this would hold over a pass that wrote nothing at all.
-        assert!(matches!(verdict, Verdict::Written { .. }), "{verdict:?}");
+        assert!(
+            matches!(verdict.verdict, Verdict::Written { .. }),
+            "{verdict:?}"
+        );
         assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
 
         assert_eq!(
@@ -599,8 +669,42 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        assert!(matches!(verdict, Verdict::Queued { .. }), "{verdict:?}");
+        assert!(
+            matches!(verdict.verdict, Verdict::Queued { .. }),
+            "{verdict:?}"
+        );
         assert_eq!(untitled(&conn), 0);
+    }
+
+    /// A 503 the retry absorbs costs an interval and resolves the release, so
+    /// nothing in the log tells it from a slow request - which is the whole
+    /// reason the count is carried out of here.
+    #[test]
+    fn a_retry_that_works_is_counted_rather_than_invisible() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        let transport = Flaky {
+            refusals: std::sync::Mutex::new(1),
+            then: musicbrainz(),
+        };
+
+        let outcome = look_up(
+            &mut conn,
+            &transport,
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Written { .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(outcome.retries, 1, "the 503 the search asked past");
     }
 
     /// Six 503s in four minutes is what the pass met on a real library, each
@@ -679,7 +783,7 @@ pub(crate) mod tests {
         .unwrap();
 
         assert!(
-            matches!(verdict, Verdict::Written { .. }),
+            matches!(verdict.verdict, Verdict::Written { .. }),
             "it reports what it would do: {verdict:?}"
         );
         assert_eq!(untitled(&conn), 0);

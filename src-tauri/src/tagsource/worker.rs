@@ -22,7 +22,7 @@ use crate::db::{lookup, settings, Db};
 use crate::error::AppResult;
 use crate::log::{Fields, Log};
 use crate::scan::ScanLock;
-use crate::tagsource::pass::{self, Verdict};
+use crate::tagsource::pass::{self, Outcome, Verdict};
 use crate::tagsource::transport::Transport;
 
 /// How often the thread wakes to ask whether the switch is on.
@@ -85,6 +85,12 @@ pub struct Summary {
     pub resolved: usize,
     pub queued: usize,
     pub missed: usize,
+    /// How many requests this sweep had to ask again before one was answered.
+    ///
+    /// The only measure of how much throttling a pass is absorbing. A retry
+    /// that works leaves no other trace: the release resolves, and the five
+    /// seconds it cost read as a slow request.
+    pub retries: usize,
 }
 
 impl Summary {
@@ -141,7 +147,7 @@ pub fn sweep(
                 .op("lookup.release")
                 .add("album", release.album.as_deref().unwrap_or("-"))
                 .add("artist", release.artist.as_deref().unwrap_or("-"));
-            let verdict = pass::look_up(
+            let outcome = pass::look_up(
                 &mut conn,
                 transport,
                 lock,
@@ -163,13 +169,19 @@ pub fn sweep(
             // lines about what was written is nothing next to a bad threshold
             // that cannot be diagnosed after the fact; 8,044 more about
             // releases MusicBrainz has never heard of is noise.
-            match &verdict {
-                Ok(Verdict::NotFound) => {}
-                Ok(verdict) => op.succeeded(verdict_fields(verdict, plan.dry_run)),
+            if let Ok(outcome) = &outcome {
+                summary.retries += outcome.retries;
+            }
+            match &outcome {
+                Ok(Outcome {
+                    verdict: Verdict::NotFound,
+                    ..
+                }) => {}
+                Ok(outcome) => op.succeeded(outcome_fields(outcome, plan.dry_run)),
                 Err(error) => op.failed(error),
             }
 
-            match verdict {
+            match outcome.map(|outcome| outcome.verdict) {
                 Ok(Verdict::Written { .. }) => summary.resolved += 1,
                 Ok(Verdict::Queued { .. }) => summary.queued += 1,
                 Ok(Verdict::NotFound) => summary.missed += 1,
@@ -214,8 +226,11 @@ fn next_sweep(previous: Duration, attempted: usize) -> Duration {
 /// for the queue. The status is the field anyone reads a pass by, and for the
 /// one feature in this app that writes tags nobody approved, a line that
 /// cannot be told from a line about a write is worse than no line.
-fn verdict_fields(verdict: &Verdict, dry_run: bool) -> Fields {
-    match verdict {
+///
+/// `retries` only when there were some, because there almost never are and a
+/// `retries=0` on eight thousand lines says nothing.
+fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
+    let fields = match &outcome.verdict {
         Verdict::Written {
             mbid,
             score,
@@ -230,6 +245,11 @@ fn verdict_fields(verdict: &Verdict, dry_run: bool) -> Fields {
             .add("score", format!("{score:.3}"))
             .add("candidates", candidates),
         Verdict::NotFound => Fields::new(),
+    };
+    if outcome.retries > 0 {
+        fields.add("retries", outcome.retries)
+    } else {
+        fields
     }
 }
 
@@ -305,6 +325,7 @@ pub fn spawn(
                             .add("resolved", summary.resolved)
                             .add("queued", summary.queued)
                             .add("missed", summary.missed)
+                            .add("retries", summary.retries)
                             .add("next", format!("{}s", quiet.as_secs())),
                     ),
                     Err(error) => op.failed(error),
