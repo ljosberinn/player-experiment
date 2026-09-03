@@ -1,6 +1,6 @@
 # 74 — In-app dragging without HTML5 drag and drop
 
-No behaviour change. Prerequisite for [85](../upcoming/85-drop-files-and-folders.md), which
+No behaviour change. Prerequisite for [85a](../upcoming/85a-the-window-takes-os-drops.md), which
 cannot happen while any drag in the window depends on the webview's own
 drag-and-drop.
 

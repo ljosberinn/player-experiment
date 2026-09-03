@@ -56,8 +56,9 @@ lands on a path the user once removed a different file from.
 So the transaction deletes any `removed_paths` row for the target path. Nothing
 writes one for the source: the mover only ever moves rows that exist, and only
 an explicit removal tombstones. [73](../done/73-remove-a-song-from-the-library.md)'s
-note about lifting a tombstone is about [85](85-drop-files-and-folders.md)'s
-drop, which is the other half of it.
+note about lifting a tombstone is about [85b](85b-drop-files-and-folders.md)'s
+drop, which is the other half of it — and which needs the move below without the
+`UPDATE`, for a file that has no row yet.
 
 ## What travels and what stays
 

@@ -24,7 +24,7 @@ Each of these cost real time once. They are here so they cost it once.
   at runtime in Tauri v2 — the flag is fixed at window creation. Since phase 74
   the only thing this still costs is the tag editor's artwork drop; every drag
   that stays inside the window is a pointer gesture and does not care. Flipping
-  it is [85](../issues/upcoming/85-drop-files-and-folders.md)'s to do.
+  it is [85a](../issues/upcoming/85a-the-window-takes-os-drops.md)'s to do.
 - **Raw bytes over IPC are all-or-nothing.** Tauri sends an `invoke` payload as
   a raw body only when the *whole* payload is an `ArrayBuffer` or a view of one;
   a `Uint8Array` inside an args object is JSON, one number per byte. Wrapping it

@@ -7,7 +7,7 @@ Known, decided, and not scheduled. Anything with work attached lives in
   this a limitation rather than a task was that `dragDropEnabled` had to stay
   `false` for in-app dragging to work at all; phase 74 removed that, and the
   work now lives in
-  [85](../issues/upcoming/85-drop-files-and-folders.md).
+  [85b](../issues/upcoming/85b-drop-files-and-folders.md).
 - **No crash reporting off the machine.** A local panic log covers the failure
   class; a network reporter contradicts the product.
 - **Installers are unsigned.** SmartScreen warns on first run of each version.
