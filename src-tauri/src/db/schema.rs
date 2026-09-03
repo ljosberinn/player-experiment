@@ -277,4 +277,122 @@ ALTER TABLE tracks ADD COLUMN release_group_mbid TEXT;
 CREATE INDEX idx_tracks_release_group ON tracks(release_group_mbid)
     WHERE release_group_mbid IS NOT NULL;
 "#,
+    // 9 - what the unattended lookup pass has already been through
+    //
+    // One row per release key, and three jobs in one table: the review queue,
+    // the resume point a pass killed mid-run starts from, and the guard that
+    // stops a second pass re-searching 8,044 releases. No row means never
+    // attempted; a row is never revisited automatically, because a pass that
+    // re-searched every miss on every launch would be four and a half hours
+    // that finds nothing, forever.
+    //
+    // The key is `db::query`'s two grouping expressions, so a release is the
+    // same thing here as it is in the grid. A `PRIMARY KEY (album, artist)`
+    // will not hold it: SQLite permits NULLs in a rowid table's primary key,
+    // so an untagged release would insert twice. The unique index over the
+    // coalesced pair is what actually holds, and both sides collate NOCASE
+    // because the grid has folded case when grouping since phase 81 - unfolded,
+    // a release tagged two ways is one tile and two rows here.
+    //
+    // `candidates_json` is a cache, not a record: the pass has the search
+    // results in hand at the moment it queues a release, and a review dialog
+    // opening on them is the difference between a click and a rate-limited
+    // second per entry.
+    //
+    // `release_type` is MusicBrainz's release-group primary type, cached off
+    // the tags the way migration 8's two ids are: `tags::read` fills it, so a
+    // rescan keeps it in step with the file rather than the writer being its
+    // only source. No backfill - nothing has ever written it.
+    r#"
+ALTER TABLE tracks ADD COLUMN release_type TEXT;
+
+CREATE TABLE release_lookup (
+    id              INTEGER PRIMARY KEY,
+    album           TEXT,
+    artist          TEXT,
+    status          TEXT NOT NULL CHECK (status IN ('resolved', 'review', 'none')),
+    release_mbid    TEXT,
+    score           REAL,
+    candidates_json TEXT,
+    attempted_at    INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_release_lookup_key ON release_lookup(
+    coalesce(album,  '') COLLATE NOCASE,
+    coalesce(artist, '') COLLATE NOCASE
+);
+"#,
 ];
+
+#[cfg(test)]
+mod tests {
+    use crate::db::Db;
+
+    fn open() -> (tempfile::TempDir, rusqlite::Connection) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        (dir, conn)
+    }
+
+    #[test]
+    fn a_fresh_database_carries_the_lookup_table_and_the_release_type() {
+        let (_dir, conn) = open();
+
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            9
+        );
+        conn.execute_batch("SELECT release_type FROM tracks WHERE 0")
+            .expect("tracks gained a release type");
+        conn.execute_batch(
+            "SELECT album, artist, status, release_mbid, score, candidates_json, attempted_at
+               FROM release_lookup WHERE 0",
+        )
+        .expect("the lookup table has the columns the pass writes");
+    }
+
+    /// The defect the index exists for. A rowid table's PRIMARY KEY permits
+    /// NULLs, so an untagged release would insert twice and pay the whole
+    /// lookup twice.
+    #[test]
+    fn an_untagged_release_can_only_be_recorded_once() {
+        let (_dir, conn) = open();
+        let insert = "INSERT INTO release_lookup (album, artist, status, attempted_at)
+                      VALUES (?1, ?2, 'none', 0)";
+
+        conn.execute(insert, rusqlite::params![None::<String>, None::<String>])
+            .unwrap();
+        conn.execute(insert, rusqlite::params![None::<String>, None::<String>])
+            .expect_err("two untagged releases are one release");
+    }
+
+    /// The grid has folded case when grouping since 81, and `release_members`
+    /// matches `NOCASE`: unfolded, a release tagged two ways is one tile and
+    /// one member list but two rows here, and the second row pays the four and
+    /// a half hours again.
+    #[test]
+    fn a_release_tagged_two_ways_is_one_row() {
+        let (_dir, conn) = open();
+        let insert = "INSERT INTO release_lookup (album, artist, status, attempted_at)
+                      VALUES (?1, ?2, 'resolved', 0)";
+
+        conn.execute(insert, rusqlite::params!["Loveless", "My Bloody Valentine"])
+            .unwrap();
+        conn.execute(insert, rusqlite::params!["loveless", "my bloody valentine"])
+            .expect_err("case is folded, so this is the same release");
+    }
+
+    #[test]
+    fn a_status_the_pass_does_not_write_is_refused() {
+        let (_dir, conn) = open();
+
+        conn.execute(
+            "INSERT INTO release_lookup (album, artist, status, attempted_at)
+             VALUES ('Loveless', 'MBV', 'maybe', 0)",
+            [],
+        )
+        .expect_err("the three statuses are the whole vocabulary");
+    }
+}
