@@ -283,18 +283,31 @@ pub(crate) mod tests {
         artist: &str,
         durations_ms: &[i64],
     ) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        add_release(&db, dir.path(), album, artist, durations_ms);
+        (dir, db)
+    }
+
+    /// Another release into a library that already exists, so a test needing
+    /// two of them needs only one temporary directory.
+    pub(crate) fn add_release(
+        db: &Db,
+        dir: &Path,
+        album: &str,
+        artist: &str,
+        durations_ms: &[i64],
+    ) {
         use lofty::config::WriteOptions;
         use lofty::prelude::{Accessor, ItemKey, TagExt};
         use lofty::tag::{Tag, TagType};
 
-        let dir = tempfile::tempdir().unwrap();
-        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
         let conn = db.conn().unwrap();
         let audio = silent_mp3();
 
         for (index, duration) in durations_ms.iter().enumerate() {
             let track_no = index as i64 + 1;
-            let path = dir.path().join(format!("{album}-{track_no:02}.mp3"));
+            let path = dir.join(format!("{album}-{track_no:02}.mp3"));
             std::fs::write(&path, &audio).unwrap();
 
             let mut tag = Tag::new(TagType::Id3v2);
@@ -312,8 +325,6 @@ pub(crate) mod tests {
             )
             .unwrap();
         }
-
-        (dir, db)
     }
 
     fn loveless() -> lookup::Release {
