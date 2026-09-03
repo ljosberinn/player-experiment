@@ -44,6 +44,10 @@ pub struct TrackTags {
     /// the reader ignores is blank again the next time a rescan re-adds it.
     pub release_mbid: Option<String>,
     pub release_group_mbid: Option<String>,
+    /// Album, EP, Single and the rest, read for the same reason the two ids
+    /// above are: a column only the writer fills is blank again the next time
+    /// a rescan re-adds the row.
+    pub release_type: Option<String>,
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
     pub cover: Option<Cover>,
@@ -84,6 +88,7 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     tags.disc_no = tag.disk().map(i64::from);
     tags.release_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId));
     tags.release_group_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId));
+    tags.release_type = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseType));
 
     tags.cover = tag.pictures().first().map(|picture| {
         let bytes = picture.data().to_vec();
