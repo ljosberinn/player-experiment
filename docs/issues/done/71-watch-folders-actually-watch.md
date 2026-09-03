@@ -29,7 +29,7 @@ state, and `undo_tag_edit` is not behind it at all. Managed state — a
 disable scanning for the rest of the session — taken by `scan_library`,
 `undo_tag_edit` and the poll. The poll `try_lock`s and skips the pass entirely;
 a user-asked scan waits for it, because a Rescan that silently does nothing is
-worse than one that starts a walk late. [82](82-lookup-runs-itself.md)'s lookup
+worse than one that starts a walk late. [82b](../upcoming/82b-the-unattended-lookup-pass.md)'s lookup
 and [83](83-the-library-folder.md)'s mover take it too when they land — those
 chain off an ingest rather than racing it.
 

@@ -1,7 +1,7 @@
 //! How well a candidate release fits the files on disk.
 //!
 //! Scored even though a human confirms every apply, because
-//! [82](../../../docs/issues/upcoming/82-lookup-runs-itself.md) runs the same
+//! [82](../../../docs/issues/upcoming/82b-the-unattended-lookup-pass.md) runs the same
 //! lookup with nobody watching and needs a number to decide on. A score
 //! invented later would be a different rule from the one the dialog sorted by.
 //!

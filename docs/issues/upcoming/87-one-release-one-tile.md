@@ -4,7 +4,7 @@ A release with several artists — a compilation, a split — shows up once per
 artist. 356 titles in this library are in that state and they cost 1,364
 duplicate tiles.
 
-**[82](82-lookup-runs-itself.md) is what fixes those, not this.** 332 of the 356
+**[82b](82b-the-unattended-lookup-pass.md) is what fixes those, not this.** 332 of the 356
 have no album artist on any track, and 82 writes one for every release above the
 threshold: `Various Artists` for a compilation, the joint credit for a split. The
 existing `(album, GROUP_ARTIST)` key then collapses them on its own, and keeps

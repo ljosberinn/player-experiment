@@ -20,9 +20,10 @@ Ukendt Kunstner/Forbandede Ungdom - 2014 - Album/11 - Englebarn.mp3
   visible; a list of skipped files somewhere is not. 416 tracks have no album,
   3,063 no year, 1,035 no track number, 125 no title.
 - **Release type comes from MusicBrainz's primary type**, so
-  [82](82-lookup-runs-itself.md) runs before a file can be placed. A file that
-  matched nothing keeps its own tags and is placed from them, with `Album` as
-  the type.
+  [82b](82b-the-unattended-lookup-pass.md) runs before a file can be placed. A
+  file that matched nothing keeps its own tags and is placed from them, with
+  `Album` as the type. `ReleaseDetail` does not carry the primary type today;
+  adding it is this phase's, the way the genre field is 82b's.
 - **Cover art travels, nothing else does.** `cover`/`folder`/`front` `.jpg|.png`
   move into the release folder; `.nfo`, `.cue`, `.log`, `.m3u` stay. Source
   folders left empty are removed.
@@ -43,8 +44,9 @@ verbatim prefix in play, and truncating a segment is better than a rename that
 fails at the end of a four-hour run.
 
 **Opting in late is a background task**, and it is the same shape as
-[82](82-lookup-runs-itself.md): a worker thread, cancellable, resumable across a
-restart, and reusing that phase's sidebar progress readout. **Committed per
+[82b](82b-the-unattended-lookup-pass.md): a worker thread, cancellable,
+resumable across a restart, and the second producer for
+[82c](82c-the-review-queue-and-progress.md)'s sidebar progress readout. **Committed per
 release** — a release is what the layout is built around, it is the unit the
 lookup already resolved, and a half-moved release is the only state worth never
 leaving behind. The resume point is which releases are done, not which files.
