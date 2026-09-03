@@ -18,7 +18,7 @@ The top folder is `GROUP_ARTIST` in `db::query` —
 folder is `GROUP_ALBUM`, `nullif(album, '')`. Not `album_artist` read straight
 off the row: a release the grid draws as one tile has to be one folder, and the
 tile is drawn from those two expressions. This is the same key
-[82b](82b-the-unattended-lookup-pass.md) looks a release up by, so all three
+[82b](../done/82b-the-unattended-lookup-pass.md) looks a release up by, so all three
 phases agree on what a release is.
 
 ## The rules on top of it
@@ -35,24 +35,15 @@ phases agree on what a release is.
   visible; a list of skipped files somewhere is not. 416 tracks have no album,
   3,063 no year, 1,035 no track number, 125 no title.
 
-## The release type has nowhere to come from yet
+## The release type comes from 82b
 
-`Album` in the example is MusicBrainz's release-group primary type, and nothing
-in this codebase carries it. It arrives the same way migration 8's two MBIDs
-did, and for the same reason — the file is the source of truth, so a library
-Picard already tagged is placed correctly before any lookup runs at all:
-
-- **`tracks.release_type`**, whatever migration number is next. No backfill;
-  nothing has ever written it.
-- **`tags::read` fills it** from `ItemKey::MusicBrainzReleaseType`, which lofty
-  0.25 maps to `MUSICBRAINZ_ALBUMTYPE` and to `MusicBrainz Album Type` in Vorbis
-  comments and iTunes atoms.
-- **`ReleaseGroup` in `tagsource::musicbrainz` gains `primary-type`.** Unlike
-  82b's genre field this needs **no `inc` change** — `release-groups` is already
-  in `RELEASE_INC` and returns the type with it; all three recorded fixtures
-  carry it and are being discarded today.
-- **82b's write list gains it**, beside the two MBIDs. Stated there; the field
-  and the column are this phase's.
+`Album` in the example is MusicBrainz's release-group primary type. It was going
+to arrive here, the same way migration 8's two MBIDs did; it arrived in
+[82b](../done/82b-the-unattended-lookup-pass.md) instead, because that is the
+phase that writes it and a column nothing writes is a column nothing can be
+tested against. `tracks.release_type`, the `tags::read` fill from
+`ItemKey::MusicBrainzReleaseType` and `primary-type` on `ReleaseGroup` are all
+there already, so this phase only reads the column.
 
 **A release with no type is `Album`.** It is what 8 of 10 releases are, and a
 sixth placeholder segment would put `Unknown Type` in the name of most folders

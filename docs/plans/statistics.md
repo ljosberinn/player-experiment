@@ -351,7 +351,7 @@ row a link into the filtered Songs table.
 **Migration numbers are not reserved here.** Migrations are append-only and
 numbered by the order they land, and 9 has since gone to
 [79a](../issues/done/79a-per-track-edits-and-the-release-mbid.md) with 10 and 11
-spoken for by [82b](../issues/upcoming/82b-the-unattended-lookup-pass.md) and
+spoken for by [82b](../issues/done/82b-the-unattended-lookup-pass.md) and
 [83a](../issues/upcoming/83a-where-a-file-goes.md). Each phase below takes
 whatever number is next when it lands.
 

@@ -3,7 +3,7 @@
 //! MusicBrainz enforces its limit at the address, not at the client, and
 //! exceeding it gets the address blocked rather than throttled. So the limiter
 //! is process-wide: a limiter owned by a client instance would let
-//! [82](../../../docs/issues/upcoming/82b-the-unattended-lookup-pass.md)'s background
+//! [82](../../../docs/issues/done/82b-the-unattended-lookup-pass.md)'s background
 //! pass and an open dialog make two requests a second between them, each
 //! believing it was the only caller.
 //!

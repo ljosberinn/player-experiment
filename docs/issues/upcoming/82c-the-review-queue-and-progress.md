@@ -1,6 +1,6 @@
 # 82c — The review queue and the progress readout
 
-The two things [82b](82b-the-unattended-lookup-pass.md) needs a user for: the
+The two things [82b](../done/82b-the-unattended-lookup-pass.md) needs a user for: the
 releases it would not write unattended, and some sign that four and a half hours
 of work are happening. Both live in the sidebar.
 
@@ -15,8 +15,9 @@ around.
 **With the candidates already fetched.** The pass paid for that search a second
 at a time; making the user pay it again is a rate-limited second per entry, and
 412 entries is seven minutes of waiting to click. So `release_lookup` carries
-the search results for a queued release and the dialog opens on the results
-step rather than the searching one.
+the search results for a queued release — 82b already writes them, as JSON, at
+the moment it queues — and the dialog opens on the results step rather than the
+searching one.
 
 - They are a cache, not a record. Search again is still a button, and a stale
   candidate list is a worse answer than a slow one only if there is no way to
