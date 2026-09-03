@@ -23,6 +23,17 @@ if (import.meta.env.VITE_E2E === "true") {
   void import("@wdio/tauri-plugin");
 }
 
+// react-scan outlines what re-rendered, live in the window, and names the prop
+// or store read that woke it. Awaited, unlike the import above: the instrument
+// has to be attached before the first commit, and the first render is the one
+// you cannot otherwise see. `DEV` is what keeps it out of every build - a hard
+// `false` there, so a build that inherits VITE_SCAN from its environment still
+// drops the import. See docs/knowledge/frontend.md.
+if (import.meta.env.DEV && import.meta.env.VITE_SCAN === "true") {
+  const { scan } = await import("react-scan");
+  scan();
+}
+
 const root = document.getElementById("root");
 if (!root) {
   throw new Error("#root is missing from index.html");
