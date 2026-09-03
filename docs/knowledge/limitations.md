@@ -60,11 +60,7 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **A removal cannot be undone, only forgotten.** File ▸ Forget Removed Songs
   lifts the tombstones so a rescan re-adds the files; the rows they had, and
   the ids, play counts and playlist places on them, are gone.
-- **Undo reaches back fifty batches at most.** The journal keeps its newest
-  `write::UNDO_BATCHES` and trims the rest in the same transaction as the
-  insert, so anything older than that is not revertible. Uncapped it grew one
-  row per track per edit forever, and a long automatic write would have left
-  Edit ▸ Undo enabled over thousands of batches it had made itself.
+- **The undo journal is unbounded** — one row per track per edit, forever.
 - **Dragging is mouse-only**, but nothing behind it is any more: the Menu key
   opens the row menu on the selection, Alt+Arrow nudges it within a playlist,
   and Delete removes from one. What has no keyboard route is the gesture, not

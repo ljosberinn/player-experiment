@@ -457,59 +457,6 @@ pub fn apply_to_each(
     apply(conn, &edits, now, on_progress)
 }
 
-/// How many edit batches the journal keeps.
-///
-/// Undo has always been one level deep in practice - `undo_last` takes the
-/// newest batch and nothing walks further back - so the journal's only other
-/// job is to survive a few edits made in a row while the user decides. Fifty
-/// is a session of manual editing and a few megabytes at worst.
-///
-/// A cap rather than no cap because the alternative is unbounded: one row per
-/// track per edit, deleted only by the undo that consumes it. An unattended
-/// pass over a library would leave tens of thousands of rows behind, and with
-/// them an Edit ▸ Undo that stays enabled forever and reverts whatever the
-/// pass wrote last rather than what the user last did.
-pub const UNDO_BATCHES: i64 = 50;
-
-/// The id for the batch about to be written.
-///
-/// A batch id groups one user action, so undo restores all of it at once.
-///
-/// Monotonic by construction. The obvious derivation - seconds times a
-/// thousand, plus the journal's height - breaks the moment the journal is
-/// trimmed: the height goes down, so two batches in the same second can be
-/// handed the same id, or a later batch an id below an earlier one, and
-/// `undo_last` then reverts the wrong edit. Taking one past the largest id
-/// already there cannot go backwards, and the floor keeps the id readable as
-/// a timestamp for anyone looking at the table.
-///
-/// Derived inside the writing transaction, so a concurrent write cannot read
-/// the same maximum.
-fn next_batch_id(tx: &rusqlite::Transaction<'_>, now: i64) -> AppResult<i64> {
-    let highest: Option<i64> =
-        tx.query_row("SELECT max(batch_id) FROM tag_undo", [], |row| row.get(0))?;
-    let floor = now.checked_mul(1000).unwrap_or(now);
-    Ok(highest
-        .and_then(|highest| highest.checked_add(1))
-        .map_or(floor, |next| next.max(floor)))
-}
-
-/// Drops every batch but the newest [`UNDO_BATCHES`].
-///
-/// In the same transaction as the insert it follows, so the journal is never
-/// briefly over its cap and a rolled-back write does not take older batches
-/// with it.
-fn trim_journal(tx: &rusqlite::Transaction<'_>) -> AppResult<()> {
-    tx.execute(
-        "DELETE FROM tag_undo
-         WHERE batch_id NOT IN (
-             SELECT DISTINCT batch_id FROM tag_undo ORDER BY batch_id DESC LIMIT ?1
-         )",
-        [UNDO_BATCHES],
-    )?;
-    Ok(())
-}
-
 /// Applies one edit per track, as a single undoable batch.
 ///
 /// Per track rather than one edit over many files, because a tracklist is the
@@ -538,6 +485,11 @@ pub fn apply(
     // Before the first file, so a dialog showing this has a fraction to draw
     // rather than a blank while the first write is in flight.
     on_progress(WriteProgress { done: 0, total });
+    // A batch id groups one user action, so undo restores all of it at once.
+    let batch_id = now
+        .checked_mul(1000)
+        .unwrap_or(now)
+        .saturating_add(conn.query_row("SELECT count(*) FROM tag_undo", [], |row| row.get(0))?);
 
     let mut written: Vec<(i64, PathBuf, TagSnapshot)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
@@ -572,7 +524,6 @@ pub fn apply(
     on_progress(WriteProgress { done: total, total });
 
     let tx = conn.transaction()?;
-    let batch_id = next_batch_id(&tx, now)?;
     for (track_id, path, before) in &written {
         sync_row(&tx, *track_id, path)?;
         tx.execute(
@@ -587,7 +538,6 @@ pub fn apply(
             ],
         )?;
     }
-    trim_journal(&tx)?;
     // In the same transaction as the rows it is derived from, so a suggestion
     // list can never describe a library state that was rolled back.
     crate::db::tag_values::rebuild(&tx)?;
@@ -719,14 +669,9 @@ fn to_resolved(before: &TagSnapshot) -> AppResult<Resolved> {
 }
 
 /// Whether there is a batch to undo, for enabling the menu item.
-///
-/// `EXISTS` rather than a count: the question is asked on every menu refresh
-/// and the answer stops at the first row, where counting reads all of them.
 pub fn can_undo(conn: &Connection) -> AppResult<bool> {
-    let any: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM tag_undo)", [], |row| {
-        row.get(0)
-    })?;
-    Ok(any)
+    let count: i64 = conn.query_row("SELECT count(*) FROM tag_undo", [], |row| row.get(0))?;
+    Ok(count > 0)
 }
 
 #[cfg(test)]
