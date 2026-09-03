@@ -13,7 +13,6 @@
 //! thousand of those by hand is not review, it is clicking.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use rusqlite::Connection;
 
@@ -40,47 +39,21 @@ pub fn dry_run() -> bool {
 /// How many times a request that could work later is asked again.
 const RETRIES: usize = 2;
 
-/// How long the first retry waits. Each further one doubles it.
-///
-/// Longer than the limiter's own interval on purpose: a 503 is how MusicBrainz
-/// says the limit was exceeded at this address, so going straight back at the
-/// same pace is asking for the next one.
-pub const BACKOFF: Duration = Duration::from_secs(2);
-
-/// How a pass runs, as against what it decides.
-#[derive(Debug, Clone, Copy)]
-pub struct Mode {
-    /// Report the verdict and write nothing - neither files nor rows.
-    pub dry_run: bool,
-    /// How long the first retry of a transient failure waits. Zero in tests,
-    /// which have no network to be flaky and nothing to gain from waiting.
-    pub backoff: Duration,
-}
-
-impl Mode {
-    /// What the worker runs with: the dry run read off the environment.
-    pub fn from_env() -> Self {
-        Self {
-            dry_run: dry_run(),
-            backoff: BACKOFF,
-        }
-    }
-}
-
 /// Runs `call`, asking again on a failure that could work later.
 ///
-/// Twice, backing off, and then the caller ends the sweep as it would have
-/// anyway. A failure that cannot change - a query MusicBrainz rejected, a body
-/// that would not parse - is given up on at once, because the second answer
-/// would be the first one again a rate-limited second later.
-fn retrying<T>(backoff: Duration, mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
-    let mut wait = backoff;
+/// No waiting of its own: every attempt goes through
+/// [`crate::tagsource::rate`], which already holds the next request back by
+/// its whole interval, so a second backoff here would only be two things
+/// deciding the same thing and disagreeing. A failure that cannot change - a
+/// query MusicBrainz rejected, a body that would not parse - is given up on at
+/// once, because the second answer would be the first one again three seconds
+/// later.
+fn retrying<T>(mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
     for _ in 0..RETRIES {
         match call() {
-            Err(error) if error.transient() => std::thread::sleep(wait),
+            Err(error) if error.transient() => {}
             result => return result,
         }
-        wait *= 2;
     }
     call()
 }
@@ -114,7 +87,7 @@ pub fn look_up(
     lock: &ScanLock,
     release: &lookup::Release,
     staging: &Path,
-    mode: Mode,
+    dry_run: bool,
     now: i64,
 ) -> AppResult<Verdict> {
     let members =
@@ -124,7 +97,7 @@ pub fn look_up(
         durations_ms: members.iter().map(|member| member.duration_ms).collect(),
     };
 
-    let candidates = retrying(mode.backoff, || {
+    let candidates = retrying(|| {
         tagsource::musicbrainz::search(
             transport,
             release.album.as_deref(),
@@ -133,7 +106,7 @@ pub fn look_up(
         )
     })?;
     let Some(best) = candidates.first() else {
-        if !mode.dry_run {
+        if !dry_run {
             lookup::record(
                 conn,
                 release,
@@ -147,9 +120,7 @@ pub fn look_up(
         return Ok(Verdict::NotFound);
     };
 
-    let (detail, cover) = retrying(mode.backoff, || {
-        tagsource::fetch_release(transport, &best.mbid, &local)
-    })?;
+    let (detail, cover) = retrying(|| tagsource::fetch_release(transport, &best.mbid, &local))?;
     let score = detail.candidate.score;
 
     // The track count has to agree, not merely score well. A perfect text
@@ -159,7 +130,7 @@ pub fn look_up(
     let confident = score >= UNATTENDED_THRESHOLD && detail.tracks.len() == members.len();
     if !confident {
         let candidates_json = serde_json::to_string(&candidates).ok();
-        if !mode.dry_run {
+        if !dry_run {
             lookup::record(
                 conn,
                 release,
@@ -177,7 +148,7 @@ pub fn look_up(
     }
 
     let tracks = u32::try_from(detail.tracks.len()).unwrap_or(u32::MAX);
-    if mode.dry_run {
+    if dry_run {
         return Ok(Verdict::Written {
             mbid: detail.candidate.mbid,
             score,
@@ -197,8 +168,8 @@ pub fn look_up(
     {
         // Behind the same lock as a scan, because this rewrites the files a
         // scan reads its (mtime, size) from - and per write rather than for the
-        // pass, because holding it for five hours would block every scan in
-        // that window.
+        // pass, because holding it for the whole pass would block every scan
+        // for the best part of a day.
         let _guard = lock.acquire();
         tags::write::apply(conn, &edits, |_| {})?;
     }
@@ -289,23 +260,6 @@ pub(crate) mod tests {
     use super::*;
     use crate::db::Db;
     use crate::tagsource::transport::{FakeTransport, TransportError};
-
-    /// A real pass, with no waiting. The fake transport fails when it is told
-    /// to and never otherwise, so a backoff would only slow the suite down.
-    pub(crate) fn live() -> Mode {
-        Mode {
-            dry_run: false,
-            backoff: Duration::ZERO,
-        }
-    }
-
-    /// The reporting pass, likewise without the waiting.
-    pub(crate) fn dry() -> Mode {
-        Mode {
-            dry_run: true,
-            backoff: Duration::ZERO,
-        }
-    }
 
     const SEARCH_JSON: &str = include_str!("fixtures/search-loveless.json");
     const RELEASE_JSON: &str = include_str!("fixtures/release-loveless.json");
@@ -433,7 +387,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .unwrap();
@@ -469,7 +423,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .unwrap();
@@ -503,7 +457,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .unwrap();
@@ -549,7 +503,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .unwrap();
@@ -606,7 +560,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .unwrap();
@@ -640,7 +594,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .unwrap();
@@ -670,7 +624,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .expect_err("every attempt failed");
@@ -698,7 +652,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            live(),
+            false,
             100,
         )
         .expect_err("an unreadable body is not a release");
@@ -719,7 +673,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            dry(),
+            true,
             100,
         )
         .unwrap();

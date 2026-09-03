@@ -81,7 +81,7 @@ three things at once: the queue of releases a person still has to decide,
 the point a pass killed mid-run resumes from, and the guard that stops a second
 pass re-searching eight thousand releases. **No row means never attempted**, and
 nothing clears a row — a pass that re-searched every miss on every launch would
-be five hours that finds nothing, forever.
+be the best part of a day that finds nothing, forever.
 
 - **The key is `db::query`'s two grouping expressions**, so a release is the
   same thing here as it is in the browse grid, and so retagging invalidates by

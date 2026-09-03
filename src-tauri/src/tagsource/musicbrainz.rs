@@ -98,19 +98,22 @@ pub fn search(
     local: &LocalRelease,
 ) -> AppResult<Vec<ReleaseCandidate>> {
     let query = query_for(album, artist)?;
-    crate::tagsource::rate::shared().wait();
 
-    // The transport's error crosses this boundary whole rather than flattened
-    // into a message, which is what lets the unattended pass ask whether
-    // asking again could work.
-    let body = transport.get(
-        &format!("{API_ROOT}/release"),
-        &[
-            ("query", query),
-            ("fmt", "json".to_owned()),
-            ("limit", SEARCH_LIMIT.to_string()),
-        ],
-    )?;
+    // Inside the limiter rather than after it: the request holds the gate for
+    // as long as it is in flight, so this process never has two of them out at
+    // once. The transport's error crosses this boundary whole rather than
+    // flattened into a message, which is what lets the unattended pass ask
+    // whether asking again could work.
+    let body = crate::tagsource::rate::shared().run(|| {
+        transport.get(
+            &format!("{API_ROOT}/release"),
+            &[
+                ("query", query),
+                ("fmt", "json".to_owned()),
+                ("limit", SEARCH_LIMIT.to_string()),
+            ],
+        )
+    })?;
     // A search cannot 404: an empty result is `{"releases":[]}` with a 200, so
     // nothing to find and nothing there are the same answer.
     let body = body
@@ -145,12 +148,12 @@ pub fn fetch(
             "{mbid} is not a MusicBrainz id."
         )));
     }
-    crate::tagsource::rate::shared().wait();
-
-    let body = transport.get(
-        &format!("{API_ROOT}/release/{mbid}"),
-        &[("inc", RELEASE_INC.to_owned()), ("fmt", "json".to_owned())],
-    )?;
+    let body = crate::tagsource::rate::shared().run(|| {
+        transport.get(
+            &format!("{API_ROOT}/release/{mbid}"),
+            &[("inc", RELEASE_INC.to_owned()), ("fmt", "json".to_owned())],
+        )
+    })?;
     let body =
         body.ok_or_else(|| AppError::NotFound(format!("MusicBrainz has no release {mbid}.")))?;
 

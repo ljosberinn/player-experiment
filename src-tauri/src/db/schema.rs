@@ -283,8 +283,8 @@ CREATE INDEX idx_tracks_release_group ON tracks(release_group_mbid)
     // the resume point a pass killed mid-run starts from, and the guard that
     // stops a second pass re-searching 8,044 releases. No row means never
     // attempted; a row is never revisited automatically, because a pass that
-    // re-searched every miss on every launch would be five hours that finds
-    // nothing, forever.
+    // re-searched every miss on every launch would be the best part of a day
+    // that finds nothing, forever.
     //
     // The key is `db::query`'s two grouping expressions, so a release is the
     // same thing here as it is in the grid. A `PRIMARY KEY (album, artist)`

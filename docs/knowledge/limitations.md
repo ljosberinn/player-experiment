@@ -34,16 +34,19 @@ Known, decided, and not scheduled. Anything with work attached lives in
   missing nor removed until the user runs a Rescan.
 - **A failed unattended pass is silent.** It was not asked for, so it is not an
   error popover; the line in `main.log` is where it says so.
-- **A first release lookup over a large library takes hours.** Two MusicBrainz
-  calls per release, spaced a little over the one request a second they allow,
-  which is about five hours for eight thousand releases. The limit is enforced
-  at the address, so no amount of concurrency moves it — an open lookup dialog
-  and the pass share the same second. A library already tagged with release
-  MBIDs pays none of it.
+- **A first release lookup over a large library takes most of a day.** Two
+  MusicBrainz calls per release, one request in flight at a time and three
+  seconds between them, which is roughly eighteen hours for eight thousand
+  releases — thirteen of those are the interval itself. Deliberately slower than
+  their documented allowance, because a 503 there can mean their global budget
+  is full rather than anything about this client, and a background pass loses
+  nothing by asking less often. The gate is process-wide, so **an open lookup
+  dialog waits behind the pass** — up to three seconds before its request even
+  goes out. A library already tagged with release MBIDs pays none of it.
 - **A release MusicBrainz has nothing for is never looked up again.**
   Deliberate: MusicBrainz grows, so today's miss is next year's match, but
-  re-searching every miss on every launch would be five hours that finds
-  nothing, forever. There is no manual re-lookup yet.
+  re-searching every miss on every launch would be the best part of a day
+  that finds nothing, forever. There is no manual re-lookup yet.
 - **A release the pass was unsure about has nowhere to be reviewed yet.** It is
   recorded, with its candidates, and nothing was written to it — but there is no
   screen that offers it, and no readout saying a pass is running at all. Until

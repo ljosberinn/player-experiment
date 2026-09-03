@@ -8,15 +8,21 @@
 //! The switch is read between releases rather than captured at start, which is
 //! what makes turning it off cancel a pass in flight and turning it back on
 //! resume - from `release_lookup`, not from the top.
+//!
+//! Waking and sweeping are two different cadences. The switch is read every
+//! [`TICK`] because that is what makes it feel immediate, and it costs one
+//! keyed row. A sweep costs two group-bys over every track in the library, so
+//! a library with nothing left to look up backs off towards [`IDLE_MAX`]
+//! rather than asking that question four times a minute forever.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::db::{lookup, settings, Db};
 use crate::error::AppResult;
 use crate::log::{Fields, Log};
 use crate::scan::ScanLock;
-use crate::tagsource::pass::{self, Mode, Verdict};
+use crate::tagsource::pass::{self, Verdict};
 use crate::tagsource::transport::Transport;
 
 /// How often the thread wakes to ask whether the switch is on.
@@ -25,27 +31,50 @@ use crate::tagsource::transport::Transport;
 /// decides only how soon a changed setting takes effect.
 const TICK: Duration = Duration::from_secs(15);
 
+/// The longest a library with nothing to do waits between sweeps.
+///
+/// A sweep over a finished library is two group-bys over every track - a fifth
+/// of a second on 65,000 of them, one of which takes the write lock - to be
+/// told there is nothing to do. At [`TICK`] that is 5,760 of them a day. The
+/// cost of the ceiling is that a release a scan has just added waits up to ten
+/// minutes for its lookup, which is nothing beside a pass measured in hours.
+const IDLE_MAX: Duration = Duration::from_secs(600);
+
 /// How many pending releases are read at a time.
 ///
 /// `lookup::pending` groups every row of `tracks`, so asking for one release at
-/// a time would spend a pass that already takes five hours scanning that table
+/// a time would spend a pass that already takes hours scanning that table
 /// eight thousand times. Large enough to amortise it, small enough that a
 /// release retagged mid-pass is picked up within a batch.
 const BATCH: usize = 200;
 
-/// The numbers a sweep runs by, in one place so that a test can shrink them.
+/// What a sweep runs by, and where the last one got to.
+///
+/// Owned by the thread rather than built per sweep, because `surveyed` has to
+/// outlive a sweep that ended early.
 #[derive(Debug, Clone, Copy)]
 pub struct Plan {
-    pub mode: Mode,
+    /// Report the verdict per release and write nothing - neither files nor
+    /// rows.
+    pub dry_run: bool,
     pub batch: usize,
+    /// How many releases a dry run has been through.
+    ///
+    /// **A real pass leaves this at zero.** Its rows are its cursor, which is
+    /// what makes it resume across a quit; a dry run writes none, so this is
+    /// the only thing standing between it and surveying its first batch over
+    /// and over. It survives a sweep that a 503 ended, and it does not survive
+    /// the process - a rehearsal is one sitting.
+    pub surveyed: usize,
 }
 
 impl Plan {
     /// What the thread runs with.
     pub fn from_env() -> Self {
         Self {
-            mode: Mode::from_env(),
+            dry_run: pass::dry_run(),
             batch: BATCH,
+            surveyed: 0,
         }
     }
 }
@@ -56,6 +85,9 @@ pub struct Summary {
     pub resolved: usize,
     pub queued: usize,
     pub missed: usize,
+    /// The sweep ended because a release failed, rather than because it ran
+    /// out of releases or the switch went off.
+    pub failed: bool,
 }
 
 impl Summary {
@@ -78,31 +110,23 @@ pub fn sweep(
     transport: &(dyn Transport + '_),
     log: &Log,
     staging: &Path,
-    plan: Plan,
+    plan: &mut Plan,
     enabled: &dyn Fn() -> AppResult<bool>,
 ) -> AppResult<Summary> {
     let mut summary = Summary::default();
 
     let mut conn = db.conn()?;
     // Free, and it is what keeps a re-install or a rescan of an already-tagged
-    // library off the five hours. Behind the same check as every other write:
-    // it is the one row a dry run would otherwise leave behind.
-    if !plan.mode.dry_run {
+    // library off the hours. Behind the same check as every other write: it is
+    // the one row a dry run would otherwise leave behind.
+    if !plan.dry_run {
         lookup::seed_from_tags(&conn, crate::now_seconds())?;
     }
 
-    // A real pass's cursor is the rows it writes, which is what makes it
-    // resumable across a quit; a dry run writes none and would survey its
-    // first batch over and over instead. One survey in one process has nothing
-    // to resume, so it pages.
-    let mut offset = 0;
     loop {
-        let batch = lookup::pending(&conn, plan.batch, offset)?;
+        let batch = lookup::pending(&conn, plan.batch, plan.surveyed)?;
         if batch.is_empty() {
             return Ok(summary);
-        }
-        if plan.mode.dry_run {
-            offset += batch.len();
         }
 
         for release in &batch {
@@ -126,9 +150,15 @@ pub fn sweep(
                 lock,
                 release,
                 staging,
-                plan.mode,
+                plan.dry_run,
                 crate::now_seconds(),
             );
+            // Per release attempted rather than per batch read, and past one
+            // that failed as well: a survey with a hole in it is worth more
+            // than one stuck on the release that always fails.
+            if plan.dry_run {
+                plan.surveyed += 1;
+            }
 
             // Logged by hand rather than through `Op::run_with`, because which
             // of the two this is - a line, or silence - is not known until the
@@ -138,7 +168,7 @@ pub fn sweep(
             // releases MusicBrainz has never heard of is noise.
             match &verdict {
                 Ok(Verdict::NotFound) => {}
-                Ok(verdict) => op.succeeded(verdict_fields(verdict, plan.mode.dry_run)),
+                Ok(verdict) => op.succeeded(verdict_fields(verdict, plan.dry_run)),
                 Err(error) => op.failed(error),
             }
 
@@ -146,12 +176,15 @@ pub fn sweep(
                 Ok(Verdict::Written { .. }) => summary.resolved += 1,
                 Ok(Verdict::Queued { .. }) => summary.queued += 1,
                 Ok(Verdict::NotFound) => summary.missed += 1,
-                // A release that failed keeps no row, so the next sweep tries
-                // it again - right for a network that was down, harmless for
-                // one that was not. Stopping rather than carrying on, because
-                // the usual cause is that every following release would fail
-                // the same way, one rate-limited second at a time.
-                Err(_) => return Ok(summary),
+                // A release that failed keeps no row, so a real pass tries it
+                // again next sweep - right for a network that was down,
+                // harmless for one that was not. Stopping rather than carrying
+                // on, because the usual cause is that every following release
+                // would fail the same way, one rate-limited request at a time.
+                Err(_) => {
+                    summary.failed = true;
+                    return Ok(summary);
+                }
             }
         }
     }
@@ -198,59 +231,84 @@ pub fn spawn(
 ) {
     let _ = std::thread::Builder::new()
         .name("release-lookup".to_owned())
-        .spawn(move || loop {
-            std::thread::sleep(TICK);
+        .spawn(move || {
+            // The dry run's cursor lives out here, so a sweep a 503 ended does
+            // not send the survey back to the first release. A real pass never
+            // touches it.
+            let mut plan = Plan::from_env();
+            // How long to leave between sweeps, as against between wakes. It
+            // doubles while there is nothing to do and snaps back the moment
+            // there is.
+            let mut quiet = TICK;
+            let mut due = Instant::now();
 
-            // One connection for the whole sweep rather than one per release:
-            // the switch is read thousands of times and opening a database to
-            // read one row is most of what that costs.
-            let switch = match db.conn() {
-                Ok(conn) => conn,
-                Err(error) => {
-                    log.op("lookup.switch").failed(&error);
+            loop {
+                std::thread::sleep(TICK);
+
+                // One connection for the whole sweep rather than one per
+                // release: the switch is read thousands of times and opening a
+                // database to read one row is most of what that costs.
+                let switch = match db.conn() {
+                    Ok(conn) => conn,
+                    Err(error) => {
+                        log.op("lookup.switch").failed(&error);
+                        continue;
+                    }
+                };
+                // Read every wake and every release rather than captured once:
+                // that is what makes the switch cancel rather than merely stop
+                // the next pass, and what lets turning it back on resume
+                // without a restart.
+                let enabled = || settings::unattended_lookup(&switch);
+                match enabled() {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(error) => {
+                        log.op("lookup.switch").failed(&error);
+                        continue;
+                    }
+                }
+                // The switch is answered every wake; the library is not asked
+                // until a sweep is due.
+                if Instant::now() < due {
                     continue;
                 }
-            };
-            // Read every wake and every release rather than captured once:
-            // that is what makes the switch cancel rather than merely stop the
-            // next pass, and what lets turning it back on resume without a
-            // restart.
-            let enabled = || settings::unattended_lookup(&switch);
-            match enabled() {
-                Ok(true) => {}
-                Ok(false) => continue,
-                Err(error) => {
-                    log.op("lookup.switch").failed(&error);
+                let Some(transport) = crate::tagsource::transport::shared() else {
                     continue;
+                };
+
+                let op = log.op("lookup.sweep");
+                let summary = sweep(&db, &lock, transport, &log, &staging, &mut plan, &enabled);
+
+                // A sweep that got through releases without failing is a
+                // library with work in it, so the next one comes straight
+                // away. Everything else - nothing to do, or a sweep a failure
+                // ended - waits longer each time, which is what stops a
+                // finished library being re-grouped four times a minute and a
+                // service that is down being asked every fifteen seconds.
+                let worked =
+                    matches!(&summary, Ok(summary) if summary.attempted() > 0 && !summary.failed);
+                quiet = if worked {
+                    TICK
+                } else {
+                    (quiet * 2).min(IDLE_MAX)
+                };
+                due = Instant::now() + quiet;
+
+                match &summary {
+                    Ok(summary) => op.succeeded(
+                        Fields::new()
+                            .add("resolved", summary.resolved)
+                            .add("queued", summary.queued)
+                            .add("missed", summary.missed)
+                            .add("next", format!("{}s", quiet.as_secs())),
+                    ),
+                    Err(error) => op.failed(error),
                 }
-            }
-            let Some(transport) = crate::tagsource::transport::shared() else {
-                continue;
-            };
 
-            let op = log.op("lookup.sweep");
-            let summary = sweep(
-                &db,
-                &lock,
-                transport,
-                &log,
-                &staging,
-                Plan::from_env(),
-                &enabled,
-            );
-
-            match &summary {
-                Ok(summary) => op.succeeded(
-                    Fields::new()
-                        .add("resolved", summary.resolved)
-                        .add("queued", summary.queued)
-                        .add("missed", summary.missed),
-                ),
-                Err(error) => op.failed(error),
-            }
-
-            if matches!(&summary, Ok(summary) if summary.resolved > 0) {
-                on_change();
+                if matches!(&summary, Ok(summary) if summary.resolved > 0) {
+                    on_change();
+                }
             }
         });
 }
@@ -258,15 +316,27 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tagsource::pass::tests::{
-        add_release, dry, library, live, musicbrainz, LOVELESS_DURATIONS,
-    };
+    use crate::tagsource::pass::tests::{add_release, library, musicbrainz, LOVELESS_DURATIONS};
     use crate::tagsource::transport::FakeTransport;
 
-    /// A real pass over whole batches, which is every test here but the one
+    /// A real pass over whole batches, which is every test here but the ones
     /// about paging.
-    fn plan(mode: Mode) -> Plan {
-        Plan { mode, batch: BATCH }
+    fn live() -> Plan {
+        Plan {
+            dry_run: false,
+            batch: BATCH,
+            surveyed: 0,
+        }
+    }
+
+    /// A dry run reading one release at a time, so that a second batch is
+    /// reached without a library of two hundred of them.
+    fn dry() -> Plan {
+        Plan {
+            dry_run: true,
+            batch: 1,
+            surveyed: 0,
+        }
     }
 
     /// The switch held on, which is every test here but the one that flips it.
@@ -314,7 +384,7 @@ mod tests {
             &transport,
             &log,
             dir.path(),
-            plan(live()),
+            &mut live(),
             &|| {
                 let before = seen.get();
                 seen.set(before + 1);
@@ -324,16 +394,7 @@ mod tests {
         .unwrap();
         assert_eq!(first.attempted(), 1);
 
-        let second = sweep(
-            &db,
-            &lock,
-            &transport,
-            &log,
-            dir.path(),
-            plan(live()),
-            &on(),
-        )
-        .unwrap();
+        let second = sweep(&db, &lock, &transport, &log, dir.path(), &mut live(), &on()).unwrap();
         assert_eq!(
             second.attempted(),
             1,
@@ -349,31 +410,14 @@ mod tests {
         let transport = musicbrainz();
 
         assert_eq!(
-            sweep(
-                &db,
-                &lock,
-                &transport,
-                &log,
-                dir.path(),
-                plan(live()),
-                &on()
-            )
-            .unwrap()
-            .attempted(),
+            sweep(&db, &lock, &transport, &log, dir.path(), &mut live(), &on())
+                .unwrap()
+                .attempted(),
             2
         );
         let spent = transport.call_count();
 
-        let again = sweep(
-            &db,
-            &lock,
-            &transport,
-            &log,
-            dir.path(),
-            plan(live()),
-            &on(),
-        )
-        .unwrap();
+        let again = sweep(&db, &lock, &transport, &log, dir.path(), &mut live(), &on()).unwrap();
 
         assert_eq!(again.attempted(), 0);
         assert_eq!(
@@ -384,7 +428,7 @@ mod tests {
     }
 
     /// The seed, asserted through the sweep: a library already carrying its
-    /// identities must not pay five hours for them again.
+    /// identities must not pay for the whole pass again.
     #[test]
     fn a_library_that_already_carries_its_mbids_costs_no_requests() {
         let (dir, db) = two_releases();
@@ -400,7 +444,7 @@ mod tests {
             &transport,
             &log_to(dir.path()),
             dir.path(),
-            plan(live()),
+            &mut live(),
             &on(),
         )
         .unwrap();
@@ -427,10 +471,7 @@ mod tests {
             &musicbrainz(),
             &log,
             dir.path(),
-            Plan {
-                mode: dry(),
-                batch: 1,
-            },
+            &mut dry(),
             &|| {
                 let before = seen.get();
                 seen.set(before + 1);
@@ -463,10 +504,7 @@ mod tests {
             &musicbrainz(),
             &log_to(dir.path()),
             dir.path(),
-            Plan {
-                mode: dry(),
-                batch: 1,
-            },
+            &mut dry(),
             &on(),
         )
         .unwrap();
@@ -479,5 +517,87 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    /// What sent the survey back to the first release every time: a sweep a
+    /// 503 ended is the ordinary case, not the exception, and the cursor has
+    /// to outlive it. The failed release is passed over rather than retried
+    /// forever - a survey with a hole beats one that cannot move.
+    #[test]
+    fn a_dry_run_carries_its_place_across_a_sweep_that_failed() {
+        let (dir, db) = two_releases();
+        let log = log_to(dir.path());
+        let mut plan = dry();
+
+        let refused = FakeTransport::new().failing(
+            "/ws/2/release",
+            crate::tagsource::transport::TransportError::Server {
+                host: "musicbrainz.org".to_owned(),
+                status: 503,
+            },
+        );
+        let first = sweep(
+            &db,
+            &ScanLock::default(),
+            &refused,
+            &log,
+            dir.path(),
+            &mut plan,
+            &on(),
+        )
+        .unwrap();
+        assert!(first.failed);
+        assert_eq!(first.attempted(), 0, "it got a verdict for nothing");
+        assert_eq!(plan.surveyed, 1, "but it did get past the release");
+
+        let second = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log,
+            dir.path(),
+            &mut plan,
+            &on(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            second.attempted(),
+            1,
+            "the survey carries on from the second release rather than starting over"
+        );
+    }
+
+    /// A finished library is the state the pass spends most of its life in,
+    /// and a sweep over one is two group-bys over every track in it.
+    #[test]
+    fn a_sweep_with_nothing_to_do_says_so() {
+        let (dir, db) = two_releases();
+        let mut plan = live();
+        let log = log_to(dir.path());
+
+        sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log,
+            dir.path(),
+            &mut plan,
+            &on(),
+        )
+        .unwrap();
+        let idle = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log,
+            dir.path(),
+            &mut plan,
+            &on(),
+        )
+        .unwrap();
+
+        assert_eq!(idle.attempted(), 0);
+        assert!(!idle.failed, "nothing to do is not a failure");
     }
 }

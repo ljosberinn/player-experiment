@@ -4,8 +4,8 @@
 //! Three jobs in one table - the review queue, the pass's resume point, and
 //! the guard that stops a second pass re-searching 8,044 releases. No row
 //! means never attempted, and nothing here ever clears a row: a pass that
-//! re-searched every miss on every launch would be five hours that finds
-//! nothing, forever.
+//! re-searched every miss on every launch would be the best part of a day
+//! that finds nothing, forever.
 //!
 //! Every query keys on `db::query`'s two grouping expressions, folded with
 //! `COLLATE NOCASE` the way the browse grid folds them, because a release has
@@ -138,8 +138,8 @@ pub fn record(
 /// Resolves every release whose files already agree on a release MBID.
 ///
 /// Seeded from the tags `tags::read` keeps, so a re-install or a rescan of a
-/// library Picard already tagged does not pay five hours again. Returns how
-/// many releases it resolved.
+/// library Picard already tagged does not pay for the whole pass again.
+/// Returns how many releases it resolved.
 ///
 /// `count(*) = count(release_mbid)` is "every file carries one" - `count` of a
 /// column skips NULLs - and the `count(DISTINCT …) = 1` beside it refuses a
@@ -333,7 +333,7 @@ mod tests {
     }
 
     /// A re-install or a rescan of a library Picard already tagged must not
-    /// pay five hours again.
+    /// pay for the whole pass again.
     #[test]
     fn a_release_whose_files_all_carry_an_mbid_is_resolved_without_a_call() {
         let (_dir, conn) = open();

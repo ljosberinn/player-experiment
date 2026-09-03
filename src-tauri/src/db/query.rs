@@ -447,8 +447,8 @@ const RELEASE_ORDER: &str = "coalesce(tracks.disc_no, 1), tracks.track_no, track
 /// Splits a selection into the releases it covers.
 ///
 /// A release is the unit a lookup is worth doing at - 65,535 tracks are some
-/// 8,000 releases, and one request a second is the budget - so this is what
-/// decides how many lookups a selection costs.
+/// 8,000 releases, and the limiter lets one request out every three seconds -
+/// so this is what decides how many lookups a selection costs.
 ///
 /// Grouped by the browse view's own expressions, empty strings and all, so
 /// that a release is the same thing here as it is in the grid. Anything else
@@ -499,8 +499,8 @@ pub fn release_selections(
 
 /// Whether a row belongs to the release being accumulated, folding case the
 /// way the browse view groups: a release tagged two ways is one release, and
-/// unfolded it would be searched twice at one request a second and offered to
-/// the user twice.
+/// unfolded it would be searched twice, three rate-limited seconds apart, and
+/// offered to the user twice.
 ///
 /// ASCII-only, like the `NOCASE` collation it mirrors.
 fn same_release(

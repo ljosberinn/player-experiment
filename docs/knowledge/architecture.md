@@ -90,30 +90,47 @@ and skips the pass entirely; a user-asked scan waits, because a Rescan that
 silently did nothing is worse than one that starts its walk late. **The lookup
 pass takes it per write, never for the pass** — it rewrites the files a scan
 reads its `(mtime, size)` from, so each write has to be behind the lock, but
-holding it for five hours would block every scan in that window.
+holding it for the whole pass would block every scan for the best part of a
+day.
 Poison-tolerant: a panicking scan must not leave the
 library unscannable for the rest of the session.
 
 **A second background thread looks releases up.** `release-lookup` wakes on the
 same fifteen seconds, reads `lookup.unattended` from `settings`, and works
 through every release `release_lookup` has no row for: two MusicBrainz calls
-each, spaced a little over the one request a second the shared limiter
-enforces — the headroom is what keeps a whole pass from collecting 503s. A
-request that could work later is retried twice, backing off, before the sweep
-gives up; a failure that cannot change is given up on at once. It reads the
-setting between releases and not only on waking, so turning the switch off
-cancels a pass in flight and turning it back on resumes from the table rather
-than from the top; a setting that cannot be read is logged and is not taken for
-a switch that is off. Above `score::UNATTENDED_THRESHOLD` it writes the
-release's tags; below it, it records the release for a person to decide and
-writes nothing.
+each. It reads the setting between releases and not only on waking, so turning
+the switch off cancels a pass in flight and turning it back on resumes from the
+table rather than from the top; a setting that cannot be read is logged and is
+not taken for a switch that is off. Above `score::UNATTENDED_THRESHOLD` it
+writes the release's tags; below it, it records the release for a person to
+decide and writes nothing.
+
+**Waking and sweeping are two cadences.** The switch is answered every fifteen
+seconds because that is what makes it feel immediate, and it costs one keyed
+row. A sweep costs two group-bys over every track in the library, so the gap
+between sweeps doubles — to a ten-minute ceiling — whenever one finds nothing to
+do or ends on a failure, and snaps back to fifteen seconds the moment one gets
+through releases. A release a scan has just added therefore waits up to ten
+minutes, which is nothing beside a pass measured in hours.
+
+**The limiter holds one request at a time, three seconds apart.** Not the one a
+second [MusicBrainz documents](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting),
+because they decline with a 503 from three separate buckets — per user agent,
+per address and a global three hundred a second — and a client inside its own
+allowance still meets 503s when theirs is full, indistinguishably. The gate is
+held for the whole request rather than only the gap before it, so the interval
+is measured from when an answer came back; a request that could work later is
+asked again twice, with the limiter rather than the caller deciding how long
+that takes.
 
 `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
 which is how the threshold is tuned against a real library. **The rows are the
 real pass's cursor and cannot be the dry run's**, so a dry run pages
 `lookup::pending` by offset instead, skips the tag seed — the one row it would
 otherwise leave behind — and logs `would-write` and `would-queue` where a real
-pass logs `written` and `queued`.
+pass logs `written` and `queued`. That offset is the thread's rather than the
+sweep's, so a sweep a 503 ended does not send the survey back to the first
+release.
 
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
