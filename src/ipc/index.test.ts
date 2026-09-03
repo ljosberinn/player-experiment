@@ -235,6 +235,7 @@ describe("ipc", () => {
         discNo: null,
         releaseMbid: null,
         releaseGroupMbid: null,
+        releaseType: null,
         cover: { kind: "remove" },
       };
       invokeMock.mockResolvedValue({ written: 2, failed: 0, errors: [] });

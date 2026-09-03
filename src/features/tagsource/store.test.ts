@@ -67,6 +67,8 @@ const detail: ReleaseDetail = {
   tracks: [
     { title: "Only Shallow", artist: "My Bloody Valentine", trackNo: 1, discNo: 1, durationMs: 1 },
   ],
+  genre: null,
+  releaseType: null,
   coverPath: null,
 };
 

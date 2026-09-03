@@ -78,6 +78,8 @@ const detail: ReleaseDetail = {
     },
     { title: "Loomer", artist: "My Bloody Valentine", trackNo: 2, discNo: 1, durationMs: 148_000 },
   ],
+  genre: null,
+  releaseType: null,
   coverPath: "/cache/chosen-cover.jpg",
 };
 
