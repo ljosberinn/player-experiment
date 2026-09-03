@@ -6,10 +6,13 @@
 //! written without first recording what was there, so a bulk edit over 500
 //! files is one undoable step rather than 500 irreversible ones.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use lofty::config::WriteOptions;
 use lofty::file::TaggedFileExt;
+use lofty::id3::v2::Id3v2Tag;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::probe::Probe;
@@ -27,6 +30,23 @@ use crate::tags::{hash_bytes, Cover};
 /// a 40 MB scan of an LP sleeve would bloat both for no visible gain.
 const MAX_COVER_BYTES: usize = 12 * 1024 * 1024;
 
+/// The TXXX descriptions the two MusicBrainz ids live under in ID3v2, paired
+/// with the [`ItemKey`] lofty reads them into.
+///
+/// They have to be written by description because lofty will not write them by
+/// key: its `Tag` to `Id3v2Tag` conversion (0.25, `id3/v2/tag/conversion.rs`)
+/// has an arm for `MusicBrainzArtistId` and its siblings but none for these
+/// two, and the fallback arm only handles four-character frame ids, so
+/// `insert_text` on a generic tag is silently discarded on save. Reading is
+/// unaffected - TXXX frames map back to `ItemKey` by description.
+const MUSICBRAINZ_TXXX: [(ItemKey, &str); 2] = [
+    (ItemKey::MusicBrainzReleaseId, "MusicBrainz Album Id"),
+    (
+        ItemKey::MusicBrainzReleaseGroupId,
+        "MusicBrainz Release Group Id",
+    ),
+];
+
 /// How many files are written between progress emissions.
 ///
 /// Coarser than it looks like it should be. A tag write is a copy-and-replace
@@ -42,7 +62,12 @@ const PROGRESS_INTERVAL: usize = 25;
 /// undo stopped restoring artwork once `covers` began holding a re-encode
 /// rather than the file's own bytes. It stays in the snapshot because it costs
 /// a hash to record and is the only trace of what a file's artwork was.
+///
+/// `serde(default)` because the journal outlives this struct: a row written by
+/// an older build is missing whatever fields were added since, and it has to
+/// stay undoable rather than becoming an unreadable record.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TagSnapshot {
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -53,6 +78,8 @@ pub struct TagSnapshot {
     pub year: Option<i64>,
     pub track_no: Option<i64>,
     pub disc_no: Option<i64>,
+    pub release_mbid: Option<String>,
+    pub release_group_mbid: Option<String>,
     pub cover_hash: Option<String>,
 }
 
@@ -72,13 +99,19 @@ struct Resolved {
     year: Option<Option<i64>>,
     track_no: Option<Option<i64>>,
     disc_no: Option<Option<i64>>,
+    release_mbid: Option<Option<String>>,
+    release_group_mbid: Option<Option<String>>,
     cover: Option<CoverChange>,
 }
 
 #[derive(Debug, Clone)]
 enum CoverChange {
     Remove,
-    Replace(Cover),
+    /// Shared, because a batch is usually one cover repeated - a release whose
+    /// artwork was replaced sends the same path with every track, and holding
+    /// a copy per track would put hundreds of megabytes on the heap to write
+    /// the same image.
+    Replace(Arc<Cover>),
 }
 
 /// An empty string means "clear this field"; absent means "leave it alone".
@@ -105,7 +138,8 @@ fn number(field: &Option<String>, name: &str) -> AppResult<Option<Option<i64>>> 
     }
 }
 
-fn resolve(edit: &TagEdit) -> AppResult<Resolved> {
+/// Resolves one edit, reusing any cover already loaded for the same path.
+fn resolve(edit: &TagEdit, covers: &mut HashMap<String, Arc<Cover>>) -> AppResult<Resolved> {
     Ok(Resolved {
         title: text(&edit.title),
         artist: text(&edit.artist),
@@ -116,10 +150,22 @@ fn resolve(edit: &TagEdit) -> AppResult<Resolved> {
         year: number(&edit.year, "Year")?,
         track_no: number(&edit.track_no, "Track number")?,
         disc_no: number(&edit.disc_no, "Disc number")?,
+        release_mbid: text(&edit.release_mbid),
+        release_group_mbid: text(&edit.release_group_mbid),
         cover: match &edit.cover {
             None => None,
             Some(CoverEdit::Remove) => Some(CoverChange::Remove),
-            Some(CoverEdit::Replace { path }) => Some(CoverChange::Replace(read_cover(path)?)),
+            Some(CoverEdit::Replace { path }) => {
+                let cover = match covers.get(path) {
+                    Some(cover) => Arc::clone(cover),
+                    None => {
+                        let cover = Arc::new(read_cover(path)?);
+                        covers.insert(path.clone(), Arc::clone(&cover));
+                        cover
+                    }
+                };
+                Some(CoverChange::Replace(cover))
+            }
         },
     })
 }
@@ -180,6 +226,8 @@ fn snapshot(path: &Path) -> AppResult<TagSnapshot> {
         year: tags.year,
         track_no: tags.track_no,
         disc_no: tags.disc_no,
+        release_mbid: tags.release_mbid,
+        release_group_mbid: tags.release_group_mbid,
         cover_hash: tags.cover.map(|cover| cover.hash),
     })
 }
@@ -233,6 +281,12 @@ fn mutate(tag: &mut Tag, resolved: &Resolved) {
             None => tag.remove_disk(),
         }
     }
+    if let Some(value) = &resolved.release_mbid {
+        set_or_remove(tag, ItemKey::MusicBrainzReleaseId, value);
+    }
+    if let Some(value) = &resolved.release_group_mbid {
+        set_or_remove(tag, ItemKey::MusicBrainzReleaseGroupId, value);
+    }
     if let Some(change) = &resolved.cover {
         // Every picture goes, not just the front cover: a file with three
         // embedded images should end up showing the one that was chosen.
@@ -280,8 +334,7 @@ fn write_file(path: &Path, resolved: &Resolved) -> AppResult<()> {
             .unwrap_or_else(|| Tag::new(TagType::Id3v2));
 
         mutate(&mut tag, resolved);
-        tag.save_to_path(&temp, WriteOptions::default())
-            .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))
+        save_tag(&temp, tag).map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))
     })();
 
     if result.is_err() {
@@ -294,6 +347,40 @@ fn write_file(path: &Path, resolved: &Resolved) -> AppResult<()> {
     // replaces the original rather than failing on it.
     std::fs::rename(&temp, path).map_err(|e| AppError::io(path.display(), e))?;
     Ok(())
+}
+
+/// Saves `tag`, carrying the MusicBrainz ids lofty would drop on the way.
+///
+/// See [`MUSICBRAINZ_TXXX`]. The values are taken off the generic tag before
+/// the conversion loses them and put back as TXXX frames afterwards, which
+/// covers both cases at once: an id the edit set, and an id the file already
+/// carried that the edit never mentioned. A key absent from the tag stays
+/// absent, so clearing one still clears it.
+///
+/// Only ID3v2 gets this. An mp3 carrying nothing but an ID3v1 tag has no frame
+/// to put a MusicBrainz id in, and turning it into an ID3v2 file would be a
+/// larger change to make silently than the ids are worth.
+fn save_tag(path: &Path, tag: Tag) -> Result<(), lofty::error::FileEncodingError> {
+    if tag.tag_type() != TagType::Id3v2 {
+        return tag.save_to_path(path, WriteOptions::default());
+    }
+
+    let carried: Vec<(&str, String)> = MUSICBRAINZ_TXXX
+        .iter()
+        .filter_map(|(key, description)| {
+            tag.get_string(*key)
+                .map(|value| (*description, value.to_owned()))
+        })
+        .collect();
+
+    let mut id3 = Id3v2Tag::from(tag);
+    for (_, description) in MUSICBRAINZ_TXXX {
+        id3.remove_user_text(description);
+    }
+    for (description, value) in carried {
+        id3.insert_user_text(description.to_owned(), value);
+    }
+    id3.save_to_path(path, WriteOptions::default())
 }
 
 /// A sibling of `path`, so the rename never crosses a filesystem boundary.
@@ -326,7 +413,8 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
     conn.execute(
         "UPDATE tracks SET title = ?2, artist = ?3, album = ?4, album_artist = ?5,
                            genre = ?6, comment = ?7, year = ?8, track_no = ?9, disc_no = ?10,
-                           cover_hash = ?11, mtime = ?12, size = ?13
+                           release_mbid = ?11, release_group_mbid = ?12,
+                           cover_hash = ?13, mtime = ?14, size = ?15
          WHERE id = ?1",
         rusqlite::params![
             track_id,
@@ -339,6 +427,8 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
             tags.year,
             tags.track_no,
             tags.disc_no,
+            tags.release_mbid,
+            tags.release_group_mbid,
             cover_hash,
             metadata
                 .modified()
@@ -353,19 +443,45 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
 
 /// Applies one edit to many tracks.
 ///
+/// The bulk editor's shape: one set of fields broadcast over a selection.
+/// Everything below it works per track, so this is the caller that repeats
+/// itself rather than a second writer.
+pub fn apply_to_each(
+    conn: &mut Connection,
+    track_ids: &[i64],
+    edit: &TagEdit,
+    now: i64,
+    on_progress: impl FnMut(WriteProgress),
+) -> AppResult<TagWriteSummary> {
+    let edits: Vec<(i64, TagEdit)> = track_ids.iter().map(|&id| (id, edit.clone())).collect();
+    apply(conn, &edits, now, on_progress)
+}
+
+/// Applies one edit per track, as a single undoable batch.
+///
+/// Per track rather than one edit over many files, because a tracklist is the
+/// case that cannot be spelled the other way: title, track number and disc
+/// number all differ per file, and applying them file by file would leave a
+/// release restorable only one track at a time.
+///
 /// Files are written first and the database second, because the file is what
 /// survives this application. A file that cannot be written is reported and
 /// skipped rather than failing the batch - a locked file in the middle of 500
 /// should not undo the other 499.
 pub fn apply(
     conn: &mut Connection,
-    track_ids: &[i64],
-    edit: &TagEdit,
+    edits: &[(i64, TagEdit)],
     now: i64,
     mut on_progress: impl FnMut(WriteProgress),
 ) -> AppResult<TagWriteSummary> {
-    let resolved = resolve(edit)?;
-    let total = track_ids.len() as u32;
+    // Every edit is resolved before any file is opened, so an unparseable
+    // number in the last one refuses the batch rather than half-writing it.
+    let mut covers: HashMap<String, Arc<Cover>> = HashMap::new();
+    let resolved = edits
+        .iter()
+        .map(|(track_id, edit)| Ok((*track_id, resolve(edit, &mut covers)?)))
+        .collect::<AppResult<Vec<(i64, Resolved)>>>()?;
+    let total = resolved.len() as u32;
     // Before the first file, so a dialog showing this has a fraction to draw
     // rather than a blank while the first write is in flight.
     on_progress(WriteProgress { done: 0, total });
@@ -378,7 +494,8 @@ pub fn apply(
     let mut written: Vec<(i64, PathBuf, TagSnapshot)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
 
-    for (index, &track_id) in track_ids.iter().enumerate() {
+    for (index, (track_id, resolved)) in resolved.iter().enumerate() {
+        let track_id = *track_id;
         let path: Option<String> = conn
             .query_row("SELECT path FROM tracks WHERE id = ?1", [track_id], |row| {
                 row.get(0)
@@ -388,7 +505,7 @@ pub fn apply(
         if let Some(path) = path.map(PathBuf::from) {
             // Snapshot before writing, so undo has something to restore even
             // if the write half-succeeds.
-            match snapshot(&path).and_then(|before| write_file(&path, &resolved).map(|()| before)) {
+            match snapshot(&path).and_then(|before| write_file(&path, resolved).map(|()| before)) {
                 Ok(before) => written.push((track_id, path, before)),
                 Err(error) => failures.push(error.to_string()),
             }
@@ -545,6 +662,8 @@ fn to_resolved(before: &TagSnapshot) -> AppResult<Resolved> {
         year: Some(before.year),
         track_no: Some(before.track_no),
         disc_no: Some(before.disc_no),
+        release_mbid: Some(before.release_mbid.clone()),
+        release_group_mbid: Some(before.release_group_mbid.clone()),
         cover: None,
     })
 }
@@ -632,6 +751,21 @@ mod tests {
     #[test]
     fn a_missing_cover_file_is_reported_rather_than_panicking() {
         assert!(read_cover("C:\\nowhere\\missing.jpg").is_err());
+    }
+
+    #[test]
+    fn an_undo_record_written_before_a_field_existed_is_still_readable() {
+        // The journal outlives this struct. A snapshot from a build that had
+        // no MBID columns has to restore the fields it does carry rather than
+        // failing the whole batch as an unreadable record.
+        let older = r#"{"title":"Maki","artist":null,"album":null,"album_artist":null,
+                        "genre":"Post Shoegaze","comment":null,"year":2012,"track_no":1,
+                        "disc_no":null,"cover_hash":null}"#;
+
+        let before: TagSnapshot = serde_json::from_str(older).expect("older record");
+
+        assert_eq!(before.title.as_deref(), Some("Maki"));
+        assert_eq!(before.release_mbid, None);
     }
 
     #[test]

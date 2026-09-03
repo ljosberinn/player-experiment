@@ -117,6 +117,18 @@ Each of these cost real time once. They are here so they cost it once.
 - A Python here-doc turning `\b` into a literal backspace made a guard match
   nothing and pass vacuously. Prove a new guard red.
 
+## Tag writing
+
+**lofty reads the MusicBrainz release ids but will not write them.** Its
+`Tag`-to-`Id3v2Tag` conversion (0.25, `id3/v2/tag/conversion.rs`) has an arm for
+`MusicBrainzArtistId` and its siblings and none for `MusicBrainzReleaseId` or
+`MusicBrainzReleaseGroupId`, and its fallback only handles four-character frame
+ids — so `insert_text` with either key is discarded on save, without an error.
+Reading is unaffected, since TXXX frames map back to an `ItemKey` by
+description. `write::save_tag` puts both back as TXXX frames after the
+conversion. It also has to re-add ids the *file* already had, because they take
+the same path out.
+
 ## Colour extraction
 
 Median cut splits a box at its median **pixel**, so an album cover that is 70%

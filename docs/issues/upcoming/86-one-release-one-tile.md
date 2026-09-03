@@ -29,7 +29,7 @@ and by then 82 has also written the album artist.
 
 **Release group, not release.** A release MBID is per pressing, so two rips of
 the same album from different pressings would resolve to two of them and split a
-tile that is one today. [79a](79a-per-track-edits-and-the-release-mbid.md) carries
+tile that is one today. [79a](../done/79a-per-track-edits-and-the-release-mbid.md) carries
 `MUSICBRAINZ_RELEASEGROUPID` (`ItemKey::MusicBrainzReleaseGroupId`) beside the
 release MBID for this; every file measured carrying one carried the other, so the
 coverage is the same and the identity is the right one.

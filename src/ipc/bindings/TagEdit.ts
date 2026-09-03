@@ -13,4 +13,9 @@ import type { CoverEdit } from "./CoverEdit";
  * Numbers are strings here for the same reason: the editor's inputs hold
  * strings, and an empty one has to mean "clear" rather than zero.
  */
-export type TagEdit = { title: string | null, artist: string | null, album: string | null, albumArtist: string | null, genre: string | null, comment: string | null, year: string | null, trackNo: string | null, discNo: string | null, cover: CoverEdit | null, };
+export type TagEdit = { title: string | null, artist: string | null, album: string | null, albumArtist: string | null, genre: string | null, comment: string | null, year: string | null, trackNo: string | null, discNo: string | null, 
+/**
+ * The MusicBrainz identifiers, which no editor field sets - they are here
+ * for the release lookup, which is the only thing that knows them.
+ */
+releaseMbid: string | null, releaseGroupMbid: string | null, cover: CoverEdit | null, };

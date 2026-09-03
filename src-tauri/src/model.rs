@@ -321,6 +321,10 @@ pub struct TagEdit {
     pub year: Option<String>,
     pub track_no: Option<String>,
     pub disc_no: Option<String>,
+    /// The MusicBrainz identifiers, which no editor field sets - they are here
+    /// for the release lookup, which is the only thing that knows them.
+    pub release_mbid: Option<String>,
+    pub release_group_mbid: Option<String>,
     pub cover: Option<CoverEdit>,
 }
 

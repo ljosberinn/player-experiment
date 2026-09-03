@@ -266,4 +266,28 @@ CREATE TABLE removed_paths (
     removed_at INTEGER NOT NULL
 );
 "#,
+    // 9 - which release a file belongs to
+    //
+    // Both MusicBrainz identifiers, cached off the tags the same way every
+    // other column here is: `tags::read` fills them, so a rescan keeps them
+    // in step with the file rather than the writer being their only source.
+    //
+    // They are two different things and both are needed. The release id is per
+    // pressing, which is what a re-lookup and the Cover Art Archive are keyed
+    // by; the release group is the album across its pressings, which is what
+    // the browse view has to group by or two rips of one album are two tiles.
+    //
+    // Only the release group is indexed, because only it is grouped on. The
+    // release id is read back per row, and an index on a column that is null
+    // for most of the library would cost writes to serve no query.
+    //
+    // No backfill: nothing has ever written these, so every existing row is
+    // null by definition and the values arrive as files are read.
+    r#"
+ALTER TABLE tracks ADD COLUMN release_mbid TEXT;
+ALTER TABLE tracks ADD COLUMN release_group_mbid TEXT;
+
+CREATE INDEX idx_tracks_release_group ON tracks(release_group_mbid)
+    WHERE release_group_mbid IS NOT NULL;
+"#,
 ];

@@ -1,6 +1,6 @@
 # 79b — Online release lookup
 
-Produces a candidate tag set only; [79a](79a-per-track-edits-and-the-release-mbid.md)'s
+Produces a candidate tag set only; [79a](../done/79a-per-track-edits-and-the-release-mbid.md)'s
 per-track writer and phase 8's undo journal apply it. Outbound network, inert
 unless the user asks — last.fm and the updater are the ones already there.
 

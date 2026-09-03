@@ -92,6 +92,9 @@ export function toEdit(draft: Draft): TagEdit {
     year: null,
     trackNo: null,
     discNo: null,
+    // No editor field sets these; only the release lookup knows them.
+    releaseMbid: null,
+    releaseGroupMbid: null,
     cover: null,
   };
   for (const [field, value] of Object.entries(draft)) {
