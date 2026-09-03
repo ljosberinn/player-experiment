@@ -15,6 +15,7 @@
 
 pub mod coverart;
 pub mod musicbrainz;
+pub mod pass;
 pub mod rate;
 pub mod score;
 pub mod transport;

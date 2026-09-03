@@ -522,6 +522,12 @@ fn same_release(
 pub struct ReleaseMember {
     pub id: i64,
     pub duration_ms: i64,
+    /// What the file already says, so the unattended pass can fill an empty
+    /// genre without writing over one somebody chose by hand.
+    pub genre: Option<String>,
+    /// Whether the file already has artwork, so a pass does not stage a JPEG
+    /// per release to replace a cover that is already there.
+    pub cover_hash: Option<String>,
 }
 
 /// Every file of a release, selected or not.
@@ -545,7 +551,7 @@ pub fn release_members(
     // tagged two ways comes back whole: handed one casing this would otherwise
     // return half of it, and the identity would be written to that half.
     let sql = format!(
-        "SELECT tracks.id, tracks.duration_ms
+        "SELECT tracks.id, tracks.duration_ms, tracks.genre, tracks.cover_hash
            FROM tracks
           WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
             AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
@@ -559,6 +565,8 @@ pub fn release_members(
             Ok(ReleaseMember {
                 id: row.get(0)?,
                 duration_ms: row.get(1)?,
+                genre: row.get(2)?,
+                cover_hash: row.get(3)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
