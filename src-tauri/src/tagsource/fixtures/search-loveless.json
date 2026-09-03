@@ -1,0 +1,95 @@
+{
+  "created": "2026-02-11T12:00:00.000Z",
+  "count": 3,
+  "offset": 0,
+  "releases": [
+    {
+      "id": "bb5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+      "score": 100,
+      "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+      "count": 1,
+      "title": "Loveless",
+      "status": "Official",
+      "date": "1991-11-04",
+      "country": "GB",
+      "artist-credit": [
+        {
+          "name": "My Bloody Valentine",
+          "joinphrase": "",
+          "artist": {
+            "id": "3b0c1b5d-9d0f-4d19-9d5b-2b4e4b1c0000",
+            "name": "My Bloody Valentine",
+            "sort-name": "My Bloody Valentine"
+          }
+        }
+      ],
+      "release-group": {
+        "id": "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a",
+        "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+        "primary-type": "Album"
+      },
+      "track-count": 11,
+      "media": [
+        {
+          "format": "CD",
+          "disc-count": 1,
+          "track-count": 11
+        }
+      ]
+    },
+    {
+      "id": "9f8e7d6c-5b4a-3928-1706-fedcba987654",
+      "score": 96,
+      "count": 1,
+      "title": "Loveless",
+      "status": "Official",
+      "date": "2012-05-07",
+      "country": "GB",
+      "artist-credit": [
+        {
+          "name": "My Bloody Valentine",
+          "joinphrase": ""
+        }
+      ],
+      "release-group": {
+        "id": "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a",
+        "primary-type": "Album"
+      },
+      "track-count": 22,
+      "media": [
+        {
+          "format": "CD",
+          "disc-count": 2,
+          "track-count": 22
+        }
+      ]
+    },
+    {
+      "id": "11223344-5566-7788-99aa-bbccddeeff00",
+      "score": 92,
+      "count": 1,
+      "title": "Loveless",
+      "status": "Official",
+      "date": "1991",
+      "country": "US",
+      "artist-credit": [
+        {
+          "name": "My Bloody Valentine",
+          "joinphrase": ""
+        }
+      ],
+      "release-group": {
+        "id": "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a",
+        "primary-type": "Album"
+      },
+      "track-count": 11,
+      "media": [
+        {
+          "format": "12\" Vinyl",
+          "disc-count": 1,
+          "track-count": 11
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "id": "bb5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+  "title": "Loveless",
+  "status": "Official",
+  "date": "1991-11-04",
+  "country": "GB",
+  "barcode": "5014436301322",
+  "artist-credit": [
+    {
+      "name": "My Bloody Valentine",
+      "joinphrase": ""
+    }
+  ],
+  "release-group": {
+    "id": "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a",
+    "title": "Loveless",
+    "primary-type": "Album"
+  },
+  "media": [
+    {
+      "position": 1,
+      "format": "CD",
+      "title": "",
+      "track-count": 11,
+      "tracks": [
+        {
+          "id": "00000000000000000000000000001eef",
+          "position": 1,
+          "number": "1",
+          "title": "Only Shallow",
+          "length": 268000,
+          "recording": {
+            "id": "00000000000000000000000000019919",
+            "title": "Only Shallow",
+            "length": 268000
+          }
+        },
+        {
+          "id": "00000000000000000000000000003dde",
+          "position": 2,
+          "number": "2",
+          "title": "Loomer",
+          "length": 148000,
+          "recording": {
+            "id": "00000000000000000000000000033232",
+            "title": "Loomer",
+            "length": 148000
+          }
+        },
+        {
+          "id": "00000000000000000000000000005ccd",
+          "position": 3,
+          "number": "3",
+          "title": "Touched",
+          "length": 56000,
+          "recording": {
+            "id": "0000000000000000000000000004cb4b",
+            "title": "Touched",
+            "length": 56000
+          }
+        },
+        {
+          "id": "00000000000000000000000000007bbc",
+          "position": 4,
+          "number": "4",
+          "title": "To Here Knows When",
+          "length": 345000,
+          "recording": {
+            "id": "00000000000000000000000000066464",
+            "title": "To Here Knows When",
+            "length": 345000
+          }
+        },
+        {
+          "id": "00000000000000000000000000009aab",
+          "position": 5,
+          "number": "5",
+          "title": "When You Sleep",
+          "length": 258000,
+          "recording": {
+            "id": "0000000000000000000000000007fd7d",
+            "title": "When You Sleep",
+            "length": 258000
+          }
+        },
+        {
+          "id": "0000000000000000000000000000b99a",
+          "position": 6,
+          "number": "6",
+          "title": "I Only Said",
+          "length": 336000,
+          "recording": {
+            "id": "00000000000000000000000000099696",
+            "title": "I Only Said",
+            "length": 336000
+          }
+        },
+        {
+          "id": "0000000000000000000000000000d889",
+          "position": 7,
+          "number": "7",
+          "title": "Come in Alone",
+          "length": 240000,
+          "recording": {
+            "id": "000000000000000000000000000b2faf",
+            "title": "Come in Alone",
+            "length": 240000
+          }
+        },
+        {
+          "id": "0000000000000000000000000000f778",
+          "position": 8,
+          "number": "8",
+          "title": "Sometimes",
+          "length": 316000,
+          "recording": {
+            "id": "000000000000000000000000000cc8c8",
+            "title": "Sometimes",
+            "length": 316000
+          }
+        },
+        {
+          "id": "00000000000000000000000000011667",
+          "position": 9,
+          "number": "9",
+          "title": "Blown a Wish",
+          "length": 213000,
+          "recording": {
+            "id": "000000000000000000000000000e61e1",
+            "title": "Blown a Wish",
+            "length": 213000
+          }
+        },
+        {
+          "id": "00000000000000000000000000013556",
+          "position": 10,
+          "number": "10",
+          "title": "What You Want",
+          "length": 328000,
+          "recording": {
+            "id": "000000000000000000000000000ffafa",
+            "title": "What You Want",
+            "length": 328000
+          }
+        },
+        {
+          "id": "00000000000000000000000000015445",
+          "position": 11,
+          "number": "11",
+          "title": "Soon",
+          "length": null,
+          "recording": {
+            "id": "00000000000000000000000000119413",
+            "title": "Soon",
+            "length": null
+          }
+        }
+      ]
+    }
+  ]
+}

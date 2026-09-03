@@ -423,6 +423,110 @@ pub fn browse_groups(
     Ok(groups)
 }
 
+/// The order files of one release are read in, which is the order the lookup
+/// dialog maps them to a tracklist in.
+///
+/// `coalesce` on the disc because a single-disc release usually leaves it
+/// untagged, and a NULL would otherwise sort the untagged files above disc 1
+/// of the ones that are tagged.
+const RELEASE_ORDER: &str = "coalesce(tracks.disc_no, 1), tracks.track_no, tracks.path";
+
+/// Splits a selection into the releases it covers.
+///
+/// A release is the unit a lookup is worth doing at - 65,535 tracks are some
+/// 8,000 releases, and one request a second is the budget - so this is what
+/// decides how many lookups a selection costs.
+///
+/// Grouped by the browse view's own expressions, empty strings and all, so
+/// that a release is the same thing here as it is in the grid. Anything else
+/// would be a second notion of what an album is.
+pub fn release_selections(
+    conn: &Connection,
+    track_ids: &[i64],
+) -> AppResult<Vec<crate::model::ReleaseSelection>> {
+    if track_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = vec!["?"; track_ids.len()].join(", ");
+    let sql = format!(
+        "SELECT {GROUP_ALBUM}, {GROUP_ARTIST}, tracks.id
+           FROM tracks
+          WHERE tracks.id IN ({placeholders})
+          ORDER BY {GROUP_ARTIST}, {GROUP_ALBUM}, {RELEASE_ORDER}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(track_ids.iter()), |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    // Consecutive rather than hashed: the query already orders by the two keys,
+    // and this way the groups come out in the order the user would read them.
+    let mut selections: Vec<crate::model::ReleaseSelection> = Vec::new();
+    for (album, artist, id) in rows {
+        match selections.last_mut() {
+            Some(last) if last.album == album && last.artist == artist => last.track_ids.push(id),
+            _ => selections.push(crate::model::ReleaseSelection {
+                album,
+                artist,
+                track_ids: vec![id],
+            }),
+        }
+    }
+    Ok(selections)
+}
+
+/// One file of a release, as the lookup needs it.
+pub struct ReleaseMember {
+    pub id: i64,
+    pub duration_ms: i64,
+}
+
+/// Every file of a release, selected or not.
+///
+/// Two things need the whole release rather than the selection. Scoring: three
+/// files out of twelve would otherwise make every twelve-track candidate look
+/// wrong. And the identifiers: they are written to every file of the release,
+/// because a release half of whose files carry an identity is the defect the
+/// identity exists to remove.
+///
+/// Missing files are left out. They cannot be written and cannot be read for
+/// their duration, so counting them would inflate both the score's denominator
+/// and the write's failure count.
+pub fn release_members(
+    conn: &Connection,
+    album: Option<&str>,
+    artist: Option<&str>,
+) -> AppResult<Vec<ReleaseMember>> {
+    // `IS` rather than `=`, so an untagged release matches on NULL the same way
+    // selecting it from the browse grid does.
+    let sql = format!(
+        "SELECT tracks.id, tracks.duration_ms
+           FROM tracks
+          WHERE {GROUP_ALBUM} IS ?1 AND {GROUP_ARTIST} IS ?2
+            AND tracks.missing_since IS NULL
+          ORDER BY {RELEASE_ORDER}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let members = stmt
+        .query_map(rusqlite::params![album, artist], |row| {
+            Ok(ReleaseMember {
+                id: row.get(0)?,
+                duration_ms: row.get(1)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(members)
+}
+
 /// Cover bytes for the custom protocol handler.
 pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, Vec<u8>)>> {
     let mut stmt = conn.prepare("SELECT mime, bytes FROM covers WHERE hash = ?1")?;
@@ -1842,5 +1946,92 @@ mod tests {
 
         assert_eq!(stats.duration_ms, 6_000_000_000);
         assert_eq!(stats.bytes, 6_000_000_000);
+    }
+
+    #[test]
+    fn a_selection_is_split_into_the_releases_it_covers() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let ids: Vec<i64> = all_track_ids(&conn, &TrackQuery::default()).unwrap();
+
+        let selections = release_selections(&conn, &ids).unwrap();
+
+        assert_eq!(selections.len(), 3, "two albums and the untagged file");
+        assert_eq!(
+            selections
+                .iter()
+                .map(|s| (s.artist.clone(), s.album.clone(), s.track_ids.len()))
+                .collect::<Vec<_>>(),
+            vec![
+                // Untagged first, which is where SQLite sorts a NULL and
+                // where the release worth looking up most belongs.
+                (None, None, 1),
+                (
+                    Some("Grizzly Bear".to_owned()),
+                    Some("Shields".to_owned()),
+                    2
+                ),
+                (Some("Guitar".to_owned()), Some("Tokyo".to_owned()), 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn nothing_selected_is_no_releases_rather_than_every_release() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        assert!(release_selections(&conn, &[]).unwrap().is_empty());
+    }
+
+    /// The rule the identifiers depend on: a lookup started from three files
+    /// of a release still has to see the whole release.
+    #[test]
+    fn a_partial_selection_still_names_every_file_of_its_release() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let one: i64 = conn
+            .query_row("SELECT id FROM tracks WHERE path = '/m/3.mp3'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        let selections = release_selections(&conn, &[one]).unwrap();
+        assert_eq!(selections[0].track_ids.len(), 1);
+
+        let members = release_members(
+            &conn,
+            selections[0].album.as_deref(),
+            selections[0].artist.as_deref(),
+        )
+        .unwrap();
+        assert_eq!(members.len(), 2);
+        assert_eq!(
+            members.iter().map(|m| m.duration_ms).collect::<Vec<_>>(),
+            vec![330_000, 271_000]
+        );
+    }
+
+    #[test]
+    fn an_untagged_release_is_matched_on_its_nulls() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+
+        assert_eq!(release_members(&conn, None, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_missing_file_is_not_part_of_the_release_to_write() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE tracks SET missing_since = 1 WHERE path = '/m/4.mp3'",
+            [],
+        )
+        .unwrap();
+
+        let members = release_members(&conn, Some("Shields"), Some("Grizzly Bear")).unwrap();
+
+        assert_eq!(members.len(), 1);
     }
 }

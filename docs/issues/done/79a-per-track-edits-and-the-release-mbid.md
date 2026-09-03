@@ -1,7 +1,7 @@
 # 79a — Per-track edits and the release MBIDs
 
 A seam, like [10a](10a-lastfm-seam.md): nothing user-visible ships here.
-It is what [79b](../upcoming/79b-online-release-lookup.md) writes through and what
+It is what [79b](79b-online-release-lookup.md) writes through and what
 [87](../upcoming/87-one-release-one-tile.md) groups by.
 
 **`write::apply` takes one edit per track.** Today it is
@@ -37,7 +37,7 @@ and drops the other throws away identity it was handed.
 - Absent still means leave alone: an edit that does not mention an MBID never
   clears one.
 - No editor field. Nothing sets it until
-  [79b](../upcoming/79b-online-release-lookup.md), which is the point of doing it first.
+  [79b](79b-online-release-lookup.md), which is the point of doing it first.
 
 Testing: a per-track batch asserted to produce one undoable batch and to restore
 all of it; both MBIDs round-tripped write → read → row; the bulk path asserted

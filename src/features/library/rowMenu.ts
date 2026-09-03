@@ -19,6 +19,7 @@ export function rowMenuItems({
   track,
   onPlay,
   onEdit,
+  onLookup,
   onAddTo,
   onRemove,
   onRemoveFromLibrary,
@@ -38,6 +39,8 @@ export function rowMenuItems({
   track: LinkableTrack | null;
   onPlay: () => void;
   onEdit: () => void;
+  /** Opens the MusicBrainz lookup on the selection. */
+  onLookup: () => void;
   onAddTo: (playlistId: number) => void;
   onRemove: () => void;
   /**
@@ -60,6 +63,10 @@ export function rowMenuItems({
     { label: "Play", onSelect: onPlay },
     { kind: "separator" },
     { label: count === 1 ? "Edit" : `Edit ${songs}`, onSelect: onEdit },
+    // Beside Edit because it is the same act by another route: the tags of
+    // these songs, typed by hand or fetched. Ellipsized - it opens a dialog
+    // and writes nothing until that dialog is confirmed.
+    { label: "Get Tags from MusicBrainz…", onSelect: onLookup },
     {
       label: "Add to Playlist",
       // Smart playlists are excluded rather than shown disabled: their

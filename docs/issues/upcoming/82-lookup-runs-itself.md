@@ -1,10 +1,10 @@
 # 82 — Lookup runs itself
 
-[79b](79b-online-release-lookup.md) is a dialog somebody opens. This is the same
+[79b](../done/79b-online-release-lookup.md) is a dialog somebody opens. This is the same
 lookup as a background pass: over what is already in the library once, and over
 every release a scan adds from then on.
 
-**A reversal, deliberately.** [79b](79b-online-release-lookup.md) confirms every
+**A reversal, deliberately.** [79b](../done/79b-online-release-lookup.md) confirms every
 match by hand, and conventions calls the file the source of truth. Both hold for
 *uncertain* matches. A release whose track count, track order and per-track
 durations all agree with MusicBrainz is not a guess, and confirming eight
@@ -13,7 +13,7 @@ thousand of those by hand is not review, it is clicking.
 - **Above the threshold**, the write happens. Title, artist, album, album artist,
   year, track and disc number, release MBID, and artwork where there is none.
 - **Below it**, nothing is written and the release goes in a **review queue**.
-  The dialog from [79b](79b-online-release-lookup.md) opens on a queue entry
+  The dialog from [79b](../done/79b-online-release-lookup.md) opens on a queue entry
   with the candidates already fetched.
 - **No match at all** leaves the file exactly as it is and is not queued —
   there is nothing for the user to decide.

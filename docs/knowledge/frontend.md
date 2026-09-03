@@ -274,6 +274,23 @@ absences are what nobody notices coming back — hence the guards in
   counter because the staging file's name never changes; a pending *removal*
   keeps showing the art it is about to take away, and the caption is what says
   it is going.
+- The release lookup previews a fetched cover from the *same* `cover://staged`
+  route, so there is one staging file and one preview mechanism rather than
+  two. It passes the release id where the editor passes a counter — one cover
+  is staged per release, so the id already names the bytes.
+- **The release lookup is a queue, not a dialog.** A selection is grouped into
+  releases in SQLite before anything leaves the machine, and the dialog works
+  through them one at a time — search, pick, confirm, apply, next — because
+  MusicBrainz allows one request a second and a folder-wide selection is dozens
+  of releases. Each release applies as its own undoable batch.
+- It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
+  its own behalf and draws nothing until it is opened, so a dialog `App` does
+  not own costs `App` no render.
+- **`tags://progress` now has three senders** — a tag save, its undo, and a
+  lookup's apply. The lookup subscribes to it separately and only records
+  events while its own write is running, and `TaskProgress` stands down for the
+  duration; otherwise a lookup would be reported behind the modal as
+  "Reverting".
 - `useNativeFeel` swallows any drag the app did not claim. A file dropped where
   nothing handles it is *opened* by the webview, which navigates the window away
   from the app; the guard runs at the window, skips anything a target already

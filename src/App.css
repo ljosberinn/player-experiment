@@ -1598,6 +1598,168 @@ th.status {
   gap: 10px;
 }
 
+/* ---------- release lookup ---------- */
+
+/* Which release the dialog is on, under the heading that says which of how
+   many it is. */
+.lookup-subject {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Its own scroll area rather than the dialog's: a reissue-heavy album returns
+   fifteen candidates, and scrolling the dialog would take Skip and Cancel with
+   it. */
+.lookup-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 46vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* Beats `.modal button`, which is a one-line control 29px tall - a result is
+   four facts on two lines. */
+.lookup .lookup-result {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 12px;
+  width: 100%;
+  height: auto;
+  padding: 7px 10px;
+  text-align: left;
+  background: var(--surface);
+}
+
+.lookup-result-title {
+  grid-column: 1;
+  font-weight: 600;
+}
+
+.lookup-result-artist {
+  grid-column: 1;
+}
+
+.lookup-result-detail {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+/* The column the list is sorted by, so it is beside every row rather than
+   implied by the order. */
+.lookup-result-score {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The fetched cover beside the one it would replace, which is the only way to
+   judge it: an archive front is often a different pressing's sleeve. */
+.lookup-covers {
+  display: flex;
+  gap: 14px;
+}
+
+.lookup-cover {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+}
+
+.lookup-cover figcaption {
+  display: flex;
+  flex-direction: column;
+}
+
+.lookup-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 4px;
+}
+
+.lookup-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The checkbox keeps its native size; `.modal input` sizes text fields. */
+.lookup .lookup-field input {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+}
+
+.lookup-map-scroll {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.lookup-map {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lookup-map th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 3px 7px;
+  background: var(--chrome);
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+}
+
+.lookup-map td {
+  padding: 3px 7px;
+  border-top: 1px solid var(--chrome-border);
+  vertical-align: top;
+}
+
+.lookup-map-title,
+.lookup-map-detail {
+  display: block;
+}
+
+.lookup-map-detail {
+  color: var(--muted);
+}
+
+/* A file the release has nothing for. Dimmed rather than hidden: it is still
+   selected, it still gets the release identifiers, and the reason it is here
+   is so the mismatch can be fixed with the arrows. */
+.lookup-map tr.unmapped td {
+  opacity: 0.55;
+}
+
+.lookup-map-move {
+  white-space: nowrap;
+}
+
+/* Square, and small enough that two of them fit the row height they sit in. */
+.lookup .lookup-map-move button {
+  width: 21px;
+  height: 21px;
+  padding: 0;
+}
+
+/* Back sits away from Apply: one goes on with the release and one abandons the
+   candidate, and they should not read as a pair. */
+.lookup-confirm-actions {
+  justify-content: space-between;
+}
+
 /* ---------- smart playlist editor ---------- */
 
 /* Only the dim layer. It used to centre the dialog as its flex child, which

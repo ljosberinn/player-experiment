@@ -625,8 +625,8 @@ describe("SongTable", () => {
       // inert, and jsdom reports every rect as zero, so the pointer route to a
       // submenu cannot be driven here at all. ArrowRight is the route that can
       // be, and the e2e suite is where the pointer one is real.
-      // Play, Edit, Add to Playlist - separators are not stops.
-      await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}");
+      // Play, Edit, Get Tags, Add to Playlist - separators are not stops.
+      await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}");
       await user.click(await screen.findByRole("menuitem", { name: "Evening" }));
 
       // The first keyboard-and-menu route to a playlist; dragging is mouse-only.
@@ -654,10 +654,10 @@ describe("SongTable", () => {
       const user = await openRowMenu();
 
       // The keyboard route again, for the reason the playlist submenu takes
-      // it. Play, Edit, Add to Playlist, Export, Show in Explorer, then the
-      // lookups - separators are not stops.
+      // it. Play, Edit, Get Tags, Add to Playlist, Export, Show in Explorer,
+      // then the lookups - separators are not stops.
       await user.keyboard(
-        "{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}",
+        "{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowRight}",
       );
       await user.click(await screen.findByRole("menuitem", { name: "Last.fm" }));
 

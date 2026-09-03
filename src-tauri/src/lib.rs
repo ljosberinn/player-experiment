@@ -12,6 +12,7 @@ pub mod reveal;
 pub mod scan;
 pub mod smart;
 pub mod tags;
+pub mod tagsource;
 
 use tauri::{Emitter, Manager};
 
@@ -231,6 +232,10 @@ pub fn run() {
             commands::stage_picked_cover,
             commands::undo_tag_edit,
             commands::can_undo_tag_edit,
+            commands::tagsource_groups,
+            commands::tagsource_search,
+            commands::tagsource_fetch,
+            commands::tagsource_apply,
             commands::suggest_tag_values,
             commands::player_play,
             commands::player_toggle,

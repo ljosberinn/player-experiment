@@ -140,3 +140,27 @@ count afterwards, so the dominant colour still comes first.
 The background blob layer is far larger than the window, so a percentage offset
 is a percentage *of the layer* and lands somewhere else. Positions are expressed
 as offsets from the window centre (`calc(50% - 28vw)`).
+
+## MusicBrainz
+
+**`inc` is not accepted on a search**, so a release costs two requests — one to
+find candidates, one to read the tracklist of whichever was picked — and there
+is no arrangement of parameters that makes it cost one.
+
+**The `inc` value is sent with spaces, not with `+`.** Form encoding turns a
+space into `+`, so the request that goes out is the canonical
+`inc=recordings+artist-credits+release-groups`. Writing the `+` in the value
+would encode it as `%2B`.
+
+**`reqwest`'s `RequestBuilder::query` is behind a feature** in 0.13 — named
+`query`, and off in the default set. Without it the call does not exist and the
+error reads as a missing method rather than a missing feature.
+
+**A track's `number` is a string and its `position` is not.** On a vinyl release
+`number` is `"A1"`, so the integer track number this app writes comes from
+`position`.
+
+**The rate limit is enforced at the IP address**, and exceeding it gets the
+address blocked rather than throttled. `tagsource::rate::shared` is therefore
+process-wide: a limiter owned by a client instance would let two callers make
+two requests a second between them, each believing it was the only one.
