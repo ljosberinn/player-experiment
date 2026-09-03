@@ -21,6 +21,10 @@ read.
   back. A request nobody has answered has not been counted at their end.
 - **The retry keeps no backoff of its own.** Two things deciding how long to
   wait is how 82d ended up with the limiter and the pass disagreeing.
+- **A retry that works is counted.** `retries` on the release line when there
+  were any, totalled on the sweep line. Otherwise an absorbed 503 cannot be told
+  from a slow request, which is exactly the reading the first five-second run
+  could not settle.
 
 *Settled by measurement:* **five seconds, hardcoded, no escalation.** Three was
 tried first, as the experiment that would say whether the rate was the problem.

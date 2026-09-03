@@ -124,7 +124,9 @@ them but the least the pass can ask of a service it depends on the spare
 capacity of. The gate is held for the whole request rather than only the gap
 before it, so the interval is measured from when an answer came back; a request
 that could work later is asked again twice, with the limiter rather than the
-caller deciding how long that takes.
+caller deciding how long that takes — and the count of those goes in the log, on
+the release line and totalled on the sweep line, because a retry that works
+leaves no other trace and the five seconds it costs read as a slow request.
 
 `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
 which is how the threshold is tuned against a real library. **The rows are the

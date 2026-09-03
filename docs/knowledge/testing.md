@@ -91,6 +91,11 @@ makes a request would pay the interval and the suite would take minutes to say
 nothing about the limiter. What is scaled is the ambient gate; the rule is
 still asserted against a limiter built with the shipping interval.
 
+A retry that *works* is asserted against a transport that refuses once and then
+answers - the one case `FakeTransport` cannot express, since it gives the same
+answer every time, and the one where the count is the only evidence anything
+went wrong.
+
 The sweep cadence is asserted as a function rather than through the thread:
 that a sweep which got through releases comes straight back however long the
 gap had grown to, and that one which got through nothing doubles to the
