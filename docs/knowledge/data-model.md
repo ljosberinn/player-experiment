@@ -8,7 +8,7 @@ edit a shipped one.
 | --- | --- |
 | 1 | `covers`, `tracks`, `playlists`, `playlist_tracks`, `settings`, `watch_folders` |
 | 2 | `tracks_fts` (FTS5 external-content over title/artist/album/album_artist/genre/comment, kept current by triggers) |
-| 3 | `tag_undo` — one row per track per edit, grouped by `batch_id` |
+| 3 | `tag_undo` — one row per track per edit, grouped by `batch_id`; capped at the newest `UNDO_BATCHES` batches, and `batch_id` is one past the largest already there, floored at `now * 1000` |
 | 4 | `tracks.missing_since` + a **partial** index |
 | 5 | `tag_values` — the distinct values a library uses, for autocompletion |
 | 6 | `covers.palette` — the dominant colours of a cover |
