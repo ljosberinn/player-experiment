@@ -26,7 +26,7 @@ looks at.
 **500, not 200.** `.browse-cover` is 158px, `MAX_ZOOM` is 2 and Windows display
 scaling stacks on top — roughly 474 device pixels at the top end, and the next
 largest use is the editor's 120px. It is also exactly Cover Art Archive's
-`-500`, so a cover fetched by [79](79-online-release-lookup.md) needs no
+`-500`, so a cover fetched by [79b](../upcoming/79b-online-release-lookup.md) needs no
 resample.
 
 **The re-encode is the lever, not the resize.** 4,722 of the 5,799 rows (81%)
@@ -73,7 +73,7 @@ three dominant colours.
 after a VACUUM — the pages are merely free otherwise. Pruning covers no track
 references is worth 123 KB today (one orphan row) and is about what comes next:
 [73](73-remove-a-song-from-the-library.md) orphans a row per removal and
-[79](79-online-release-lookup.md) fetches 8,045 covers. It is only safe because
+[79b](../upcoming/79b-online-release-lookup.md) fetches 8,045 covers. It is only safe because
 nothing reads artwork back out any more.
 
 **No migration**, so [73](73-remove-a-song-from-the-library.md) keeps migration
@@ -107,5 +107,5 @@ shows the same picture, so nothing is done about it.
 No e2e screenshots: the seeded library carries no artwork, and at display size
 the image is the one that was there before.
 
-Before [79](79-online-release-lookup.md), not after — a lookup that fetches
+Before [79b](../upcoming/79b-online-release-lookup.md), not after — a lookup that fetches
 8,045 covers into the old store doubles the number this issue exists to cut.

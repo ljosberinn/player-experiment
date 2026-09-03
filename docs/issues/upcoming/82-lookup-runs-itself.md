@@ -1,11 +1,11 @@
 # 82 — Lookup runs itself
 
-[79](79-online-release-lookup.md) is a dialog somebody opens. This is the same
+[79b](79b-online-release-lookup.md) is a dialog somebody opens. This is the same
 lookup as a background pass: over what is already in the library once, and over
 every release a scan adds from then on.
 
-**A reversal, deliberately.** 71 says never automatic and never bulk-applied
-unreviewed, and conventions calls the file the source of truth. Both hold for
+**A reversal, deliberately.** [79b](79b-online-release-lookup.md) confirms every
+match by hand, and conventions calls the file the source of truth. Both hold for
 *uncertain* matches. A release whose track count, track order and per-track
 durations all agree with MusicBrainz is not a guess, and confirming eight
 thousand of those by hand is not review, it is clicking.
@@ -13,19 +13,21 @@ thousand of those by hand is not review, it is clicking.
 - **Above the threshold**, the write happens. Title, artist, album, album artist,
   year, track and disc number, release MBID, and artwork where there is none.
 - **Below it**, nothing is written and the release goes in a **review queue**.
-  The dialog from 71 opens on a queue entry with the candidates already fetched.
+  The dialog from [79b](79b-online-release-lookup.md) opens on a queue entry
+  with the candidates already fetched.
 - **No match at all** leaves the file exactly as it is and is not queued —
   there is nothing for the user to decide.
 - **Genre is filled, never overwritten**, and comment is never touched.
   MusicBrainz genre data is thin and inconsistent next to a library that has
   been tagged by hand; only 2,128 of 65,535 tracks are missing one.
 
-Migration 12, `release_lookup`: one row per release keyed the way
-`db::query` groups the browse view, carrying status, the chosen MBID, the score
-and when it was last attempted. It is the review queue, the resume point and the
-idempotence guard in one table — a second pass skips anything already resolved.
+A migration adds `release_lookup`, whatever number is next when this lands: one
+row per release keyed the way `db::query` groups the browse view, carrying
+status, the chosen MBID, the score and when it was last attempted. It is the
+review queue, the resume point and the idempotence guard in one table — a second
+pass skips anything already resolved.
 
-**The first pass takes four and a half hours.** 8,045 releases × 2 MusicBrainz
+**The first pass takes four and a half hours.** 8,044 releases × 2 MusicBrainz
 calls at 1/s. That is the floor, and no amount of concurrency moves it. So it is
 a worker thread through `commands::blocking`, cancellable, and it resumes from
 `release_lookup` on the next start rather than beginning again. Covers come from
