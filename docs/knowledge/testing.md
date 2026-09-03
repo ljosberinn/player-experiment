@@ -9,7 +9,7 @@ current frontend coverage is well above it.
 | Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, a fresh database with no undo journal, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
 | last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
-| Release lookup | `cargo test` | the whole unattended pass against recorded fixtures: the threshold from both sides, a release with no candidates left untouched and unqueued, genre filled and *not* overwritten, comment untouched, a second sweep a no-op, a cancelled sweep resuming where it stopped |
+| Release lookup | `cargo test` | the whole unattended pass against recorded fixtures: the threshold from both sides, a release with no candidates left untouched and unqueued, genre filled and *not* overwritten, comment untouched, a second sweep a no-op, a cancelled sweep resuming where it stopped, a transient failure retried and a permanent one not, a dry run reaching its second batch and leaving no row behind |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
@@ -78,11 +78,12 @@ run depend on somebody else's service being up and under its rate limit.
 `ReleaseLookup.test.tsx` covers the markup and the flow against mocked IPC; the
 dialog against the live service is a manual check before a release.
 
-The rate limiter is asserted at its real one request a second, from **two**
-callers at once: the limit is enforced at the IP address, so a limiter that
-serialized only within one client would be no limiter at all. That test costs a
-second of wall clock, deliberately - a scaled-down imitation would not be
-asserting the rule that ships.
+The rate limiter is asserted at its real interval, from **two** callers at
+once: the limit is enforced at the IP address, so a limiter that serialized
+only within one client would be no limiter at all. That test costs a second of
+wall clock, deliberately - a scaled-down imitation would not be asserting the
+rule that ships. Every lookup test pays the same interval, which is why that
+part of the suite takes about a minute.
 
 **No unit test can see where a file actually lands.** `log::tests` proves the
 line format and the rotation against a `tempfile`, and says nothing about

@@ -4,8 +4,8 @@
 //! Three jobs in one table - the review queue, the pass's resume point, and
 //! the guard that stops a second pass re-searching 8,044 releases. No row
 //! means never attempted, and nothing here ever clears a row: a pass that
-//! re-searched every miss on every launch would be four and a half hours that
-//! finds nothing, forever.
+//! re-searched every miss on every launch would be five hours that finds
+//! nothing, forever.
 //!
 //! Every query keys on `db::query`'s two grouping expressions, folded with
 //! `COLLATE NOCASE` the way the browse grid folds them, because a release has
@@ -54,15 +54,22 @@ impl Status {
 const ALBUM: &str = "nullif(tracks.album, '')";
 const ARTIST: &str = "coalesce(nullif(tracks.album_artist, ''), nullif(tracks.artist, ''))";
 
-/// Releases with no row, in the order they would be read, at most `limit`.
+/// Releases with no row, in the order they would be read, at most `limit` of
+/// them, skipping the first `offset`.
 ///
 /// Batched rather than one at a time: this groups every row of `tracks`, and
 /// re-running it between two releases that each cost two seconds would spend
 /// the pass scanning the table eight thousand times.
 ///
+/// **The offset is for the dry run and nothing else.** A real pass records a
+/// row per release, so the rows are its cursor and it asks for the first batch
+/// every time - which is also what makes it resumable across a quit. A dry run
+/// writes no rows and would otherwise survey its first batch over and over,
+/// forever, which is the one thing the mode exists not to do.
+///
 /// `min()` picks each group's label off a `NOCASE` grouping the way
 /// `browse_groups` does - a binary comparison, so the same casing every time.
-pub fn pending(conn: &Connection, limit: usize) -> AppResult<Vec<Release>> {
+pub fn pending(conn: &Connection, limit: usize, offset: usize) -> AppResult<Vec<Release>> {
     // The grouping is a derived table rather than a `HAVING`, because SQLite
     // refuses an aggregate inside a correlated subquery: the label has to
     // exist as a column before it can be matched against a recorded row.
@@ -77,12 +84,12 @@ pub fn pending(conn: &Connection, limit: usize) -> AppResult<Vec<Release>> {
                      WHERE coalesce(release_lookup.album,  '') = coalesce(releases.album,  '') COLLATE NOCASE
                        AND coalesce(release_lookup.artist, '') = coalesce(releases.artist, '') COLLATE NOCASE)
           ORDER BY artist IS NULL, artist COLLATE NOCASE, album IS NULL, album COLLATE NOCASE
-          LIMIT ?1"
+          LIMIT ?1 OFFSET ?2"
     );
 
     let mut stmt = conn.prepare(&sql)?;
     let releases = stmt
-        .query_map([limit as i64], |row| {
+        .query_map([limit as i64, offset as i64], |row| {
             Ok(Release {
                 album: row.get(0)?,
                 artist: row.get(1)?,
@@ -131,8 +138,8 @@ pub fn record(
 /// Resolves every release whose files already agree on a release MBID.
 ///
 /// Seeded from the tags `tags::read` keeps, so a re-install or a rescan of a
-/// library Picard already tagged does not pay four and a half hours again.
-/// Returns how many releases it resolved.
+/// library Picard already tagged does not pay five hours again. Returns how
+/// many releases it resolved.
 ///
 /// `count(*) = count(release_mbid)` is "every file carries one" - `count` of a
 /// column skips NULLs - and the `count(DISTINCT …) = 1` beside it refuses a
@@ -196,12 +203,37 @@ mod tests {
         );
 
         assert_eq!(
-            keys(&pending(&conn, 10).unwrap()),
+            keys(&pending(&conn, 10, 0).unwrap()),
             [
                 (Some("Isn't Anything"), Some("My Bloody Valentine")),
                 (Some("Loveless"), Some("My Bloody Valentine")),
             ]
         );
+    }
+
+    /// The dry run's cursor. It writes no rows, so the offset is the only
+    /// thing that gets it past the batch it has already surveyed.
+    #[test]
+    fn an_offset_pages_past_the_releases_already_read() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        track(
+            &conn,
+            "b.mp3",
+            "Isn't Anything",
+            "My Bloody Valentine",
+            None,
+        );
+
+        assert_eq!(
+            keys(&pending(&conn, 1, 0).unwrap()),
+            [(Some("Isn't Anything"), Some("My Bloody Valentine"))]
+        );
+        assert_eq!(
+            keys(&pending(&conn, 1, 1).unwrap()),
+            [(Some("Loveless"), Some("My Bloody Valentine"))]
+        );
+        assert!(pending(&conn, 1, 2).unwrap().is_empty());
     }
 
     /// The idempotence guard: a second pass over a library it has been through
@@ -210,11 +242,11 @@ mod tests {
     fn a_release_with_a_row_is_not_pending_again() {
         let (_dir, conn) = open();
         track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
-        let release = pending(&conn, 10).unwrap().remove(0);
+        let release = pending(&conn, 10, 0).unwrap().remove(0);
 
         record(&conn, &release, Status::NotFound, None, None, None, 100).unwrap();
 
-        assert!(pending(&conn, 10).unwrap().is_empty());
+        assert!(pending(&conn, 10, 0).unwrap().is_empty());
     }
 
     #[test]
@@ -223,7 +255,7 @@ mod tests {
         track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
         track(&conn, "b.mp3", "loveless", "my bloody valentine", None);
 
-        assert_eq!(pending(&conn, 10).unwrap().len(), 1);
+        assert_eq!(pending(&conn, 10, 0).unwrap().len(), 1);
     }
 
     #[test]
@@ -235,11 +267,11 @@ mod tests {
         )
         .unwrap();
 
-        let releases = pending(&conn, 10).unwrap();
+        let releases = pending(&conn, 10, 0).unwrap();
         assert_eq!(keys(&releases), [(None, None)]);
 
         record(&conn, &releases[0], Status::NotFound, None, None, None, 100).unwrap();
-        assert!(pending(&conn, 10).unwrap().is_empty());
+        assert!(pending(&conn, 10, 0).unwrap().is_empty());
     }
 
     /// Retagging invalidates by itself: the key changes, so the release reads
@@ -248,14 +280,14 @@ mod tests {
     fn retagging_a_release_makes_it_pending_again() {
         let (_dir, conn) = open();
         track(&conn, "a.mp3", "Lovless", "My Bloody Valentine", None);
-        let release = pending(&conn, 10).unwrap().remove(0);
+        let release = pending(&conn, 10, 0).unwrap().remove(0);
         record(&conn, &release, Status::Review, None, Some(0.4), None, 100).unwrap();
 
         conn.execute("UPDATE tracks SET album = 'Loveless'", [])
             .unwrap();
 
         assert_eq!(
-            keys(&pending(&conn, 10).unwrap()),
+            keys(&pending(&conn, 10, 0).unwrap()),
             [(Some("Loveless"), Some("My Bloody Valentine"))]
         );
     }
@@ -264,7 +296,7 @@ mod tests {
     fn recording_the_same_release_twice_updates_rather_than_fails() {
         let (_dir, conn) = open();
         track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
-        let release = pending(&conn, 10).unwrap().remove(0);
+        let release = pending(&conn, 10, 0).unwrap().remove(0);
 
         record(
             &conn,
@@ -301,7 +333,7 @@ mod tests {
     }
 
     /// A re-install or a rescan of a library Picard already tagged must not
-    /// pay four and a half hours again.
+    /// pay five hours again.
     #[test]
     fn a_release_whose_files_all_carry_an_mbid_is_resolved_without_a_call() {
         let (_dir, conn) = open();
@@ -321,7 +353,7 @@ mod tests {
         );
 
         assert_eq!(seed_from_tags(&conn, 100).unwrap(), 1);
-        assert!(pending(&conn, 10).unwrap().is_empty());
+        assert!(pending(&conn, 10, 0).unwrap().is_empty());
         assert_eq!(
             conn.query_row(
                 "SELECT status, release_mbid FROM release_lookup",
@@ -346,7 +378,7 @@ mod tests {
         track(&conn, "b.mp3", "Loveless", "My Bloody Valentine", None);
 
         assert_eq!(seed_from_tags(&conn, 100).unwrap(), 0);
-        assert_eq!(pending(&conn, 10).unwrap().len(), 1);
+        assert_eq!(pending(&conn, 10, 0).unwrap().len(), 1);
     }
 
     /// Files disagreeing about which pressing they are is exactly what the
@@ -370,7 +402,7 @@ mod tests {
         );
 
         assert_eq!(seed_from_tags(&conn, 100).unwrap(), 0);
-        assert_eq!(pending(&conn, 10).unwrap().len(), 1);
+        assert_eq!(pending(&conn, 10, 0).unwrap().len(), 1);
     }
 
     #[test]

@@ -90,20 +90,30 @@ and skips the pass entirely; a user-asked scan waits, because a Rescan that
 silently did nothing is worse than one that starts its walk late. **The lookup
 pass takes it per write, never for the pass** — it rewrites the files a scan
 reads its `(mtime, size)` from, so each write has to be behind the lock, but
-holding it for four and a half hours would block every scan in that window.
+holding it for five hours would block every scan in that window.
 Poison-tolerant: a panicking scan must not leave the
 library unscannable for the rest of the session.
 
 **A second background thread looks releases up.** `release-lookup` wakes on the
 same fifteen seconds, reads `lookup.unattended` from `settings`, and works
 through every release `release_lookup` has no row for: two MusicBrainz calls
-each, at the one request a second the shared limiter enforces. It reads the
+each, spaced a little over the one request a second the shared limiter
+enforces — the headroom is what keeps a whole pass from collecting 503s. A
+request that could work later is retried twice, backing off, before the sweep
+gives up; a failure that cannot change is given up on at once. It reads the
 setting between releases and not only on waking, so turning the switch off
 cancels a pass in flight and turning it back on resumes from the table rather
-than from the top. Above `score::UNATTENDED_THRESHOLD` it writes the release's
-tags; below it, it records the release for a person to decide and writes
-nothing. `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor
-rows, which is how the threshold is tuned against a real library.
+than from the top; a setting that cannot be read is logged and is not taken for
+a switch that is off. Above `score::UNATTENDED_THRESHOLD` it writes the
+release's tags; below it, it records the release for a person to decide and
+writes nothing.
+
+`APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
+which is how the threshold is tuned against a real library. **The rows are the
+real pass's cursor and cannot be the dry run's**, so a dry run pages
+`lookup::pending` by offset instead, skips the tag seed — the one row it would
+otherwise leave behind — and logs `would-write` and `would-queue` where a real
+pass logs `written` and `queued`.
 
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on

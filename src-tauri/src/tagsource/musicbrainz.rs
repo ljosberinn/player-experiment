@@ -15,7 +15,7 @@ use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::model::{ReleaseCandidate, ReleaseDetail, RemoteTrack};
 use crate::tagsource::score::{score_with_durations, score_without_durations, LocalRelease};
-use crate::tagsource::transport::{Transport, TransportError};
+use crate::tagsource::transport::Transport;
 
 /// Where the web service lives.
 pub const API_ROOT: &str = "https://musicbrainz.org/ws/2";
@@ -36,11 +36,6 @@ const RELEASE_INC: &str = "recordings artist-credits release-groups genres";
 /// Enough that a reissue-heavy album still shows the pressing the files came
 /// from, and few enough that the list is read rather than scrolled.
 const SEARCH_LIMIT: usize = 15;
-
-/// Turns a transport failure into something a person reads.
-fn network(error: TransportError) -> AppError {
-    AppError::Internal(error.to_string())
-}
 
 /// Escapes the characters Lucene would otherwise read as syntax.
 ///
@@ -105,18 +100,20 @@ pub fn search(
     let query = query_for(album, artist)?;
     crate::tagsource::rate::shared().wait();
 
-    let body = transport
-        .get(
-            &format!("{API_ROOT}/release"),
-            &[
-                ("query", query),
-                ("fmt", "json".to_owned()),
-                ("limit", SEARCH_LIMIT.to_string()),
-            ],
-        )
-        .map_err(network)?
-        // A search cannot 404: an empty result is `{"releases":[]}` with a
-        // 200, so nothing to find and nothing there are the same answer.
+    // The transport's error crosses this boundary whole rather than flattened
+    // into a message, which is what lets the unattended pass ask whether
+    // asking again could work.
+    let body = transport.get(
+        &format!("{API_ROOT}/release"),
+        &[
+            ("query", query),
+            ("fmt", "json".to_owned()),
+            ("limit", SEARCH_LIMIT.to_string()),
+        ],
+    )?;
+    // A search cannot 404: an empty result is `{"releases":[]}` with a 200, so
+    // nothing to find and nothing there are the same answer.
+    let body = body
         .ok_or_else(|| AppError::Internal("MusicBrainz has no search endpoint here.".to_owned()))?;
 
     let response: SearchResponse = serde_json::from_slice(&body)
@@ -150,13 +147,12 @@ pub fn fetch(
     }
     crate::tagsource::rate::shared().wait();
 
-    let body = transport
-        .get(
-            &format!("{API_ROOT}/release/{mbid}"),
-            &[("inc", RELEASE_INC.to_owned()), ("fmt", "json".to_owned())],
-        )
-        .map_err(network)?
-        .ok_or_else(|| AppError::NotFound(format!("MusicBrainz has no release {mbid}.")))?;
+    let body = transport.get(
+        &format!("{API_ROOT}/release/{mbid}"),
+        &[("inc", RELEASE_INC.to_owned()), ("fmt", "json".to_owned())],
+    )?;
+    let body =
+        body.ok_or_else(|| AppError::NotFound(format!("MusicBrainz has no release {mbid}.")))?;
 
     let response: ReleaseResponse = serde_json::from_slice(&body)
         .map_err(|e| AppError::Internal(format!("MusicBrainz sent something unreadable: {e}")))?;

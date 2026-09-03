@@ -14,8 +14,17 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// One request a second, which is what MusicBrainz allows an anonymous client.
-const INTERVAL: Duration = Duration::from_secs(1);
+/// A little over the one request a second MusicBrainz allows an anonymous
+/// client.
+///
+/// The headroom is the point. One request a second measured here is more than
+/// one a second measured at their end the moment the network jitters, and
+/// their answer to that is a 503 rather than a shorter queue - a whole pass
+/// running at exactly the limit collected six of them in four minutes, which
+/// is [82d](../../../docs/issues/done/82d-the-pass-cannot-finish.md). The tenth
+/// of a second costs 27 minutes over eight thousand releases and buys the
+/// margin the limit needs.
+const INTERVAL: Duration = Duration::from_millis(1_100);
 
 /// A gate that lets one request through per interval.
 pub struct Limiter {
@@ -83,8 +92,8 @@ mod tests {
     /// shared: two callers that never meet still have to queue behind each
     /// other, because the limit is enforced at the address they share.
     ///
-    /// At the real one request a second, so what is asserted is the rule as it
-    /// ships rather than a scaled-down imitation of it.
+    /// At the real interval, so what is asserted is the rule as it ships
+    /// rather than a scaled-down imitation of it.
     #[test]
     fn two_callers_serialize_against_each_other() {
         let started = Instant::now();
@@ -96,7 +105,7 @@ mod tests {
 
         assert!(
             started.elapsed() >= INTERVAL,
-            "two concurrent callers went through in {:?}, which is faster than one a second",
+            "two concurrent callers went through in {:?}, which is faster than {INTERVAL:?} apart",
             started.elapsed()
         );
     }

@@ -1,6 +1,6 @@
 # 82d — The pass cannot finish
 
-Found by running [82b](../done/82b-the-unattended-lookup-pass.md) over the real
+Found by running [82b](82b-the-unattended-lookup-pass.md) over the real
 library for four minutes. It surveyed 54 of 8,006 releases and then surveyed the
 same 54 again, four times, while MusicBrainz answered 503 six times. Two
 independent defects, either of which alone stops the pass getting through the
@@ -47,11 +47,10 @@ a reason to stop.
 - **Retry a transient failure before giving up on it.** Twice, backing off, then
   end the sweep as now.
 
-*Open:* whether a 503 should end the sweep at all once retries are exhausted, or
-skip the release and carry on. Ending it is right if the cause is "this address
-is being throttled" and wrong if it is one bad release. Recommendation: end it —
-a throttled address is by far the likelier cause, and the next tick is fifteen
-seconds away.
+*Settled:* **a 503 ends the sweep once the retries are exhausted**, which is
+what it already did. Skipping the release and carrying on would be right only
+if the cause were one bad release, and a throttled address is by far the
+likelier one; the next tick is fifteen seconds away either way.
 
 ## A dry run does not say it was one
 

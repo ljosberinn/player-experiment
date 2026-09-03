@@ -13,6 +13,7 @@
 //! thousand of those by hand is not review, it is clicking.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use rusqlite::Connection;
 
@@ -34,6 +35,54 @@ pub const DRY_RUN_VAR: &str = "APEX_LOOKUP_DRY_RUN";
 /// Whether this process was started to report rather than to write.
 pub fn dry_run() -> bool {
     std::env::var_os(DRY_RUN_VAR).is_some_and(|value| !value.is_empty())
+}
+
+/// How many times a request that could work later is asked again.
+const RETRIES: usize = 2;
+
+/// How long the first retry waits. Each further one doubles it.
+///
+/// Longer than the limiter's own interval on purpose: a 503 is how MusicBrainz
+/// says the limit was exceeded at this address, so going straight back at the
+/// same pace is asking for the next one.
+pub const BACKOFF: Duration = Duration::from_secs(2);
+
+/// How a pass runs, as against what it decides.
+#[derive(Debug, Clone, Copy)]
+pub struct Mode {
+    /// Report the verdict and write nothing - neither files nor rows.
+    pub dry_run: bool,
+    /// How long the first retry of a transient failure waits. Zero in tests,
+    /// which have no network to be flaky and nothing to gain from waiting.
+    pub backoff: Duration,
+}
+
+impl Mode {
+    /// What the worker runs with: the dry run read off the environment.
+    pub fn from_env() -> Self {
+        Self {
+            dry_run: dry_run(),
+            backoff: BACKOFF,
+        }
+    }
+}
+
+/// Runs `call`, asking again on a failure that could work later.
+///
+/// Twice, backing off, and then the caller ends the sweep as it would have
+/// anyway. A failure that cannot change - a query MusicBrainz rejected, a body
+/// that would not parse - is given up on at once, because the second answer
+/// would be the first one again a rate-limited second later.
+fn retrying<T>(backoff: Duration, mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
+    let mut wait = backoff;
+    for _ in 0..RETRIES {
+        match call() {
+            Err(error) if error.transient() => std::thread::sleep(wait),
+            result => return result,
+        }
+        wait *= 2;
+    }
+    call()
 }
 
 /// What one release came to.
@@ -65,7 +114,7 @@ pub fn look_up(
     lock: &ScanLock,
     release: &lookup::Release,
     staging: &Path,
-    dry_run: bool,
+    mode: Mode,
     now: i64,
 ) -> AppResult<Verdict> {
     let members =
@@ -75,14 +124,16 @@ pub fn look_up(
         durations_ms: members.iter().map(|member| member.duration_ms).collect(),
     };
 
-    let candidates = tagsource::musicbrainz::search(
-        transport,
-        release.album.as_deref(),
-        release.artist.as_deref(),
-        &local,
-    )?;
+    let candidates = retrying(mode.backoff, || {
+        tagsource::musicbrainz::search(
+            transport,
+            release.album.as_deref(),
+            release.artist.as_deref(),
+            &local,
+        )
+    })?;
     let Some(best) = candidates.first() else {
-        if !dry_run {
+        if !mode.dry_run {
             lookup::record(
                 conn,
                 release,
@@ -96,7 +147,9 @@ pub fn look_up(
         return Ok(Verdict::NotFound);
     };
 
-    let (detail, cover) = tagsource::fetch_release(transport, &best.mbid, &local)?;
+    let (detail, cover) = retrying(mode.backoff, || {
+        tagsource::fetch_release(transport, &best.mbid, &local)
+    })?;
     let score = detail.candidate.score;
 
     // The track count has to agree, not merely score well. A perfect text
@@ -106,7 +159,7 @@ pub fn look_up(
     let confident = score >= UNATTENDED_THRESHOLD && detail.tracks.len() == members.len();
     if !confident {
         let candidates_json = serde_json::to_string(&candidates).ok();
-        if !dry_run {
+        if !mode.dry_run {
             lookup::record(
                 conn,
                 release,
@@ -124,7 +177,7 @@ pub fn look_up(
     }
 
     let tracks = u32::try_from(detail.tracks.len()).unwrap_or(u32::MAX);
-    if dry_run {
+    if mode.dry_run {
         return Ok(Verdict::Written {
             mbid: detail.candidate.mbid,
             score,
@@ -144,8 +197,8 @@ pub fn look_up(
     {
         // Behind the same lock as a scan, because this rewrites the files a
         // scan reads its (mtime, size) from - and per write rather than for the
-        // pass, because holding it for four and a half hours would block every
-        // scan in that window.
+        // pass, because holding it for five hours would block every scan in
+        // that window.
         let _guard = lock.acquire();
         tags::write::apply(conn, &edits, |_| {})?;
     }
@@ -235,7 +288,24 @@ fn edits_for(
 pub(crate) mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::tagsource::transport::FakeTransport;
+    use crate::tagsource::transport::{FakeTransport, TransportError};
+
+    /// A real pass, with no waiting. The fake transport fails when it is told
+    /// to and never otherwise, so a backoff would only slow the suite down.
+    pub(crate) fn live() -> Mode {
+        Mode {
+            dry_run: false,
+            backoff: Duration::ZERO,
+        }
+    }
+
+    /// The reporting pass, likewise without the waiting.
+    pub(crate) fn dry() -> Mode {
+        Mode {
+            dry_run: true,
+            backoff: Duration::ZERO,
+        }
+    }
 
     const SEARCH_JSON: &str = include_str!("fixtures/search-loveless.json");
     const RELEASE_JSON: &str = include_str!("fixtures/release-loveless.json");
@@ -363,7 +433,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            false,
+            live(),
             100,
         )
         .unwrap();
@@ -399,7 +469,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            false,
+            live(),
             100,
         )
         .unwrap();
@@ -433,7 +503,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            false,
+            live(),
             100,
         )
         .unwrap();
@@ -479,7 +549,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            false,
+            live(),
             100,
         )
         .unwrap();
@@ -536,7 +606,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            false,
+            live(),
             100,
         )
         .unwrap();
@@ -570,13 +640,71 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            false,
+            live(),
             100,
         )
         .unwrap();
 
         assert!(matches!(verdict, Verdict::Queued { .. }), "{verdict:?}");
         assert_eq!(untitled(&conn), 0);
+    }
+
+    /// Six 503s in four minutes is what the pass met on a real library, each
+    /// one ending the sweep where it stood. A 503 is MusicBrainz saying the
+    /// limit was exceeded, which is the definition of worth asking again.
+    #[test]
+    fn a_failure_that_could_work_later_is_asked_again() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        let transport = FakeTransport::new().failing(
+            "/ws/2/release",
+            TransportError::Server {
+                host: "musicbrainz.org".to_owned(),
+                status: 503,
+            },
+        );
+
+        let error = look_up(
+            &mut conn,
+            &transport,
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            live(),
+            100,
+        )
+        .expect_err("every attempt failed");
+
+        assert!(error.transient(), "{error}");
+        assert_eq!(
+            transport.call_count(),
+            RETRIES + 1,
+            "the first attempt and two more"
+        );
+    }
+
+    /// The other half of the rule, and the reason it is not simply "retry on
+    /// any error": a body that would not parse will not parse next time
+    /// either, and asking again spends a rate-limited second to be told so.
+    #[test]
+    fn a_failure_that_cannot_change_is_not_asked_again() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        let transport = FakeTransport::new().answering("/ws/2/release", "not json at all");
+
+        let error = look_up(
+            &mut conn,
+            &transport,
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            live(),
+            100,
+        )
+        .expect_err("an unreadable body is not a release");
+
+        assert!(!error.transient(), "{error}");
+        assert_eq!(transport.call_count(), 1);
     }
 
     /// What the threshold is tuned with: the verdict without the consequence.
@@ -591,7 +719,7 @@ pub(crate) mod tests {
             &ScanLock::default(),
             &loveless(),
             dir.path(),
-            true,
+            dry(),
             100,
         )
         .unwrap();
