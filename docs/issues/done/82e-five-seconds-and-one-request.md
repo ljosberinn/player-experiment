@@ -1,4 +1,4 @@
-# 82e — Three seconds, and one request at a time
+# 82e — Five seconds, and one request at a time
 
 [82d](82d-the-pass-cannot-finish.md)'s fixes were run over the real library and
 did not hold. The first sweep got 72 releases in against 54, then nine sweeps in
@@ -16,18 +16,20 @@ still gets declined when theirs is full, and the status code cannot tell the two
 apart. Retrying twice over six seconds was answering a question we could not
 read.
 
-- **Three seconds, hardcoded, no escalation.** Whether the 503s were ours or
-  theirs, a pass measured in hours loses nothing by asking less often. If they
-  keep coming at 3s, that answers the question the guessing could not.
 - **One request in flight.** The gate is held for the whole request rather than
   the gap before it, and the interval is measured from when the answer came
   back. A request nobody has answered has not been counted at their end.
 - **The retry keeps no backoff of its own.** Two things deciding how long to
   wait is how 82d ended up with the limiter and the pass disagreeing.
 
-The cost is about eighteen hours for eight thousand releases, thirteen of them
-the interval, and an open lookup dialog waiting up to three seconds behind the
-pass. Both are accepted.
+*Settled by measurement:* **five seconds, hardcoded, no escalation.** Three was
+tried first, as the experiment that would say whether the rate was the problem.
+It said no — 26 releases before the first 503, against 72 at 1.1s. Slowing down
+does not buy requests, so the interval is not a rate chosen to avoid 503s; it is
+the least the pass can ask of a service whose spare capacity is what it actually
+runs on. About twenty-two hours for eight thousand releases, all but twenty
+minutes of it the interval, and an open lookup dialog waiting up to five seconds
+behind the pass. Both accepted.
 
 ## The dry run's cursor has to outlive a sweep
 
@@ -48,16 +50,22 @@ be told there is nothing to do. 5,760 a day.
 
 **Waking and sweeping become two cadences.** The switch is still read every
 fifteen seconds, because it is one keyed row and it is what makes the switch feel
-immediate. The gap between sweeps doubles to a ten-minute ceiling whenever a
-sweep finds nothing or ends on a failure, and snaps back to fifteen seconds when
-one gets through releases. A release a scan just added waits up to ten minutes,
-which is nothing beside eighteen hours.
+immediate. The gap between sweeps doubles to a ten-minute ceiling when a sweep
+gets through nothing, and is fifteen seconds again when one gets through
+releases.
+
+**Getting through releases is the test, not getting through them without
+failing.** The first cut of this counted a sweep that a 503 ended as idle. A
+sweep that looked up twenty-six releases and then met a 503 has proved the
+service is answering and the library has work left; backing it off towards ten
+minutes would have added days to a pass that was working.
 
 The User-Agent needed nothing: it already names the app, its version and the
 repository, which is what they ask for.
 
 Testing: the interval asserted from two callers at once and against a slow
-request, both at the shipping three seconds; the dry run's cursor asserted to
-survive a sweep a 503 ended and to pass over the release that failed. The gate
-every other test incidentally uses is scaled to 10 ms, or the suite would spend
-minutes asleep.
+request, both at the shipping five seconds; the cadence asserted as a function,
+since the bug above was in code no test could reach; the dry run's cursor
+asserted to survive a sweep a 503 ended and to pass over the release that
+failed. The gate every other test incidentally uses is scaled to 10 ms, or the
+suite would spend minutes asleep.

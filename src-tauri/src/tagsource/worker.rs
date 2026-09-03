@@ -85,9 +85,6 @@ pub struct Summary {
     pub resolved: usize,
     pub queued: usize,
     pub missed: usize,
-    /// The sweep ended because a release failed, rather than because it ran
-    /// out of releases or the switch went off.
-    pub failed: bool,
 }
 
 impl Summary {
@@ -181,12 +178,30 @@ pub fn sweep(
                 // harmless for one that was not. Stopping rather than carrying
                 // on, because the usual cause is that every following release
                 // would fail the same way, one rate-limited request at a time.
-                Err(_) => {
-                    summary.failed = true;
-                    return Ok(summary);
-                }
+                Err(_) => return Ok(summary),
             }
         }
+    }
+}
+
+/// How long to leave before the next sweep, given what the last one got done.
+///
+/// **Getting through releases is the whole test, whether or not the sweep then
+/// ended on one.** A sweep that looked up twenty-six releases and then met a
+/// 503 has proved both that the service is answering and that the library has
+/// work left in it, so the next one comes straight away. Counting it as idle
+/// would push a pass that is steadily working through the library out to
+/// ten-minute gaps and add days to it.
+///
+/// A sweep that got through *nothing* - a finished library, or a first release
+/// that failed - waits longer each time. That is what keeps a finished library
+/// from being re-grouped four times a minute, and a service that is down from
+/// being asked every fifteen seconds.
+fn next_sweep(previous: Duration, attempted: usize) -> Duration {
+    if attempted > 0 {
+        TICK
+    } else {
+        (previous * 2).min(IDLE_MAX)
     }
 }
 
@@ -280,19 +295,8 @@ pub fn spawn(
                 let op = log.op("lookup.sweep");
                 let summary = sweep(&db, &lock, transport, &log, &staging, &mut plan, &enabled);
 
-                // A sweep that got through releases without failing is a
-                // library with work in it, so the next one comes straight
-                // away. Everything else - nothing to do, or a sweep a failure
-                // ended - waits longer each time, which is what stops a
-                // finished library being re-grouped four times a minute and a
-                // service that is down being asked every fifteen seconds.
-                let worked =
-                    matches!(&summary, Ok(summary) if summary.attempted() > 0 && !summary.failed);
-                quiet = if worked {
-                    TICK
-                } else {
-                    (quiet * 2).min(IDLE_MAX)
-                };
+                let attempted = summary.as_ref().map_or(0, |summary| summary.attempted());
+                quiet = next_sweep(quiet, attempted);
                 due = Instant::now() + quiet;
 
                 match &summary {
@@ -546,7 +550,6 @@ mod tests {
             &on(),
         )
         .unwrap();
-        assert!(first.failed);
         assert_eq!(first.attempted(), 0, "it got a verdict for nothing");
         assert_eq!(plan.surveyed, 1, "but it did get past the release");
 
@@ -565,6 +568,34 @@ mod tests {
             second.attempted(),
             1,
             "the survey carries on from the second release rather than starting over"
+        );
+    }
+
+    /// The pass spends most of its life over a finished library, and a sweep
+    /// over one is two group-bys across every track in it.
+    #[test]
+    fn a_sweep_with_nothing_to_do_waits_longer_each_time() {
+        let mut quiet = TICK;
+        for expected in [30, 60, 120, 240, 480] {
+            quiet = next_sweep(quiet, 0);
+            assert_eq!(quiet, Duration::from_secs(expected));
+        }
+
+        quiet = next_sweep(quiet, 0);
+        assert_eq!(quiet, IDLE_MAX, "and stops there");
+        assert_eq!(next_sweep(quiet, 0), IDLE_MAX);
+    }
+
+    /// The one that was wrong: a sweep a 503 ended after twenty-six releases
+    /// is a library with work left in it, not an idle one. Treating it as idle
+    /// backed a working pass off to ten-minute gaps and added days to it.
+    #[test]
+    fn a_sweep_that_got_through_releases_comes_straight_back() {
+        assert_eq!(next_sweep(TICK, 26), TICK);
+        assert_eq!(
+            next_sweep(IDLE_MAX, 26),
+            TICK,
+            "however long the gap had grown to"
         );
     }
 
@@ -598,6 +629,5 @@ mod tests {
         .unwrap();
 
         assert_eq!(idle.attempted(), 0);
-        assert!(!idle.failed, "nothing to do is not a failure");
     }
 }

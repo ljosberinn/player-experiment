@@ -113,15 +113,18 @@ do or ends on a failure, and snaps back to fifteen seconds the moment one gets
 through releases. A release a scan has just added therefore waits up to ten
 minutes, which is nothing beside a pass measured in hours.
 
-**The limiter holds one request at a time, three seconds apart.** Not the one a
+**The limiter holds one request at a time, five seconds apart.** Not the one a
 second [MusicBrainz documents](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting),
 because they decline with a 503 from three separate buckets — per user agent,
 per address and a global three hundred a second — and a client inside its own
-allowance still meets 503s when theirs is full, indistinguishably. The gate is
-held for the whole request rather than only the gap before it, so the interval
-is measured from when an answer came back; a request that could work later is
-asked again twice, with the limiter rather than the caller deciding how long
-that takes.
+allowance still meets 503s when theirs is full, indistinguishably. Slowing down
+was measured and does not buy requests: a pass got 72 releases in before its
+first 503 at 1.1s and 26 at 3s, so five seconds is not a rate expected to avoid
+them but the least the pass can ask of a service it depends on the spare
+capacity of. The gate is held for the whole request rather than only the gap
+before it, so the interval is measured from when an answer came back; a request
+that could work later is asked again twice, with the limiter rather than the
+caller deciding how long that takes.
 
 `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
 which is how the threshold is tuned against a real library. **The rows are the

@@ -457,7 +457,7 @@ export function tagsourceGroups(trackIds: number[]): Promise<ReleaseSelection[]>
 /**
  * Searches MusicBrainz for the release these files might be, best fit first.
  *
- * Blocks on a process-wide limiter that lets one request out every three
+ * Blocks on a process-wide limiter that lets one request out every five
  * seconds before it blocks on the network, so two of these started at once
  * queue behind each other rather than going out together.
  */

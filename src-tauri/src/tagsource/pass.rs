@@ -46,7 +46,7 @@ const RETRIES: usize = 2;
 /// its whole interval, so a second backoff here would only be two things
 /// deciding the same thing and disagreeing. A failure that cannot change - a
 /// query MusicBrainz rejected, a body that would not parse - is given up on at
-/// once, because the second answer would be the first one again three seconds
+/// once, because the second answer would be the first one again five seconds
 /// later.
 fn retrying<T>(mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
     for _ in 0..RETRIES {

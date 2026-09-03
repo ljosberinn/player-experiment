@@ -707,7 +707,7 @@ fn local_release(
 /// Searches MusicBrainz for the release these files might be.
 ///
 /// On a worker thread because it blocks twice over: once on the shared rate
-/// limiter, which lets one request out every three seconds and holds the gate
+/// limiter, which lets one request out every five seconds and holds the gate
 /// until it comes back, and once on the request itself.
 #[tauri::command]
 pub async fn tagsource_search(

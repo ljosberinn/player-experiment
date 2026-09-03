@@ -78,18 +78,23 @@ run depend on somebody else's service being up and under its rate limit.
 `ReleaseLookup.test.tsx` covers the markup and the flow against mocked IPC; the
 dialog against the live service is a manual check before a release.
 
-The rate limiter is asserted at its real three seconds, from **two** callers at
+The rate limiter is asserted at its real five seconds, from **two** callers at
 once, and again for a slow request not shortening the gap after it: the limit
 is enforced at the IP address, so a limiter that serialized only within one
 client, or only the gaps between request *starts*, would be no limiter at all.
-Those tests cost three seconds of wall clock, deliberately - a scaled-down
+That test costs five seconds of wall clock, deliberately - a scaled-down
 imitation would not be asserting the rule that ships.
 
 **The gate every other test passes through is scaled down**, to ten
 milliseconds, under `cfg(test)`. Otherwise every assertion that incidentally
-makes a request would pay three seconds and the suite would take minutes to say
+makes a request would pay the interval and the suite would take minutes to say
 nothing about the limiter. What is scaled is the ambient gate; the rule is
 still asserted against a limiter built with the shipping interval.
+
+The sweep cadence is asserted as a function rather than through the thread:
+that a sweep which got through releases comes straight back however long the
+gap had grown to, and that one which got through nothing doubles to the
+ceiling and stops there.
 
 **No unit test can see where a file actually lands.** `log::tests` proves the
 line format and the rotation against a `tempfile`, and says nothing about
