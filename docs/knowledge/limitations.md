@@ -32,8 +32,22 @@ Known, decided, and not scheduled. Anything with work attached lives in
   is not on disk contributes nothing to a pass — neither its files nor their
   absence — so songs on a drive that has been unplugged are neither marked
   missing nor removed until the user runs a Rescan.
-- **A failed unattended pass is silent.** There is nowhere to put it: the pass
-  was not asked for, so it is not an error popover, and there is no log yet.
+- **A failed unattended pass is silent.** It was not asked for, so it is not an
+  error popover; the line in `main.log` is where it says so.
+- **A first release lookup over a large library takes hours.** Two MusicBrainz
+  calls per release at the one request a second they allow, which is four and a
+  half hours for eight thousand releases. The limit is enforced at the address,
+  so no amount of concurrency moves it — an open lookup dialog and the pass
+  share the same second. A library already tagged with release MBIDs pays none
+  of it.
+- **A release MusicBrainz has nothing for is never looked up again.**
+  Deliberate: MusicBrainz grows, so today's miss is next year's match, but
+  re-searching every miss on every launch would be four and a half hours that
+  finds nothing, forever. There is no manual re-lookup yet.
+- **A release the pass was unsure about has nowhere to be reviewed yet.** It is
+  recorded, with its candidates, and nothing was written to it — but there is no
+  screen that offers it, and no readout saying a pass is running at all. Until
+  there is, the log is the only place either shows.
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.
@@ -45,7 +59,8 @@ Known, decided, and not scheduled. Anything with work attached lives in
   journal rather than bounding it, because a single-level undo over an
   unattended pass's thousands of batches reverts whichever release the pass
   finished with rather than the user's own last edit. What guards an automatic
-  write is the lookup's confidence threshold and its review queue.
+  write is the lookup's confidence threshold and the releases it declines to
+  write at all.
 - **Stored artwork is not the file's artwork.** Anything larger than 500px is
   downscaled and everything decodable is re-encoded at q85, so `cover://`
   serves a smaller picture than the mp3 holds. A cover the user picks still

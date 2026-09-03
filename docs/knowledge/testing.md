@@ -9,6 +9,7 @@ current frontend coverage is well above it.
 | Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, a fresh database with no undo journal, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
 | last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
+| Release lookup | `cargo test` | the whole unattended pass against recorded fixtures: the threshold from both sides, a release with no candidates left untouched and unqueued, genre filled and *not* overwritten, comment untouched, a second sweep a no-op, a cancelled sweep resuming where it stopped |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
@@ -36,6 +37,14 @@ port: without it the only code in the product that opens a socket would have no
 coverage at all, and the fake would keep passing while the real transport posted
 to the wrong URL. **No credentials in CI** - a key is needed to run the feature,
 not to test it.
+
+**Nothing reaches MusicBrainz either**, for the same reason and through the same
+kind of seam. Two things follow from the limiter being process-wide and real:
+every test that searches or fetches spends a real second in it, so the lookup
+tests keep to two or three releases apiece rather than proving the same rule
+over a bigger library; and the one test that does open a socket is
+`#[ignore]`d, because a fixture is a recording of a response shape and the shape
+is theirs to change — `cargo test -p apex -- --ignored` is how that is noticed.
 
 Exercising it against the real service is a local build with a key of your own
 from https://www.last.fm/api/account/create, compiled in the way the release job
