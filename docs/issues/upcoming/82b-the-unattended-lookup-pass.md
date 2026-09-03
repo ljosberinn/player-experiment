@@ -4,15 +4,11 @@
 the same lookup as a background pass: over what is already in the library once,
 and over every release a scan adds from then on. Needs
 [82a](../done/82a-what-eight-thousand-releases-break.md) first, or it fires 8,045
-re-queries and buries the undo journal.
-
-**The pass does not journal what it writes.** Settled in
-[82a](../done/82a-what-eight-thousand-releases-break.md): the journal is capped
-at 50 batches, so it could hold only an accident's worth of a pass anyway, and
-letting it try would mean Edit ▸ Undo reverts whichever release the pass wrote
-last rather than the user's own last edit. What protects the user from a bad
-automatic write is the threshold below and 82c's review queue. `write::apply`
-journals unconditionally today, so this is a way in that does not.
+re-queries. The reopened
+[82a](82a-what-eight-thousand-releases-break.md) removes the undo journal, so
+nothing here has to decide whether the pass journals what it writes. What
+protects the user from a bad automatic write is the threshold below and 82c's
+review queue.
 
 **A reversal, deliberately.** [79b](../done/79b-online-release-lookup.md)
 confirms every match by hand, and conventions calls the file the source of
