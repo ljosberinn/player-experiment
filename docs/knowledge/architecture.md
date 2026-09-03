@@ -114,6 +114,11 @@ commit. The frontend's `INVALIDATE_DEBOUNCE_MS` still runs underneath and
 composes with it; it cannot solve this on its own, because by the time the
 pings arrive they are already further apart than the debounce.
 
+The cost sits on the other side of the window: a lone write landing inside one
+is announced by that window's trailing ping rather than at once, up to five
+seconds later. A scan is the case to watch, since it announces once at the end
+and so has no second ping to arrive sooner.
+
 ## What is written down
 
 **`main.log`, beside `library.sqlite3` and `crashes.log`** — one folder holds
