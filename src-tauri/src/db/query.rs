@@ -175,13 +175,17 @@ fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
         // so `=` would silently return no rows for the untagged group instead
         // of selecting it. `IS` compares NULLs as equal, which is what an
         // absent tag needs here.
-        conditions.push(format!("{} IS ?", browse.kind.key_sql()));
+        //
+        // `COLLATE NOCASE` because [`browse_groups`] folds case: the tile is
+        // labelled with the one casing `min()` picked, so without the same
+        // collation here opening it would show only that casing's tracks.
+        conditions.push(format!("{} IS ? COLLATE NOCASE", browse.kind.key_sql()));
         params.push(Box::new(browse.key.clone()));
 
         // Only albums are keyed by two columns; for the other two the artist
         // is the key itself and constraining it again would be a no-op at best.
         if browse.kind == BrowseKind::Albums {
-            conditions.push(format!("{GROUP_ARTIST} IS ?"));
+            conditions.push(format!("{GROUP_ARTIST} IS ? COLLATE NOCASE"));
             params.push(Box::new(browse.secondary.clone()));
         }
     }
@@ -396,13 +400,22 @@ pub fn browse_groups(
         "NULL"
     };
 
+    // `COLLATE NOCASE` on both keys: a release tagged `A Sense Of Purpose` on
+    // one file and `A Sense of Purpose` on the next is one release and was two
+    // tiles. Grouping on a folded key leaves no row of the group carrying the
+    // label, so `min()` picks it - a binary comparison, so the uppercase
+    // variant, arbitrary but the same one every time, which is what the grid's
+    // React keys need. `min()` of an all-NULL group is still NULL, so the
+    // untagged group keeps its key and its place last.
+    //
     // `min(year)` rather than any year: a remaster tagged a year later should
     // not move an album to the wrong end of a chronological sort.
     let sql = format!(
-        "SELECT {key}, {secondary}, count(*), coalesce(sum(tracks.duration_ms), 0), \
-         min(tracks.cover_hash), min(tracks.year) {} \
-         GROUP BY {key}, {secondary} \
-         ORDER BY {key} IS NULL, {key} COLLATE NOCASE ASC, {secondary} COLLATE NOCASE ASC",
+        "SELECT min({key}) AS group_key, min({secondary}) AS group_secondary, count(*), \
+         coalesce(sum(tracks.duration_ms), 0), min(tracks.cover_hash), min(tracks.year) {} \
+         GROUP BY {key} COLLATE NOCASE, {secondary} COLLATE NOCASE \
+         ORDER BY group_key IS NULL, group_key COLLATE NOCASE ASC, \
+                  group_secondary COLLATE NOCASE ASC",
         scope.from_where
     );
 
@@ -453,7 +466,8 @@ pub fn release_selections(
         "SELECT {GROUP_ALBUM}, {GROUP_ARTIST}, tracks.id
            FROM tracks
           WHERE tracks.id IN ({placeholders})
-          ORDER BY {GROUP_ARTIST}, {GROUP_ALBUM}, {RELEASE_ORDER}"
+          ORDER BY {GROUP_ARTIST} COLLATE NOCASE, {GROUP_ALBUM} COLLATE NOCASE, \
+                   {RELEASE_ORDER}"
     );
 
     let mut stmt = conn.prepare(&sql)?;
@@ -472,7 +486,7 @@ pub fn release_selections(
     let mut selections: Vec<crate::model::ReleaseSelection> = Vec::new();
     for (album, artist, id) in rows {
         match selections.last_mut() {
-            Some(last) if last.album == album && last.artist == artist => last.track_ids.push(id),
+            Some(last) if same_release(last, &album, &artist) => last.track_ids.push(id),
             _ => selections.push(crate::model::ReleaseSelection {
                 album,
                 artist,
@@ -481,6 +495,27 @@ pub fn release_selections(
         }
     }
     Ok(selections)
+}
+
+/// Whether a row belongs to the release being accumulated, folding case the
+/// way the browse view groups: a release tagged two ways is one release, and
+/// unfolded it would be searched twice at one request a second and offered to
+/// the user twice.
+///
+/// ASCII-only, like the `NOCASE` collation it mirrors.
+fn same_release(
+    selection: &crate::model::ReleaseSelection,
+    album: &Option<String>,
+    artist: &Option<String>,
+) -> bool {
+    fn same(a: &Option<String>, b: &Option<String>) -> bool {
+        match (a, b) {
+            (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+    same(&selection.album, album) && same(&selection.artist, artist)
 }
 
 /// One file of a release, as the lookup needs it.
@@ -506,11 +541,14 @@ pub fn release_members(
     artist: Option<&str>,
 ) -> AppResult<Vec<ReleaseMember>> {
     // `IS` rather than `=`, so an untagged release matches on NULL the same way
-    // selecting it from the browse grid does.
+    // selecting it from the browse grid does, and `COLLATE NOCASE` so a release
+    // tagged two ways comes back whole: handed one casing this would otherwise
+    // return half of it, and the identity would be written to that half.
     let sql = format!(
         "SELECT tracks.id, tracks.duration_ms
            FROM tracks
-          WHERE {GROUP_ALBUM} IS ?1 AND {GROUP_ARTIST} IS ?2
+          WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
+            AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
             AND tracks.missing_since IS NULL
           ORDER BY {RELEASE_ORDER}"
     );
@@ -2033,5 +2071,172 @@ mod tests {
         let members = release_members(&conn, Some("Shields"), Some("Grizzly Bear")).unwrap();
 
         assert_eq!(members.len(), 1);
+    }
+
+    /// One release spelled two ways, and one artist spelled two ways, which is
+    /// what the browse view drew as two tiles each.
+    fn mixed_cased() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+
+        // (path, artist, album, track)
+        let rows = [
+            // The album differs in case, the artist does not.
+            ("/c/1.mp3", "In Flames", "A Sense Of Purpose", 1),
+            ("/c/2.mp3", "In Flames", "A Sense of Purpose", 2),
+            // The artist differs in case, the album does not.
+            ("/c/3.mp3", "ASP", "Requiembryo", 1),
+            ("/c/4.mp3", "asp", "Requiembryo", 2),
+        ];
+        for (path, artist, album, track) in rows {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album_artist,
+                                     album, track_no, added_at)
+                 VALUES (?1, 1, 1, 1000, 'T', ?2, ?2, ?3, ?4, 0)",
+                rusqlite::params![path, artist, album, track],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO tracks (path, mtime, size, added_at) VALUES ('/c/5.mp3', 1, 1, 0)",
+            [],
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn a_pair_differing_only_in_album_case_is_one_tile() {
+        let (_dir, db) = mixed_cased();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        let folded: Vec<_> = albums
+            .iter()
+            .filter(|g| g.secondary.as_deref() == Some("In Flames"))
+            .collect();
+
+        assert_eq!(folded.len(), 1, "two casings of one album are one tile");
+        assert_eq!(folded[0].track_count, 2);
+    }
+
+    #[test]
+    fn a_pair_differing_only_in_artist_case_is_one_tile() {
+        let (_dir, db) = mixed_cased();
+
+        let albums = browse(&db, BrowseKind::Albums);
+        let folded: Vec<_> = albums
+            .iter()
+            .filter(|g| g.key.as_deref() == Some("Requiembryo"))
+            .collect();
+        assert_eq!(folded.len(), 1, "the secondary key folds too");
+        assert_eq!(folded[0].track_count, 2);
+
+        // And on the artists tab, where that same casing pair is the key.
+        assert_eq!(
+            keys(&browse(&db, BrowseKind::Artists)),
+            [Some("ASP"), Some("In Flames"), None],
+        );
+    }
+
+    #[test]
+    fn a_folded_group_is_labelled_with_one_of_its_casings() {
+        let (_dir, db) = mixed_cased();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        // `min()` is a binary comparison, so the uppercase variant wins. Which
+        // one is arbitrary; that it is the same one every time is not, because
+        // it is the React key the grid rows are identified by.
+        assert_eq!(albums[0].key.as_deref(), Some("A Sense Of Purpose"));
+        assert_eq!(albums[1].secondary.as_deref(), Some("ASP"));
+    }
+
+    #[test]
+    fn drilling_into_a_folded_tile_shows_both_casings() {
+        let (_dir, db) = mixed_cased();
+        let conn = db.conn().unwrap();
+        let drill = |kind, key: &str, secondary: Option<&str>| {
+            paths(
+                query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        browse: Some(BrowseFilter {
+                            kind,
+                            key: Some(key.to_owned()),
+                            secondary: secondary.map(str::to_owned),
+                        }),
+                        sort_by: SortField::Path,
+                        limit: 100,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            )
+        };
+
+        // The tile carries the label `min()` picked, so the other casing's
+        // tracks are only reachable if the filter folds case as well.
+        assert_eq!(
+            drill(BrowseKind::Albums, "A Sense Of Purpose", Some("In Flames")),
+            ["/c/1.mp3", "/c/2.mp3"]
+        );
+        assert_eq!(
+            drill(BrowseKind::Albums, "Requiembryo", Some("ASP")),
+            ["/c/3.mp3", "/c/4.mp3"]
+        );
+        assert_eq!(
+            drill(BrowseKind::Artists, "ASP", None),
+            ["/c/3.mp3", "/c/4.mp3"]
+        );
+    }
+
+    #[test]
+    fn folding_case_leaves_the_untagged_group_alone() {
+        let (_dir, db) = mixed_cased();
+        let albums = browse(&db, BrowseKind::Albums);
+
+        // `nullif` still runs before the collation, so an absent tag is still
+        // one group and still sorts last.
+        assert_eq!(albums.last().unwrap().key, None);
+        assert_eq!(albums.last().unwrap().track_count, 1);
+        assert_eq!(albums.len(), 3);
+    }
+
+    #[test]
+    fn a_release_spelled_two_ways_is_looked_up_once() {
+        let (_dir, db) = mixed_cased();
+        let conn = db.conn().unwrap();
+        let ids: Vec<i64> = all_track_ids(&conn, &TrackQuery::default()).unwrap();
+
+        let selections = release_selections(&conn, &ids).unwrap();
+
+        // One request a second: an unfolded pair costs two of them for one
+        // release and offers the user the same release twice.
+        assert_eq!(
+            selections
+                .iter()
+                .map(|s| s.track_ids.len())
+                .collect::<Vec<_>>(),
+            vec![1, 2, 2],
+            "the untagged file, then one selection per release"
+        );
+    }
+
+    #[test]
+    fn every_casing_of_a_release_is_written_its_identity() {
+        let (_dir, db) = mixed_cased();
+        let conn = db.conn().unwrap();
+
+        // Handed either casing: `with_identity` writes the MBIDs to what comes
+        // back, so half a release here is half a release identified.
+        for artist in ["ASP", "asp"] {
+            assert_eq!(
+                release_members(&conn, Some("requiembryo"), Some(artist))
+                    .unwrap()
+                    .len(),
+                2,
+                "asking as {artist:?} must still name the whole release"
+            );
+        }
     }
 }

@@ -55,6 +55,12 @@ Each of these cost real time once. They are here so they cost it once.
 - A bound NULL equals nothing: use `IS ?` rather than `= ?` for a grouping key
   that may be null. `=` returns an empty view, dropping the clause returns the
   whole library, and both look like they worked.
+- **Group on a folded key and no row carries the label any more.** `GROUP BY
+  album COLLATE NOCASE` still lets you select a bare `album`, and SQLite hands
+  back whichever row it happened to be on. Aggregate it — `min(album)` — or the
+  label, and any React key built from it, changes between renders. Whatever
+  filters on that label needs the same collation, or it selects the tracks of
+  one casing only.
 - `NULL <> 'x'` is NULL, so every exclusion operator needs `(col IS NULL OR …)`.
 - Escape `%`, `_` and the escape character in `LIKE` patterns.
 
