@@ -1,12 +1,12 @@
 # 82a — What eight thousand releases break
 
-Two defects [82b](82b-the-unattended-lookup-pass.md) would walk straight into,
+Two defects [82b](../upcoming/82b-the-unattended-lookup-pass.md) would walk straight into,
 neither visible at the ten releases a hand-driven lookup does. Independent of
 the pass and of each other, so they land first and alone.
 
 ## `library://changed` is a re-query per release
 
-[62](../done/62-one-invalidation-channel.md) debounces both subscribers at
+[62](62-one-invalidation-channel.md) debounces both subscribers at
 `INVALIDATE_DEBOUNCE_MS`, 250ms, and that window was tuned for a burst — a scan
 committing in a tight loop. A lookup pass commits one release roughly every two
 seconds for four and a half hours, which is wider than the window, so **every
@@ -15,7 +15,7 @@ them. Debouncing harder in the frontend is the wrong end: the events are already
 isolated by the time they arrive.
 
 So it coalesces on the emit side, in `announcing`/`announcing_with` — one place,
-which means every long write after this one inherits it, [83b](83b-moving-one-release.md)
+which means every long write after this one inherits it, [83b](../upcoming/83b-moving-one-release.md)
 included. Two constraints on the window:
 
 - **Trailing edge, always.** A leading-edge throttle drops the final ping and
@@ -24,9 +24,17 @@ included. Two constraints on the window:
   so the two compose; the backend window is what decides how stale the view is
   allowed to be during a long pass.
 
-*Open:* the window length. A number picked here is a guess until the pass
-exists to feel it against — reasonable range is 2–5s, and the honest way to
-settle it is to run 82b and watch.
+*Settled:* **5s, and the leading edge is kept.** "Trailing edge, always" is
+read as "the trailing ping must always fire", not "never fire on the leading
+edge" — a trailing-only throttle would put the whole window in front of every
+ordinary edit, and 62 already called the frontend's 250ms the one visible
+behaviour change. So an isolated write is announced at once, and a run is
+announced once per window, the trailing ping opening the next window rather
+than leaving the next writer to take a leading edge.
+
+5s because the range's low end buys nothing: the pass commits about every 2s,
+so a 2s window coalesces roughly nothing and 3s takes 8,044 pings to ~5,400,
+where 5s takes them to ~3,200. Provisional until 82b exists to measure against.
 
 ## `tag_undo` is unbounded, and Undo stops meaning what it says
 
@@ -54,7 +62,8 @@ become monotonic — `max(batch_id) + 1` floored at `now * 1000`, or a counter
 that does not depend on the table's height — **and that change belongs with the
 cap, not after it.**
 
-*Open:* whether an unattended write is journalled at all.
+*Settled:* the cap is 50 and the unattended write is **not** journalled — a
+decision 82b carries out, since there is no unattended writer yet.
 
 Both readings hold. Journalling it means an automatic mistag is takeable-back,
 which is the whole appeal. Not journalling it means Undo keeps meaning "the last
