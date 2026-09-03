@@ -21,7 +21,7 @@ So: `dragDropEnabled` to `true`, and `onDragDropEvent` carries real paths.
 
 - **A dropped folder becomes a watch folder**, exactly as the picker's
   "Add Folders…" does, and a scan follows.
-- **Dropped files need [83](83-the-library-folder.md)**. The scanner is
+- **Dropped files need [83b](83b-moving-one-release.md)**. The scanner is
   root-driven and `plan` marks anything not under a root missing, so loose files
   with nowhere to live would vanish at the next scan. With organizing on they
   are moved into the Library root, which is watched, and the problem does not

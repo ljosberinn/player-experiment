@@ -50,7 +50,7 @@ space. Percentage to two decimals and an estimate from the last 100 releases.
   not the one running.
 
 **One component fed by a task, not this task's own.**
-[83](83-the-library-folder.md) has a second long task and reuses this. So it is
+[83c](83c-turning-the-library-folder-on.md) has a second long task and reuses this. So it is
 a new channel — a label, done, total and an estimate — with 82b as its first
 producer and 83 as its second.
 

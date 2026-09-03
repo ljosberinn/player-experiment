@@ -29,8 +29,10 @@ what was on it — that is what migration 4 exists for. Only an explicit per-row
 removal is a statement about wanting the song gone.
 
 **An explicit add lifts the tombstone.** Nothing does that yet;
-[85](../upcoming/85-drop-files-and-folders.md)'s file drop and [83](../upcoming/83-the-library-folder.md)'s
-mover both must, or a dropped file would silently do nothing.
+[85](../upcoming/85-drop-files-and-folders.md)'s file drop must, or a dropped song that was
+removed once would silently do nothing. [83b](../upcoming/83b-moving-one-release.md)'s mover
+faces the same table from the other side: it writes no tombstone, and lifts one
+sitting on a path it moves a file onto.
 
 And an escape hatch, or a mis-click is reversible only by editing the database:
 File gains **Forget N Removed Songs…**, which drops the tombstones so the next

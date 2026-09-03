@@ -41,7 +41,9 @@ Covers are free: the Cover Art Archive has no rate limit and
 after it.
 
 - **Above the threshold**, the write happens: title, artist, album, album
-  artist, year, track and disc number, both MBIDs, and artwork where there is
+  artist, year, track and disc number, both MBIDs, the release type
+  ([83a](83a-where-a-file-goes.md)'s column and field, written here because this
+  is what writes the rest of the release's identity), and artwork where there is
   none.
 - **Below it**, nothing is written and the release goes in the review queue for
   [82c](82c-the-review-queue-and-progress.md).
