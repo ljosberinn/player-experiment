@@ -51,7 +51,7 @@ were selected and touches nothing else.
 **The MBIDs are the exception: they go to the whole release.** Every track
 sharing the selection's `(album, GROUP_ARTIST)` gets them, selected or not.
 Otherwise three of twelve tracks carry an identity and nine fall back to the
-title, and [86](86-one-release-one-tile.md) draws one release as two tiles —
+title, and [87](87-one-release-one-tile.md) draws one release as two tiles —
 the defect it exists to remove. They are the only fields where writing outside
 the selection is right, because they say which release the file belongs to
 rather than what it should be called.

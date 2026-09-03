@@ -2,7 +2,7 @@
 
 A seam, like [10a](10a-lastfm-seam.md): nothing user-visible ships here.
 It is what [79b](../upcoming/79b-online-release-lookup.md) writes through and what
-[86](../upcoming/86-one-release-one-tile.md) groups by.
+[87](../upcoming/87-one-release-one-tile.md) groups by.
 
 **`write::apply` takes one edit per track.** Today it is
 `apply(conn, track_ids, &TagEdit, …)` — one edit over many files, which is
@@ -26,7 +26,7 @@ title, which collides.
 (`MUSICBRAINZ_RELEASEGROUPID`), through the same three places. The two are not
 interchangeable: the release MBID is per pressing, which is what re-lookup and
 Cover Art Archive are keyed by, and the release group is the album across its
-pressings, which is what [86](../upcoming/86-one-release-one-tile.md) has to group by or two
+pressings, which is what [87](../upcoming/87-one-release-one-tile.md) has to group by or two
 rips of one album become two tiles. Both or neither — of 600 files sampled from
 this library, every one carrying either carried both, so a reader that takes one
 and drops the other throws away identity it was handed.

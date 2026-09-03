@@ -13,7 +13,7 @@ album tag at all.
 
 Nothing else is needed — no migration, no network, no MBID. It is the only part
 of the duplicate-tile problem that is a bug in the query rather than a gap in
-the tags; the rest is [86](86-one-release-one-tile.md).
+the tags; the rest is [87](87-one-release-one-tile.md).
 
 **The drill-in has to fold case too.** `scope` filters with
 `{key_sql} IS ?` against the key the tile was labelled with, so folding the
