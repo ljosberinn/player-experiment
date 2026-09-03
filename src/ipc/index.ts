@@ -267,6 +267,22 @@ export function saveDynamicBackground(enabled: boolean): Promise<void> {
 }
 
 /**
+ * Whether the app may look releases up on MusicBrainz on its own.
+ *
+ * Off until it is turned on, unlike every other preference here: it is what
+ * lets the app talk to a server and write tags with nobody watching. Turning
+ * it off cancels a pass in flight — the backend reads the setting between
+ * releases, so neither call needs a restart.
+ */
+export function loadUnattendedLookup(): Promise<boolean> {
+  return invoke<boolean>("load_unattended_lookup");
+}
+
+export function saveUnattendedLookup(enabled: boolean): Promise<void> {
+  return invoke<void>("save_unattended_lookup", { enabled });
+}
+
+/**
  * Writes an export to `path`, resolving to how many tracks it holds.
  *
  * Runs on a worker thread; follow it with {@link onExportProgress}.

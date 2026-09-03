@@ -18,6 +18,7 @@ import {
   listPlaylists,
   listWatchFolders,
   loadDynamicBackground,
+  loadUnattendedLookup,
   loadWindowGeometry,
   moveInPlaylist,
   onExportProgress,
@@ -43,6 +44,7 @@ import {
   renamePlaylist,
   type SmartOrder,
   saveDynamicBackground,
+  saveUnattendedLookup,
   saveWindowGeometry,
   scanLibrary,
   setPlaylistFilter,
@@ -198,6 +200,16 @@ describe("ipc", () => {
       invokeMock.mockResolvedValue(false);
       await expect(loadDynamicBackground()).resolves.toBe(false);
       expect(invokeMock).toHaveBeenCalledWith("load_dynamic_background");
+    });
+
+    it("round-trips the unattended lookup switch", async () => {
+      invokeMock.mockResolvedValue(undefined);
+      await saveUnattendedLookup(true);
+      expect(invokeMock).toHaveBeenCalledWith("save_unattended_lookup", { enabled: true });
+
+      invokeMock.mockResolvedValue(true);
+      await expect(loadUnattendedLookup()).resolves.toBe(true);
+      expect(invokeMock).toHaveBeenCalledWith("load_unattended_lookup");
     });
   });
 

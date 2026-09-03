@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { revealMainLog } from "../../ipc";
+import { loadUnattendedLookup, revealMainLog } from "../../ipc";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
+import { useLookupStore } from "./lookupStore";
 import { SettingsDialog } from "./SettingsDialog";
 import { useStatusStore } from "./statusStore";
 
@@ -16,6 +17,8 @@ vi.mock("../../ipc", () => ({
   removeWatchFolder: vi.fn(async () => undefined),
   saveWatchInterval: vi.fn(async () => undefined),
   revealMainLog: vi.fn(async () => undefined),
+  loadUnattendedLookup: vi.fn(async () => false),
+  saveUnattendedLookup: vi.fn(async () => undefined),
 }));
 
 function checkbox(): HTMLInputElement {
@@ -25,6 +28,7 @@ function checkbox(): HTMLInputElement {
 describe("the Settings dialog", () => {
   beforeEach(() => {
     useDynamicBackgroundStore.setState({ enabled: true });
+    useLookupStore.setState({ enabled: false });
   });
 
   it("shows the background switch in the state the store is in", () => {
@@ -89,5 +93,28 @@ describe("the Settings dialog", () => {
     // argument as the row above, one section later.
     expect(screen.getByText("Music Folders")).toBeInTheDocument();
     expect(screen.getByLabelText("Check For Changes")).toBeInTheDocument();
+  });
+
+  it("opts the library into looking releases up online", async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialog onClose={vi.fn()} />);
+    const lookup = screen.getByRole("checkbox", { name: "Look Up Releases Online" });
+
+    expect(lookup).not.toBeChecked();
+    await user.click(lookup);
+
+    expect(useLookupStore.getState().enabled).toBe(true);
+    expect(lookup).toBeChecked();
+  });
+
+  it("reads the stored preference when it opens", async () => {
+    vi.mocked(loadUnattendedLookup).mockResolvedValueOnce(true);
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    // Loaded on open rather than at startup: nothing outside this dialog
+    // draws from it.
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: "Look Up Releases Online" })).toBeChecked();
+    });
   });
 });

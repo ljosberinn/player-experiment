@@ -227,6 +227,8 @@ pub fn run() {
             commands::save_sidebar_sections,
             commands::load_dynamic_background,
             commands::save_dynamic_background,
+            commands::load_unattended_lookup,
+            commands::save_unattended_lookup,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,

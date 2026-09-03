@@ -31,6 +31,13 @@ pub const CRASH_SEEN: &str = "crash.seen";
 /// On unless it has been turned off - the design draws the blobs, so their
 /// absence is the departure that has to be stored rather than their presence.
 pub const DYNAMIC_BACKGROUND: &str = "appearance.dynamicBackground";
+/// Whether the unattended lookup pass may run.
+///
+/// Off unless it has been turned on, which is the opposite of every other
+/// preference here: this is the one that makes the app talk to a server, and
+/// the tag sources are inert unless somebody asks. The ask is this switch,
+/// once, rather than a confirmation per release.
+pub const UNATTENDED_LOOKUP: &str = "lookup.unattended";
 /// Set once the built-in smart playlists have been created. A flag rather than
 /// a check for the playlists themselves, so deleting Most Played deletes it
 /// instead of asking for it back on the next launch.
@@ -160,6 +167,16 @@ pub fn dynamic_background(conn: &Connection) -> AppResult<bool> {
     Ok(get(conn, DYNAMIC_BACKGROUND)?.as_deref() != Some("false"))
 }
 
+/// Whether the unattended lookup pass may run.
+///
+/// Only the explicit "true" this writes turns it on. Everything else - unset,
+/// "false", a hand-edited row - is off, because being wrong in that direction
+/// costs nothing and being wrong in the other starts hours of outbound
+/// traffic and writes tags nobody asked for.
+pub fn unattended_lookup(conn: &Connection) -> AppResult<bool> {
+    Ok(get(conn, UNATTENDED_LOOKUP)?.as_deref() == Some("true"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,6 +271,10 @@ mod tests {
         // Taste rather than geometry, and so on the other side of that line -
         // it travels with the library the way the volume and the zoom do.
         assert!(is_exportable(DYNAMIC_BACKGROUND));
+        // And the one that does not: opting a machine into outbound network is
+        // a decision about that machine, not a preference an exported library
+        // carries to the next one.
+        assert!(!is_exportable(UNATTENDED_LOOKUP));
     }
 
     #[test]
@@ -270,6 +291,28 @@ mod tests {
         // And a value neither of those, which must not turn the design off.
         set(&conn, DYNAMIC_BACKGROUND, "maybe").unwrap();
         assert!(dynamic_background(&conn).unwrap());
+    }
+
+    /// The inverse of the dynamic background's default. That one is a drawing
+    /// the design makes unless it is turned off; this is the one setting that
+    /// makes the app talk to a server on its own, so it stays off until
+    /// somebody says otherwise.
+    #[test]
+    fn the_unattended_lookup_is_off_until_it_is_turned_on() {
+        let (_dir, conn) = conn();
+        assert!(!unattended_lookup(&conn).unwrap());
+
+        set(&conn, UNATTENDED_LOOKUP, "true").unwrap();
+        assert!(unattended_lookup(&conn).unwrap());
+
+        set(&conn, UNATTENDED_LOOKUP, "false").unwrap();
+        assert!(!unattended_lookup(&conn).unwrap());
+
+        set(&conn, UNATTENDED_LOOKUP, "yes please").unwrap();
+        assert!(
+            !unattended_lookup(&conn).unwrap(),
+            "a value this app did not write must not start four hours of traffic"
+        );
     }
 
     #[test]

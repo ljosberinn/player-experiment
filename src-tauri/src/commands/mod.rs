@@ -1038,6 +1038,25 @@ pub fn save_dynamic_background(db: State<'_, Db>, enabled: bool) -> AppResult<()
     )
 }
 
+/// Whether the unattended lookup pass may run.
+#[tauri::command]
+pub fn load_unattended_lookup(db: State<'_, Db>) -> AppResult<bool> {
+    let conn = db.conn()?;
+    settings::unattended_lookup(&conn)
+}
+
+/// Turning it off cancels a pass in flight: the worker reads this between
+/// releases rather than once at start.
+#[tauri::command]
+pub fn save_unattended_lookup(db: State<'_, Db>, enabled: bool) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(
+        &conn,
+        settings::UNATTENDED_LOOKUP,
+        if enabled { "true" } else { "false" },
+    )
+}
+
 #[tauri::command]
 pub fn save_window_geometry(db: State<'_, Db>, geometry: String) -> AppResult<()> {
     let conn = db.conn()?;
