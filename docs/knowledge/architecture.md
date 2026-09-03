@@ -104,6 +104,16 @@ agree on. Only on success, since a rejected write changed nothing. This is the
 one invalidation channel — a mutation does not tell each view what to reload,
 it says the library moved and the views re-ask.
 
+**The ping is coalesced before it leaves**, in `commands::invalidate`. Leading
+edge plus trailing edge: an isolated write is announced the moment it commits,
+and a write that keeps committing is announced once per five-second window
+until it stops. That is for the writes that run for hours — the unattended
+lookup pass commits a release every couple of seconds, and one ping per commit
+is one full re-query of the open view and one recount of every playlist per
+commit. The frontend's `INVALIDATE_DEBOUNCE_MS` still runs underneath and
+composes with it; it cannot solve this on its own, because by the time the
+pings arrive they are already further apart than the debounce.
+
 ## What is written down
 
 **`main.log`, beside `library.sqlite3` and `crashes.log`** — one folder holds

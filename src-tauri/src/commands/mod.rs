@@ -3,9 +3,13 @@
 //! Command bodies stay thin on purpose: they parse arguments and delegate to a
 //! domain module, so the domain stays unit-testable without a Tauri runtime.
 
+mod invalidate;
+
 use std::path::PathBuf;
 
 use tauri::{Emitter, Manager, State};
+
+pub(crate) use invalidate::{announce as announce_library_changed, Invalidations};
 
 use crate::audio::{Command, Player};
 use crate::db::{playback, playlists, query, settings, tag_values, Db};
@@ -35,6 +39,9 @@ pub(crate) const SCAN_PROGRESS: &str = "scan://progress";
 /// smart playlist membership, a playlist edit changes the open view - so a
 /// payload would say `true, true` at almost every site while being one more
 /// thing two stores have to agree on.
+///
+/// Emitted only through [`invalidate::announce`], which coalesces it: see that
+/// module for why a long write must not be one ping per commit.
 pub(crate) const LIBRARY_CHANGED: &str = "library://changed";
 
 /// Runs a write, writes it down, and announces it, so no caller has to
@@ -51,7 +58,7 @@ fn announcing<T>(
     write: impl FnOnce() -> AppResult<T>,
 ) -> AppResult<T> {
     let done = op.run(write)?;
-    let _ = app.emit(LIBRARY_CHANGED, ());
+    invalidate::announce(app);
     Ok(done)
 }
 
@@ -63,7 +70,7 @@ fn announcing_with<T>(
     fields: impl FnOnce(&T) -> Fields,
 ) -> AppResult<T> {
     let done = op.run_with(write, fields)?;
-    let _ = app.emit(LIBRARY_CHANGED, ());
+    invalidate::announce(app);
     Ok(done)
 }
 
@@ -1209,7 +1216,7 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
         let seeded = crate::db::synthetic::seed(&mut conn, count)?;
         // What tells the open view to re-count and re-fetch. Without it the
         // table would keep the row count it had before the insert.
-        let _ = app.emit(LIBRARY_CHANGED, ());
+        invalidate::announce(&app);
         Ok(seeded)
     })
     .await

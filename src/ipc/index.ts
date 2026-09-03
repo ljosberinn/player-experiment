@@ -618,6 +618,11 @@ export const INVALIDATE_DEBOUNCE_MS = 250;
  * write and its undo, removing missing rows, and each of the eight playlist
  * commands - and a subscriber reloads whatever it holds rather than being told
  * what changed. Debounce it by `INVALIDATE_DEBOUNCE_MS`; both subscribers do.
+ *
+ * The backend coalesces it as well, at a window measured in seconds, so a
+ * write that commits for hours does not arrive as thousands of pings. That
+ * window is what bounds how stale a view can be during such a write; this
+ * debounce is only for the burst that lands together.
  */
 export function onLibraryChanged(handler: () => void): Promise<UnlistenFn> {
   return listen("library://changed", () => handler());
