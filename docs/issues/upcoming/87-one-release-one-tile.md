@@ -34,16 +34,53 @@ tile that is one today. [79a](../done/79a-per-track-edits-and-the-release-mbid.m
 release MBID for this; every file measured carrying one carried the other, so the
 coverage is the same and the identity is the right one.
 
-**One identity expression, and `scope` gets smaller.**
-`coalesce(tracks.release_group_mbid, album || U+001F || GROUP_ARTIST)` is what
-the browse query groups by. `key` and `secondary` stop being the grouping columns
-and become display aggregates over the group, `ORDER BY` moves to the aggregated
-title, and the drill-in goes from two `IS ?` conditions to one against the same
-expression. The two keys coexist in one column rather than in two code paths.
+**No migration.** `tracks.release_group_mbid` and its partial index shipped with
+79a, in migration 9. This phase is a query and a type, and touches no schema.
+
+## One identity expression
+
+```sql
+coalesce(tracks.release_group_mbid,
+         coalesce(GROUP_ALBUM, '') || char(31) || coalesce(GROUP_ARTIST, ''))
+```
+
+is what the browse query groups by. `key` and `secondary` stop being the
+grouping columns and become display aggregates over the group, `ORDER BY` moves
+to the aggregated title, and the drill-in goes from two `IS ?` conditions to one
+against the same expression. The two keys coexist in one column rather than in
+two code paths.
+
+**The inner `coalesce`s are not decoration.** `nullif(album, '') || x` is NULL
+whenever the album tag is absent, and every untagged release would land in one
+tile together. Folding them to empty strings first makes the album identity a
+string that is never NULL — which in turn means the drill-in filter for albums
+stops needing to carry a NULL at all.
 
 Mixed keys are the permanent state, not a transitional one: a file nobody ever
 looks up never gets an MBID. 11 of the 356 titles are already mixed within a
 single title.
+
+**It composes with [81](81-two-casings-two-tiles.md) either way round.** 81
+folds the grouping to `COLLATE NOCASE`; the collation applies to the whole
+identity string here, and MBIDs are lowercase hex, so folding them costs
+nothing and changes nothing.
+
+## `BrowseFilter` becomes one field
+
+`BrowseFilter` is `{ kind, key, secondary }` today and becomes `{ kind, id }` —
+the value of the identity expression, which for artists and genres is just the
+key it already was. `BrowseGroup` gains the same `id` beside its labels.
+`scope`'s two conditions become `{identity_sql} IS ?`, and `groupId` in
+`browse.ts` stops deriving what the row now carries. `#[derive(TS)]` on both, so
+`npm run bindings` runs. Nothing persists a browse filter — navigation history
+is in memory — so there is no stored shape to migrate.
+
+**`entryForTrack` is the one caller that cannot build the new id.** Reveal in
+Library constructs a filter from the playing track's own tags, and `Track` does
+not carry `release_group_mbid` — the column exists but nothing selects it.
+Recommendation: add it to `Track` and to the tracks query. A round trip to
+answer "which tile is this song in" would be visible on a control the user
+pressed, and the construction then reads identically on both sides.
 
 **`secondary` needs a third state.** `None` means no artist at all; many artists
 is not the same thing, and a merged compilation has to read `Various Artists`
@@ -55,17 +92,23 @@ artists there are, not what to call them.
 `min(cover_hash)` over a merged group picks one of twelve byte-different rips of
 the same artwork. Deterministic, and no change.
 
+**The lookup keys stay as they are.** `release_selections`, `release_members`
+and [82b](82b-the-unattended-lookup-pass.md)'s `release_lookup` all key on
+`(album, artist)`, and two pressings merged into one tile are still two sets of
+files with two tracklists to match. Drilling into a merged tile and looking it
+up splits it back into two lookups, which is correct: the tile is a display
+grouping, and a lookup writes to files.
+
 **No smart-playlist exception.** `browse_groups` already runs through `scope`, so
 a merged tile inside a playlist filtered to one artist shows that artist's track
 count and drills into exactly those tracks. Nothing is hidden, so there is
 nothing to switch off — and "the filter mentions an artist" is not definable
 anyway across `Artist` against `AlbumArtist`, negation, and nesting under `Any`.
 
-Migration adds the column; migrations are append-only, so it is whatever number
-is next when this lands.
-
 Testing: a fixture with both keys in one result — one release identified by MBID,
 one falling back — asserted to produce one tile each; two releases sharing
 `(title, "Various Artists")` with different release groups asserted to stay two;
-two pressings sharing a release group asserted to be one; the drill-in asserted
-on an MBID group and on a fallback group; the subtitle's three states.
+two pressings sharing a release group asserted to be one; two releases with no
+album tag at all asserted to stay two, which is what the inner `coalesce`s buy;
+the drill-in asserted on an MBID group and on a fallback group; the subtitle's
+three states.
