@@ -46,7 +46,7 @@ of `1` can.
 it moved the selection subscription out of `App`, where the compiler would have
 papered over the wrong placement by memoizing `resolveColumns` and four closures
 around it. The remaining candidate is the table's own rows
-([63](../upcoming/63-every-visible-row-re-renders.md)).
+([63](63-every-visible-row-re-renders.md)).
 
 `vite.config.ts` turns every rollup warning into a build failure. Check the
 compiler's output against that before assuming the build stays green, and

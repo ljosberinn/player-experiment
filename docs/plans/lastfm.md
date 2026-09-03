@@ -1,7 +1,10 @@
 # last.fm scrobbling — plan
 
 **Decided 2026-09-01. Go.** Opt-in, off by default, inert with no account
-connected. The issue is [10](../issues/upcoming/10-lastfm-scrobbling.md).
+connected. The issues are [10a](../issues/done/10a-lastfm-seam.md),
+[10b](../issues/done/10b-lastfm-connect.md),
+[10c](../issues/done/10c-lastfm-scrobbling.md) and
+[10d](../issues/done/10d-lastfm-queue.md).
 
 Two of this plan's own recommendations were reversed at the go/no-go, both on
 evidence gathered from last.fm's docs and from what other open-source clients
