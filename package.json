@@ -21,7 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_bindings",
     "notices": "node scripts/notices.mjs",
-    "tauri:parity": "node scripts/tauri-parity.mjs"
+    "tauri:parity": "node scripts/tauri-parity.mjs",
+    "genres": "node scripts/genres.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

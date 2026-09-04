@@ -8,7 +8,7 @@
 
 use std::time::Instant;
 
-use apex_lib::db::{query, synthetic, tag_values, Db};
+use apex_lib::db::{genres, query, synthetic, tag_values, Db};
 use apex_lib::model::{
     BrowseFilter, BrowseKind, SortDirection, SortField, TagValueField, TrackQuery,
 };
@@ -367,4 +367,46 @@ fn a_suggestion_lookup_is_cheap_and_the_rebuild_that_feeds_it_is_affordable() {
         let found = tag_values::suggest(&conn, TagValueField::Artist, "", 8).unwrap();
         assert_eq!(found.len(), 8);
     });
+}
+
+/// The genre tree's two fixed costs, which every test in the workspace pays.
+///
+/// Migration 11 seeds 6,575 genres, 8,200 edges and 8,004 aliases from 871KB of
+/// generated SQL, so a fresh database is no longer nearly free to create - and
+/// `Db::open` runs in every test that touches one. `Tree::load` is what 84b
+/// pays once per panel refresh. Neither scales with the library; both scale
+/// with a data file that a regeneration could quietly multiply.
+#[test]
+fn the_genre_tree_is_cheap_to_seed_and_to_load() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let start = Instant::now();
+    let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+    let seeded = start.elapsed().as_millis();
+
+    // 68ms here, unoptimised. The budget is loose enough to survive a slower
+    // runner and a few more migrations, and what it catches is the seed being
+    // reshaped into something linear in statements rather than in rows - one
+    // INSERT per genre instead of one per 250 - which was measured at over a
+    // second, paid by every test in the workspace.
+    assert!(
+        seeded <= 500,
+        "creating a database took {seeded}ms, budget is 500ms - the genre seed is the \
+         only large thing a migration does, so suspect its statement count first"
+    );
+
+    let conn = db.conn().unwrap();
+    let start = Instant::now();
+    let tree = genres::Tree::load(&conn).unwrap();
+    let loaded = start.elapsed().as_millis();
+
+    assert!(
+        loaded <= 200,
+        "loading the genre tree took {loaded}ms, budget is 200ms - it is three unfiltered \
+         reads of tables that never change, so a query per genre is the usual cause"
+    );
+    assert_eq!(
+        tree.resolve("atmospheric black metal").parent.as_deref(),
+        Some("black metal")
+    );
 }
