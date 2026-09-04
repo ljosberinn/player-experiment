@@ -103,7 +103,11 @@ the switch off cancels a pass in flight and turning it back on resumes from the
 table rather than from the top; a setting that cannot be read is logged and is
 not taken for a switch that is off. Above `score::UNATTENDED_THRESHOLD` it
 writes the release's tags; below it, it records the release for a person to
-decide and writes nothing.
+decide and writes nothing. **Each release it writes announces itself on
+`library://changed`** — per release rather than per sweep, because a sweep runs
+for hours and may not end at all, and a view told only at the end of one is a
+view that never hears. `commands::invalidate` is what keeps that affordable. A
+dry run announces nothing, having written nothing.
 
 **Waking and sweeping are two cadences.** The switch is answered every fifteen
 seconds because that is what makes it feel immediate, and it costs one keyed

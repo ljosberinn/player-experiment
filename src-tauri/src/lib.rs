@@ -295,9 +295,11 @@ fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::
 /// thread reads the setting on every wake, so turning it on needs no restart
 /// and turning it off cancels a pass in flight.
 ///
-/// One channel, not two: a pass that wrote something says so on
+/// One channel, not two: each release the pass writes says so on
 /// `library://changed`, and everything else it has to say goes in the log.
-/// There is no progress readout yet - 82c is where that lives.
+/// Per release rather than per sweep, because a sweep runs for hours and may
+/// not end at all. There is no progress readout yet - 82c is where that
+/// lives.
 fn look_up_releases(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
     let Ok(staging) = app.path().app_cache_dir() else {
         // No cache directory means nowhere to stage a fetched cover. The pass

@@ -79,6 +79,25 @@ impl Plan {
     }
 }
 
+/// What a sweep calls back into the thread that owns it.
+///
+/// Two closures rather than two parameters, because a sweep already takes as
+/// many as it should.
+pub struct Signals<'a> {
+    /// Whether the pass may still run. Asked before every release, so the
+    /// switch cancels a pass rather than merely stopping the next one, and it
+    /// answers with a `Result` because a switch that cannot be read is not a
+    /// switch that is off.
+    pub enabled: &'a dyn Fn() -> AppResult<bool>,
+    /// A release's files were written.
+    ///
+    /// **Per release, not per sweep.** A sweep is hours long and may not end
+    /// at all, so a view told at the end of one is a view that never hears.
+    /// `commands::invalidate` is what keeps the cost of saying so per release
+    /// down, and it was built for exactly this.
+    pub wrote: &'a dyn Fn(),
+}
+
 /// What a sweep came to.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Summary {
@@ -114,7 +133,7 @@ pub fn sweep(
     log: &Log,
     staging: &Path,
     plan: &mut Plan,
-    enabled: &dyn Fn() -> AppResult<bool>,
+    signals: &Signals<'_>,
 ) -> AppResult<Summary> {
     let mut summary = Summary::default();
 
@@ -133,7 +152,7 @@ pub fn sweep(
         }
 
         for release in &batch {
-            match enabled() {
+            match (signals.enabled)() {
                 Ok(true) => {}
                 Ok(false) => return Ok(summary),
                 // Carried on rather than stopped: a database busy for a moment
@@ -182,7 +201,15 @@ pub fn sweep(
             }
 
             match outcome.map(|outcome| outcome.verdict) {
-                Ok(Verdict::Written { .. }) => summary.resolved += 1,
+                Ok(Verdict::Written { .. }) => {
+                    summary.resolved += 1;
+                    // Here rather than after the sweep, because the sweep is
+                    // hours long and may not end at all. A dry run wrote
+                    // nothing, so there is nothing for a view to re-read.
+                    if !plan.dry_run {
+                        (signals.wrote)();
+                    }
+                }
                 Ok(Verdict::Queued { .. }) => summary.queued += 1,
                 Ok(Verdict::NotFound) => summary.missed += 1,
                 // A release that failed keeps no row, so a real pass tries it
@@ -255,8 +282,10 @@ fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
 
 /// Starts the `release-lookup` thread.
 ///
-/// `on_change` runs after a sweep that wrote something. A sweep that only
-/// queued or missed says nothing to the window: nothing a view draws changed.
+/// `on_change` runs per release written, not per sweep: a sweep is hours long
+/// and may not end at all. A release that was only queued or missed says
+/// nothing to the window, and neither does a dry run - nothing a view draws
+/// changed.
 pub fn spawn(
     db: Db,
     lock: ScanLock,
@@ -313,7 +342,18 @@ pub fn spawn(
                 };
 
                 let op = log.op("lookup.sweep");
-                let summary = sweep(&db, &lock, transport, &log, &staging, &mut plan, &enabled);
+                let summary = sweep(
+                    &db,
+                    &lock,
+                    transport,
+                    &log,
+                    &staging,
+                    &mut plan,
+                    &Signals {
+                        enabled: &enabled,
+                        wrote: &on_change,
+                    },
+                );
 
                 let attempted = summary.as_ref().map_or(0, |summary| summary.attempted());
                 quiet = next_sweep(quiet, attempted);
@@ -329,10 +369,6 @@ pub fn spawn(
                             .add("next", format!("{}s", quiet.as_secs())),
                     ),
                     Err(error) => op.failed(error),
-                }
-
-                if matches!(&summary, Ok(summary) if summary.resolved > 0) {
-                    on_change();
                 }
             }
         });
@@ -367,6 +403,15 @@ mod tests {
     /// The switch held on, which is every test here but the one that flips it.
     fn on() -> impl Fn() -> AppResult<bool> {
         || Ok(true)
+    }
+
+    /// A sweep nobody is watching, for the tests that assert what it decided
+    /// rather than what it announced.
+    fn unwatched<'a>(enabled: &'a dyn Fn() -> AppResult<bool>) -> Signals<'a> {
+        Signals {
+            enabled,
+            wrote: &|| {},
+        }
     }
 
     /// Two releases, both answerable by the same fixtures.
@@ -410,16 +455,25 @@ mod tests {
             &log,
             dir.path(),
             &mut live(),
-            &|| {
+            &unwatched(&|| {
                 let before = seen.get();
                 seen.set(before + 1);
                 Ok(before < 1)
-            },
+            }),
         )
         .unwrap();
         assert_eq!(first.attempted(), 1);
 
-        let second = sweep(&db, &lock, &transport, &log, dir.path(), &mut live(), &on()).unwrap();
+        let second = sweep(
+            &db,
+            &lock,
+            &transport,
+            &log,
+            dir.path(),
+            &mut live(),
+            &unwatched(&on()),
+        )
+        .unwrap();
         assert_eq!(
             second.attempted(),
             1,
@@ -435,14 +489,31 @@ mod tests {
         let transport = musicbrainz();
 
         assert_eq!(
-            sweep(&db, &lock, &transport, &log, dir.path(), &mut live(), &on())
-                .unwrap()
-                .attempted(),
+            sweep(
+                &db,
+                &lock,
+                &transport,
+                &log,
+                dir.path(),
+                &mut live(),
+                &unwatched(&on())
+            )
+            .unwrap()
+            .attempted(),
             2
         );
         let spent = transport.call_count();
 
-        let again = sweep(&db, &lock, &transport, &log, dir.path(), &mut live(), &on()).unwrap();
+        let again = sweep(
+            &db,
+            &lock,
+            &transport,
+            &log,
+            dir.path(),
+            &mut live(),
+            &unwatched(&on()),
+        )
+        .unwrap();
 
         assert_eq!(again.attempted(), 0);
         assert_eq!(
@@ -470,12 +541,70 @@ mod tests {
             &log_to(dir.path()),
             dir.path(),
             &mut live(),
-            &on(),
+            &unwatched(&on()),
         )
         .unwrap();
 
         assert_eq!(summary.attempted(), 0);
         assert_eq!(transport.call_count(), 0);
+    }
+
+    /// The view has to hear about a write while the pass is running, not when
+    /// it stops. A sweep is hours long and may not stop at all, so a window
+    /// told at the end of one is a window that never hears - which is what
+    /// made a pass look like it was doing nothing while it rewrote the
+    /// library underneath.
+    #[test]
+    fn every_release_written_tells_the_window() {
+        let (dir, db) = two_releases();
+        let told = std::cell::Cell::new(0);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &Signals {
+                enabled: &on(),
+                wrote: &|| told.set(told.get() + 1),
+            },
+        )
+        .unwrap();
+
+        assert!(summary.resolved > 0, "the sweep wrote nothing to announce");
+        assert_eq!(
+            told.get(),
+            summary.resolved,
+            "once per release written, not once per sweep"
+        );
+    }
+
+    /// A dry run writes nothing, so there is nothing for a view to re-read.
+    /// It counts its verdicts as `resolved` all the same, which is what would
+    /// have had it announcing a library that never changed.
+    #[test]
+    fn a_dry_run_tells_the_window_nothing() {
+        let (dir, db) = two_releases();
+        let told = std::cell::Cell::new(0);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut dry(),
+            &Signals {
+                enabled: &on(),
+                wrote: &|| told.set(told.get() + 1),
+            },
+        )
+        .unwrap();
+
+        assert!(summary.resolved > 0, "it reached the verdicts");
+        assert_eq!(told.get(), 0, "and wrote none of them");
     }
 
     /// The assertion whose absence let a dry run ship that could only ever
@@ -497,11 +626,11 @@ mod tests {
             &log,
             dir.path(),
             &mut dry(),
-            &|| {
+            &unwatched(&|| {
                 let before = seen.get();
                 seen.set(before + 1);
                 Ok(before < 4)
-            },
+            }),
         )
         .unwrap();
 
@@ -530,7 +659,7 @@ mod tests {
             &log_to(dir.path()),
             dir.path(),
             &mut dry(),
-            &on(),
+            &unwatched(&on()),
         )
         .unwrap();
 
@@ -568,7 +697,7 @@ mod tests {
             &log,
             dir.path(),
             &mut plan,
-            &on(),
+            &unwatched(&on()),
         )
         .unwrap();
         assert_eq!(first.attempted(), 0, "it got a verdict for nothing");
@@ -581,7 +710,7 @@ mod tests {
             &log,
             dir.path(),
             &mut plan,
-            &on(),
+            &unwatched(&on()),
         )
         .unwrap();
 
@@ -635,7 +764,7 @@ mod tests {
             &log,
             dir.path(),
             &mut plan,
-            &on(),
+            &unwatched(&on()),
         )
         .unwrap();
         let idle = sweep(
@@ -645,7 +774,7 @@ mod tests {
             &log,
             dir.path(),
             &mut plan,
-            &on(),
+            &unwatched(&on()),
         )
         .unwrap();
 

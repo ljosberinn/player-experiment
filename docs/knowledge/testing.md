@@ -92,6 +92,10 @@ makes a request would pay the interval and the suite would take minutes to say
 nothing about the limiter. What is scaled is the ambient gate; the rule is
 still asserted against a limiter built with the shipping interval.
 
+A sweep is asserted to announce once per release it writes rather than once per
+sweep - the bug that had a real pass rewriting the library with the window
+showing none of it - and a dry run to announce nothing at all.
+
 A retry that *works* is asserted against a transport that refuses once and then
 answers - the one case `FakeTransport` cannot express, since it gives the same
 answer every time, and the one where the count is the only evidence anything

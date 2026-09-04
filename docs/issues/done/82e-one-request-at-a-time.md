@@ -65,6 +65,19 @@ sweep that looked up twenty-six releases and then met a 503 has proved the
 service is answering and the library has work left; backing it off towards ten
 minutes would have added days to a pass that was working.
 
+## The window was only ever told at the end of a sweep
+
+`commands::invalidate` was built to coalesce a ping per release — "the view
+would sit one release behind", 8,044 re-queries down to 3,200 — and the pass
+never sent one. `worker::spawn` announced once, after `sweep` returned, which
+looked right while sweeps died every fifty releases and stopped being right the
+moment they ran for hours. A real pass rewrote the library with the window
+showing none of it.
+
+Per release written, then, through the coalescer that exists for it. A dry run
+announces nothing: it counts its verdicts as resolved, which is what would
+otherwise have had it announcing a library it never touched.
+
 The User-Agent needed nothing: it already names the app, its version and the
 repository, which is what they ask for.
 
