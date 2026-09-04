@@ -171,7 +171,10 @@ absences are what nobody notices coming back — hence the guards in
   window (geometry, zoom, menus, dynamic background).
 - **There is one invalidation channel.** The library and playlists stores each
   `watch()` `library://changed` and reload their own contents, debounced by
-  `INVALIDATE_DEBOUNCE_MS`. A mutation does not reach across stores to say what
+  `INVALIDATE_DEBOUNCE_MS`. The backend coalesces the event too, so the two
+  compose: a write that runs for hours pings once per window rather than once
+  per commit, and this debounce catches the burst that arrives together.
+  A mutation does not reach across stores to say what
   it invalidated — that was fifteen `useLibraryStore.getState()` calls outside
   the library store, each with its own "is this the playlist on screen" guard,
   and every new mutation was another chance to forget one silently. What stays

@@ -113,6 +113,9 @@ pub fn run() {
                 app.package_info().version.to_string(),
             );
             let log = log::Log::to(log::log_path(&dir));
+            // Before anything that can announce, so no write has to fall back
+            // to an uncoalesced ping.
+            app.manage(commands::Invalidations::default());
 
             // The first line of every session, and the one that says which
             // library the rest of them are about.
@@ -280,7 +283,7 @@ fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::
             let _ = progress.emit(crate::commands::SCAN_PROGRESS, &p);
         },
         move || {
-            let _ = app.emit(crate::commands::LIBRARY_CHANGED, ());
+            crate::commands::announce_library_changed(&app);
         },
     );
 }
@@ -466,7 +469,7 @@ fn forward(
             // nothing.
             if let Ok(conn) = db.conn() {
                 if scan::clear_missing(&conn, *track_id).unwrap_or(false) {
-                    let _ = app.emit(crate::commands::LIBRARY_CHANGED, ());
+                    crate::commands::announce_library_changed(&app);
                 }
             }
         }

@@ -91,7 +91,7 @@ the only one left behind.
 One `log::Op` per release through `announcing_with`, which is what
 [86](../done/86-every-operation-in-a-logfile.md) named this work for, and one
 `library://changed` per release — coalesced on the emit side by
-[82a](82a-what-eight-thousand-releases-break.md), which is why that lands first.
+[82a](../done/82a-what-eight-thousand-releases-break.md), which is why that lands first.
 
 Testing: a `tempfile` root throughout. A moved release asserted to keep its
 track ids, play counts and playlist places; the rename asserted to roll the rows
