@@ -18,7 +18,7 @@ them. Debouncing harder in the frontend is the wrong end: the events are already
 isolated by the time they arrive.
 
 So it coalesces on the emit side, in `announcing`/`announcing_with` — one place,
-which means every long write after this one inherits it, [83b](../upcoming/83b-moving-one-release.md)
+which means every long write after this one inherits it, [83b](83b-moving-one-release.md)
 included. Two constraints on the window:
 
 - **Trailing edge, always.** A leading-edge throttle drops the final ping and

@@ -1,7 +1,7 @@
 # 83c — Turning the Library folder on
 
 The setting, the backfill and the standing behaviour: a root folder, and
-everything in the library moved into it by [83b](83b-moving-one-release.md)
+everything in the library moved into it by [83b](../done/83b-moving-one-release.md)
 under [83a](../done/83a-where-a-file-goes.md)'s layout. Opt-in, off by default.
 
 ## Opting in

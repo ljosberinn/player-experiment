@@ -135,6 +135,20 @@ description. `write::save_tag` puts both back as TXXX frames after the
 conversion. It also has to re-add ids the *file* already had, because they take
 the same path out.
 
+## Moving files
+
+**A tombstone is a hazard at the target, not at the source.** `scan::plan` skips
+an on-disk path in `removed_paths` *before* it marks the path seen, so a known
+row whose path is tombstoned is marked missing on every scan, forever. That
+cannot happen through `remove_tracks`, which deletes the row it tombstones — but
+it can the moment a file lands on a path the user once removed a different file
+from, so `library::mover` deletes the tombstone for every target it writes.
+
+**`std::fs::rename` fails across volumes** with `ERROR_NOT_SAME_DEVICE` (17) and
+no other signal; the fallback is copy, compare the size, delete the source.
+Nothing on a CI runner can produce a second volume, so the error is injected
+through the `Rename` seam instead.
+
 ## Colour extraction
 
 Median cut splits a box at its median **pixel**, so an album cover that is 70%

@@ -573,6 +573,64 @@ pub fn release_members(
     Ok(members)
 }
 
+/// One file of a release, as the mover needs it: everything
+/// [`crate::library::layout`] reads, plus the path it is at now.
+pub struct ReleaseFile {
+    pub id: i64,
+    pub path: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub year: Option<i64>,
+    pub track_no: Option<i64>,
+    pub disc_no: Option<i64>,
+    pub release_type: Option<String>,
+    /// Whether the last scan failed to find it. Such a row is not moved - see
+    /// [`crate::library::mover`].
+    pub missing: bool,
+}
+
+/// Every file of a release, in the order a tracklist reads.
+///
+/// Missing files are included, unlike [`release_members`]: they are not moved,
+/// but they are still part of the release, and the disc count the layout asks
+/// for is a fact about the release rather than about the files present today.
+pub fn release_files(
+    conn: &Connection,
+    album: Option<&str>,
+    artist: Option<&str>,
+) -> AppResult<Vec<ReleaseFile>> {
+    // `IS` and `COLLATE NOCASE` for the reasons `release_members` gives: a
+    // release tagged two ways is one release, and half a release moved is the
+    // one state this is written to avoid.
+    let sql = format!(
+        "SELECT tracks.id, tracks.path, tracks.title, tracks.artist, tracks.year,
+                tracks.track_no, tracks.disc_no, tracks.release_type,
+                tracks.missing_since IS NOT NULL
+           FROM tracks
+          WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
+            AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
+          ORDER BY {RELEASE_ORDER}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let files = stmt
+        .query_map(rusqlite::params![album, artist], |row| {
+            Ok(ReleaseFile {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                title: row.get(2)?,
+                artist: row.get(3)?,
+                year: row.get(4)?,
+                track_no: row.get(5)?,
+                disc_no: row.get(6)?,
+                release_type: row.get(7)?,
+                missing: row.get(8)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(files)
+}
+
 /// Cover bytes for the custom protocol handler.
 pub fn cover_bytes(conn: &Connection, hash: &str) -> AppResult<Option<(String, Vec<u8>)>> {
     let mut stmt = conn.prepare("SELECT mime, bytes FROM covers WHERE hash = ?1")?;

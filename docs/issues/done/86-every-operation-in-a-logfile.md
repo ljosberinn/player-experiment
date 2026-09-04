@@ -57,7 +57,7 @@ the log line say the same thing.
   geometry. They are a control's position, not an operation.
 
 **Later phases log their own sites.** The file moves in
-[83b](../upcoming/83b-moving-one-release.md) and the ingest in
+[83b](83b-moving-one-release.md) and the ingest in
 [85b](../upcoming/85b-drop-files-and-folders.md) are exactly the long, partially-completing,
 filesystem-touching work this exists for; neither is a dependency in either
 direction.

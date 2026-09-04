@@ -30,7 +30,7 @@ removal is a statement about wanting the song gone.
 
 **An explicit add lifts the tombstone.** Nothing does that yet;
 [85b](../upcoming/85b-drop-files-and-folders.md)'s file drop must, or a dropped song that was
-removed once would silently do nothing. [83b](../upcoming/83b-moving-one-release.md)'s mover
+removed once would silently do nothing. [83b](83b-moving-one-release.md)'s mover
 faces the same table from the other side: it writes no tombstone, and lifts one
 sitting on a path it moves a file onto.
 

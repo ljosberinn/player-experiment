@@ -1,8 +1,8 @@
 # 83b — Moving one release
 
 The mover: one release from wherever it is to where
-[83a](../done/83a-where-a-file-goes.md) says it goes, with the rows following the files.
-Reachable from nothing yet — [83c](83c-turning-the-library-folder-on.md) is what
+[83a](83a-where-a-file-goes.md) says it goes, with the rows following the files.
+Reachable from nothing yet — [83c](../upcoming/83c-turning-the-library-folder-on.md) is what
 calls it — so this phase is the operation and its tests.
 
 **`tracks.path` is the row's identity.** `insert_track` is `ON CONFLICT(path)`,
@@ -14,7 +14,7 @@ nothing about this feature may route through a rescan.
 **The release is the unit.** It is what the layout is built around, it is what
 82b already resolved, and a half-moved release is the only state worth never
 leaving behind. `ScanLock` is taken per release, not for the pass, the way
-[82b](../done/82b-the-unattended-lookup-pass.md) takes it: the mover rewrites the paths
+[82b](82b-the-unattended-lookup-pass.md) takes it: the mover rewrites the paths
 a scan reads, but holding the lock for a four-hour backfill would block every
 scan in that window.
 
@@ -43,7 +43,10 @@ here.
   table separates them. If a row owns that path it is a real collision — two
   releases that sanitize to one name — and the filename gets a ` (2)` suffix
   before the extension. If no row owns it, it is the partial file an interrupted
-  copy left behind, and it is overwritten.
+  copy left behind, and it is overwritten. The suffix is
+  [83a](83a-where-a-file-goes.md)'s to add, not the mover's: it is four
+  characters the budget never reserved, so a path built to the last of it pays
+  for them out of the stem rather than outgrowing the ceiling.
 
 ## The tombstone is a hazard at the target, not the source
 
@@ -55,8 +58,8 @@ lands on a path the user once removed a different file from.
 
 So the transaction deletes any `removed_paths` row for the target path. Nothing
 writes one for the source: the mover only ever moves rows that exist, and only
-an explicit removal tombstones. [73](../done/73-remove-a-song-from-the-library.md)'s
-note about lifting a tombstone is about [85b](85b-drop-files-and-folders.md)'s
+an explicit removal tombstones. [73](73-remove-a-song-from-the-library.md)'s
+note about lifting a tombstone is about [85b](../upcoming/85b-drop-files-and-folders.md)'s
 drop, which is the other half of it — and which needs the move below without the
 `UPDATE`, for a file that has no row yet.
 
@@ -83,15 +86,19 @@ drop, which is the other half of it — and which needs the move below without t
   source under a live decoder, and the difference is not something a caller can
   see before it tries.
 
-*Open:* what "skipped" means for the playing release during a long backfill,
-where the next pass is a relaunch away. Recommendation: deferred to the end of
-the run rather than skipped, so a user who leaves one album on does not find it
-the only one left behind.
+The playing release comes back as `Outcome::Deferred` rather than as a move of
+zero files, so it is distinguishable from a release already in place, and
+[83c](../upcoming/83c-turning-the-library-folder-on.md) defers it to the end of
+the run rather than dropping it — a user who leaves one album on does not find
+it the only one left behind. Which tracks are open is the caller's to say: the
+sink's prepared successor is not reachable from outside `audio::engine`.
 
 One `log::Op` per release through `announcing_with`, which is what
-[86](../done/86-every-operation-in-a-logfile.md) named this work for, and one
+[86](86-every-operation-in-a-logfile.md) named this work for, and one
 `library://changed` per release — coalesced on the emit side by
-[82a](../done/82a-what-eight-thousand-releases-break.md), which is why that lands first.
+[82a](82a-what-eight-thousand-releases-break.md), which is why that lands first.
+Both are 83c's wiring, which is why the mover returns the counts a log line
+wants instead of writing one.
 
 Testing: a `tempfile` root throughout. A moved release asserted to keep its
 track ids, play counts and playlist places; the rename asserted to roll the rows
