@@ -78,12 +78,13 @@ run depend on somebody else's service being up and under its rate limit.
 `ReleaseLookup.test.tsx` covers the markup and the flow against mocked IPC; the
 dialog against the live service is a manual check before a release.
 
-The rate limiter is asserted at its real five seconds, from **two** callers at
+The rate limiter is asserted at its real ten seconds, from **two** callers at
 once, and again for a slow request not shortening the gap after it: the limit
 is enforced at the IP address, so a limiter that serialized only within one
 client, or only the gaps between request *starts*, would be no limiter at all.
-That test costs five seconds of wall clock, deliberately - a scaled-down
-imitation would not be asserting the rule that ships.
+That test costs ten seconds of wall clock and is the slowest in the suite,
+deliberately - a scaled-down imitation would not be asserting the rule that
+ships.
 
 **The gate every other test passes through is scaled down**, to ten
 milliseconds, under `cfg(test)`. Otherwise every assertion that incidentally

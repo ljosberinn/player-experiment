@@ -17,21 +17,22 @@ use std::time::{Duration, Instant};
 
 /// How long the process waits between MusicBrainz requests.
 ///
-/// Five seconds against a documented one per second per address, and the gap
-/// is not caution about our own rate. [Their
+/// Ten seconds against a documented one per second per address, and the gap is
+/// not caution about our own rate. [Their
 /// documentation](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting)
 /// declines with a 503 from three separate buckets - per user agent, per
 /// address, and a global 300 a second - so a client well inside its own
 /// allowance still meets 503s when theirs is full, and the status code cannot
 /// tell the two apart.
 ///
-/// **Slowing down has been measured and does not buy requests.** At 1.1s a
-/// pass got 72 releases in before its first 503; at 3s it got 26. Three
-/// seconds was the experiment that settled that, and five is the answer to
-/// it: not a rate expected to avoid 503s, but the least this pass can ask of
-/// a service whose spare capacity is what it actually runs on. A pass measured
-/// in hours loses nothing by taking longer.
-const INTERVAL: Duration = Duration::from_secs(5);
+/// **Slowing down has been measured and does not buy requests.** Releases
+/// reached before the first fatal 503: 72 at 1.1s, 26 at 3s, 35 at 5s. There
+/// is no relationship, which is the evidence that the declines are theirs
+/// rather than ours - at 5s roughly one request in twelve was still being
+/// re-asked. So this is not a rate chosen to avoid 503s. It is the least this
+/// pass can ask of a service whose spare capacity is what it actually runs on,
+/// and a pass measured in days loses nothing by taking longer.
+const INTERVAL: Duration = Duration::from_secs(10);
 
 /// The interval the shared limiter runs at in this build.
 ///

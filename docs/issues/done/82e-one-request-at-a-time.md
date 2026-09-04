@@ -1,4 +1,4 @@
-# 82e — Five seconds, and one request at a time
+# 82e — One request at a time, ten seconds apart
 
 [82d](82d-the-pass-cannot-finish.md)'s fixes were run over the real library and
 did not hold. The first sweep got 72 releases in against 54, then nine sweeps in
@@ -26,14 +26,15 @@ read.
   from a slow request, which is exactly the reading the first five-second run
   could not settle.
 
-*Settled by measurement:* **five seconds, hardcoded, no escalation.** Three was
-tried first, as the experiment that would say whether the rate was the problem.
-It said no — 26 releases before the first 503, against 72 at 1.1s. Slowing down
-does not buy requests, so the interval is not a rate chosen to avoid 503s; it is
-the least the pass can ask of a service whose spare capacity is what it actually
-runs on. About twenty-two hours for eight thousand releases, all but twenty
-minutes of it the interval, and an open lookup dialog waiting up to five seconds
-behind the pass. Both accepted.
+*Settled by measurement:* **ten seconds, hardcoded, no escalation.** Three was
+tried first, as the experiment that would say whether the rate was the problem,
+then five. Releases reached before the first fatal 503: 72 at 1.1s, 26 at 3s, 35
+at 5s — no relationship at all, and at 5s roughly one request in twelve was still
+being re-asked. Slowing down does not buy requests, so the interval is not a
+rate chosen to avoid 503s; it is the least the pass can ask of a service whose
+spare capacity is what it actually runs on. About forty-five hours for eight
+thousand releases, all but twenty minutes of it the interval, and an open lookup
+dialog waiting up to ten seconds behind the pass. Both accepted.
 
 ## The dry run's cursor has to outlive a sweep
 
@@ -68,7 +69,7 @@ The User-Agent needed nothing: it already names the app, its version and the
 repository, which is what they ask for.
 
 Testing: the interval asserted from two callers at once and against a slow
-request, both at the shipping five seconds; the cadence asserted as a function,
+request, both at the shipping ten seconds; the cadence asserted as a function,
 since the bug above was in code no test could reach; the dry run's cursor
 asserted to survive a sweep a 503 ended and to pass over the release that
 failed. The gate every other test incidentally uses is scaled to 10 ms, or the

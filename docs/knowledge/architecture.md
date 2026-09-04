@@ -113,20 +113,22 @@ do or ends on a failure, and snaps back to fifteen seconds the moment one gets
 through releases. A release a scan has just added therefore waits up to ten
 minutes, which is nothing beside a pass measured in hours.
 
-**The limiter holds one request at a time, five seconds apart.** Not the one a
+**The limiter holds one request at a time, ten seconds apart.** Not the one a
 second [MusicBrainz documents](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting),
 because they decline with a 503 from three separate buckets — per user agent,
 per address and a global three hundred a second — and a client inside its own
 allowance still meets 503s when theirs is full, indistinguishably. Slowing down
-was measured and does not buy requests: a pass got 72 releases in before its
-first 503 at 1.1s and 26 at 3s, so five seconds is not a rate expected to avoid
-them but the least the pass can ask of a service it depends on the spare
-capacity of. The gate is held for the whole request rather than only the gap
-before it, so the interval is measured from when an answer came back; a request
-that could work later is asked again twice, with the limiter rather than the
-caller deciding how long that takes — and the count of those goes in the log, on
-the release line and totalled on the sweep line, because a retry that works
-leaves no other trace and the five seconds it costs read as a slow request.
+was measured and does not buy requests: releases reached before the first fatal
+503 were 72 at 1.1s, 26 at 3s and 35 at 5s, with roughly one request in twelve
+still being re-asked at the slowest of those. So the interval is not a rate
+expected to avoid 503s; it is the least the pass can ask of a service it depends
+on the spare capacity of. The gate is held for the whole request rather than
+only the gap before it, so the interval is measured from when an answer came
+back; a request that could work later is asked again twice, with the limiter
+rather than the caller deciding how long that takes — and the count of those goes
+in the log, on the release line and totalled on the sweep line, because a retry
+that works leaves no other trace and the interval it costs reads as a slow
+request.
 
 `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
 which is how the threshold is tuned against a real library. **The rows are the

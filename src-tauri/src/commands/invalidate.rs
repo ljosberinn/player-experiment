@@ -1,10 +1,10 @@
 //! Coalescing `library://changed` on the emit side.
 //!
 //! One ping per write is right for the writes a person makes; it stops being
-//! right for a write that commits thousands of times in a row. The unattended
-//! lookup pass (phase 82b) commits a release roughly every two seconds for
-//! hours, and every ping is a full re-query of the open view plus a recount of
-//! every playlist, smart ones by re-running their compiled filter.
+//! right for a write that commits thousands of times in a row - a scan, an
+//! import, a long tag edit - where every ping is a full re-query of the open
+//! view plus a recount of every playlist, smart ones by re-running their
+//! compiled filter.
 //!
 //! Debouncing harder in the frontend cannot fix it: the pings are already far
 //! enough apart to clear `INVALIDATE_DEBOUNCE_MS` by the time they arrive. So
@@ -20,11 +20,12 @@ use super::LIBRARY_CHANGED;
 /// The longest a view is allowed to be out of date while a write keeps
 /// committing.
 ///
-/// Provisional. Phase 82b is what the window is for and does not exist yet, so
-/// this is reasoned rather than measured: the pass commits about every two
-/// seconds, so any window at or below that coalesces nothing, and five seconds
-/// takes 8,044 re-queries down to roughly 3,200. Worth re-measuring against a
-/// real pass rather than defending as tuned.
+/// Provisional, and no longer sized by what it was sized for. It was reasoned
+/// against 82b's lookup pass committing a release every two seconds; 82e's
+/// limiter put that at one every twenty, so the pass now coalesces nothing here
+/// and needs nothing to. What the window still earns its keep on is a write
+/// that really does commit in a run - a scan, an import, a bulk tag edit -
+/// which is what it should be measured against when anyone does.
 const WINDOW: Duration = Duration::from_secs(5);
 
 /// What to do with a ping that has just arrived.

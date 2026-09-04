@@ -47,11 +47,11 @@ const RETRIES: usize = 2;
 /// its whole interval, so a second backoff here would only be two things
 /// deciding the same thing and disagreeing. A failure that cannot change - a
 /// query MusicBrainz rejected, a body that would not parse - is given up on at
-/// once, because the second answer would be the first one again five seconds
+/// once, because the second answer would be the first one again ten seconds
 /// later.
 ///
 /// The count is the only sign a retry leaves. One that works is invisible
-/// otherwise - the release resolves, and the five seconds it cost look like a
+/// otherwise - the release resolves, and the interval it cost looks like a
 /// slow request rather than a 503 that was absorbed.
 fn retrying<T>(asked_again: &mut usize, mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
     for _ in 0..RETRIES {
