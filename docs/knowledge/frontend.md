@@ -367,7 +367,7 @@ absences are what nobody notices coming back — hence the guards in
   unattended pass would not write is a row in the sidebar under the playlists,
   and clicking it opens the lookup on those releases — with the candidates the
   pass already found, so the dialog opens on the results step rather than
-  spending a rate-limited ten seconds an entry. They are a cache: every result
+  spending a rate-limited twenty seconds an entry. They are a cache: every result
   list carries Search again. Skip means "not now" and offers the release again;
   Set Aside is the other decision and is offered on that queue alone, because a
   selection's queue dies with the dialog.

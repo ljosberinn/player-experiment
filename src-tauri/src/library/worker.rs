@@ -8,7 +8,7 @@
 //! **One pass, not two.** Placing a release means reading the tags the lookup
 //! writes, so as two passes the two would be coupled per release, and every way
 //! of expressing that coupling is worse than not having it: a gate stalls the
-//! backfill behind forty-five hours of lookups, no gate moves 8,044 releases
+//! backfill behind ninety hours of lookups, no gate moves 8,044 releases
 //! twice, and either way `task://progress` gets two producers whose labels
 //! overwrite each other. Here the release is looked up and placed in the same
 //! visit, in that order, and there is nothing to coordinate because there is
@@ -116,7 +116,7 @@ pub struct Signals<'a> {
     ///
     /// Queuing counts as a change even though no file moved: 82c's review row
     /// carries the count, and a sidebar that learns of four hundred queued
-    /// releases at the end of a forty-five hour pass has not been told. Once
+    /// releases at the end of a ninety-hour pass has not been told. Once
     /// per release however many of the two steps ran.
     pub changed: &'a dyn Fn(),
     /// How far the pass has got, per release attempted.
@@ -299,7 +299,7 @@ pub fn sweep(
             break;
         }
         // Re-run per batch rather than once per sweep: a sweep runs for
-        // forty-five hours, and a release retagged inside one has to be picked
+        // ninety hours, and a release retagged inside one has to be picked
         // up before it ends.
         let found = survey::survey(&conn, &steps, plan.batch, &skip)?;
         // Once a sweep. The fraction has to count towards a number that does

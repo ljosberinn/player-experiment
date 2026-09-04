@@ -688,8 +688,8 @@ pub fn tagsource_groups(
 ///
 /// Each carries the candidates the pass had in hand when it queued it, so the
 /// dialog opens on the results step: searching again at review time is a
-/// rate-limited ten seconds an entry, and four hundred entries is over an hour
-/// of waiting to click.
+/// rate-limited twenty seconds an entry, and four hundred entries is most of a
+/// working day of waiting to click.
 ///
 /// A candidate list that no longer parses comes back as none rather than as an
 /// error. It is a cache, and the answer to a bad cache is the search the dialog
@@ -798,7 +798,7 @@ fn local_release(
 /// Searches MusicBrainz for the release these files might be.
 ///
 /// On a worker thread because it blocks twice over: once on the shared rate
-/// limiter, which lets one request out every ten seconds and holds the gate
+/// limiter, which lets one request out every twenty seconds and holds the gate
 /// until it comes back, and once on the request itself.
 #[tauri::command]
 pub async fn tagsource_search(
