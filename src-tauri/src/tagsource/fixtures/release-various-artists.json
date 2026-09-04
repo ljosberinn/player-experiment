@@ -1,0 +1,105 @@
+{
+  "id": "cc5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+  "title": "Artificial Intelligence",
+  "date": "1992-07-01",
+  "country": "GB",
+  "artist-credit": [
+    {
+      "name": "Various Artists",
+      "joinphrase": ""
+    }
+  ],
+  "release-group": {
+    "id": "4e4e4e4e-1a1a-4c4c-8f8f-9a9a9a9a9a9a",
+    "primary-type": "Album"
+  },
+  "media": [
+    {
+      "position": 1,
+      "format": "CD",
+      "track-count": 3,
+      "tracks": [
+        {
+          "id": "00000000000000000000000000001eef",
+          "position": 1,
+          "number": "1",
+          "title": "Polygon Window",
+          "length": 340000,
+          "recording": {
+            "id": "00000000000000000000000000019919",
+            "title": "Polygon Window",
+            "length": 340000,
+            "artist-credit": [
+              {
+                "name": "Aphex Twin",
+                "joinphrase": ""
+              }
+            ]
+          },
+          "artist-credit": [
+            {
+              "name": "Aphex Twin",
+              "joinphrase": ""
+            }
+          ]
+        },
+        {
+          "id": "00000000000000000000000000003dde",
+          "position": 2,
+          "number": "2",
+          "title": "The Egg",
+          "length": 279000,
+          "recording": {
+            "id": "00000000000000000000000000033232",
+            "title": "The Egg",
+            "length": 279000,
+            "artist-credit": [
+              {
+                "name": "Autechre",
+                "joinphrase": ""
+              }
+            ]
+          },
+          "artist-credit": [
+            {
+              "name": "Autechre",
+              "joinphrase": ""
+            }
+          ]
+        },
+        {
+          "id": "00000000000000000000000000005ccd",
+          "position": 3,
+          "number": "3",
+          "title": "Wannabe",
+          "length": 252000,
+          "recording": {
+            "id": "0000000000000000000000000004cb4b",
+            "title": "Wannabe",
+            "length": 252000,
+            "artist-credit": [
+              {
+                "name": "µ-Ziq",
+                "joinphrase": " feat. "
+              },
+              {
+                "name": "Kid Spatula",
+                "joinphrase": ""
+              }
+            ]
+          },
+          "artist-credit": [
+            {
+              "name": "µ-Ziq",
+              "joinphrase": " feat. "
+            },
+            {
+              "name": "Kid Spatula",
+              "joinphrase": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

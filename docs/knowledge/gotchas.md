@@ -24,7 +24,7 @@ Each of these cost real time once. They are here so they cost it once.
   at runtime in Tauri v2 — the flag is fixed at window creation. Since phase 74
   the only thing this still costs is the tag editor's artwork drop; every drag
   that stays inside the window is a pointer gesture and does not care. Flipping
-  it is [85](../issues/upcoming/85-drop-files-and-folders.md)'s to do.
+  it is [85a](../issues/upcoming/85a-the-window-takes-os-drops.md)'s to do.
 - **Raw bytes over IPC are all-or-nothing.** Tauri sends an `invoke` payload as
   a raw body only when the *whole* payload is an `ArrayBuffer` or a view of one;
   a `Uint8Array` inside an args object is JSON, one number per byte. Wrapping it
@@ -140,3 +140,27 @@ count afterwards, so the dominant colour still comes first.
 The background blob layer is far larger than the window, so a percentage offset
 is a percentage *of the layer* and lands somewhere else. Positions are expressed
 as offsets from the window centre (`calc(50% - 28vw)`).
+
+## MusicBrainz
+
+**`inc` is not accepted on a search**, so a release costs two requests — one to
+find candidates, one to read the tracklist of whichever was picked — and there
+is no arrangement of parameters that makes it cost one.
+
+**The `inc` value is sent with spaces, not with `+`.** Form encoding turns a
+space into `+`, so the request that goes out is the canonical
+`inc=recordings+artist-credits+release-groups`. Writing the `+` in the value
+would encode it as `%2B`.
+
+**`reqwest`'s `RequestBuilder::query` is behind a feature** in 0.13 — named
+`query`, and off in the default set. Without it the call does not exist and the
+error reads as a missing method rather than a missing feature.
+
+**A track's `number` is a string and its `position` is not.** On a vinyl release
+`number` is `"A1"`, so the integer track number this app writes comes from
+`position`.
+
+**The rate limit is enforced at the IP address**, and exceeding it gets the
+address blocked rather than throttled. `tagsource::rate::shared` is therefore
+process-wide: a limiter owned by a client instance would let two callers make
+two requests a second between them, each believing it was the only one.

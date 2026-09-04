@@ -28,7 +28,7 @@ files keep whatever they carry; this decides a label, not a tag.
 `NOCASE` is ASCII-only, so `Ä` and `ä` would stay two groups. Measured against
 this library there is no such pair, so it buys nothing to reach for ICU here.
 
-[79b](79b-online-release-lookup.md) groups its lookup selection by the same
+[79b](../done/79b-online-release-lookup.md) groups its lookup selection by the same
 expression. Folding case there too stops one release being searched twice at one
 request per second.
 

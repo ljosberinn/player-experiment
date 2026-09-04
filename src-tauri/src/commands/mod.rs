@@ -14,11 +14,12 @@ use crate::export::{self, ExportScope};
 use crate::log::{Fields, Log, Op};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, FilterGroup, LastfmConnection,
-    LastfmStatus, LibraryStats, PlayerSnapshot, Playlist, ScanSummary, SmartOrder, TagEdit,
-    TagValueField, TagWriteSummary, Track, TrackQuery,
+    LastfmStatus, LibraryStats, PlayerSnapshot, Playlist, ReleaseCandidate, ReleaseDetail,
+    ReleaseIdentity, ReleaseSelection, ScanSummary, SmartOrder, TagEdit, TagValueField,
+    TagWriteSummary, Track, TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
-use crate::{crash, lastfm, scan, tags};
+use crate::{crash, lastfm, scan, tags, tagsource};
 
 /// Progress channels for the writes long enough to watch.
 const TAG_PROGRESS: &str = "tags://progress";
@@ -687,6 +688,208 @@ pub fn can_undo_tag_edit(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<bo
         let conn = db.conn()?;
         tags::write::can_undo(&conn)
     })
+}
+
+/// The releases a selection covers, in the order they are worked through.
+///
+/// The first thing the lookup does, and the reason it is worth doing at all: a
+/// selection of a thousand files is a hundred-odd releases, and MusicBrainz
+/// allows one request a second.
+#[tauri::command]
+pub fn tagsource_groups(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    track_ids: Vec<i64>,
+) -> AppResult<Vec<ReleaseSelection>> {
+    log.op("tagsource.groups")
+        .add("tracks", track_ids.len())
+        .run(|| {
+            let conn = db.conn()?;
+            query::release_selections(&conn, &track_ids)
+        })
+}
+
+/// The transport, or a sentence saying why there is none.
+fn tagsource_ready() -> AppResult<&'static tagsource::transport::HttpTransport> {
+    tagsource::transport::shared().ok_or_else(|| {
+        crate::error::AppError::Internal("This machine has no usable HTTP client.".to_owned())
+    })
+}
+
+/// The release as it is on disk, which is what a candidate is scored against.
+///
+/// Read here rather than sent from the dialog because the dialog only knows
+/// the files that were selected, and three files out of twelve would score
+/// every twelve-track candidate as a mismatch.
+fn local_release(
+    conn: &rusqlite::Connection,
+    album: Option<&str>,
+    artist: Option<&str>,
+) -> AppResult<tagsource::score::LocalRelease> {
+    let members = query::release_members(conn, album, artist)?;
+    Ok(tagsource::score::LocalRelease {
+        track_count: u32::try_from(members.len()).unwrap_or(u32::MAX),
+        durations_ms: members
+            .into_iter()
+            .map(|member| member.duration_ms)
+            .collect(),
+    })
+}
+
+/// Searches MusicBrainz for the release these files might be.
+///
+/// On a worker thread because it blocks twice over: once on the shared rate
+/// limiter, which holds every caller to one request a second, and once on the
+/// request itself.
+#[tauri::command]
+pub async fn tagsource_search(
+    app: tauri::AppHandle,
+    album: Option<String>,
+    artist: Option<String>,
+) -> AppResult<Vec<ReleaseCandidate>> {
+    let op = op(&app, "tagsource.search")
+        .add("album", album.as_deref().unwrap_or("-"))
+        .add("artist", artist.as_deref().unwrap_or("-"));
+
+    blocking("release search", move || {
+        op.run_with(
+            || {
+                let conn = app.state::<Db>().conn()?;
+                let local = local_release(&conn, album.as_deref(), artist.as_deref())?;
+                // Dropped before the network call: a connection held across a
+                // rate-limited second is a connection nothing else can use.
+                drop(conn);
+                tagsource::musicbrainz::search(
+                    tagsource_ready()?,
+                    album.as_deref(),
+                    artist.as_deref(),
+                    &local,
+                )
+            },
+            |candidates| Fields::new().add("candidates", candidates.len()),
+        )
+    })
+    .await
+}
+
+/// Reads one candidate's tracklist, and its cover beside it.
+///
+/// `album` and `artist` are the local release again, because the score is
+/// recomputed here: the durations that separate two pressings of one album do
+/// not exist until the tracklist does.
+#[tauri::command]
+pub async fn tagsource_fetch(
+    app: tauri::AppHandle,
+    mbid: String,
+    album: Option<String>,
+    artist: Option<String>,
+) -> AppResult<ReleaseDetail> {
+    let op = op(&app, "tagsource.fetch").add("mbid", &mbid);
+
+    blocking("release fetch", move || {
+        op.run_with(
+            || {
+                let conn = app.state::<Db>().conn()?;
+                let local = local_release(&conn, album.as_deref(), artist.as_deref())?;
+                drop(conn);
+
+                let (mut detail, cover) =
+                    tagsource::fetch_release(tagsource_ready()?, &mbid, &local)?;
+                // Through the same staging file the tag editor's own artwork
+                // goes through, so the dialog previews it over `cover://` and
+                // the writer reads it back the one way it already knows.
+                detail.cover_path = match cover {
+                    Some(bytes) => stage_cover(&staging_dir(&app)?, &bytes).ok(),
+                    None => None,
+                };
+                Ok(detail)
+            },
+            |detail| {
+                Fields::new()
+                    .add("tracks", detail.tracks.len())
+                    .add("cover", detail.cover_path.is_some())
+            },
+        )
+    })
+    .await
+}
+
+/// Writes a confirmed lookup: the mapped fields, and the release's identity.
+///
+/// One batch, so undo takes the whole release back in one step - which is the
+/// entire reason [`tags::write::apply`] takes an edit per track.
+///
+/// The identifiers are the exception to the selection: every file of the
+/// release gets them, selected or not. Otherwise three of twelve tracks would
+/// carry an identity and nine would fall back to their title, and the release
+/// would be drawn twice by anything that groups on it.
+#[tauri::command]
+pub async fn tagsource_apply(
+    app: tauri::AppHandle,
+    edits: Vec<TrackEdit>,
+    identity: ReleaseIdentity,
+) -> AppResult<TagWriteSummary> {
+    let op = op(&app, "tagsource.apply")
+        .add("tracks", edits.len())
+        .add("release", &identity.release_mbid);
+
+    blocking("release apply", move || {
+        let db = app.state::<Db>();
+        // Behind the same lock as a scan and an undo: it rewrites the files a
+        // pass reads its (mtime, size) from.
+        let lock = app.state::<ScanLock>();
+        let _guard = lock.acquire();
+        let mut conn = db.conn()?;
+
+        let members =
+            query::release_members(&conn, identity.album.as_deref(), identity.artist.as_deref())?;
+        let edits = with_identity(edits, &members, &identity);
+
+        announcing_with(
+            &app,
+            op,
+            || {
+                tags::write::apply(&mut conn, &edits, crate::now_seconds(), |p| {
+                    let _ = app.emit(TAG_PROGRESS, &p);
+                })
+            },
+            written_fields,
+        )
+    })
+    .await
+}
+
+/// Stamps the release's identifiers onto every file of it.
+///
+/// The mapped edits keep everything the dialog put in them and gain the two
+/// ids; every other file of the release gets an edit that carries nothing
+/// else, so a file nobody selected is written for its identity and for nothing
+/// else. Absent fields still mean "leave alone", so such an edit changes two
+/// tags and no others.
+fn with_identity(
+    edits: Vec<TrackEdit>,
+    members: &[query::ReleaseMember],
+    identity: &ReleaseIdentity,
+) -> Vec<(i64, TagEdit)> {
+    let stamp = |mut edit: TagEdit| {
+        edit.release_mbid = Some(identity.release_mbid.clone());
+        edit.release_group_mbid = identity.release_group_mbid.clone();
+        edit
+    };
+
+    let mut applied: Vec<(i64, TagEdit)> = edits
+        .into_iter()
+        .map(|edit| (edit.track_id, stamp(edit.edit)))
+        .collect();
+
+    let mapped: std::collections::HashSet<i64> = applied.iter().map(|(id, _)| *id).collect();
+    applied.extend(
+        members
+            .iter()
+            .filter(|member| !mapped.contains(&member.id))
+            .map(|member| (member.id, stamp(TagEdit::default()))),
+    );
+    applied
 }
 
 /// Values already in the library for `field`, best match first.

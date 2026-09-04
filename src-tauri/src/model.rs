@@ -355,6 +355,125 @@ pub struct TagWriteSummary {
     pub errors: Vec<String>,
 }
 
+/// One track and the edit meant for it alone.
+///
+/// The shape a tracklist needs and a bulk edit cannot express: title, track
+/// number and disc number differ per file, so the release lookup sends one
+/// edit per track rather than one edit over many.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TrackEdit {
+    #[ts(type = "number")]
+    pub track_id: i64,
+    pub edit: TagEdit,
+}
+
+/// One release out of a selection, and the songs of it that were selected.
+///
+/// A release rather than a track is the unit a lookup is worth doing at:
+/// 65,535 tracks are some 8,000 releases, and looking each track up separately
+/// would pay forty times over the odds against a service that allows one
+/// request a second.
+///
+/// `album` and `artist` are optional because the grouping expression is the
+/// browse view's, which folds an empty tag into NULL - a selection of untagged
+/// files is one group keyed by nothing rather than an error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseSelection {
+    pub album: Option<String>,
+    /// `album_artist`, falling back to `artist` - the same expression the
+    /// browse view groups albums by.
+    pub artist: Option<String>,
+    /// The selected tracks of this release, in track order.
+    #[ts(type = "number[]")]
+    pub track_ids: Vec<i64>,
+}
+
+/// A release the search turned up, before its tracklist has been fetched.
+///
+/// Everything here comes out of the search response, which carries no
+/// tracklist: `inc` is not accepted on a search, so a release costs two calls
+/// and this is what the first one buys.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseCandidate {
+    pub mbid: String,
+    pub release_group_mbid: Option<String>,
+    pub title: String,
+    pub artist: String,
+    /// The release date as MusicBrainz gives it: a year, or a full date.
+    pub date: Option<String>,
+    /// Where it was released, which is often the only thing telling two
+    /// pressings of one album apart in a list.
+    pub country: Option<String>,
+    /// "CD", "12\" Vinyl", "Digital Media" - the other thing that does.
+    pub format: Option<String>,
+    pub track_count: u32,
+    pub disc_count: u32,
+    /// How well this matches the files, from 0 to 1. See `tagsource::score`.
+    pub score: f32,
+}
+
+/// One track of a fetched release.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RemoteTrack {
+    pub title: String,
+    pub artist: String,
+    #[ts(type = "number")]
+    pub track_no: i64,
+    #[ts(type = "number")]
+    pub disc_no: i64,
+    /// Absent where MusicBrainz has no length for the recording, which is
+    /// common on obscure releases and is why the duration half of the score
+    /// has to cope with it.
+    #[ts(type = "number | null")]
+    pub duration_ms: Option<i64>,
+}
+
+/// A release, its tracklist, and its cover.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseDetail {
+    pub candidate: ReleaseCandidate,
+    /// The album artist for the release as a whole, which for a compilation is
+    /// "Various Artists" while every track names somebody else.
+    pub album_artist: String,
+    #[ts(type = "number | null")]
+    pub year: Option<i64>,
+    pub tracks: Vec<RemoteTrack>,
+    /// Where the fetched cover was staged, or null when the archive has none.
+    ///
+    /// A path rather than bytes: `CoverEdit::Replace` already carries one and
+    /// `read_cover` reads whatever an edit names, so a temp file costs one
+    /// function where a bytes-carrying variant would cost a serde shape and an
+    /// IPC payload the size of a JPEG.
+    pub cover_path: Option<String>,
+}
+
+/// Which release the files belong to.
+///
+/// Sent back with an apply, because the two identifiers are the one thing that
+/// is written outside the selection: every track sharing this album and artist
+/// gets them, selected or not. Otherwise three of twelve tracks would carry an
+/// identity and nine would fall back to their title, and a release drawn by
+/// identity would appear twice.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseIdentity {
+    pub album: Option<String>,
+    pub artist: Option<String>,
+    pub release_mbid: String,
+    pub release_group_mbid: Option<String>,
+}
+
 /// A field whose values are worth suggesting.
 ///
 /// Deliberately shorter than [`FilterField`]. A vocabulary only helps where two

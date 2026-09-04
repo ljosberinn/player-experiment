@@ -1,6 +1,6 @@
 # 79b — Online release lookup
 
-Produces a candidate tag set only; [79a](../done/79a-per-track-edits-and-the-release-mbid.md)'s
+Produces a candidate tag set only; [79a](79a-per-track-edits-and-the-release-mbid.md)'s
 per-track writer and phase 8's undo journal apply it. Outbound network, inert
 unless the user asks — last.fm and the updater are the ones already there.
 
@@ -21,7 +21,7 @@ equivalent. That trade flips only if user-contributed sources are ever wanted.
   calls and there is no way to make it cost one.
 - **The rate limiter is process-wide, not per client.** Max 1 request/sec is
   enforced at the IP, and exceeding it gets the IP blocked. A limiter owned by a
-  client instance lets [82](82-lookup-runs-itself.md)'s background pass and an
+  client instance lets [82b](../upcoming/82b-the-unattended-lookup-pass.md)'s background pass and an
   open dialog make two a second between them, so it is a single limiter every
   caller goes through. Same for the meaningful User-Agent built from
   `CARGO_PKG_NAME`/`CARGO_PKG_VERSION` with a contact URL: in the client, never
@@ -29,7 +29,7 @@ equivalent. That trade flips only if user-contributed sources are ever wanted.
 - **Cover Art Archive** — keyed by the same release MBID, no auth, and
   **no rate limit**, so covers fetch in parallel while MusicBrainz is the
   bottleneck. `/release/<mbid>/front-500` is exactly the size
-  [72](../done/72-covers-are-most-of-the-database.md) stores. A 404 is
+  [72](72-covers-are-most-of-the-database.md) stores. A 404 is
   "no cover", not an error.
 - **AcoustID is not in this phase.** It batches fingerprints at 3 req/s and
   `rusty-chromaprint` is a pure Rust port, so `unsafe_code = "forbid"` would
@@ -51,13 +51,13 @@ were selected and touches nothing else.
 **The MBIDs are the exception: they go to the whole release.** Every track
 sharing the selection's `(album, GROUP_ARTIST)` gets them, selected or not.
 Otherwise three of twelve tracks carry an identity and nine fall back to the
-title, and [87](87-one-release-one-tile.md) draws one release as two tiles —
+title, and [87](../upcoming/87-one-release-one-tile.md) draws one release as two tiles —
 the defect it exists to remove. They are the only fields where writing outside
 the selection is right, because they say which release the file belongs to
 rather than what it should be called.
 
 Shape: `src-tauri/src/tagsource/musicbrainz.rs` over an injected HTTP transport,
-the way [`lastfm::transport`](../../src-tauri/src/lastfm/transport.rs) does it,
+the way [`lastfm::transport`](../../../src-tauri/src/lastfm/transport.rs) does it,
 so every rule above it is tested against a fake on a runner with no network. **No
 provider trait**: one implementation does not justify one, and a second source is
 not planned. Commands `tagsource_search` and `tagsource_fetch`.
@@ -72,7 +72,7 @@ function where a bytes-carrying variant would cost a serde shape and an IPC
 payload.
 
 **Score every candidate**, even here where a human confirms —
-[82](82-lookup-runs-itself.md) needs the number and cannot invent it later.
+[82b](../upcoming/82b-the-unattended-lookup-pass.md) needs the number and cannot invent it later.
 Track count and per-track duration agreement against MusicBrainz's own search
 score; the dialog sorts by it.
 

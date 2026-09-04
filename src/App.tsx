@@ -47,6 +47,7 @@ import { viewSummary } from "./features/shell/viewSummary";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
 import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
+import { ReleaseLookup } from "./features/tagsource/ReleaseLookup";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, getAppInfo, stageDroppedCover, stagePickedCover } from "./ipc";
@@ -510,6 +511,11 @@ export function App() {
           onDropCover={async (file) => stageDroppedCover(await file.arrayBuffer())}
         />
       ) : null}
+
+      {/* Mounted unconditionally, like `TaskProgress`: it subscribes on its
+          own behalf and draws nothing until a lookup is open, so App does not
+          re-render for a dialog it does not own. */}
+      <ReleaseLookup />
 
       {/* Anchored to the status display rather than stacked above the table.
           As a paragraph it pushed the rows down as it appeared, shifting the

@@ -13,6 +13,7 @@ import {
   isTrackDragging,
   onTrackDragEnd,
 } from "../playlists/trackDrag";
+import { useTagsourceStore } from "../tagsource/store";
 import { ColumnHeader } from "./ColumnHeader";
 import { measureColumns } from "./columnFit";
 import { resolveColumns } from "./columns";
@@ -117,6 +118,7 @@ export function SongTable({
   const playlists = usePlaylistsStore((s) => s.playlists);
   const addTracks = usePlaylistsStore((s) => s.addTracks);
   const openEditor = useEditorStore((s) => s.open);
+  const openLookup = useTagsourceStore((s) => s.open);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Where a reorder drop would land, as an index into the current order. */
@@ -408,6 +410,7 @@ export function SongTable({
                   track: rowAt(menu.rowIndex),
                   onPlay: () => onActivate?.(menu.rowIndex),
                   onEdit: () => void openEditor(menu.trackIds),
+                  onLookup: () => void openLookup(menu.trackIds),
                   onAddTo: (id) => void addTracks(id, menu.trackIds),
                   onRemove: () => onRemove?.(menu.trackIds),
                   // Passed through as undefined where the caller gave none, so

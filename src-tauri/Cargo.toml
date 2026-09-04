@@ -5,6 +5,9 @@ description = "Local music player"
 authors = ["Gerrit Alex"]
 edition = "2021"
 license = "MIT"
+# Not for crates.io, which never sees this crate. It is the contact half of the
+# User-Agent MusicBrainz requires - see `tagsource::transport`.
+repository = "https://github.com/ljosberinn/player-experiment"
 # Never published to crates.io; the binary is distributed as an installer.
 publish = false
 
@@ -43,7 +46,9 @@ md-5 = "0.11"
 # transitive dependency direct rather than adding one. `blocking` is the whole
 # reason it is listed: `lastfm::transport` is synchronous by design, so the
 # scrobbler thread owns its own client instead of borrowing Tauri's runtime.
-reqwest = { version = "0.13", features = ["blocking", "form"] }
+# `query` is what keeps a Lucene search string out of a hand-rolled encoder:
+# MusicBrainz is asked with parameters, not with an interpolated URL.
+reqwest = { version = "0.13", features = ["blocking", "form", "query"] }
 # Cover decoding only, for the palette behind the window. Decoders for the two
 # formats embedded artwork is actually in - the default feature set pulls in a
 # dozen more, plus rayon and a TIFF stack, for covers nobody ships.

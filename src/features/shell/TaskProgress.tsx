@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { WriteProgress } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { useExportStore } from "../export/store";
+import { useTagsourceStore } from "../tagsource/store";
 
 /**
  * What a long write in progress looks like, for the ones with no dialog.
@@ -21,8 +22,13 @@ export function TaskProgress() {
   const watchExport = useExportStore((s) => s.watch);
 
   const editorProgress = useEditorStore((s) => s.progress);
+  // `tags://progress` is one channel for every tag write, and the release
+  // lookup's apply is the third thing on it - reported in its own dialog, and
+  // not an undo however much the editor store's progress looks like one.
+  const lookingUp = useTagsourceStore((s) => s.stage === "applying" && s.queue !== null);
+  const editorTracks = useEditorStore((s) => s.tracks);
   // An undo is a write with no dialog; a save has one, and reports there.
-  const undoing = useEditorStore((s) => s.tracks) === null && editorProgress !== null;
+  const undoing = !lookingUp && editorTracks === null && editorProgress !== null;
   const watchTags = useEditorStore((s) => s.watch);
 
   useEffect(() => {

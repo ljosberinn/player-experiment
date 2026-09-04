@@ -161,7 +161,7 @@ Metal. That granularity rules out most sources.
 | Wikipedia prose | Rejected. The same data as Wikidata, unparseable by comparison. |
 
 `scripts/genres.mjs` runs one SPARQL query and writes a committed data file
-which migration 9 seeds — **the runtime never touches the network**, which the
+which its own migration seeds — **the runtime never touches the network**, which the
 offline-first rule and the CSP both require. Labels and `skos:altLabel` aliases
 both come down, so "DSBM" resolves to depressive black metal.
 
@@ -348,6 +348,13 @@ row a link into the filtered Songs table.
 
 ## Steps
 
+**Migration numbers are not reserved here.** Migrations are append-only and
+numbered by the order they land, and 9 has since gone to
+[79a](../issues/done/79a-per-track-edits-and-the-release-mbid.md) with 10 and 11
+spoken for by [82b](../issues/upcoming/82b-the-unattended-lookup-pass.md) and
+[83a](../issues/upcoming/83a-where-a-file-goes.md). Each phase below takes
+whatever number is next when it lands.
+
 These phases interleave with the issues in
 [upcoming/](../issues/upcoming/), which share one order: dependencies first,
 then simplest first. The gaps below are those issues.
@@ -355,8 +362,8 @@ then simplest first. The gaps below are those issues.
 | # | Phase | Depends on |
 | --- | --- | --- |
 | 70 | Chart primitives and `scales.ts` | — |
-| 75 | Genre tree — `scripts/genres.mjs`, migration 9, overrides | — |
-| 76 | Play log — migration 10, local writes, matching, `plays::resolve`, perf budget | — |
+| 75 | Genre tree — `scripts/genres.mjs`, its migration, overrides | — |
+| 76 | Play log — its migration, local writes, matching, `plays::resolve`, perf budget | — |
 | 77 | Query layer — `db/stats.rs`, `ListenQuery`, IPC types | 76 |
 | 78 | last.fm history import — worker, cursor, progress, settings surface | 76 |
 | 80 | Statistics shell — sidebar, tabs, filter bar, `StatsPath` history, CSV export | 70, 77 |

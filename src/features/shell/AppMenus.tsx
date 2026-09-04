@@ -9,6 +9,7 @@ import { useScanStore } from "../library/scan";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { usePlaylistsStore } from "../playlists/store";
+import { useTagsourceStore } from "../tagsource/store";
 import { exportSelectionLabel, menus, REPOSITORY } from "./menus";
 
 /**
@@ -55,6 +56,7 @@ export function AppMenus({
 
   const canUndoTags = useEditorStore((s) => s.canUndo);
   const openEditor = useEditorStore((s) => s.open);
+  const openLookup = useTagsourceStore((s) => s.open);
   const undoTags = useEditorStore((s) => s.undo);
 
   // Three scalars, all of which change only when the user connects or
@@ -107,6 +109,7 @@ export function AppMenus({
                 // a pointer to start from, and the selection is what it acts on.
                 onPlay: () => void play(selectedIds, 0),
                 onEdit: () => void openEditor(selectedIds),
+                onLookup: () => void openLookup(selectedIds),
                 onAddTo: (id) => void addTracks(id, selectedIds),
                 onRemove: () => {
                   if (playlistId !== null) {

@@ -7,7 +7,7 @@ Known, decided, and not scheduled. Anything with work attached lives in
   this a limitation rather than a task was that `dragDropEnabled` had to stay
   `false` for in-app dragging to work at all; phase 74 removed that, and the
   work now lives in
-  [85](../issues/upcoming/85-drop-files-and-folders.md).
+  [85b](../issues/upcoming/85b-drop-files-and-folders.md).
 - **No crash reporting off the machine.** A local panic log covers the failure
   class; a network reporter contradicts the product.
 - **Installers are unsigned.** SmartScreen warns on first run of each version.
@@ -84,3 +84,18 @@ Known, decided, and not scheduled. Anything with work attached lives in
 - **Disconnecting from last.fm is local only.** The API has no method to revoke
   a session key, so the app forgets it and the pane says where to revoke it
   properly.
+- **The release lookup is MusicBrainz only.** Discogs was considered and is the
+  secondary everyone reaches for on electronic and vinyl, but it needs a
+  mandatory token, a stored credential and a Settings control to give a second
+  opinion on records this library mostly is not.
+- **A lookup matches on text, not on audio.** AcoustID would match a file whose
+  tags say nothing, and its Rust port would survive `unsafe_code = "forbid"` —
+  but fingerprinting means decoding two minutes of every file, so it is the
+  answer for what text search cannot match rather than the first pass.
+- **A lookup is one release a second**, because MusicBrainz enforces its rate
+  limit at the IP address and blocks rather than throttles. A selection of a
+  hundred releases is therefore a minute and a half of searching even before
+  anybody reads a result.
+- **The confirm dialog pairs files with tracks one to one**, in track order,
+  with arrows to swap two rows. There is no drag reorder and no way to map two
+  files onto one track.

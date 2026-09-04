@@ -5,10 +5,12 @@ mp3s. That scale drives every decision: SQLite is the source of truth (never an
 in-memory array of tracks), queries are paged, rows are virtualized, and audio
 decoding happens off the webview thread.
 
-Tauri v2 — Rust core plus a WebView2 frontend. The only network at runtime is
-the updater and, once an account is connected, last.fm — opt-in, off by default,
-and behind a single trait (`lastfm::transport::Transport`) so nothing above it
-knows HTTP exists.
+Tauri v2 — Rust core plus a WebView2 frontend. The network at runtime is the
+updater; last.fm, once an account is connected; and the release lookup, when
+somebody opens it. All three are opt-in and none runs on launch, on scan or on
+play. Each of the latter two is behind a trait of its own
+(`lastfm::transport::Transport`, `tagsource::transport::Transport`) so nothing
+above them knows HTTP exists.
 
 ```
 src-tauri/src/
@@ -19,12 +21,15 @@ src-tauri/src/
   smart/      filter tree -> parameterized SQL
   export/     JSON export
   lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue
+  tagsource/  MusicBrainz + Cover Art Archive lookup: transport seam, the
+              process-wide rate limiter, candidate scoring
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   log.rs      every operation, one line each, rotated
   palette.rs  dominant colours from cover bytes
 src/
-  features/   library, playlists, player, editor, smart, shell, updater, crash, export
+  features/   library, playlists, player, editor, tagsource, smart, shell,
+              updater, crash, export
   components/ui/  chrome primitives
   ipc/        the only module that calls invoke; bindings/ is generated
 e2e/          WebdriverIO specs plus the harness (fixtures, contrast, screenshot, viewport)

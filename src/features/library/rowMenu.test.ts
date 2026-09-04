@@ -11,6 +11,7 @@ const noop = () => {};
 const handlers = {
   onPlay: vi.fn(),
   onEdit: vi.fn(),
+  onLookup: vi.fn(),
   onAddTo: vi.fn(),
   onRemove: vi.fn(),
   onExport: vi.fn(),
@@ -58,6 +59,21 @@ describe("rowMenuItems", () => {
     // and it is the default if nobody looks.
     expect(labels(items({ count: 1 }))).toContain("Edit");
     expect(labels(items({ count: 1 }))).toContain("Export 1 Song…");
+  });
+
+  /**
+   * Beside Edit, and worded the same however many rows are selected: it acts on
+   * the release the selection covers, not on a count of songs.
+   */
+  it("offers the release lookup whatever the selection is", () => {
+    const onLookup = vi.fn();
+
+    for (const count of [1, 3]) {
+      expect(labels(items({ count }))).toContain("Get Tags from MusicBrainz…");
+    }
+
+    entry(items({ onLookup }), "Get Tags from MusicBrainz…")?.onSelect?.();
+    expect(onLookup).toHaveBeenCalled();
   });
 
   it("offers only static playlists to add to", () => {

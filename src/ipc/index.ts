@@ -24,6 +24,11 @@ import type { PlayerPosition } from "./bindings/PlayerPosition";
 import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
 import type { Playlist } from "./bindings/Playlist";
 import type { PlaylistKind } from "./bindings/PlaylistKind";
+import type { ReleaseCandidate } from "./bindings/ReleaseCandidate";
+import type { ReleaseDetail } from "./bindings/ReleaseDetail";
+import type { ReleaseIdentity } from "./bindings/ReleaseIdentity";
+import type { ReleaseSelection } from "./bindings/ReleaseSelection";
+import type { RemoteTrack } from "./bindings/RemoteTrack";
 import type { ScanProgress } from "./bindings/ScanProgress";
 import type { ScanSummary } from "./bindings/ScanSummary";
 import type { SmartOrder } from "./bindings/SmartOrder";
@@ -34,6 +39,7 @@ import type { TagEdit } from "./bindings/TagEdit";
 import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
 import type { Track } from "./bindings/Track";
+import type { TrackEdit } from "./bindings/TrackEdit";
 import type { TrackQuery } from "./bindings/TrackQuery";
 import type { WriteProgress } from "./bindings/WriteProgress";
 
@@ -62,6 +68,11 @@ export type {
   PlayerSnapshot,
   Playlist,
   PlaylistKind,
+  ReleaseCandidate,
+  ReleaseDetail,
+  ReleaseIdentity,
+  ReleaseSelection,
+  RemoteTrack,
   ScanProgress,
   ScanSummary,
   SmartOrder,
@@ -72,6 +83,7 @@ export type {
   TagValueField,
   TagWriteSummary,
   Track,
+  TrackEdit,
   TrackQuery,
   WriteProgress,
 };
@@ -416,6 +428,57 @@ export function stagePickedCover(path: string): Promise<string> {
   return invoke<string>("stage_picked_cover", { path });
 }
 
+/**
+ * The releases a selection covers, in the order the dialog works through them.
+ *
+ * A release rather than a track is the unit a lookup is worth doing at, so
+ * this is what decides how many searches a selection costs.
+ */
+export function tagsourceGroups(trackIds: number[]): Promise<ReleaseSelection[]> {
+  return invoke<ReleaseSelection[]>("tagsource_groups", { trackIds });
+}
+
+/**
+ * Searches MusicBrainz for the release these files might be, best fit first.
+ *
+ * Blocks on a process-wide limiter of one request a second before it blocks on
+ * the network, so two of these started at once take two seconds between them.
+ */
+export function tagsourceSearch(
+  album: string | null,
+  artist: string | null,
+): Promise<ReleaseCandidate[]> {
+  return invoke<ReleaseCandidate[]>("tagsource_search", { album, artist });
+}
+
+/**
+ * Reads one candidate's tracklist, and stages its cover beside it.
+ *
+ * The album and artist go back so the score can be recomputed against the
+ * files: the per-track durations that separate two pressings of one album do
+ * not exist until the tracklist does.
+ */
+export function tagsourceFetch(
+  mbid: string,
+  album: string | null,
+  artist: string | null,
+): Promise<ReleaseDetail> {
+  return invoke<ReleaseDetail>("tagsource_fetch", { mbid, album, artist });
+}
+
+/**
+ * Writes a confirmed lookup as one undoable batch.
+ *
+ * `identity` is written to every file of the release, selected or not - it is
+ * the one thing a lookup writes outside what was picked.
+ */
+export function tagsourceApply(
+  edits: TrackEdit[],
+  identity: ReleaseIdentity,
+): Promise<TagWriteSummary> {
+  return invoke<TagWriteSummary>("tagsource_apply", { edits, identity });
+}
+
 export function undoTagEdit(): Promise<TagWriteSummary> {
   return invoke<TagWriteSummary>("undo_tag_edit");
 }
@@ -658,9 +721,10 @@ export function coverUrl(hash: string): string {
  * `staged` is the one path under `cover://` that is not a hash. Its file has a
  * fixed name, so the URL is the only thing that can tell the webview this is
  * not the image it fetched a moment ago - hence `version`, bumped by whoever
- * staged.
+ * staged. The release lookup passes a release id rather than a counter: it
+ * stages one cover per release, so the id already names the bytes.
  */
-export function stagedCoverUrl(version: number): string {
+export function stagedCoverUrl(version: number | string): string {
   return `${convertFileSrc("staged", "cover")}?v=${version}`;
 }
 

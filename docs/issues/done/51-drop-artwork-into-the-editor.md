@@ -9,8 +9,8 @@ The obstacle is that the editor's cover travels as a **path**:
 `std::fs::read`. An HTML5 drop hands over a `File` — bytes, no path. The native
 drag-drop event that carries paths is unavailable and stays that way:
 `dragDropEnabled` must remain `false` or in-app dragging stops working, and
-Tauri v2 cannot toggle it at runtime ([gotchas](../knowledge/gotchas.md),
-[limitations](../knowledge/limitations.md)).
+Tauri v2 cannot toggle it at runtime ([gotchas](../../knowledge/gotchas.md),
+[limitations](../../knowledge/limitations.md)).
 
 ## Bytes go over IPC once, at drop time
 

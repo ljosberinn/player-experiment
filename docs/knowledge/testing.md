@@ -49,6 +49,32 @@ npm run tauri dev
 The vars are read at *compile* time, so they have to be set before cargo runs,
 not before the window opens.
 
+**Nothing reaches MusicBrainz either.** Same arrangement, one seam along:
+`tagsource::transport::Transport` has a fake that answers by URL - by URL, not
+in order, because a release and its cover are fetched from two threads at once
+and a script in order would be asserting a race - plus a `wiremock` round trip
+for the real client. The recorded responses in `src-tauri/src/tagsource/fixtures/`
+cover a plain album, a multi-disc release and a various-artists compilation,
+which are the three shapes the parser branches on.
+
+The response *shape* is theirs to change, and a fixture cannot notice that.
+`musicbrainz::tests::a_live_lookup_finds_a_release_and_its_tracklist` is
+`#[ignore]`d and talks to the real service; `cargo test -- --ignored` from
+`src-tauri/` is how it gets run. It needs no credentials - MusicBrainz has no
+auth - only a network, which is why it is not in CI.
+
+**The lookup dialog has no e2e spec**, and deliberately. Driving it means a
+real request to musicbrainz.org from the running app, which would make every CI
+run depend on somebody else's service being up and under its rate limit.
+`ReleaseLookup.test.tsx` covers the markup and the flow against mocked IPC; the
+dialog against the live service is a manual check before a release.
+
+The rate limiter is asserted at its real one request a second, from **two**
+callers at once: the limit is enforced at the IP address, so a limiter that
+serialized only within one client would be no limiter at all. That test costs a
+second of wall clock, deliberately - a scaled-down imitation would not be
+asserting the rule that ships.
+
 **No unit test can see where a file actually lands.** `log::tests` proves the
 line format and the rotation against a `tempfile`, and says nothing about
 whether the running app opens `main.log` beside the library rather than in the
