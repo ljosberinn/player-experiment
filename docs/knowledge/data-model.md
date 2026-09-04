@@ -36,6 +36,13 @@ is why paging, sorting, search-within, "select all", the play queue, export and
 - **Relevance and position are `SortField`s**, not flags: valid only when a
   search or a playlist is joined in, and falling back to a real column
   otherwise, so a stored sort is harmless in a view that cannot honour it.
+- **Sorting is `ORDER BY col <dir> NULLS LAST, tracks.id <dir>`.** NULLs last so
+  untagged files do not head up an ascending view, and the id tie-break so a
+  page boundary does not move between two queries. `NULLS LAST` rather than a
+  leading `col IS NULL`: the two order rows identically, but an expression as
+  the first ORDER BY term matches no index, so it costs a temp-b-tree sort of
+  the whole library on every page. `tests/perf.rs` asserts the plan of the real
+  statement — the columns with an index behind them must sort without one.
 - **`bm25` is weighted** so a title hit outranks one buried in a comment, and it
   ignores sort direction — there is no useful "worst match first".
 - **Row count is a separate `COUNT(*)`**, so the scrollbar is right without
