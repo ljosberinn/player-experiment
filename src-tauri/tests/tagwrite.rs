@@ -120,6 +120,22 @@ fn row(db: &Db, track_id: i64) -> (Option<String>, Option<String>, Option<i64>, 
         .unwrap()
 }
 
+/// What the row caches for the two MusicBrainz ids.
+fn mbids(db: &Db, track_id: i64) -> (Option<String>, Option<String>) {
+    db.conn()
+        .unwrap()
+        .query_row(
+            "SELECT release_mbid, release_group_mbid FROM tracks WHERE id = ?1",
+            [track_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+}
+
+/// A release and its release group, as a lookup would supply them.
+const RELEASE: &str = "8f468e8a-1b1b-4a53-9c0f-1f0f1a2b3c4d";
+const RELEASE_GROUP: &str = "1c9a0e2f-5d3b-4a11-8e7d-9f8e7d6c5b4a";
+
 fn edit() -> TagEdit {
     TagEdit::default()
 }
@@ -134,7 +150,7 @@ fn a_write_round_trips_through_the_file_and_into_the_library() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    let summary = write::apply(
+    let summary = write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -169,7 +185,7 @@ fn a_field_the_edit_does_not_mention_survives_untouched() {
     let track = id_of(&h.db, "Maki");
     let before = tags::read(&path_of(&h.db, track)).unwrap();
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -199,7 +215,7 @@ fn an_empty_value_clears_the_field_rather_than_writing_an_empty_one() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -224,7 +240,7 @@ fn one_edit_covers_a_whole_selection() {
     let mut conn = h.db.conn().unwrap();
     let tracks = [id_of(&h.db, "Maki"), id_of(&h.db, "Sleeping Ute")];
 
-    let summary = write::apply(
+    let summary = write::apply_to_each(
         &mut conn,
         &tracks,
         &TagEdit {
@@ -247,6 +263,239 @@ fn one_edit_covers_a_whole_selection() {
     assert_ne!(row(&h.db, tracks[0]).0, row(&h.db, tracks[1]).0);
 }
 
+/// The case a broadcast edit cannot express: a tracklist, where the title and
+/// the track number differ per file. One batch, so undo restores the release
+/// rather than one track of it.
+#[test]
+fn a_batch_of_per_track_edits_writes_each_one_and_undoes_as_a_whole() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let first = id_of(&h.db, "Maki");
+    let second = id_of(&h.db, "Sleeping Ute");
+
+    let summary = write::apply(
+        &mut conn,
+        &[
+            (
+                first,
+                TagEdit {
+                    title: set("Track One"),
+                    track_no: set("1"),
+                    disc_no: set("1"),
+                    ..edit()
+                },
+            ),
+            (
+                second,
+                TagEdit {
+                    title: set("Track Two"),
+                    track_no: set("2"),
+                    disc_no: set("2"),
+                    ..edit()
+                },
+            ),
+        ],
+        0,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!((summary.written, summary.failed), (2, 0));
+    let one = tags::read(&path_of(&h.db, first)).unwrap();
+    let two = tags::read(&path_of(&h.db, second)).unwrap();
+    assert_eq!(
+        (one.title.as_deref(), one.track_no, one.disc_no),
+        (Some("Track One"), Some(1), Some(1))
+    );
+    assert_eq!(
+        (two.title.as_deref(), two.track_no, two.disc_no),
+        (Some("Track Two"), Some(2), Some(2))
+    );
+
+    // One batch: a single undo has to take both files back.
+    write::undo_last(&mut conn, |_| {}).unwrap();
+    assert!(
+        !write::can_undo(&conn).unwrap(),
+        "a release restored in one step, not one track at a time"
+    );
+    assert_eq!(
+        tags::read(&path_of(&h.db, first)).unwrap().title.as_deref(),
+        Some("Maki")
+    );
+    assert_eq!(
+        tags::read(&path_of(&h.db, second))
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Sleeping Ute")
+    );
+}
+
+/// A malformed field anywhere in the batch refuses all of it, which only holds
+/// because every edit is resolved before the first file is opened.
+#[test]
+fn an_unparseable_number_in_a_later_edit_stops_the_earlier_ones() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let first = id_of(&h.db, "Maki");
+    let second = id_of(&h.db, "Sleeping Ute");
+
+    let error = write::apply(
+        &mut conn,
+        &[
+            (
+                first,
+                TagEdit {
+                    title: set("Should Not Land"),
+                    ..edit()
+                },
+            ),
+            (
+                second,
+                TagEdit {
+                    track_no: set("side b"),
+                    ..edit()
+                },
+            ),
+        ],
+        0,
+        |_| {},
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("Track number"), "{error}");
+    assert_eq!(
+        tags::read(&path_of(&h.db, first)).unwrap().title.as_deref(),
+        Some("Maki")
+    );
+}
+
+/// The MBIDs go through the same three places as every other tag: written to
+/// the file, read back off it, and cached in the row without a rescan.
+#[test]
+fn both_musicbrainz_ids_round_trip_into_the_file_and_the_row() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Maki");
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            release_mbid: set(RELEASE),
+            release_group_mbid: set(RELEASE_GROUP),
+            ..edit()
+        },
+        0,
+        |_| {},
+    )
+    .unwrap();
+
+    let on_disk = tags::read(&path_of(&h.db, track)).unwrap();
+    assert_eq!(on_disk.release_mbid.as_deref(), Some(RELEASE));
+    assert_eq!(on_disk.release_group_mbid.as_deref(), Some(RELEASE_GROUP));
+    assert_eq!(
+        mbids(&h.db, track),
+        (Some(RELEASE.to_owned()), Some(RELEASE_GROUP.to_owned()))
+    );
+
+    // And they come back off the file, so a rescan cannot blank the columns.
+    let summary = scan::scan(&mut conn, |_| {}).unwrap();
+    assert_eq!((summary.added, summary.updated), (0, 0));
+    assert_eq!(
+        mbids(&h.db, track),
+        (Some(RELEASE.to_owned()), Some(RELEASE_GROUP.to_owned()))
+    );
+}
+
+/// Absent means leave alone here as everywhere else, which is what lets a
+/// later lookup pass skip a release it has already resolved.
+#[test]
+fn an_edit_that_does_not_mention_the_mbids_leaves_the_ones_the_file_has() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    // The one the fixture tagged: it carries both before anything writes.
+    let track = id_of(&h.db, "Sleeping Ute");
+    assert_eq!(
+        mbids(&h.db, track),
+        (
+            Some(fixture::SHIELDS_RELEASE.to_owned()),
+            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
+        ),
+        "the scan should have read what the file carries"
+    );
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Indie"),
+            ..edit()
+        },
+        0,
+        |_| {},
+    )
+    .unwrap();
+
+    let on_disk = tags::read(&path_of(&h.db, track)).unwrap();
+    assert_eq!(
+        on_disk.release_mbid.as_deref(),
+        Some(fixture::SHIELDS_RELEASE)
+    );
+    assert_eq!(
+        on_disk.release_group_mbid.as_deref(),
+        Some(fixture::SHIELDS_RELEASE_GROUP)
+    );
+
+    // And an undo of that edit does not take them with it.
+    write::undo_last(&mut conn, |_| {}).unwrap();
+    assert_eq!(
+        mbids(&h.db, track),
+        (
+            Some(fixture::SHIELDS_RELEASE.to_owned()),
+            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
+        )
+    );
+}
+
+/// An empty value clears them, the same as any other text field - the lookup
+/// needs a way to take back an identity it got wrong.
+#[test]
+fn an_empty_mbid_clears_the_one_the_file_had() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Sleeping Ute");
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            release_mbid: Some(String::new()),
+            release_group_mbid: Some(String::new()),
+            ..edit()
+        },
+        0,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(
+        tags::read(&path_of(&h.db, track)).unwrap().release_mbid,
+        None
+    );
+    assert_eq!(mbids(&h.db, track), (None, None));
+
+    // Undo restores "what was there", which for these is a value again.
+    write::undo_last(&mut conn, |_| {}).unwrap();
+    assert_eq!(
+        mbids(&h.db, track),
+        (
+            Some(fixture::SHIELDS_RELEASE.to_owned()),
+            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
+        )
+    );
+}
+
 #[test]
 fn undo_puts_every_field_of_a_batch_back() {
     let h = harness();
@@ -257,7 +506,7 @@ fn undo_puts_every_field_of_a_batch_back() {
         .map(|&track| tags::read(&path_of(&h.db, track)).unwrap())
         .collect();
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &tracks,
         &TagEdit {
@@ -295,7 +544,7 @@ fn undo_clears_a_field_the_edit_had_added() {
     let track = id_of(&h.db, "Sleeping Ute");
     assert_eq!(tags::read(&path_of(&h.db, track)).unwrap().comment, None);
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -327,7 +576,7 @@ fn undo_goes_back_one_batch_at_a_time() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -338,7 +587,7 @@ fn undo_goes_back_one_batch_at_a_time() {
         |_| {},
     )
     .unwrap();
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -388,7 +637,7 @@ fn cover_art_can_be_replaced_and_removed_but_an_undo_does_not_bring_it_back() {
     )
     .unwrap();
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -406,7 +655,7 @@ fn cover_art_can_be_replaced_and_removed_but_an_undo_does_not_bring_it_back() {
     assert_ne!(swapped.hash, original.hash);
     assert_eq!(row(&h.db, track).3, Some(swapped.hash.clone()));
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -438,7 +687,7 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
     // Delete the file out from under the library: writing it must fail.
     std::fs::remove_file(path_of(&h.db, doomed)).unwrap();
 
-    let summary = write::apply(
+    let summary = write::apply_to_each(
         &mut conn,
         &[doomed, good],
         &TagEdit {
@@ -471,7 +720,7 @@ fn a_write_leaves_no_temporary_files_behind() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -502,7 +751,7 @@ fn the_written_file_is_still_a_playable_mp3() {
     let path = path_of(&h.db, track);
     let duration_before = tags::read(&path).unwrap().duration_ms;
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -530,7 +779,7 @@ fn a_rescan_after_an_edit_finds_nothing_to_do() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -560,7 +809,7 @@ fn an_unparseable_number_is_refused_before_anything_is_written() {
     let track = id_of(&h.db, "Maki");
     let before = tags::read(&path_of(&h.db, track)).unwrap();
 
-    let error = write::apply(
+    let error = write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -587,7 +836,7 @@ fn editing_a_track_the_library_no_longer_has_is_skipped_not_fatal() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    let summary = write::apply(
+    let summary = write::apply_to_each(
         &mut conn,
         &[9999, track],
         &TagEdit {
@@ -612,7 +861,7 @@ fn progress_starts_at_zero_and_lands_on_the_count_it_was_asked_for() {
     let ids = [id_of(&h.db, "Maki"), 9999];
 
     let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
-    let summary = write::apply(
+    let summary = write::apply_to_each(
         &mut conn,
         &ids,
         &TagEdit {
@@ -636,7 +885,7 @@ fn an_undo_reports_progress_too() {
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Maki");
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -667,7 +916,7 @@ fn the_file_keeps_its_name_and_place() {
     let track = id_of(&h.db, "Maki");
     let path = path_of(&h.db, track);
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &[track],
         &TagEdit {
@@ -697,7 +946,7 @@ fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
     assert_eq!(ids.len(), BULK);
 
     let mut seen: Vec<apex_lib::model::WriteProgress> = Vec::new();
-    let summary = write::apply(
+    let summary = write::apply_to_each(
         &mut conn,
         &ids,
         &TagEdit {
@@ -730,7 +979,7 @@ fn an_undo_of_a_long_batch_reports_all_the_way_along_too() {
     let mut conn = h.db.conn().unwrap();
     let ids = bulk_ids(&h.db);
 
-    write::apply(
+    write::apply_to_each(
         &mut conn,
         &ids,
         &TagEdit {

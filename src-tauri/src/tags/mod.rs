@@ -38,6 +38,12 @@ pub struct TrackTags {
     pub track_no: Option<i64>,
     pub disc_no: Option<i64>,
     pub comment: Option<String>,
+    /// The MusicBrainz release this file belongs to, and the release group it
+    /// belongs to across every pressing. Read here rather than only written,
+    /// because the file is the source of truth: a column the writer fills but
+    /// the reader ignores is blank again the next time a rescan re-adds it.
+    pub release_mbid: Option<String>,
+    pub release_group_mbid: Option<String>,
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
     pub cover: Option<Cover>,
@@ -76,6 +82,8 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
         .and_then(parse_year);
     tags.track_no = tag.track().map(i64::from);
     tags.disc_no = tag.disk().map(i64::from);
+    tags.release_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId));
+    tags.release_group_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId));
 
     tags.cover = tag.pictures().first().map(|picture| {
         let bytes = picture.data().to_vec();

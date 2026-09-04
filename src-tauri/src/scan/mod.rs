@@ -545,8 +545,9 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
     conn.execute(
         "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album, album_artist,
                              genre, year, track_no, disc_no, comment, bitrate, sample_rate,
-                             cover_hash, added_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+                             release_mbid, release_group_mbid, cover_hash, added_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
+                 ?19)
          ON CONFLICT(path) DO UPDATE SET
              mtime = excluded.mtime, size = excluded.size,
              duration_ms = excluded.duration_ms, title = excluded.title,
@@ -555,6 +556,8 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
              year = excluded.year, track_no = excluded.track_no,
              disc_no = excluded.disc_no, comment = excluded.comment,
              bitrate = excluded.bitrate, sample_rate = excluded.sample_rate,
+             release_mbid = excluded.release_mbid,
+             release_group_mbid = excluded.release_group_mbid,
              cover_hash = excluded.cover_hash",
         rusqlite::params![
             path.to_string_lossy(),
@@ -572,6 +575,8 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
             tags.comment,
             tags.bitrate,
             tags.sample_rate,
+            tags.release_mbid,
+            tags.release_group_mbid,
             cover_hash,
             now_secs(),
         ],
@@ -589,7 +594,7 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
         "UPDATE tracks SET mtime = ?2, size = ?3, duration_ms = ?4, title = ?5, artist = ?6,
                            album = ?7, album_artist = ?8, genre = ?9, year = ?10, track_no = ?11,
                            disc_no = ?12, comment = ?13, bitrate = ?14, sample_rate = ?15,
-                           cover_hash = ?16
+                           release_mbid = ?16, release_group_mbid = ?17, cover_hash = ?18
          WHERE path = ?1",
         rusqlite::params![
             path.to_string_lossy(),
@@ -607,6 +612,8 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
             tags.comment,
             tags.bitrate,
             tags.sample_rate,
+            tags.release_mbid,
+            tags.release_group_mbid,
             cover_hash,
         ],
     )?;

@@ -14,6 +14,7 @@ edit a shipped one.
 | 6 | `covers.palette` — the dominant colours of a cover |
 | 7 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
 | 8 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
+| 9 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
 
 ## One query, narrowed
 

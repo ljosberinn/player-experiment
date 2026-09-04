@@ -223,6 +223,8 @@ describe("ipc", () => {
         year: null,
         trackNo: null,
         discNo: null,
+        releaseMbid: null,
+        releaseGroupMbid: null,
         cover: { kind: "remove" },
       };
       invokeMock.mockResolvedValue({ written: 2, failed: 0, errors: [] });

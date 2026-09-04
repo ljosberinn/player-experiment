@@ -519,10 +519,16 @@ pub async fn write_tags(
             &app,
             op,
             || {
-                tags::write::apply(&mut conn, &track_ids, &edit, crate::now_seconds(), |p| {
-                    // A dropped progress event is not worth failing a write over.
-                    let _ = app.emit(TAG_PROGRESS, &p);
-                })
+                tags::write::apply_to_each(
+                    &mut conn,
+                    &track_ids,
+                    &edit,
+                    crate::now_seconds(),
+                    |p| {
+                        // A dropped progress event is not worth failing a write over.
+                        let _ = app.emit(TAG_PROGRESS, &p);
+                    },
+                )
             },
             written_fields,
         )

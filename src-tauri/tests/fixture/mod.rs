@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use lofty::config::WriteOptions;
+use lofty::id3::v2::Id3v2Tag;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::tag::{Tag, TagType};
@@ -40,6 +41,8 @@ pub struct Meta {
     pub year: Option<&'static str>,
     pub track_no: Option<u32>,
     pub comment: Option<&'static str>,
+    pub release_mbid: Option<&'static str>,
+    pub release_group_mbid: Option<&'static str>,
     /// Cover art bytes. Identical bytes across files must dedupe to one row.
     pub cover: Option<&'static [u8]>,
 }
@@ -89,7 +92,18 @@ pub fn write_mp3(path: &Path, frames: usize, meta: &Meta) {
         tag.push_picture(picture);
     }
 
-    tag.save_to_path(path, WriteOptions::default())
+    // Through `Id3v2Tag` rather than the generic tag, because lofty drops the
+    // two MusicBrainz ids on the way out of a `Tag` - the same gap `save_tag`
+    // works around in the writer, and the fixture has to write what the writer
+    // writes or the tests are asserting against files nothing could produce.
+    let mut id3 = Id3v2Tag::from(tag);
+    if let Some(v) = meta.release_mbid {
+        id3.insert_user_text("MusicBrainz Album Id".to_owned(), v.to_owned());
+    }
+    if let Some(v) = meta.release_group_mbid {
+        id3.insert_user_text("MusicBrainz Release Group Id".to_owned(), v.to_owned());
+    }
+    id3.save_to_path(path, WriteOptions::default())
         .expect("write tags");
 }
 
@@ -120,6 +134,11 @@ pub fn bulk(root: &Path, count: usize) -> Vec<PathBuf> {
 /// back out of the library by name.
 pub const BULK_TITLE: &str = "Bulk";
 
+/// The MusicBrainz ids on the Shields tracks, so a test can assert a scan
+/// read what the files carry rather than only what a write put there.
+pub const SHIELDS_RELEASE: &str = "3c1a1cb0-2f1c-4c3e-9b6c-6b1e7b0f0001";
+pub const SHIELDS_RELEASE_GROUP: &str = "3c1a1cb0-2f1c-4c3e-9b6c-6b1e7b0f0002";
+
 /// A small library: two artists, three albums, one untagged file.
 pub fn library(root: &Path) -> Vec<PathBuf> {
     const COVER_A: &[u8] = b"cover-bytes-for-tokyo";
@@ -139,6 +158,7 @@ pub fn library(root: &Path) -> Vec<PathBuf> {
                 track_no: Some(1),
                 comment: Some("first"),
                 cover: Some(COVER_A),
+                ..Default::default()
             },
         ),
         (
@@ -168,6 +188,8 @@ pub fn library(root: &Path) -> Vec<PathBuf> {
                 genre: Some("Indie Rock"),
                 year: Some("2012-09-18"),
                 track_no: Some(1),
+                release_mbid: Some(SHIELDS_RELEASE),
+                release_group_mbid: Some(SHIELDS_RELEASE_GROUP),
                 cover: Some(COVER_B),
                 ..Default::default()
             },

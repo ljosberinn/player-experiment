@@ -51,6 +51,8 @@ const edit: TagEdit = {
   year: null,
   trackNo: null,
   discNo: null,
+  releaseMbid: null,
+  releaseGroupMbid: null,
   cover: null,
 };
 
