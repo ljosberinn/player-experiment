@@ -56,6 +56,16 @@ const TICK: Duration = Duration::from_secs(15);
 /// beside a pass measured in hours.
 const IDLE_MAX: Duration = Duration::from_secs(600);
 
+/// How many lookups may fail in a row before the step is parked for the sweep.
+///
+/// A backstop against a network that is down, not a response to a burst: three
+/// releases each exhausting three attempts is nine consecutive declines over
+/// three minutes. One 503 says nothing about the next request - roughly a third
+/// of requests to MusicBrainz are declined, so three in a row is ordinary - and
+/// the run it takes to be an outage cannot be read off a log written while a
+/// single failure ended the sweep. Read it back off `failed` on the sweep line.
+const OUTAGE: usize = 3;
+
 /// How many releases are taken from one survey.
 ///
 /// The survey sorts every row of `tracks`, so asking for one release at a time
@@ -79,8 +89,8 @@ pub struct Plan {
     /// **A real pass leaves this empty.** Its work is its cursor - a written
     /// row, a moved file - which is what makes it resume across a quit; a dry
     /// run leaves neither, so this is the only thing standing between it and
-    /// surveying its first batch over and over. It survives a sweep that a 503
-    /// ended, and it does not survive the process: a rehearsal is one sitting.
+    /// surveying its first batch over and over. It survives a sweep that ended
+    /// early, and it does not survive the process: a rehearsal is one sitting.
     pub rehearsed: HashSet<lookup::Key>,
     /// What the readout is told, and what it takes to say it.
     pub pace: Pace,
@@ -133,7 +143,7 @@ pub struct Signals<'a> {
 /// What the readout says, and what it takes to say it.
 ///
 /// Part of the [`Plan`] rather than built per sweep, for the same reason the
-/// rehearsal's place is: a sweep that a 503 ended would otherwise throw away
+/// rehearsal's place is: a sweep that ended early would otherwise throw away
 /// the history the estimate is built from, and the pass would show no estimate
 /// for its first few releases over and over.
 #[derive(Debug, Default)]
@@ -214,6 +224,13 @@ pub struct Summary {
     pub deferred: usize,
     /// Releases a move failed on - a locked file, a full disk.
     pub unmovable: usize,
+    /// Releases whose lookup exhausted its three attempts.
+    ///
+    /// The number [`OUTAGE`] has to be read back against, and the one the
+    /// sweep line could not carry while a single failure ended the sweep: a
+    /// release that failed returns an error rather than an outcome, so its
+    /// `retries` are lost and it is not counted in `visited` either.
+    pub failed: usize,
     /// How many requests this sweep had to ask again before one was answered.
     ///
     /// The only measure of how much throttling a pass is absorbing. A retry
@@ -245,10 +262,13 @@ enum Visit {
     /// sweep rather than dropped: a user who leaves one album on must not find
     /// it the only one left behind.
     Deferred,
-    /// The lookup failed. The usual cause is that every following release
-    /// would fail the same way, one rate-limited request at a time, so the
-    /// step goes off for the rest of the sweep - the *step*, not the sweep,
-    /// because a network that is down says nothing about moving files.
+    /// The lookup exhausted its three attempts. The release goes to the same
+    /// tail the mover's deferrals go to, because one 503 says nothing about
+    /// the next request: something near a third of requests to MusicBrainz are
+    /// declined, so three in a row is ordinary, and the sweep carries on
+    /// through the batch. A run of [`OUTAGE`] of them is the other thing, and
+    /// parks the step - the *step*, not the sweep, because a network that is
+    /// down says nothing about moving files.
     LookupFailed,
 }
 
@@ -290,6 +310,8 @@ pub fn sweep(
     // or a migration.
     let mut skip = plan.rehearsed.clone();
     let mut deferred: Vec<Pending> = Vec::new();
+    // Lookups that have failed since the last one to reach a verdict.
+    let mut failures = 0;
     let mut hobbled = false;
     let mut counted = false;
 
@@ -320,21 +342,56 @@ pub fn sweep(
                 plan.rehearsed.insert(key);
             }
             let steps = live_steps(&opening, signals, log, hobbled);
+            // What resets the run: a lookup that ran and did not fail. Not
+            // `Visit::Next`, which a release with no lookup left to do returns
+            // as well - a batch of those between two failures would clear the
+            // count and a real outage would never reach the threshold.
+            let looked_up = pending.look_up && steps.look_up;
             match visit(&mut conn, &context, plan, &steps, &pending, &mut summary) {
-                Visit::Next => {}
-                Visit::Deferred => deferred.push(pending),
-                Visit::LookupFailed => hobbled = true,
+                Visit::Next => {
+                    if looked_up {
+                        failures = 0;
+                    }
+                }
+                // Its lookup is done, and `pending` still names it under the
+                // tags that lookup replaced, so the tail must not run it
+                // again: it would search on tags nothing carries any more.
+                Visit::Deferred => {
+                    if looked_up {
+                        failures = 0;
+                    }
+                    deferred.push(Pending {
+                        look_up: false,
+                        ..pending
+                    });
+                }
+                Visit::LookupFailed => {
+                    failures += 1;
+                    hobbled = failures >= OUTAGE;
+                    deferred.push(pending);
+                }
             }
         }
     }
 
     // The tail. Once, and then it waits for the next sweep: a release never
     // re-enters the survey mid-sweep, so an album left playing all evening
-    // cannot spin the pass.
+    // cannot spin the pass - and a release that fails here a second time is
+    // dropped rather than deferred again, which keeps no row, so the next
+    // sweep has it back.
     for pending in deferred {
         let steps = live_steps(&opening, signals, log, hobbled);
-        if steps.root.is_none() {
+        // Either step, not the mover's alone: the tail now carries releases a
+        // 503 deferred, and a lookup-only pass would never reach its own.
+        if !steps.any() {
             break;
+        }
+        // **A release whose lookup could not reach it is not placed.** `visit`
+        // already refuses that behind `Visit::Next`, and the tail has to keep
+        // refusing it, or a 503 would file the release under the tags the
+        // lookup was about to replace and the next sweep would move it again.
+        if pending.look_up && !steps.look_up {
+            continue;
         }
         visit(&mut conn, &context, plan, &steps, &pending, &mut summary);
     }
@@ -437,10 +494,13 @@ fn visit(
             }
             // A release that failed keeps no row, so a real pass tries it
             // again next sweep - right for a network that was down, harmless
-            // for one that was not. Not counted: it wrote nothing, so counting
-            // it would put the readout ahead of the library the next sweep
-            // reads.
-            Err(_) => visit = Visit::LookupFailed,
+            // for one that was not. Not counted in `visited`: it wrote
+            // nothing, so counting it would put the readout ahead of the
+            // library the next sweep reads.
+            Err(_) => {
+                summary.failed += 1;
+                visit = Visit::LookupFailed;
+            }
         }
     }
 
@@ -607,9 +667,9 @@ pub fn spawn(
     let _ = std::thread::Builder::new()
         .name("library-pass".to_owned())
         .spawn(move || {
-            // The rehearsal's place lives out here, so a sweep a 503 ended
-            // does not send the survey back to the first release. A real pass
-            // never touches it.
+            // The rehearsal's place lives out here, so a sweep that ended
+            // early does not send the survey back to the first release. A real
+            // pass never touches it.
             let mut plan = Plan::from_env();
             // How long to leave between sweeps, as against between wakes. It
             // doubles while there is nothing to do and snaps back the moment
@@ -682,6 +742,7 @@ pub fn spawn(
                             .add("placed", summary.placed)
                             .add("deferred", summary.deferred)
                             .add("unmovable", summary.unmovable)
+                            .add("failed", summary.failed)
                             .add("retries", summary.retries)
                             .add("next", format!("{}s", quiet.as_secs())),
                     ),
@@ -694,8 +755,10 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tagsource::pass::tests::{add_release, library, musicbrainz, LOVELESS_DURATIONS};
-    use crate::tagsource::transport::FakeTransport;
+    use crate::tagsource::pass::tests::{
+        add_release, flaky, library, musicbrainz, LOVELESS_DURATIONS,
+    };
+    use crate::tagsource::transport::{FakeTransport, TransportError};
     use std::cell::{Cell, RefCell};
 
     /// A real pass over whole batches, which is every test here but the ones
@@ -773,6 +836,44 @@ mod tests {
             &LOVELESS_DURATIONS,
         );
         (dir, db)
+    }
+
+    /// `count` releases, all answerable by the same fixtures and all named
+    /// apart, so the survey hands them over one at a time.
+    fn releases(count: usize) -> (tempfile::TempDir, Db) {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        for n in 1..count {
+            add_release(
+                &db,
+                dir.path(),
+                &format!("Loveless {n}"),
+                "My Bloody Valentine",
+                &LOVELESS_DURATIONS,
+            );
+        }
+        (dir, db)
+    }
+
+    /// A MusicBrainz that declines everything, which is what a release
+    /// exhausts its three attempts against.
+    fn declining() -> FakeTransport {
+        FakeTransport::new().failing(
+            "/ws/2/release",
+            TransportError::Server {
+                host: "musicbrainz.org".to_owned(),
+                status: 503,
+            },
+        )
+    }
+
+    /// How many searches a sweep made, as against fetches and covers: the
+    /// search URL is the one with no trailing segment after it.
+    fn searches(transport: &FakeTransport) -> usize {
+        transport
+            .calls()
+            .iter()
+            .filter(|call| call.url.ends_with("/ws/2/release"))
+            .count()
     }
 
     fn log_to(dir: &Path) -> Log {
@@ -1239,6 +1340,157 @@ mod tests {
             Some(RECENT as i64 * 20_000),
             "a hundred left at twenty seconds each - the free ones are gone"
         );
+    }
+
+    /// The one that cost 34 of 38 sweeps in an evening: one release exhausting
+    /// its three attempts parked the lookup step, and the sweep then ran out
+    /// of anything to do within seconds.
+    #[test]
+    fn a_release_that_exhausts_its_attempts_does_not_end_the_sweep() {
+        let (dir, db) = two_releases();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &flaky(3),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, 1, "the three attempts of the first release");
+        assert_eq!(
+            summary.resolved, 2,
+            "the release after it, which a parked step would never have reached"
+        );
+    }
+
+    /// A 503 says nothing about the release, so it goes to the tail the mover
+    /// already keeps rather than being dropped for the sweep.
+    #[test]
+    fn a_release_a_503_deferred_is_resolved_by_the_tail() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &flaky(3),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, 1, "its only visit in the batch failed");
+        assert_eq!(summary.resolved, 1, "so the tail is what resolved it");
+        assert_eq!(left(&db, &looking_up()), 0);
+    }
+
+    /// The backstop is a run rather than the first failure: a network that is
+    /// down must not put all 8,044 releases through three attempts each.
+    #[test]
+    fn a_run_of_failures_parks_the_lookup_for_the_rest_of_the_sweep() {
+        let (dir, db) = releases(OUTAGE + 1);
+        let transport = declining();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, OUTAGE);
+        assert_eq!(
+            transport.call_count(),
+            OUTAGE * 3,
+            "three attempts each, and the release after the run was never asked"
+        );
+    }
+
+    /// A 503 must not file a release under the tags the lookup was about to
+    /// replace, or the next sweep would move it a second time.
+    #[test]
+    fn the_tail_does_not_place_a_release_whose_lookup_never_reached_it() {
+        let (dir, db) = releases(OUTAGE);
+        let root = root_of(dir.path());
+        let steps = both(&root);
+        let before = paths(&db);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &declining(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(steps)),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, OUTAGE, "the run that parked the step");
+        assert_eq!(summary.placed, 0);
+        assert_eq!(paths(&db), before, "and nothing moved");
+    }
+
+    /// The tail carries the mover's deferrals as well as the lookup's, and the
+    /// mover's have already been looked up: a second lookup would search on
+    /// tags nothing carries any more and queue a release that was resolved.
+    #[test]
+    fn a_release_the_mover_deferred_is_not_looked_up_again_by_the_tail() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let root = root_of(dir.path());
+        let transport = musicbrainz();
+
+        // Held open for the batch and let go for the tail, which is what puts
+        // the release on the tail with its lookup already done.
+        let held_open: RefCell<HashSet<i64>> = RefCell::new(
+            db.conn()
+                .unwrap()
+                .prepare("SELECT id FROM tracks")
+                .unwrap()
+                .query_map([], |row| row.get::<_, i64>(0))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap(),
+        );
+        let asked = Cell::new(0);
+        let open = || {
+            asked.set(asked.get() + 1);
+            // One release in the batch, so the second ask is the tail.
+            if asked.get() > 1 {
+                held_open.borrow_mut().clear();
+            }
+            held_open.borrow().clone()
+        };
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &Signals {
+                steps: &held(both(&root)),
+                changed: &|| {},
+                progress: &|_| {},
+                open: &open,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.deferred, 1, "it was left alone while it played");
+        assert_eq!(summary.resolved, 1);
+        assert_eq!(summary.queued, 0, "the second lookup would have queued it");
+        assert_eq!(searches(&transport), 1);
     }
 
     /// The pass spends most of its life over a finished library, and a sweep

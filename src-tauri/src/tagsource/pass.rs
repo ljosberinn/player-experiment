@@ -298,9 +298,17 @@ pub(crate) mod tests {
     /// `FakeTransport` gives the same answer every time, so a retry that
     /// *works* is a case no fixture can express - and it is the case that
     /// matters, because it is the one that leaves no other trace.
-    struct Flaky {
+    pub(crate) struct Flaky {
         refusals: std::sync::Mutex<usize>,
         then: FakeTransport,
+    }
+
+    /// The fixtures behind [`Flaky`], refusing the first `refusals` requests.
+    pub(crate) fn flaky(refusals: usize) -> Flaky {
+        Flaky {
+            refusals: std::sync::Mutex::new(refusals),
+            then: musicbrainz(),
+        }
     }
 
     impl Transport for Flaky {
@@ -683,10 +691,7 @@ pub(crate) mod tests {
     fn a_retry_that_works_is_counted_rather_than_invisible() {
         let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
         let mut conn = db.conn().unwrap();
-        let transport = Flaky {
-            refusals: std::sync::Mutex::new(1),
-            then: musicbrainz(),
-        };
+        let transport = flaky(1);
 
         let outcome = look_up(
             &mut conn,
