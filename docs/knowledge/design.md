@@ -65,6 +65,12 @@ from a font CDN — the app is offline-first and the CSP forbids it.
 - The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and
   a dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
   sections with counts. There is no tab bar and no library toolbar.
+- **Under the playlists, when there is anything in it: Needs Review**, one row
+  with a count beside it like a playlist's. It is absent otherwise — a row
+  reading nought for the months before the unattended pass has queued anything
+  is a permanent reminder of a feature with nothing to say.
+- **At the foot of the sidebar, a line for a task measured in days**, in the
+  space the design leaves empty. Absent unless one is running.
 - **The Songs view has no title header.** Releases, Artists and Genres keep the
   heading and its accent underline; the view with 150k rows cannot spend a third
   of the fold on the word "Songs".

@@ -15,6 +15,7 @@ edit a shipped one.
 | 7 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
 | 8 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
 | 9 | `release_lookup` — what the unattended lookup pass has been through — plus `tracks.release_type`, MusicBrainz's release-group primary type, read off the file the way the two ids above are |
+| 10 | a fourth `release_lookup.status`, `aside` — a queued release the user has said to leave alone. A whole-table rebuild, because the vocabulary is a CHECK constraint and SQLite cannot widen one in place |
 
 **The rule has been broken once, before v1.** The tag-edit undo journal was
 migration 3, and 82a deleted the entry rather than adding one that drops the
@@ -98,6 +99,29 @@ be the best part of a day that finds nothing, forever.
   call**, so a re-install or a rescan of an already-tagged library pays nothing.
   Files that name two different pressings are left pending — that disagreement
   is what the lookup is for.
+
+### The four statuses, and what leaves the queue
+
+`resolved`, `review`, `none` and — since migration 10 — `aside`. Only `review`
+is counted beside the sidebar's row and offered in the dialog.
+
+- **Skipping in the review dialog writes nothing.** It means "not now": the
+  entry stays and is offered again the next time the queue is opened. `aside` is
+  the other decision, "leave this alone", and it is a separate action because a
+  queue that can only say the first is a queue whose count never reaches zero.
+  Every set-aside release comes back at once, from the sidebar row — one way
+  back rather than a second queue to manage.
+- **A confirmed apply records the key it wrote as `resolved`.** Applying a
+  lookup usually rewrites the album or the artist, so the row that queued the
+  release is about to be orphaned under its old key; without this the count
+  would never come down. It is also right for a lookup nobody queued — a
+  release somebody has just tagged by hand is not one to search for later.
+- **Opening the queue prunes what is no longer in it.** Retagging or removing
+  songs orphans a `review` or `aside` row, which would otherwise sit in the
+  count for good. Rows in the other two statuses are left alone: an orphaned
+  `resolved` row is a tombstone, and deleting it would buy nothing but a search
+  already paid for. The count itself is a cheap `count(*)` over the small table,
+  so it can read one ahead of the queue between a retag and the next open.
 
 ## The scrobble queue
 

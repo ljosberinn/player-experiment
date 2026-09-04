@@ -4,6 +4,8 @@ import { App } from "./App";
 import { useLastfmStore } from "./features/lastfm/store";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
+import { useBackgroundTaskStore } from "./features/shell/backgroundTaskStore";
+import { useTagsourceStore } from "./features/tagsource/store";
 import type { Track } from "./ipc";
 
 /**
@@ -20,7 +22,9 @@ import type { Track } from "./ipc";
  *   so four times a second for as long as anything is playing;
  * - the volume rail, which writes at the pointer's sampling rate;
  * - the search field, which updates on every keystroke;
- * - the selection, which changes on every click, shift-range and Ctrl+A.
+ * - the selection, which changes on every click, shift-range and Ctrl+A;
+ * - the unattended lookup pass, which moves a percentage and a queue count
+ *   every twenty seconds for the better part of two days.
  *
  * Each used to be subscribed at the top of `App`, so each re-rendered the
  * entire tree - including the song table and its forty virtualized rows.
@@ -50,6 +54,11 @@ vi.mock("./ipc", () => ({
   onTagWriteProgress: vi.fn(async () => () => {}),
   onExportProgress: vi.fn(async () => () => {}),
   onLibraryChanged: vi.fn(async () => () => {}),
+  onTaskProgress: vi.fn(async () => () => {}),
+  tagsourceReviewCounts: vi.fn(async () => ({ review: 0, aside: 0 })),
+  tagsourceReviewQueue: vi.fn(async () => []),
+  tagsourceSetAside: vi.fn(async () => undefined),
+  tagsourceRestoreReview: vi.fn(async () => 0),
   coverUrl: vi.fn((hash: string) => `cover-url:${hash}`),
   stagedCoverUrl: vi.fn((version: number) => `staged-cover-url:${version}`),
   stageDroppedCover: vi.fn(async () => "C:/cache/chosen-cover.png"),
@@ -245,6 +254,40 @@ beforeEach(() => {
   renders.menuBar = 0;
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0 });
+});
+
+describe("what the unattended pass re-renders", () => {
+  /**
+   * The pass runs for the better part of two days and reports per release. Read
+   * from `App`, each of those would re-render the window and its table.
+   */
+  it("nothing, when the progress readout moves", async () => {
+    await mounted();
+    expectTableMounted();
+
+    act(() => {
+      useBackgroundTaskStore.setState({
+        task: { label: "Looking up releases", done: 401, total: 8044, etaMs: 45 * 3_600_000 },
+      });
+    });
+
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+    expect(renders.menuBar).toBe(0);
+  });
+
+  it("nothing, when the review queue's count moves", async () => {
+    await mounted();
+    expectTableMounted();
+
+    act(() => {
+      useTagsourceStore.setState({ review: 412 });
+    });
+
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+    expect(renders.menuBar).toBe(0);
+  });
 });
 
 describe("what the last.fm status re-renders", () => {

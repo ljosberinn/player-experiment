@@ -395,12 +395,51 @@ pub struct ReleaseSelection {
     pub track_ids: Vec<i64>,
 }
 
+/// One release of the review queue: a selection the dialog can open on, and
+/// the search results the pass already paid for.
+///
+/// The queue the unattended pass fills is the same dialog as a selection the
+/// user made, one release at a time with Skip moving on - the difference is
+/// where the releases came from and that these arrive with their candidates.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReviewEntry {
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub release: ReleaseSelection,
+    /// What the search returned when the pass queued this release, or none
+    /// where the row carries no cache or the cache no longer parses.
+    ///
+    /// A cache, not a record. The dialog offers Search Again over it, and a
+    /// stale list is a worse answer than a slow one only where there is no way
+    /// to refresh it.
+    pub candidates: Option<Vec<ReleaseCandidate>>,
+}
+
+/// What the sidebar's review row draws itself from.
+///
+/// Both numbers in one answer because the row asks whenever the library
+/// changes and they come from the same small table: `review` is the count
+/// beside the row, and `aside` is whether there is a way back to offer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReviewCounts {
+    pub review: u32,
+    pub aside: u32,
+}
+
 /// A release the search turned up, before its tracklist has been fetched.
 ///
 /// Everything here comes out of the search response, which carries no
 /// tracklist: `inc` is not accepted on a search, so a release costs two calls
 /// and this is what the first one buys.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+/// `Deserialize` as well, unlike its neighbours: the unattended pass stores a
+/// queued release's candidates as JSON so the review dialog opens on them
+/// rather than paying a rate-limited ten seconds per entry, and reading that
+/// cache back is what needs it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ReleaseCandidate {
@@ -805,6 +844,33 @@ pub struct ScanProgress {
 pub struct WriteProgress {
     pub done: u32,
     pub total: u32,
+}
+
+/// How far a task measured in hours has got, emitted on `task://progress`.
+///
+/// Its own channel rather than [`WriteProgress`]'s, because it is a different
+/// place, a different lifetime and a different shape: `TaskProgress` in
+/// `features/shell` sits on the content header, reads two per-write channels
+/// and reports on writes that finish in a minute. This one stands at the foot
+/// of the sidebar for as long as the task runs, and the fraction is not enough
+/// on its own - one whole percent of the lookup pass is eighty releases and
+/// the best part of half an hour, so a readout without decimals or an estimate
+/// reads as hung.
+///
+/// One channel with more than one producer: the unattended lookup is the first
+/// and phase 83's move is the second, which is why the label is in the payload
+/// rather than in the component.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BackgroundTask {
+    /// What is running, as the sidebar says it: "Looking up releases".
+    pub label: String,
+    pub done: u32,
+    pub total: u32,
+    /// How much longer, or none until there is enough history to say.
+    #[ts(type = "number | null")]
+    pub eta_ms: Option<i64>,
 }
 
 /// The totals behind a view, for the footer.

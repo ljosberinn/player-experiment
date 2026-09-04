@@ -32,6 +32,14 @@ pub enum Status {
     /// MusicBrainz has nothing. Recorded so it is not searched again, and not
     /// queued - there is nothing for the user to decide.
     NotFound,
+    /// Queued, and the user has said to leave it alone. Out of the queue and
+    /// out of the count, and only [`restore_aside`] brings it back.
+    ///
+    /// Skipping in the review dialog means "not now" - the entry stays and is
+    /// offered again. This is the other thing skipping could have meant, kept
+    /// apart from it because they are different decisions and a queue that can
+    /// only say the first is a queue whose count never reaches zero.
+    Aside,
 }
 
 impl Status {
@@ -40,6 +48,7 @@ impl Status {
             Self::Resolved => "resolved",
             Self::Review => "review",
             Self::NotFound => "none",
+            Self::Aside => "aside",
         }
     }
 }
@@ -159,6 +168,217 @@ pub fn seed_from_tags(conn: &Connection, now: i64) -> AppResult<usize> {
             AND count(DISTINCT tracks.release_mbid) = 1"
     );
     Ok(conn.execute(&sql, [now])?)
+}
+
+/// A queued release, as the review dialog needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Queued {
+    pub album: Option<String>,
+    pub artist: Option<String>,
+    /// Every file of the release, in the order the dialog maps them onto a
+    /// tracklist - the same order `query::release_selections` produces.
+    pub track_ids: Vec<i64>,
+    /// The search results the pass had in hand when it queued this.
+    ///
+    /// A cache, not a record: it saves the user a rate-limited ten seconds per
+    /// entry, and the dialog offers Search Again beside it.
+    pub candidates_json: Option<String>,
+}
+
+/// A release as [`queue`] matches it in memory: the album and artist, folded.
+type Key = (Option<String>, Option<String>);
+
+/// How a release is keyed in memory, folding case the way `NOCASE` does.
+fn fold(album: &Option<String>, artist: &Option<String>) -> Key {
+    (
+        album.as_ref().map(|value| value.to_ascii_lowercase()),
+        artist.as_ref().map(|value| value.to_ascii_lowercase()),
+    )
+}
+
+/// The review queue, and a prune of what is no longer in it.
+///
+/// One ordered pass over `tracks`, matched in memory against the handful of
+/// rows awaiting a decision, rather than a join or a query per queued release.
+/// Both of those are the grouping expressions on one side and a small table on
+/// the other, which SQLite has no index it can meet in the middle with: 412
+/// releases against 65,535 tracks is 27 million comparisons either way round.
+///
+/// **It prunes as it goes.** Retagging a release changes its key, so the row
+/// that queued it is orphaned - it names a release that no longer exists, and
+/// it would sit in the count forever. Removing songs from the library does the
+/// same. Only rows awaiting a decision are pruned: a resolved or not-found row
+/// left behind by a retag is a tombstone, and deleting it would buy nothing but
+/// a search the pass has already paid for.
+pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
+    let mut awaiting = conn
+        .prepare(
+            "SELECT id, album, artist, status, candidates_json
+               FROM release_lookup
+              WHERE status IN ('review', 'aside')",
+        )?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if awaiting.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Which row a scanned release belongs to, and whether anything scanned has
+    // claimed it yet. Keyed on the folded pair, which is what the unique index
+    // is over.
+    let mut by_key = std::collections::HashMap::with_capacity(awaiting.len());
+    for (index, (_, album, artist, _, _)) in awaiting.iter().enumerate() {
+        by_key.insert(fold(album, artist), index);
+    }
+    let mut live = vec![false; awaiting.len()];
+    let mut queued: Vec<Queued> = Vec::new();
+
+    let sql = format!(
+        "SELECT {ALBUM}, {ARTIST}, tracks.id
+           FROM tracks
+          WHERE tracks.missing_since IS NULL
+          ORDER BY {ARTIST} IS NULL, {ARTIST} COLLATE NOCASE,
+                   {ALBUM}  IS NULL, {ALBUM}  COLLATE NOCASE,
+                   coalesce(tracks.disc_no, 1), tracks.track_no, tracks.path"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([])?;
+    // The scan is ordered by the two keys, so a release's files arrive
+    // together and the last entry is the only one a row can belong to.
+    let mut current: Option<(Key, bool)> = None;
+    while let Some(row) = rows.next()? {
+        let album: Option<String> = row.get(0)?;
+        let artist: Option<String> = row.get(1)?;
+        let id: i64 = row.get(2)?;
+        let key = fold(&album, &artist);
+
+        let wanted = match &current {
+            Some((seen, wanted)) if *seen == key => *wanted,
+            _ => {
+                let index = by_key.get(&key).copied();
+                let wanted = match index {
+                    Some(index) => {
+                        live[index] = true;
+                        awaiting[index].3 == Status::Review.as_str()
+                    }
+                    None => false,
+                };
+                if let (true, Some(index)) = (wanted, index) {
+                    queued.push(Queued {
+                        album: album.clone(),
+                        artist: artist.clone(),
+                        track_ids: Vec::new(),
+                        candidates_json: awaiting[index].4.take(),
+                    });
+                }
+                current = Some((key, wanted));
+                wanted
+            }
+        };
+        if wanted {
+            if let Some(entry) = queued.last_mut() {
+                entry.track_ids.push(id);
+            }
+        }
+    }
+
+    for (index, alive) in live.iter().enumerate() {
+        if !alive {
+            conn.execute(
+                "DELETE FROM release_lookup WHERE id = ?1",
+                [awaiting[index].0],
+            )?;
+        }
+    }
+
+    Ok(queued)
+}
+
+/// How many releases are waiting for a decision.
+///
+/// A count over a table of at most one row per release, rather than the
+/// grouping [`queue`] does: the sidebar asks this every time the library
+/// changes, and the queue itself is opened by a click. It can read one ahead
+/// of the queue where a release has been retagged since it was queued, which
+/// is what the prune in [`queue`] settles.
+pub fn review_count(conn: &Connection) -> AppResult<usize> {
+    Ok(conn.query_row(
+        "SELECT count(*) FROM release_lookup WHERE status = 'review'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? as usize)
+}
+
+/// How many releases have been set aside, which is the size of the way back.
+pub fn aside_count(conn: &Connection) -> AppResult<usize> {
+    Ok(conn.query_row(
+        "SELECT count(*) FROM release_lookup WHERE status = 'aside'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? as usize)
+}
+
+/// Takes one release out of the queue until somebody asks for it back.
+///
+/// Only from `review`: the point is to make a decision about a queued release,
+/// and setting aside one the pass has since resolved would put a resolved
+/// release back in a queue it has left.
+pub fn set_aside(conn: &Connection, release: &Release) -> AppResult<()> {
+    conn.execute(
+        "UPDATE release_lookup
+            SET status = 'aside'
+          WHERE status = 'review'
+            AND coalesce(album,  '') = coalesce(?1, '') COLLATE NOCASE
+            AND coalesce(artist, '') = coalesce(?2, '') COLLATE NOCASE",
+        rusqlite::params![release.album, release.artist],
+    )?;
+    Ok(())
+}
+
+/// Puts every set-aside release back in the queue, and says how many.
+///
+/// All of them at once, because that is the whole way back: a per-release list
+/// of things the user has said they do not want to look at is a second queue,
+/// and the one thing it needs to be is not a trap.
+pub fn restore_aside(conn: &Connection) -> AppResult<usize> {
+    Ok(conn.execute(
+        "UPDATE release_lookup SET status = 'review' WHERE status = 'aside'",
+        [],
+    )?)
+}
+
+/// How far the pass has got: releases with a row, and releases in the library.
+///
+/// Two group-bys over every track, which is why the worker asks once a sweep
+/// and counts the rest itself.
+pub fn progress(conn: &Connection) -> AppResult<(usize, usize)> {
+    // The grouping is a derived table for the same reason `pending`'s is:
+    // SQLite refuses an aggregate inside a correlated subquery, so the label
+    // has to be a column before a row can be matched against it.
+    let sql = format!(
+        "SELECT count(*), sum(attempted)
+           FROM (SELECT EXISTS (
+                            SELECT 1 FROM release_lookup
+                             WHERE coalesce(release_lookup.album,  '') = coalesce(releases.album,  '') COLLATE NOCASE
+                               AND coalesce(release_lookup.artist, '') = coalesce(releases.artist, '') COLLATE NOCASE
+                        ) AS attempted
+                   FROM (SELECT min({ALBUM}) AS album, min({ARTIST}) AS artist
+                           FROM tracks
+                          WHERE tracks.missing_since IS NULL
+                          GROUP BY {ALBUM} COLLATE NOCASE, {ARTIST} COLLATE NOCASE) AS releases) AS counted"
+    );
+    let (total, done) = conn.query_row(&sql, [], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+    })?;
+    Ok((done.unwrap_or(0) as usize, total as usize))
 }
 
 #[cfg(test)]
@@ -440,5 +660,203 @@ mod tests {
         .unwrap();
 
         assert_eq!(seed_from_tags(&conn, 100).unwrap(), 1);
+    }
+
+    /// Queues `album`/`artist` for review, carrying `candidates` as the cache
+    /// 82c's dialog opens on.
+    fn queue_for_review(conn: &Connection, album: &str, artist: &str, candidates: &str) {
+        record(
+            conn,
+            &Release {
+                album: Some(album.to_owned()),
+                artist: Some(artist.to_owned()),
+            },
+            Status::Review,
+            None,
+            Some(0.4),
+            Some(candidates),
+            100,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn the_queue_carries_every_file_of_a_release_and_its_cached_candidates() {
+        let (_dir, conn) = open();
+        track(&conn, "b.mp3", "Loveless", "My Bloody Valentine", None);
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        track(
+            &conn,
+            "c.mp3",
+            "Isn't Anything",
+            "My Bloody Valentine",
+            None,
+        );
+        queue_for_review(
+            &conn,
+            "Loveless",
+            "My Bloody Valentine",
+            "[{\"mbid\":\"x\"}]",
+        );
+
+        let queued = queue(&conn).unwrap();
+
+        assert_eq!(queued.len(), 1, "only the queued release is offered");
+        assert_eq!(queued[0].album.as_deref(), Some("Loveless"));
+        assert_eq!(queued[0].track_ids.len(), 2);
+        assert_eq!(
+            queued[0].candidates_json.as_deref(),
+            Some("[{\"mbid\":\"x\"}]")
+        );
+    }
+
+    /// The grid folds case, so a release tagged two ways is one release here
+    /// too - and its files come back whole rather than half of them.
+    #[test]
+    fn a_release_tagged_two_ways_is_one_queue_entry() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        track(&conn, "b.mp3", "loveless", "my bloody valentine", None);
+        queue_for_review(&conn, "Loveless", "My Bloody Valentine", "[]");
+
+        let queued = queue(&conn).unwrap();
+
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].track_ids.len(), 2);
+    }
+
+    /// Retagging changes the key, so the row that queued a release names one
+    /// that no longer exists. Left alone it would sit in the count forever.
+    #[test]
+    fn a_queued_release_that_was_retagged_is_pruned() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Lovless", "My Bloody Valentine", None);
+        queue_for_review(&conn, "Lovless", "My Bloody Valentine", "[]");
+        conn.execute("UPDATE tracks SET album = 'Loveless'", [])
+            .unwrap();
+
+        assert!(queue(&conn).unwrap().is_empty());
+        assert_eq!(review_count(&conn).unwrap(), 0, "the row went with it");
+    }
+
+    /// A retag also leaves a resolved row behind, and that one is a tombstone
+    /// worth keeping: deleting it buys nothing but a search already paid for.
+    #[test]
+    fn a_resolved_row_for_a_release_that_moved_is_left_alone() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Lovless", "My Bloody Valentine", None);
+        let release = pending(&conn, 10, 0).unwrap().remove(0);
+        record(
+            &conn,
+            &release,
+            Status::Resolved,
+            Some("bb5a"),
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+        conn.execute("UPDATE tracks SET album = 'Loveless'", [])
+            .unwrap();
+
+        queue(&conn).unwrap();
+
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM release_lookup", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_release_set_aside_leaves_the_queue_and_the_count_until_it_is_asked_for() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        queue_for_review(&conn, "Loveless", "My Bloody Valentine", "[]");
+        let release = Release {
+            album: Some("Loveless".to_owned()),
+            artist: Some("My Bloody Valentine".to_owned()),
+        };
+
+        set_aside(&conn, &release).unwrap();
+        assert_eq!(review_count(&conn).unwrap(), 0);
+        assert_eq!(aside_count(&conn).unwrap(), 1);
+        assert!(queue(&conn).unwrap().is_empty());
+
+        assert_eq!(restore_aside(&conn).unwrap(), 1);
+        assert_eq!(review_count(&conn).unwrap(), 1);
+        assert_eq!(queue(&conn).unwrap().len(), 1);
+    }
+
+    /// The way back has to survive the prune, or setting a release aside and
+    /// opening the queue once would be the trap it exists not to be.
+    #[test]
+    fn opening_the_queue_does_not_prune_a_release_that_was_set_aside() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        queue_for_review(&conn, "Loveless", "My Bloody Valentine", "[]");
+        set_aside(
+            &conn,
+            &Release {
+                album: Some("Loveless".to_owned()),
+                artist: Some("My Bloody Valentine".to_owned()),
+            },
+        )
+        .unwrap();
+
+        queue(&conn).unwrap();
+
+        assert_eq!(aside_count(&conn).unwrap(), 1);
+    }
+
+    /// Setting aside is a decision about a queued release. One the pass has
+    /// since resolved has left the queue, and must not be pushed back into it.
+    #[test]
+    fn setting_aside_a_resolved_release_does_nothing() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        let release = pending(&conn, 10, 0).unwrap().remove(0);
+        record(
+            &conn,
+            &release,
+            Status::Resolved,
+            Some("bb5a"),
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+
+        set_aside(&conn, &release).unwrap();
+
+        assert_eq!(aside_count(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn progress_counts_releases_with_a_row_against_every_release() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
+        track(
+            &conn,
+            "b.mp3",
+            "Isn't Anything",
+            "My Bloody Valentine",
+            None,
+        );
+        track(&conn, "c.mp3", "Spiderland", "Slint", None);
+
+        assert_eq!(progress(&conn).unwrap(), (0, 3));
+
+        let release = pending(&conn, 1, 0).unwrap().remove(0);
+        record(&conn, &release, Status::NotFound, None, None, None, 100).unwrap();
+
+        assert_eq!(progress(&conn).unwrap(), (1, 3));
+    }
+
+    #[test]
+    fn an_empty_library_is_no_progress_rather_than_a_null() {
+        let (_dir, conn) = open();
+        assert_eq!(progress(&conn).unwrap(), (0, 0));
     }
 }

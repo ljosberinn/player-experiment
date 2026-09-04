@@ -103,11 +103,23 @@ the switch off cancels a pass in flight and turning it back on resumes from the
 table rather than from the top; a setting that cannot be read is logged and is
 not taken for a switch that is off. Above `score::UNATTENDED_THRESHOLD` it
 writes the release's tags; below it, it records the release for a person to
-decide and writes nothing. **Each release it writes announces itself on
-`library://changed`** — per release rather than per sweep, because a sweep runs
-for hours and may not end at all, and a view told only at the end of one is a
-view that never hears. `commands::invalidate` is what keeps that affordable. A
-dry run announces nothing, having written nothing.
+decide and writes nothing. **Each release it decides announces itself on
+`library://changed`** — written or queued, and per release rather than per
+sweep, because a sweep runs for hours and may not end at all, and a view told
+only at the end of one is a view that never hears. Queuing counts because the
+sidebar's review count is drawn from that row; the rate is unchanged either way,
+since written and queued are one release's two outcomes and never both.
+`commands::invalidate` is what keeps it affordable. A dry run announces nothing,
+having written nothing.
+
+**It also reports where it stands on `task://progress`**, per release attempted
+and `null` when the sweep ends, whatever ended it. Its own channel rather than
+one of the per-write ones: this is a task measured in days, drawn at the foot of
+the sidebar for its whole life, and the payload carries a label because the
+channel has more than one producer. The estimate comes from the last hundred
+releases rather than from the whole pass — one whose files already carry an MBID
+costs nothing and a searched one costs two rate-limited requests, so an average
+over the run describes a pass that is not the one running.
 
 **Waking and sweeping are two cadences.** The switch is answered every fifteen
 seconds because that is what makes it feel immediate, and it costs one keyed
@@ -148,6 +160,11 @@ release.
 `scan://progress`, a tag edit on `tags://progress`, an export on
 `export://progress`. The domain functions take an `on_progress` closure rather
 than a Tauri handle, so each stays testable with no running app.
+
+`task://progress` is not one of those three. Those report on writes that finish
+in a minute, from the content header; that one reports on a task measured in
+days, from the foot of the sidebar, and carries its own label because it has
+more than one producer.
 
 **Every write that commits announces itself on `library://changed`**, through
 `commands::announcing` — a scan, a tag write, the three removal commands, and

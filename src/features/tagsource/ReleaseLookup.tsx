@@ -36,6 +36,7 @@ import { type Stage, useTagsourceStore } from "./store";
 export function ReleaseLookup() {
   const queue = useTagsourceStore((s) => s.queue);
   const index = useTagsourceStore((s) => s.index);
+  const fromReview = useTagsourceStore((s) => s.fromReview);
   const tracks = useTagsourceStore((s) => s.tracks);
   const stage = useTagsourceStore((s) => s.stage);
   const candidates = useTagsourceStore((s) => s.candidates);
@@ -46,6 +47,8 @@ export function ReleaseLookup() {
   const error = useTagsourceStore((s) => s.error);
   const close = useTagsourceStore((s) => s.close);
   const skip = useTagsourceStore((s) => s.skip);
+  const setAside = useTagsourceStore((s) => s.setAside);
+  const search = useTagsourceStore((s) => s.search);
   const pick = useTagsourceStore((s) => s.pick);
   const back = useTagsourceStore((s) => s.back);
   const apply = useTagsourceStore((s) => s.apply);
@@ -104,7 +107,12 @@ export function ReleaseLookup() {
           </p>
 
           {detail === null ? (
-            <Results stage={stage} candidates={candidates} onPick={(mbid) => void pick(mbid)} />
+            <Results
+              stage={stage}
+              candidates={candidates}
+              onPick={(mbid) => void pick(mbid)}
+              onSearchAgain={() => void search()}
+            />
           ) : (
             <Confirm
               // Keyed on the release, so picking a different candidate starts
@@ -129,6 +137,22 @@ export function ReleaseLookup() {
 
           <div className="modal-actions">
             <Dialog.Close render={<button type="button" disabled={busy} />}>Cancel</Dialog.Close>
+            {/* Only on the review queue, which is the only queue an entry
+                persists in. On a selection there is nothing to set aside: the
+                queue dies with the dialog. */}
+            {fromReview ? (
+              <button
+                type="button"
+                disabled={busy}
+                title="Take this release out of the review queue"
+                onClick={() => void setAside()}
+              >
+                Set Aside
+              </button>
+            ) : null}
+            {/* Skip means "not now". On the review queue the release is
+                offered again next time it is opened, which is what makes Set
+                Aside beside it a different decision rather than a louder one. */}
             <button type="button" disabled={busy} onClick={() => void skip()}>
               {index + 1 < queue.length ? "Skip Release" : "Skip"}
             </button>
@@ -161,11 +185,16 @@ function Results({
   stage,
   candidates,
   onPick,
+  onSearchAgain,
 }: {
   stage: Stage;
   candidates: ReleaseCandidate[];
   onPick: (mbid: string) => void;
+  onSearchAgain: () => void;
 }) {
+  if (stage === "opening") {
+    return <p className="modal-summary">Reading the files…</p>;
+  }
   if (stage === "searching") {
     return <p className="modal-summary">Searching MusicBrainz…</p>;
   }
@@ -174,29 +203,53 @@ function Results({
   }
   if (candidates.length === 0) {
     return (
-      <p className="modal-summary">
-        MusicBrainz has nothing under that album and artist. Skip this release, or edit the tags by
-        hand and try again.
-      </p>
+      <>
+        <p className="modal-summary">
+          MusicBrainz has nothing under that album and artist. Skip this release, or edit the tags
+          by hand and try again.
+        </p>
+        <SearchAgain onSearchAgain={onSearchAgain} />
+      </>
     );
   }
 
   return (
-    <ul className="lookup-results">
-      {candidates.map((candidate) => (
-        <li key={candidate.mbid}>
-          <button type="button" className="lookup-result" onClick={() => onPick(candidate.mbid)}>
-            <span className="lookup-result-title">{candidate.title}</span>
-            <span className="lookup-result-artist">{candidate.artist}</span>
-            <span className="lookup-result-detail">{describe(candidate)}</span>
-            {/* Sorted by, so it earns a column rather than a tooltip: it is
-                what says the second result fits the files better than the
-                first one's title match suggests. */}
-            <span className="lookup-result-score">{percent(candidate.score)}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="lookup-results">
+        {candidates.map((candidate) => (
+          <li key={candidate.mbid}>
+            <button type="button" className="lookup-result" onClick={() => onPick(candidate.mbid)}>
+              <span className="lookup-result-title">{candidate.title}</span>
+              <span className="lookup-result-artist">{candidate.artist}</span>
+              <span className="lookup-result-detail">{describe(candidate)}</span>
+              {/* Sorted by, so it earns a column rather than a tooltip: it is
+                  what says the second result fits the files better than the
+                  first one's title match suggests. */}
+              <span className="lookup-result-score">{percent(candidate.score)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <SearchAgain onSearchAgain={onSearchAgain} />
+    </>
+  );
+}
+
+/**
+ * The way out of a stale result list.
+ *
+ * The review queue opens on the candidates the unattended pass found, which
+ * may be weeks old and were found from tags that have since been edited. They
+ * are a cache, and a cache with no way to refresh it is a worse answer than a
+ * slow one - so this sits under every result list, including the empty one.
+ */
+function SearchAgain({ onSearchAgain }: { onSearchAgain: () => void }) {
+  return (
+    <p className="lookup-refresh">
+      <button type="button" className="link-button" onClick={onSearchAgain}>
+        Search again
+      </button>
+    </p>
   );
 }
 

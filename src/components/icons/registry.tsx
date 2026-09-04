@@ -1,5 +1,6 @@
 import { ChartBarIcon } from "@phosphor-icons/react/ChartBar";
 import { GearSixIcon } from "@phosphor-icons/react/GearSix";
+import { ListChecksIcon } from "@phosphor-icons/react/ListChecks";
 import { MusicNotesIcon } from "@phosphor-icons/react/MusicNotes";
 import { PauseIcon } from "@phosphor-icons/react/Pause";
 import { PlayIcon } from "@phosphor-icons/react/Play";
@@ -50,7 +51,8 @@ export type IconName =
   | "albums"
   | "artists"
   | "genres"
-  | "statistics";
+  | "statistics"
+  | "review";
 
 /**
  * Filled for the transport, outlined everywhere else.
@@ -78,4 +80,5 @@ export const ICONS: Record<IconName, Glyph> = {
   artists: (props) => <UserSoundIcon {...props} />,
   genres: (props) => <TagIcon {...props} />,
   statistics: (props) => <ChartBarIcon {...props} />,
+  review: (props) => <ListChecksIcon {...props} />,
 };

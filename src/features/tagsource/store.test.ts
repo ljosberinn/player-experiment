@@ -4,18 +4,27 @@ import {
   tagsourceApply,
   tagsourceFetch,
   tagsourceGroups,
+  tagsourceReviewCounts,
+  tagsourceReviewQueue,
   tagsourceSearch,
+  tagsourceSetAside,
   tracksByIds,
 } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
 import { useTagsourceStore } from "./store";
 
 vi.mock("../../ipc", () => ({
+  INVALIDATE_DEBOUNCE_MS: 250,
+  onLibraryChanged: vi.fn(async () => () => {}),
   onTagWriteProgress: vi.fn(async () => () => {}),
   tagsourceGroups: vi.fn(),
   tagsourceSearch: vi.fn(),
   tagsourceFetch: vi.fn(),
   tagsourceApply: vi.fn(),
+  tagsourceReviewQueue: vi.fn(),
+  tagsourceReviewCounts: vi.fn(),
+  tagsourceSetAside: vi.fn(),
+  tagsourceRestoreReview: vi.fn(),
   tracksByIds: vi.fn(),
 }));
 
@@ -82,6 +91,9 @@ beforeEach(() => {
   vi.mocked(tagsourceSearch).mockResolvedValue([candidate]);
   vi.mocked(tagsourceFetch).mockResolvedValue(detail);
   vi.mocked(tagsourceApply).mockResolvedValue({ written: 2, failed: 0, errors: [] });
+  vi.mocked(tagsourceReviewQueue).mockResolvedValue([]);
+  vi.mocked(tagsourceReviewCounts).mockResolvedValue({ review: 0, aside: 0 });
+  vi.mocked(tagsourceSetAside).mockResolvedValue(undefined);
 });
 
 describe("opening", () => {
@@ -238,5 +250,111 @@ describe("going back", () => {
     expect(useTagsourceStore.getState().stage).toBe("results");
     expect(useTagsourceStore.getState().candidates).toHaveLength(1);
     expect(tagsourceSearch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the review queue", () => {
+  /**
+   * The point of caching the candidates. Searching again at review time is a
+   * rate-limited ten seconds an entry, and four hundred entries is over an
+   * hour of waiting to click.
+   */
+  it("opens on the candidates the pass already found, without searching", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      {
+        album: "Loveless",
+        artist: "My Bloody Valentine",
+        trackIds: [1, 2],
+        candidates: [candidate],
+      },
+    ]);
+
+    await useTagsourceStore.getState().openReview();
+
+    expect(useTagsourceStore.getState().stage).toBe("results");
+    expect(useTagsourceStore.getState().candidates).toEqual([candidate]);
+    expect(tagsourceSearch).not.toHaveBeenCalled();
+  });
+
+  /** A cache with no way to refresh it is a worse answer than a slow one. */
+  it("searches again when asked, over the cache it opened on", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1, 2], candidates: [] },
+    ]);
+    await useTagsourceStore.getState().openReview();
+
+    await useTagsourceStore.getState().search();
+
+    expect(tagsourceSearch).toHaveBeenCalledWith("Loveless", "My Bloody Valentine");
+    expect(useTagsourceStore.getState().candidates).toEqual([candidate]);
+  });
+
+  it("still reads the files of a release whose candidates were cached", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      {
+        album: "Loveless",
+        artist: "My Bloody Valentine",
+        trackIds: [1, 2],
+        candidates: [candidate],
+      },
+    ]);
+
+    await useTagsourceStore.getState().openReview();
+
+    expect(tracksByIds).toHaveBeenCalledWith([1, 2]);
+    expect(useTagsourceStore.getState().tracks).toHaveLength(2);
+  });
+
+  /**
+   * Opening the queue prunes rows whose release has since been retagged, so
+   * what comes back is a better answer than the count the row was drawn with.
+   */
+  it("trusts the queue it read over the count it was showing", async () => {
+    useTagsourceStore.setState({ review: 9 });
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([]);
+
+    await useTagsourceStore.getState().openReview();
+
+    expect(useTagsourceStore.getState().review).toBe(0);
+    expect(useTagsourceStore.getState().queue).toBeNull();
+  });
+
+  it("sets a release aside and moves to the next", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1], candidates: [] },
+      { album: "Spiderland", artist: "Slint", trackIds: [2], candidates: [] },
+    ]);
+    await useTagsourceStore.getState().openReview();
+
+    await useTagsourceStore.getState().setAside();
+
+    expect(tagsourceSetAside).toHaveBeenCalledWith("Loveless", "My Bloody Valentine");
+    expect(useTagsourceStore.getState().index).toBe(1);
+  });
+
+  /** Moving on would look like the release had been set aside. */
+  it("stays where it is when setting aside fails", async () => {
+    vi.mocked(tagsourceSetAside).mockRejectedValue("the database is locked");
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1], candidates: [] },
+      { album: "Spiderland", artist: "Slint", trackIds: [2], candidates: [] },
+    ]);
+    await useTagsourceStore.getState().openReview();
+
+    await useTagsourceStore.getState().setAside();
+
+    expect(useTagsourceStore.getState().index).toBe(0);
+    expect(useTagsourceStore.getState().error).toContain("locked");
+  });
+
+  /** Set Aside is offered on the persistent queue and nowhere else. */
+  it("is the only queue a release can be set aside from", async () => {
+    vi.mocked(tagsourceGroups).mockResolvedValue([
+      group("Loveless", "My Bloody Valentine", [1, 2]),
+    ]);
+
+    await useTagsourceStore.getState().open([1, 2]);
+
+    expect(useTagsourceStore.getState().fromReview).toBe(false);
   });
 });

@@ -55,7 +55,7 @@ after it.
   is what writes the rest of the release's identity), and artwork where there is
   none.
 - **Below it**, nothing is written and the release goes in the review queue for
-  [82c](../upcoming/82c-the-review-queue-and-progress.md).
+  [82c](82c-the-review-queue-and-progress.md).
 - **No candidates at all** leaves the file exactly as it is and is not queued —
   there is nothing for the user to decide.
 - **Genre is filled, never overwritten**, and comment is never touched.
@@ -132,7 +132,7 @@ is the review queue, the resume point and the idempotence guard in one table.
 *Settled:* **nothing-found is never retried automatically.** MusicBrainz grows,
 so today's miss is next year's match — but a pass that re-searches every miss on
 every launch is 4.5 hours that finds nothing, forever. A manual re-look-up
-belongs to [82c](../upcoming/82c-the-review-queue-and-progress.md) or later, which is why
+belongs to [82c](82c-the-review-queue-and-progress.md) or later, which is why
 `attempted_at` is stored now.
 
 ## The worker

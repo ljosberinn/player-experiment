@@ -288,6 +288,22 @@ absences are what nobody notices coming back — hence the guards in
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.
+- **The review queue is the same dialog on a different queue.** What the
+  unattended pass would not write is a row in the sidebar under the playlists,
+  and clicking it opens the lookup on those releases — with the candidates the
+  pass already found, so the dialog opens on the results step rather than
+  spending a rate-limited ten seconds an entry. They are a cache: every result
+  list carries Search again. Skip means "not now" and offers the release again;
+  Set Aside is the other decision and is offered on that queue alone, because a
+  selection's queue dies with the dialog.
+- **The readout at the foot of the sidebar is not `TaskProgress`.**
+  `BackgroundTaskProgress` reads `task://progress`, stands for as long as its
+  task runs, and prints a percentage to two decimals with an estimate — one
+  whole percent of the lookup pass is eighty releases and the better part of
+  half an hour, so a figure that does not move for half an hour reads as hung.
+  `TaskProgress` sits on the content header, reads the two per-write channels,
+  and reports on writes that finish in a minute. Different place, different
+  lifetime, different shape.
 - **`tags://progress` has two senders** — a tag save and a lookup's apply, each
   reporting in a dialog that is already on screen. The lookup subscribes to it
   separately and only records events while its own write is running.

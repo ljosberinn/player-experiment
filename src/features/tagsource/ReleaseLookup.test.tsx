@@ -6,20 +6,28 @@ import {
   tagsourceApply,
   tagsourceFetch,
   tagsourceGroups,
+  tagsourceReviewQueue,
   tagsourceSearch,
+  tagsourceSetAside,
   tracksByIds,
 } from "../../ipc";
 import { ReleaseLookup } from "./ReleaseLookup";
 import { useTagsourceStore } from "./store";
 
 vi.mock("../../ipc", () => ({
+  INVALIDATE_DEBOUNCE_MS: 250,
   coverUrl: (hash: string) => `cover-url:${hash}`,
   stagedCoverUrl: (version: string) => `staged-cover-url:${version}`,
+  onLibraryChanged: vi.fn(async () => () => {}),
   onTagWriteProgress: vi.fn(async () => () => {}),
   tagsourceGroups: vi.fn(),
   tagsourceSearch: vi.fn(),
   tagsourceFetch: vi.fn(),
   tagsourceApply: vi.fn(),
+  tagsourceReviewQueue: vi.fn(),
+  tagsourceReviewCounts: vi.fn(),
+  tagsourceSetAside: vi.fn(),
+  tagsourceRestoreReview: vi.fn(),
   tracksByIds: vi.fn(),
 }));
 
@@ -95,6 +103,7 @@ beforeEach(() => {
   vi.mocked(tagsourceSearch).mockResolvedValue([candidate()]);
   vi.mocked(tagsourceFetch).mockResolvedValue(detail);
   vi.mocked(tagsourceApply).mockResolvedValue({ written: 2, failed: 0, errors: [] });
+  vi.mocked(tagsourceSetAside).mockResolvedValue(undefined);
 });
 
 /** Opens the dialog on one release and waits for its results. */
@@ -216,5 +225,59 @@ describe("the confirm step", () => {
     expect(
       await screen.findByText(/identifiers are written to every song of this release/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("a release out of the review queue", () => {
+  /** Opens the dialog on the queue the unattended pass filled. */
+  async function openReview() {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      { ...group, candidates: [candidate()] },
+      { album: "Spiderland", artist: "Slint", trackIds: [3], candidates: [] },
+    ]);
+    render(<ReleaseLookup />);
+    await useTagsourceStore.getState().openReview();
+    await screen.findByRole("button", { name: /Loveless/ });
+    return userEvent.setup();
+  }
+
+  it("takes the release out of the queue and moves on", async () => {
+    const user = await openReview();
+
+    await user.click(screen.getByRole("button", { name: "Set Aside" }));
+
+    expect(tagsourceSetAside).toHaveBeenCalledWith("loveless", "MBV");
+    await waitFor(() => expect(useTagsourceStore.getState().index).toBe(1));
+  });
+
+  /** A cache with no way to refresh it is a worse answer than a slow one. */
+  it("searches again over the cached candidates when asked", async () => {
+    const user = await openReview();
+    expect(tagsourceSearch).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Search again" }));
+
+    expect(tagsourceSearch).toHaveBeenCalledWith("loveless", "MBV");
+  });
+
+  /**
+   * Skip means "not now" here - the entry stays queued and is offered again -
+   * which is what makes Set Aside beside it a different decision rather than a
+   * louder one.
+   */
+  it("does not set a release aside merely for being skipped", async () => {
+    const user = await openReview();
+
+    await user.click(screen.getByRole("button", { name: "Skip Release" }));
+
+    expect(tagsourceSetAside).not.toHaveBeenCalled();
+    await waitFor(() => expect(useTagsourceStore.getState().index).toBe(1));
+  });
+
+  /** On a selection the queue dies with the dialog, so there is nothing to set aside. */
+  it("offers Set Aside on the review queue and nowhere else", async () => {
+    await open();
+
+    expect(screen.queryByRole("button", { name: "Set Aside" })).not.toBeInTheDocument();
   });
 });

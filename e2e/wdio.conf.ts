@@ -73,6 +73,10 @@ export const config: WebdriverIO.Config = {
     // through two buttons on the strip, and neither needs a song to prove it
     // reaches the backend and comes back. It reloads the webview too.
     "./specs/transport.test.ts",
+    // Also before the library: the readout it photographs is fed a payload
+    // rather than a real pass, so songs would only put a table behind it. It
+    // leaves the sidebar with no task in it either way.
+    "./specs/task-progress.test.ts",
     "./specs/library.test.ts",
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.
