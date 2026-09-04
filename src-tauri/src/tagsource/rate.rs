@@ -17,22 +17,28 @@ use std::time::{Duration, Instant};
 
 /// How long the process waits between MusicBrainz requests.
 ///
-/// Ten seconds against a documented one per second per address, and the gap is
-/// not caution about our own rate. [Their
+/// Twenty seconds against a documented one per second per address, and the gap
+/// is not caution about our own rate. [Their
 /// documentation](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting)
 /// declines with a 503 from three separate buckets - per user agent, per
 /// address, and a global 300 a second - so a client well inside its own
 /// allowance still meets 503s when theirs is full, and the status code cannot
 /// tell the two apart.
 ///
-/// **Slowing down has been measured and does not buy requests.** Releases
-/// reached before the first fatal 503: 72 at 1.1s, 26 at 3s, 35 at 5s. There
-/// is no relationship, which is the evidence that the declines are theirs
-/// rather than ours - at 5s roughly one request in twelve was still being
-/// re-asked. So this is not a rate chosen to avoid 503s. It is the least this
-/// pass can ask of a service whose spare capacity is what it actually runs on,
-/// and a pass measured in days loses nothing by taking longer.
-const INTERVAL: Duration = Duration::from_secs(10);
+/// **Slowing down bought nothing between 1.1s and 5s.** Releases reached
+/// before the first fatal 503 were 72 at 1.1s, 26 at 3s and 35 at 5s - no
+/// relationship, which is the evidence that the declines are theirs rather
+/// than ours. Ten seconds was settled on from that, as the least the pass
+/// could ask rather than a rate expected to work, and a pass over the real
+/// library then spent the evening dying: every sweep ended on a release whose
+/// three attempts were all declined, several of them on the same release four
+/// and five sweeps running.
+///
+/// So twenty is the same argument carried one step further, over a range the
+/// measurement never covered. A pass this slow is bounded by the interval
+/// either way and loses only time by taking more of it; a sweep that runs is
+/// worth more than one that is quick to stop.
+const INTERVAL: Duration = Duration::from_secs(20);
 
 /// The interval the shared limiter runs at in this build.
 ///
