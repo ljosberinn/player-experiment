@@ -29,15 +29,24 @@ fn seeded_library() -> (tempfile::TempDir, Db) {
     (dir, db)
 }
 
+/// The fastest of five calls, not their mean: on a shared CI runner any one
+/// call can be stalled by something that has nothing to do with the query, and
+/// a mean carries that stall into the number the budget is compared against.
+/// A query that lost its index is slow on every call, so the minimum moves
+/// when the thing this guards against happens, and stays put when the machine
+/// merely had a bad moment.
 fn assert_under(label: &str, budget_ms: u128, mut work: impl FnMut()) {
     // One warm-up pass so page-cache effects do not dominate the measurement.
     work();
 
-    let start = Instant::now();
-    for _ in 0..5 {
-        work();
-    }
-    let per_call = start.elapsed().as_millis() / 5;
+    let per_call = (0..5)
+        .map(|_| {
+            let start = Instant::now();
+            work();
+            start.elapsed().as_millis()
+        })
+        .min()
+        .expect("five samples");
 
     assert!(
         per_call <= budget_ms,
@@ -148,30 +157,38 @@ fn ranking_a_search_stays_cheap() {
 }
 
 #[test]
-fn the_sorted_page_query_plan_uses_an_index_rather_than_sorting_everything() {
+fn the_sorted_page_query_plan_reads_an_index_in_order_rather_than_sorting_everything() {
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
 
     // A timing budget alone can be met by a fast machine doing the wrong
-    // thing, so assert the plan directly for the default view.
-    let plan: Vec<String> = conn
-        .prepare(
-            "EXPLAIN QUERY PLAN
-             SELECT tracks.id FROM tracks
-             ORDER BY tracks.artist IS NULL, tracks.artist ASC, tracks.id ASC
-             LIMIT 100",
-        )
-        .unwrap()
-        .query_map([], |row| row.get::<_, String>(3))
-        .unwrap()
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .unwrap();
-
-    let detail = plan.join(" | ");
-    assert!(
-        detail.contains("idx_tracks_artist"),
-        "the artist index should be used, plan was: {detail}"
-    );
+    // thing, so assert the plan directly - and on the statement the app
+    // actually runs. A hand-written copy of it is what let a plan that sorts
+    // the whole library on every page pass this guard for a release: the
+    // index it names was being read, as a covering scan, while the ordering
+    // still went through a temp b-tree.
+    for sort_by in [
+        SortField::Artist,
+        SortField::AlbumArtist,
+        SortField::Year,
+        SortField::AddedAt,
+        SortField::Path,
+    ] {
+        for direction in [SortDirection::Asc, SortDirection::Desc] {
+            let q = TrackQuery {
+                sort_by,
+                direction,
+                offset: 0,
+                limit: 100,
+                ..Default::default()
+            };
+            let detail = query::explain_query_tracks(&conn, &q).unwrap().join(" | ");
+            assert!(
+                !detail.contains("USE TEMP B-TREE FOR ORDER BY"),
+                "sorting by {sort_by:?} {direction:?} should read an index in order, plan was: {detail}"
+            );
+        }
+    }
 }
 
 #[test]

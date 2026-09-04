@@ -223,6 +223,13 @@ const BM25_WEIGHTS: &str = "10.0, 8.0, 6.0, 4.0, 2.0, 1.0";
 /// NULLs always sort last so untagged files do not head up every ascending
 /// view, and `tracks.id` breaks ties so paging stays stable when the sort
 /// column has duplicates.
+///
+/// `NULLS LAST` rather than a leading `column IS NULL`: the two order rows
+/// identically, but an expression as the first term is not something any index
+/// is sorted by, so it costs a temp-b-tree sort of the whole library on every
+/// page - two orders of magnitude over reading the index in order, and growing
+/// with the library, which is the one thing the paging design rests on not
+/// happening. `tests/perf.rs` guards the plan.
 fn order_by(scope: &Scope, query: &TrackQuery) -> String {
     // Relevance only exists while a search is running: bm25 needs the FTS
     // table in the query, and without one there is nothing to rank. Falling
@@ -246,7 +253,7 @@ fn order_by(scope: &Scope, query: &TrackQuery) -> String {
 
     let sort = format!("tracks.{}", query.sort_by.as_sql());
     let direction = query.direction.as_sql();
-    format!("{sort} IS NULL, {sort} {direction}, tracks.id {direction}")
+    format!("{sort} {direction} NULLS LAST, tracks.id {direction}")
 }
 
 /// The `ORDER BY` that decides which rows a smart playlist's cutoff keeps.
@@ -273,7 +280,7 @@ fn smart_order_by(sort: Option<crate::model::SmartSort>) -> String {
     // convention: an untagged file should not head up "Recently Added", and
     // ties have to break the same way every time or the hundredth song in the
     // playlist changes between two queries that should agree.
-    format!("{column} IS NULL, {column} {direction}, tracks.id {direction}")
+    format!("{column} {direction} NULLS LAST, tracks.id {direction}")
 }
 
 pub fn count_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<u32> {
@@ -317,7 +324,8 @@ pub fn library_stats(conn: &Connection, query: &TrackQuery) -> AppResult<Library
     Ok(stats)
 }
 
-pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Track>> {
+/// The page statement and its bind values.
+fn page_sql(conn: &Connection, query: &TrackQuery) -> AppResult<(String, Scope)> {
     let mut scope = scope(conn, query)?;
 
     // `sort_by`/`direction` are enums whose SQL forms are literals, so this
@@ -329,6 +337,27 @@ pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Trac
     );
     scope.params.push(Box::new(query.limit.min(MAX_LIMIT)));
     scope.params.push(Box::new(query.offset));
+    Ok((sql, scope))
+}
+
+/// `EXPLAIN QUERY PLAN` for the page [`query_tracks`] would run.
+///
+/// Exists for the plan guard in `tests/perf.rs`, and takes the statement from
+/// the same builder the app uses: a guard asserting on its own copy of the
+/// SQL is one that passes while the real query does something else.
+pub fn explain_query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<String>> {
+    let (sql, scope) = page_sql(conn, query)?;
+    let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))?;
+    let plan = stmt
+        .query_map(rusqlite::params_from_iter(scope.params.iter()), |row| {
+            row.get::<_, String>(3)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(plan)
+}
+
+pub fn query_tracks(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<Track>> {
+    let (sql, scope) = page_sql(conn, query)?;
 
     let mut stmt = conn.prepare(&sql)?;
     let tracks = stmt
