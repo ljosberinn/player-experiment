@@ -13,6 +13,7 @@ current frontend coverage is well above it.
 | Library folder | `cargo test` + `tempfile` | the layout as a table with no filesystem; the mover over a temp tree: ids, play counts and playlist places kept across a move, a rename that fails partway rolled back, a collision suffixed and an orphan overwritten, the cross-volume fallback driven by an injected `ERROR_NOT_SAME_DEVICE`, a shared source folder keeping its cover, and a tombstoned target still holding its row after a following scan |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
+| Chart primitives | Vitest + RTL | geometry, never pixels: the plot rect a measured frame hands down, tick offsets, the clamp that keeps a tooltip inside the plot; empty and single-datum inputs for every scale, which is where domains collapse |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
 | e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance |
 

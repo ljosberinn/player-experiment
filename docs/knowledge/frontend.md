@@ -67,6 +67,50 @@ classes that already exist.
   pushed over, the way `forgetPlaylist` drops a deleted playlist's, so Back and
   Forward cannot land back on it.
 
+## Charts
+
+`src/components/charts/`. **`scales.ts` is the only file importing `d3-scale`**
+— what is borrowed is the maths and nothing else, so every element and every
+colour on screen is ours, which is what the design and `e2e/contrast.ts` both
+require.
+
+- **Ticks come back as data**, `{ value, offset, label }`, not as an axis
+  generator wanting a DOM node. A chart lays them out and a test asserts on
+  them.
+- **`niceDomain` is where collapsed domains are handled, once.** An empty
+  series and a series where every value is equal are both a panel's normal
+  cases — a filter that matched nothing, a library where every album shares a
+  bitrate — and a scale given either maps everything onto one pixel, or onto
+  NaN.
+- **`ChartFrame` measures; primitives do not.** It measures the `<section>`
+  into state through a `ResizeObserver` (`BrowseView`'s rule, for the reason it
+  paid for) and hands down a plot rect, so a primitive is a pure function of
+  its data and that rect. It also owns the margins — one constant, because
+  charts whose plots start at different x do not read as a set — the empty and
+  loading states, the `role="img"` label and the show-as-table toggle. Those
+  last two live here so that a panel cannot ship without them.
+- **Loading outranks empty.** An aggregate in flight is not an aggregate of
+  nothing; saying there are no plays and correcting it a frame later is worse
+  than saying nothing yet.
+- **The tooltip is the one deliberate exception to "no hover states".** A bar
+  whose value cannot be read is a picture rather than a figure. It is mounted
+  by the panel only while something is hovered, so there is no empty box in the
+  DOM between hovers, and it carries `pointer-events: none` — it follows the
+  pointer and must never be the thing under it.
+- **Colours are tokens only**, so the contrast rule holds by construction
+  rather than by inspection. The decision, ahead of the primitives that need
+  it: single-series marks and every sequential magnitude draw from an
+  accent-derived ramp, so the app stays monochrome where it can, and a separate
+  five-to-six hue categorical set — validated against `--surface` — exists only
+  for the donut and for multi-series. Neither ramp is in the sheet yet;
+  `--chart-grid` is, because the frame draws gridlines. Each lands with its
+  first consumer rather than as tokens nothing reads.
+- **What has not landed**: `Bar`, `Line`, `Donut`, `Heatmap`, `Sparkline`. Each
+  wants a real panel as its caller, and the panels are phases 84a and 84b; the
+  file list in the plan is a ceiling, not a checklist.
+- Charts hold no virtualizer, so unlike `SongTable` and `BrowseView` they
+  compile clean under the React Compiler and want no `"use no memo"`.
+
 ## Where a subscription lives is the perf lever
 
 `positionMs` (4/s), `volume` (per pointer move), `searchInput` (per keystroke)

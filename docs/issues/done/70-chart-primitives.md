@@ -40,3 +40,9 @@ and no panel has to remember.
 Testing: geometry, never pixels — `path` command strings and `rect` extents,
 against a fixed measured size. Empty and single-datum inputs for every
 primitive, which is where scale domains collapse.
+
+**Landed: `scales.ts`, `ChartFrame`, `Tooltip`, `StatTile`.** `Bar`, `Line`,
+`Donut`, `Heatmap` and `Sparkline` did not - the ceiling above is not a
+checklist, and without a panel their only caller would be their own test. They
+belong to 84a and 84b. `d3-shape` is not a dependency yet for the same reason:
+nothing draws an arc or an area.
