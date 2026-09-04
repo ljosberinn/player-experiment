@@ -384,14 +384,16 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
     let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
     let seeded = start.elapsed().as_millis();
 
-    // 68ms here, unoptimised. The budget is loose enough to survive a slower
-    // runner and a few more migrations, and what it catches is the seed being
-    // reshaped into something linear in statements rather than in rows - one
-    // INSERT per genre instead of one per 250 - which was measured at over a
-    // second, paid by every test in the workspace.
+    // 68ms unoptimised on a developer machine and 637ms on the CI runner, which
+    // is the slower and therefore the honest reference - the same spread the
+    // budget below `marking_a_vanished_library` records. 2000ms, because what
+    // this catches is the seed being reshaped into something linear in
+    // statements rather than in rows - one INSERT per genre instead of one per
+    // 250 - which costs over a second locally and is paid by every test in the
+    // workspace.
     assert!(
-        seeded <= 500,
-        "creating a database took {seeded}ms, budget is 500ms - the genre seed is the \
+        seeded <= 2_000,
+        "creating a database took {seeded}ms, budget is 2000ms - the genre seed is the \
          only large thing a migration does, so suspect its statement count first"
     );
 
@@ -400,9 +402,13 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
     let tree = genres::Tree::load(&conn).unwrap();
     let loaded = start.elapsed().as_millis();
 
+    // 15ms locally, and the runner's figure is unknown because the assertion
+    // above aborted before it the first time this ran. Loose by the same factor
+    // the seed needed: three unfiltered reads either grow with the data file or
+    // become a query per genre, and neither is a percentage.
     assert!(
-        loaded <= 200,
-        "loading the genre tree took {loaded}ms, budget is 200ms - it is three unfiltered \
+        loaded <= 500,
+        "loading the genre tree took {loaded}ms, budget is 500ms - it is three unfiltered \
          reads of tables that never change, so a query per genre is the usual cause"
     );
     assert_eq!(

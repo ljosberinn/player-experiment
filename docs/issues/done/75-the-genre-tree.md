@@ -53,8 +53,10 @@ parent nothing knows is a branch the donut cannot draw.
 
 The tree is loaded whole and `resolve` is then pure: 84b resolves every distinct
 genre at once, and the suffix layer needs the entire label set to answer even
-one string. 68ms to seed a database and 15ms to load the tree, both budgeted in
-`tests/perf.rs` — the seed is now paid by every test that opens a database.
+one string. Seeding a database costs 68ms locally and **637ms on the CI
+runner**, which is the number the budget in `tests/perf.rs` is set against;
+loading the tree costs 15ms. The seed is now paid by every test that opens a
+database.
 
 **Suffix derivation matches whole trailing words only**, driven from the spaces
 in the tag rather than by testing every label for `ends_with`. Without the word
