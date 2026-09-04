@@ -122,6 +122,12 @@
   --field-border: oklch(0.5 0.01 55);
   --track-border: oklch(0.5 0.01 55);
 
+  /* A chart's gridlines. Its own token rather than `--chrome-border`: a grid
+     is behind data rather than between panels, and the two want to move in
+     opposite directions the moment either is tuned. Axis *text* is not here -
+     it is text, and wears `--dim` like every other recessive label. */
+  --chart-grid: oklch(1 0 0 / 0.08);
+
   /* Red, and the two surfaces it appears on. `--danger` is text: 7.16:1 on
      surface, 6.85:1 on a striped row. `--destructive` is a fill under
      `--on-danger` at 5.41:1 - a darker red, because a fill and a label are
@@ -2557,4 +2563,109 @@ body:not(:focus-within) .sidebar-row.current {
 .suggest-item[data-highlighted] {
   background: var(--accent-tint);
   color: var(--text);
+}
+
+/* Charts
+   ------------------------------------------------------------------------
+   Every colour here is a token, which is what keeps `e2e/contrast.ts` a rule
+   the sheet holds to by construction rather than one somebody has to check.
+   No hover backgrounds and no transitions, like everything else; the chart
+   tooltip is a positioned readout the panel mounts, not a hover state. */
+
+.chart {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+}
+
+.chart-empty,
+.chart-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-empty p {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* No shimmer: the table's skeleton rows animate, this does not, and a chart
+   that has not landed yet is a held space rather than a thing pretending to
+   load. */
+.chart-skeleton {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  background: var(--skeleton);
+  border-radius: 4px;
+}
+
+.chart-grid line {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+/* Recessive by design: the axis names the marks, it does not compete with
+   them. `shape-rendering` keeps a horizontal gridline one crisp pixel rather
+   than two antialiased halves. */
+.chart-grid {
+  shape-rendering: crispedges;
+}
+
+.chart-axis text {
+  fill: var(--dim);
+  font-size: 11px;
+}
+
+.chart-axis-y text {
+  text-anchor: end;
+  dominant-baseline: middle;
+}
+
+.chart-axis-x text {
+  text-anchor: middle;
+}
+
+/* Centred on the point it was handed, which is what makes `Tooltip`'s clamp a
+   clamp against half its width. `TOOLTIP_WIDTH` in `Tooltip.tsx` is the same
+   number - change one, change both. */
+.chart-tooltip {
+  position: absolute;
+  max-width: 160px;
+  padding: 4px 8px;
+  transform: translate(-50%, -100%);
+  background: var(--chrome);
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12px;
+  /* The box follows the pointer, so it must never be the thing under it. */
+  pointer-events: none;
+}
+
+.stat-tile {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+.stat-tile dt {
+  color: var(--label);
+  font-size: 11px;
+}
+
+.stat-tile-value {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-family: var(--font-numeric);
+  font-size: 20px;
+}
+
+.stat-tile-secondary {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
 }
