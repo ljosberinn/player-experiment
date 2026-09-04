@@ -131,6 +131,21 @@ setting being turned off and on again. A release that will not move is logged,
 skipped and not offered again for the length of that run; the release the player
 has a file open on goes to a tail tried once at the end of the sweep.
 
+**A lookup that exhausts its three attempts defers the release onto that same
+tail rather than ending the sweep's lookups.** One 503 says nothing about the
+next request — something near a third of requests to MusicBrainz are declined,
+so three in a row is ordinary — and parking the step on the first one left 34 of
+38 sweeps in an evening ending within five seconds of it. The tail takes both
+kinds, and refuses to place a release whose lookup never reached it: filing it
+under the tags the lookup was about to replace is a release the next sweep moves
+again. A second failure in the tail drops the release, which keeps no row, so
+the next sweep has it back. The backstop against a network that really is down
+is a run rather than the first failure — three consecutive failures, nine
+declines over three minutes, park the lookup for the rest of the sweep, and any
+lookup that reaches a verdict resets the count. `failed` on the sweep line is
+what that threshold is read back against: a release that failed returns an error
+rather than an outcome, so it is counted nowhere else.
+
 **Each release it touches announces itself on `library://changed`** — written,
 queued or moved, once per release rather than once per step, and per release
 rather than per sweep, because a sweep runs for hours and may not end at all,
@@ -189,8 +204,8 @@ files, so every survey would hand it the same release. It keeps its own set of
 what it has reported on instead, skips the tag seed (the one row it would
 otherwise leave behind), and logs `would-write`, `would-queue` and `would-move`
 where a real pass logs `written`, `queued` and `moved`. That set is the thread's
-rather than the sweep's, so a sweep a 503 ended does not send the rehearsal back
-to the first release.
+rather than the sweep's, so a sweep that ended early does not send the rehearsal
+back to the first release.
 
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
