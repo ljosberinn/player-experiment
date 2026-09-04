@@ -11,8 +11,16 @@
   ],
   "release-group": {
     "id": "4e4e4e4e-1a1a-4c4c-8f8f-9a9a9a9a9a9a",
-    "primary-type": "Album"
+    "primary-type": "Album",
+    "genres": [
+      {
+        "id": "bb3f4c5e-6f70-4182-ac93-4d5e6f708192",
+        "name": "electronic",
+        "count": 6
+      }
+    ]
   },
+  "genres": [],
   "media": [
     {
       "position": 1,

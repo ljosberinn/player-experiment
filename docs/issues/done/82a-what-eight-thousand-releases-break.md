@@ -1,6 +1,6 @@
 # 82a — What eight thousand releases break
 
-A defect [82b](../upcoming/82b-the-unattended-lookup-pass.md) would walk straight into,
+A defect [82b](82b-the-unattended-lookup-pass.md) would walk straight into,
 invisible at the ten releases a hand-driven lookup does. Independent of the
 pass, so it lands first and alone.
 

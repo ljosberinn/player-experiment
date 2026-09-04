@@ -177,6 +177,9 @@ export function buildEdits(
         // files - see `ReleaseIdentity`.
         releaseMbid: null,
         releaseGroupMbid: null,
+        // No checkbox offers it, so the dialog never writes it. The unattended
+        // pass is what fills it in.
+        releaseType: null,
         cover,
       },
     });

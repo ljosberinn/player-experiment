@@ -18,6 +18,7 @@ import {
   listPlaylists,
   listWatchFolders,
   loadDynamicBackground,
+  loadUnattendedLookup,
   loadWindowGeometry,
   moveInPlaylist,
   onExportProgress,
@@ -43,6 +44,7 @@ import {
   renamePlaylist,
   type SmartOrder,
   saveDynamicBackground,
+  saveUnattendedLookup,
   saveWindowGeometry,
   scanLibrary,
   setPlaylistFilter,
@@ -199,6 +201,16 @@ describe("ipc", () => {
       await expect(loadDynamicBackground()).resolves.toBe(false);
       expect(invokeMock).toHaveBeenCalledWith("load_dynamic_background");
     });
+
+    it("round-trips the unattended lookup switch", async () => {
+      invokeMock.mockResolvedValue(undefined);
+      await saveUnattendedLookup(true);
+      expect(invokeMock).toHaveBeenCalledWith("save_unattended_lookup", { enabled: true });
+
+      invokeMock.mockResolvedValue(true);
+      await expect(loadUnattendedLookup()).resolves.toBe(true);
+      expect(invokeMock).toHaveBeenCalledWith("load_unattended_lookup");
+    });
   });
 
   describe("tags", () => {
@@ -223,6 +235,7 @@ describe("ipc", () => {
         discNo: null,
         releaseMbid: null,
         releaseGroupMbid: null,
+        releaseType: null,
         cover: { kind: "remove" },
       };
       invokeMock.mockResolvedValue({ written: 2, failed: 0, errors: [] });

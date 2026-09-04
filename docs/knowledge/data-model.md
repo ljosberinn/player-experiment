@@ -14,6 +14,7 @@ edit a shipped one.
 | 6 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
 | 7 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
 | 8 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
+| 9 | `release_lookup` — what the unattended lookup pass has been through — plus `tracks.release_type`, MusicBrainz's release-group primary type, read off the file the way the two ids above are |
 
 **The rule has been broken once, before v1.** The tag-edit undo journal was
 migration 3, and 82a deleted the entry rather than adding one that drops the
@@ -72,6 +73,31 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   the shape of `playlists.seeded`, and `covers.normalizedThrough` holds the
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
+
+## The release lookup
+
+`release_lookup` is one row per release the unattended pass has attempted, and
+three things at once: the queue of releases a person still has to decide,
+the point a pass killed mid-run resumes from, and the guard that stops a second
+pass re-searching eight thousand releases. **No row means never attempted**, and
+nothing clears a row — a pass that re-searched every miss on every launch would
+be the best part of a day that finds nothing, forever.
+
+- **The key is `db::query`'s two grouping expressions**, so a release is the
+  same thing here as it is in the browse grid, and so retagging invalidates by
+  itself: change the album or the artist and the key changes.
+- **A `PRIMARY KEY (album, artist)` would not hold it.** SQLite permits NULLs in
+  a rowid table's primary key, so an untagged release inserts twice; a UNIQUE
+  index over `coalesce(album, ''), coalesce(artist, '')` is what does. Both
+  sides collate `NOCASE`, because the grid folds case when grouping — unfolded,
+  a release tagged two ways is one tile and two rows.
+- **`candidates_json` is a cache, not a record.** The pass has the search
+  results in hand at the moment it queues a release, and reviewing one later
+  should not cost another rate-limited second.
+- **A release whose files already agree on a release MBID is resolved without a
+  call**, so a re-install or a rescan of an already-tagged library pays nothing.
+  Files that name two different pressings are left pending — that disagreement
+  is what the lookup is for.
 
 ## The scrobble queue
 

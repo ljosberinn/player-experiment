@@ -15,7 +15,7 @@ use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::model::{ReleaseCandidate, ReleaseDetail, RemoteTrack};
 use crate::tagsource::score::{score_with_durations, score_without_durations, LocalRelease};
-use crate::tagsource::transport::{Transport, TransportError};
+use crate::tagsource::transport::Transport;
 
 /// Where the web service lives.
 pub const API_ROOT: &str = "https://musicbrainz.org/ws/2";
@@ -25,18 +25,17 @@ pub const API_ROOT: &str = "https://musicbrainz.org/ws/2";
 /// Spaces rather than the `+` the documentation shows: form encoding turns a
 /// space into `+`, so the request that goes out is the canonical one and the
 /// separator is not something this file has to encode by hand.
-const RELEASE_INC: &str = "recordings artist-credits release-groups";
+///
+/// `genres` is here for the unattended pass, which fills an empty genre and
+/// has nothing to fill it from otherwise. The release type costs no `inc` at
+/// all - `release-groups` was already here and carries it.
+const RELEASE_INC: &str = "recordings artist-credits release-groups genres";
 
 /// How many candidates a search asks for.
 ///
 /// Enough that a reissue-heavy album still shows the pressing the files came
 /// from, and few enough that the list is read rather than scrolled.
 const SEARCH_LIMIT: usize = 15;
-
-/// Turns a transport failure into something a person reads.
-fn network(error: TransportError) -> AppError {
-    AppError::Internal(error.to_string())
-}
 
 /// Escapes the characters Lucene would otherwise read as syntax.
 ///
@@ -99,10 +98,14 @@ pub fn search(
     local: &LocalRelease,
 ) -> AppResult<Vec<ReleaseCandidate>> {
     let query = query_for(album, artist)?;
-    crate::tagsource::rate::shared().wait();
 
-    let body = transport
-        .get(
+    // Inside the limiter rather than after it: the request holds the gate for
+    // as long as it is in flight, so this process never has two of them out at
+    // once. The transport's error crosses this boundary whole rather than
+    // flattened into a message, which is what lets the unattended pass ask
+    // whether asking again could work.
+    let body = crate::tagsource::rate::shared().run(|| {
+        transport.get(
             &format!("{API_ROOT}/release"),
             &[
                 ("query", query),
@@ -110,9 +113,10 @@ pub fn search(
                 ("limit", SEARCH_LIMIT.to_string()),
             ],
         )
-        .map_err(network)?
-        // A search cannot 404: an empty result is `{"releases":[]}` with a
-        // 200, so nothing to find and nothing there are the same answer.
+    })?;
+    // A search cannot 404: an empty result is `{"releases":[]}` with a 200, so
+    // nothing to find and nothing there are the same answer.
+    let body = body
         .ok_or_else(|| AppError::Internal("MusicBrainz has no search endpoint here.".to_owned()))?;
 
     let response: SearchResponse = serde_json::from_slice(&body)
@@ -144,15 +148,14 @@ pub fn fetch(
             "{mbid} is not a MusicBrainz id."
         )));
     }
-    crate::tagsource::rate::shared().wait();
-
-    let body = transport
-        .get(
+    let body = crate::tagsource::rate::shared().run(|| {
+        transport.get(
             &format!("{API_ROOT}/release/{mbid}"),
             &[("inc", RELEASE_INC.to_owned()), ("fmt", "json".to_owned())],
         )
-        .map_err(network)?
-        .ok_or_else(|| AppError::NotFound(format!("MusicBrainz has no release {mbid}.")))?;
+    })?;
+    let body =
+        body.ok_or_else(|| AppError::NotFound(format!("MusicBrainz has no release {mbid}.")))?;
 
     let response: ReleaseResponse = serde_json::from_slice(&body)
         .map_err(|e| AppError::Internal(format!("MusicBrainz sent something unreadable: {e}")))?;
@@ -185,6 +188,35 @@ fn credited(credits: &[ArtistCredit]) -> String {
 #[derive(Debug, Deserialize)]
 struct ReleaseGroup {
     id: String,
+    /// Album, EP, Single. MusicBrainz's *primary* type - "Compilation" and
+    /// "Live" are secondary types and are not this field.
+    #[serde(rename = "primary-type")]
+    primary_type: Option<String>,
+    /// The group's genres, which are the fallback for a pressing nobody has
+    /// voted on. Absent from a search result, hence the default.
+    #[serde(default)]
+    genres: Vec<Genre>,
+}
+
+/// A genre and how many people voted for it.
+#[derive(Debug, Deserialize)]
+struct Genre {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    count: u32,
+}
+
+/// The most-voted genre of a list, or none for an empty one.
+///
+/// By count rather than by position: MusicBrainz orders the array by id, so
+/// the first entry is an accident of which genre sorts first.
+fn top_genre(genres: &[Genre]) -> Option<String> {
+    genres
+        .iter()
+        .filter(|genre| !genre.name.trim().is_empty())
+        .max_by_key(|genre| genre.count)
+        .map(|genre| genre.name.clone())
 }
 
 #[derive(Debug, Deserialize)]
@@ -269,6 +301,8 @@ struct ReleaseResponse {
     #[serde(rename = "release-group")]
     release_group: Option<ReleaseGroup>,
     #[serde(default)]
+    genres: Vec<Genre>,
+    #[serde(default)]
     media: Vec<Medium>,
 }
 
@@ -304,6 +338,18 @@ struct Recording {
 impl ReleaseResponse {
     fn into_detail(self, local: &LocalRelease) -> ReleaseDetail {
         let album_artist = credited(&self.artist_credit);
+        // The pressing's own genres first and the group's as the fallback: the
+        // pressing is the more specific answer, and a group somebody voted on
+        // still beats nothing.
+        let genre = top_genre(&self.genres).or_else(|| {
+            self.release_group
+                .as_ref()
+                .and_then(|group| top_genre(&group.genres))
+        });
+        let release_type = self
+            .release_group
+            .as_ref()
+            .and_then(|group| group.primary_type.clone());
         let format = self.media.iter().find_map(|medium| medium.format.clone());
         let disc_count = u32::try_from(self.media.len()).unwrap_or(u32::MAX).max(1);
 
@@ -369,6 +415,8 @@ impl ReleaseResponse {
                 disc_count,
             },
             year: self.date.as_deref().and_then(year_of),
+            genre,
+            release_type,
             album_artist,
             tracks,
             cover_path: None,
@@ -506,7 +554,7 @@ mod tests {
         let call = transport.call_to("/ws/2/release/").unwrap();
         assert_eq!(
             call.param("inc"),
-            Some("recordings artist-credits release-groups"),
+            Some("recordings artist-credits release-groups genres"),
             "one call has to bring the tracklist, the credits and the group"
         );
 
@@ -521,6 +569,67 @@ mod tests {
             detail.tracks[10].duration_ms, None,
             "a release MusicBrainz has no length for still has a tracklist"
         );
+    }
+
+    #[test]
+    fn a_fetch_asks_for_the_genres_the_unattended_pass_fills_with() {
+        let transport = FakeTransport::new().answering("/ws/2/release/", RELEASE_JSON);
+        fetch(
+            &transport,
+            "bb5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+            &local(11),
+        )
+        .unwrap();
+
+        assert_eq!(
+            transport.call_to("/ws/2/release/").unwrap().param("inc"),
+            Some("recordings artist-credits release-groups genres")
+        );
+    }
+
+    /// The most-voted genre, not the first: MusicBrainz orders the array by
+    /// id, so the first entry is whichever one happens to sort first.
+    #[test]
+    fn the_genre_is_the_one_most_people_agreed_on() {
+        let transport = FakeTransport::new().answering("/ws/2/release/", RELEASE_JSON);
+        let detail = fetch(
+            &transport,
+            "bb5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+            &local(11),
+        )
+        .unwrap();
+
+        assert_eq!(detail.genre.as_deref(), Some("shoegaze"));
+        assert_eq!(detail.release_type.as_deref(), Some("Album"));
+    }
+
+    /// A pressing nobody has tagged still belongs to a group somebody has.
+    #[test]
+    fn a_pressing_with_no_genre_falls_back_to_its_release_group() {
+        let transport = FakeTransport::new().answering("/ws/2/release/", VARIOUS_JSON);
+        let detail = fetch(
+            &transport,
+            "cc5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+            &local(3),
+        )
+        .unwrap();
+
+        assert_eq!(detail.genre.as_deref(), Some("electronic"));
+    }
+
+    /// Which is what makes "filled, never overwritten" safe: there is often
+    /// nothing to fill with, and that is not an error.
+    #[test]
+    fn a_release_nobody_has_tagged_a_genre_has_none() {
+        let transport = FakeTransport::new().answering("/ws/2/release/", MULTI_DISC_JSON);
+        let detail = fetch(
+            &transport,
+            "aa5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9",
+            &local(4),
+        )
+        .unwrap();
+
+        assert_eq!(detail.genre, None);
     }
 
     #[test]

@@ -325,6 +325,9 @@ pub struct TagEdit {
     /// for the release lookup, which is the only thing that knows them.
     pub release_mbid: Option<String>,
     pub release_group_mbid: Option<String>,
+    /// MusicBrainz's release-group primary type. Like the two ids above it, no
+    /// editor field sets this - the lookup is what knows it.
+    pub release_type: Option<String>,
     pub cover: Option<CoverEdit>,
 }
 
@@ -447,6 +450,12 @@ pub struct ReleaseDetail {
     pub album_artist: String,
     #[ts(type = "number | null")]
     pub year: Option<i64>,
+    /// The genre the most people voted for, or none. Filled into files that
+    /// have none and never written over one that has: MusicBrainz's genre data
+    /// is thin next to a library tagged by hand.
+    pub genre: Option<String>,
+    /// The release group's primary type - Album, EP, Single.
+    pub release_type: Option<String>,
     pub tracks: Vec<RemoteTrack>,
     /// Where the fetched cover was staged, or null when the archive has none.
     ///

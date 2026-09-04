@@ -1,7 +1,7 @@
 //! How well a candidate release fits the files on disk.
 //!
 //! Scored even though a human confirms every apply, because
-//! [82](../../../docs/issues/upcoming/82b-the-unattended-lookup-pass.md) runs the same
+//! [82](../../../docs/issues/done/82b-the-unattended-lookup-pass.md) runs the same
 //! lookup with nobody watching and needs a number to decide on. A score
 //! invented later would be a different rule from the one the dialog sorted by.
 //!
@@ -42,6 +42,21 @@ const TOLERANCE_MS: i64 = 30_000;
 const WITH_DURATIONS: (f32, f32, f32) = (0.45, 0.25, 0.30);
 /// And before they are, where the two that remain carry the whole score.
 const WITHOUT_DURATIONS: (f32, f32) = (0.6, 0.4);
+
+/// How well a candidate has to fit before the unattended pass writes it
+/// without asking.
+///
+/// [`WITH_DURATIONS`] is `(0.45, 0.25, 0.30)`, so a perfect track count and
+/// perfect durations are 0.55 before any text agreement, and a MusicBrainz
+/// search score of 90 carries the total to 0.955 - which puts the bar between
+/// 0.93 and 0.95. That is arithmetic rather than evidence, so this is the
+/// permissive end of it and `APEX_LOOKUP_DRY_RUN` is how the evidence is
+/// gathered: it reports what a pass would write, over a real library, without
+/// writing any of it.
+///
+/// Not a setting. The score is an opaque 0-to-1 and a slider is a control
+/// nobody can aim.
+pub const UNATTENDED_THRESHOLD: f32 = 0.93;
 
 /// The score a search result gets, from the text match and the track count.
 pub fn score_without_durations(

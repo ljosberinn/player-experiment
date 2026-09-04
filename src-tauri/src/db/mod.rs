@@ -1,4 +1,5 @@
 pub mod covers;
+pub mod lookup;
 pub mod playback;
 pub mod playlists;
 pub mod query;
@@ -100,16 +101,13 @@ mod tests {
     }
 
     /// The journal was migration 3 and is deleted rather than emptied, so a
-    /// fresh database has eight migrations and never holds the table at all.
+    /// fresh database never holds the table at all. How many migrations there
+    /// are is the test above's business - pinning the count here would make
+    /// every later migration look like the journal coming back.
     #[test]
     fn a_fresh_database_has_no_undo_journal() {
         let (_dir, db) = temp_db();
         let conn = db.conn().unwrap();
-
-        let version: u32 = conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(version, 8);
 
         let journal: bool = conn
             .query_row(

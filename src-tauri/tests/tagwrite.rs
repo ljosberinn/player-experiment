@@ -757,3 +757,76 @@ fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
         );
     }
 }
+
+/// What the row caches for the release type.
+fn release_type(db: &Db, track_id: i64) -> Option<String> {
+    db.conn()
+        .unwrap()
+        .query_row(
+            "SELECT release_type FROM tracks WHERE id = ?1",
+            [track_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// The type takes the same three-place route the two MBIDs do, and for the
+/// same reason: the file is the source of truth, so a rescan has to be able to
+/// read back what a write put there.
+#[test]
+fn the_release_type_round_trips_into_the_file_and_the_row() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Maki");
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            release_type: set("Album"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    let on_disk = tags::read(&path_of(&h.db, track)).unwrap();
+    assert_eq!(on_disk.release_type.as_deref(), Some("Album"));
+    assert_eq!(release_type(&h.db, track).as_deref(), Some("Album"));
+
+    let summary = scan::scan(&mut conn, |_| {}).unwrap();
+    assert_eq!((summary.added, summary.updated), (0, 0));
+    assert_eq!(release_type(&h.db, track).as_deref(), Some("Album"));
+}
+
+#[test]
+fn an_edit_that_does_not_mention_the_release_type_leaves_it_alone() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Maki");
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            release_type: set("EP"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            title: set("Renamed"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    let on_disk = tags::read(&path_of(&h.db, track)).unwrap();
+    assert_eq!(on_disk.title.as_deref(), Some("Renamed"));
+    assert_eq!(on_disk.release_type.as_deref(), Some("EP"));
+}

@@ -54,6 +54,8 @@ function detail(tracks: RemoteTrack[], over: Partial<ReleaseDetail> = {}): Relea
     },
     albumArtist: "My Bloody Valentine",
     year: 1991,
+    genre: null,
+    releaseType: null,
     tracks,
     coverPath: "/cache/chosen-cover.jpg",
     ...over,

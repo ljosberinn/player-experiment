@@ -447,8 +447,8 @@ const RELEASE_ORDER: &str = "coalesce(tracks.disc_no, 1), tracks.track_no, track
 /// Splits a selection into the releases it covers.
 ///
 /// A release is the unit a lookup is worth doing at - 65,535 tracks are some
-/// 8,000 releases, and one request a second is the budget - so this is what
-/// decides how many lookups a selection costs.
+/// 8,000 releases, and the limiter lets one request out every ten seconds -
+/// so this is what decides how many lookups a selection costs.
 ///
 /// Grouped by the browse view's own expressions, empty strings and all, so
 /// that a release is the same thing here as it is in the grid. Anything else
@@ -499,8 +499,8 @@ pub fn release_selections(
 
 /// Whether a row belongs to the release being accumulated, folding case the
 /// way the browse view groups: a release tagged two ways is one release, and
-/// unfolded it would be searched twice at one request a second and offered to
-/// the user twice.
+/// unfolded it would be searched twice, ten rate-limited seconds apart, and
+/// offered to the user twice.
 ///
 /// ASCII-only, like the `NOCASE` collation it mirrors.
 fn same_release(
@@ -522,6 +522,12 @@ fn same_release(
 pub struct ReleaseMember {
     pub id: i64,
     pub duration_ms: i64,
+    /// What the file already says, so the unattended pass can fill an empty
+    /// genre without writing over one somebody chose by hand.
+    pub genre: Option<String>,
+    /// Whether the file already has artwork, so a pass does not stage a JPEG
+    /// per release to replace a cover that is already there.
+    pub cover_hash: Option<String>,
 }
 
 /// Every file of a release, selected or not.
@@ -545,7 +551,7 @@ pub fn release_members(
     // tagged two ways comes back whole: handed one casing this would otherwise
     // return half of it, and the identity would be written to that half.
     let sql = format!(
-        "SELECT tracks.id, tracks.duration_ms
+        "SELECT tracks.id, tracks.duration_ms, tracks.genre, tracks.cover_hash
            FROM tracks
           WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
             AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
@@ -559,6 +565,8 @@ pub fn release_members(
             Ok(ReleaseMember {
                 id: row.get(0)?,
                 duration_ms: row.get(1)?,
+                genre: row.get(2)?,
+                cover_hash: row.get(3)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

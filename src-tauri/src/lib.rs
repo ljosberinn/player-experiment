@@ -144,6 +144,7 @@ pub fn run() {
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
+            look_up_releases(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
             app.manage(db);
             app.manage(log);
@@ -227,6 +228,8 @@ pub fn run() {
             commands::save_sidebar_sections,
             commands::load_dynamic_background,
             commands::save_dynamic_background,
+            commands::load_unattended_lookup,
+            commands::save_unattended_lookup,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,
@@ -284,6 +287,31 @@ fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::
             crate::commands::announce_library_changed(&app);
         },
     );
+}
+
+/// Starts the thread that looks releases up on MusicBrainz.
+///
+/// Started unconditionally and inert until the Settings switch is on: the
+/// thread reads the setting on every wake, so turning it on needs no restart
+/// and turning it off cancels a pass in flight.
+///
+/// One channel, not two: each release the pass writes says so on
+/// `library://changed`, and everything else it has to say goes in the log.
+/// Per release rather than per sweep, because a sweep runs for hours and may
+/// not end at all. There is no progress readout yet - 82c is where that
+/// lives.
+fn look_up_releases(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
+    let Ok(staging) = app.path().app_cache_dir() else {
+        // No cache directory means nowhere to stage a fetched cover. The pass
+        // could still write tags, but a library that cannot take artwork is
+        // not what the switch promises, so it simply does not start.
+        return;
+    };
+    let _ = std::fs::create_dir_all(&staging);
+
+    tagsource::worker::spawn(db, lock, log, staging, move || {
+        crate::commands::announce_library_changed(&app);
+    });
 }
 
 /// Re-encodes artwork a previous build stored whole, off the setup path.

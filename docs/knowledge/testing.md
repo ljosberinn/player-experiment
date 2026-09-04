@@ -9,6 +9,7 @@ current frontend coverage is well above it.
 | Rust integration | `cargo test` + `tempfile` | temp SQLite: migrations up, ingest a fixture dir, FTS hits, tag write → re-read, a fresh database with no undo journal, atomic write survives failure, a 120-file batch reports progress the whole way |
 | Audio | `cargo test` | the player state machine against a mock sink trait; decode/output is not asserted |
 | last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
+| Release lookup | `cargo test` | the whole unattended pass against recorded fixtures: the threshold from both sides, a release with no candidates left untouched and unqueued, genre filled and *not* overwritten, comment untouched, a second sweep a no-op, a cancelled sweep resuming where it stopped, a transient failure retried and a permanent one not, a dry run reaching its second batch, leaving no row behind, and carrying its place across a sweep a 503 ended |
 | Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
@@ -36,6 +37,14 @@ port: without it the only code in the product that opens a socket would have no
 coverage at all, and the fake would keep passing while the real transport posted
 to the wrong URL. **No credentials in CI** - a key is needed to run the feature,
 not to test it.
+
+**Nothing reaches MusicBrainz either**, for the same reason and through the same
+kind of seam. Two things follow from the limiter being process-wide and real:
+every test that searches or fetches spends a real second in it, so the lookup
+tests keep to two or three releases apiece rather than proving the same rule
+over a bigger library; and the one test that does open a socket is
+`#[ignore]`d, because a fixture is a recording of a response shape and the shape
+is theirs to change — `cargo test -p apex -- --ignored` is how that is noticed.
 
 Exercising it against the real service is a local build with a key of your own
 from https://www.last.fm/api/account/create, compiled in the way the release job
@@ -69,11 +78,33 @@ run depend on somebody else's service being up and under its rate limit.
 `ReleaseLookup.test.tsx` covers the markup and the flow against mocked IPC; the
 dialog against the live service is a manual check before a release.
 
-The rate limiter is asserted at its real one request a second, from **two**
-callers at once: the limit is enforced at the IP address, so a limiter that
-serialized only within one client would be no limiter at all. That test costs a
-second of wall clock, deliberately - a scaled-down imitation would not be
-asserting the rule that ships.
+The rate limiter is asserted at its real ten seconds, from **two** callers at
+once, and again for a slow request not shortening the gap after it: the limit
+is enforced at the IP address, so a limiter that serialized only within one
+client, or only the gaps between request *starts*, would be no limiter at all.
+That test costs ten seconds of wall clock and is the slowest in the suite,
+deliberately - a scaled-down imitation would not be asserting the rule that
+ships.
+
+**The gate every other test passes through is scaled down**, to ten
+milliseconds, under `cfg(test)`. Otherwise every assertion that incidentally
+makes a request would pay the interval and the suite would take minutes to say
+nothing about the limiter. What is scaled is the ambient gate; the rule is
+still asserted against a limiter built with the shipping interval.
+
+A sweep is asserted to announce once per release it writes rather than once per
+sweep - the bug that had a real pass rewriting the library with the window
+showing none of it - and a dry run to announce nothing at all.
+
+A retry that *works* is asserted against a transport that refuses once and then
+answers - the one case `FakeTransport` cannot express, since it gives the same
+answer every time, and the one where the count is the only evidence anything
+went wrong.
+
+The sweep cadence is asserted as a function rather than through the thread:
+that a sweep which got through releases comes straight back however long the
+gap had grown to, and that one which got through nothing doubles to the
+ceiling and stops there.
 
 **No unit test can see where a file actually lands.** `log::tests` proves the
 line format and the rotation against a `tempfile`, and says nothing about

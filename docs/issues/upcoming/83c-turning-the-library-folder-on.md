@@ -31,7 +31,7 @@ meaning what it says.
 
 ## The backfill
 
-The same shape as [82b](82b-the-unattended-lookup-pass.md)'s pass and for the
+The same shape as [82b](../done/82b-the-unattended-lookup-pass.md)'s pass and for the
 same reasons: a named thread owning a `Db` handle and a cancel flag, started
 from `lib.rs`, not `commands::blocking`. Cancellable, and the switch going off
 cancels a run in flight.
@@ -54,7 +54,7 @@ commits — not inside it, or a `ScanLock` held per release would deadlock again
 the scan that is holding it. A pass that finds nothing to move costs the derived
 check and no filesystem calls at all.
 
-*Open:* what happens to a release [82b](82b-the-unattended-lookup-pass.md) has
+*Open:* what happens to a release [82b](../done/82b-the-unattended-lookup-pass.md) has
 not looked up yet, when both features are on. Placing it now means placing it
 from its own tags with `Album` as the type, and then moving it a second time
 when the lookup writes the real type and possibly a different album artist —

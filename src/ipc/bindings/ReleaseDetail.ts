@@ -10,7 +10,17 @@ export type ReleaseDetail = { candidate: ReleaseCandidate,
  * The album artist for the release as a whole, which for a compilation is
  * "Various Artists" while every track names somebody else.
  */
-albumArtist: string, year: number | null, tracks: Array<RemoteTrack>, 
+albumArtist: string, year: number | null, 
+/**
+ * The genre the most people voted for, or none. Filled into files that
+ * have none and never written over one that has: MusicBrainz's genre data
+ * is thin next to a library tagged by hand.
+ */
+genre: string | null, 
+/**
+ * The release group's primary type - Album, EP, Single.
+ */
+releaseType: string | null, tracks: Array<RemoteTrack>, 
 /**
  * Where the fetched cover was staged, or null when the archive has none.
  *

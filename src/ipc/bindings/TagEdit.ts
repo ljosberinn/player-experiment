@@ -18,4 +18,9 @@ export type TagEdit = { title: string | null, artist: string | null, album: stri
  * The MusicBrainz identifiers, which no editor field sets - they are here
  * for the release lookup, which is the only thing that knows them.
  */
-releaseMbid: string | null, releaseGroupMbid: string | null, cover: CoverEdit | null, };
+releaseMbid: string | null, releaseGroupMbid: string | null, 
+/**
+ * MusicBrainz's release-group primary type. Like the two ids above it, no
+ * editor field sets this - the lookup is what knows it.
+ */
+releaseType: string | null, cover: CoverEdit | null, };

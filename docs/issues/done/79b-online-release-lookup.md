@@ -21,7 +21,7 @@ equivalent. That trade flips only if user-contributed sources are ever wanted.
   calls and there is no way to make it cost one.
 - **The rate limiter is process-wide, not per client.** Max 1 request/sec is
   enforced at the IP, and exceeding it gets the IP blocked. A limiter owned by a
-  client instance lets [82b](../upcoming/82b-the-unattended-lookup-pass.md)'s background pass and an
+  client instance lets [82b](82b-the-unattended-lookup-pass.md)'s background pass and an
   open dialog make two a second between them, so it is a single limiter every
   caller goes through. Same for the meaningful User-Agent built from
   `CARGO_PKG_NAME`/`CARGO_PKG_VERSION` with a contact URL: in the client, never
@@ -72,7 +72,7 @@ function where a bytes-carrying variant would cost a serde shape and an IPC
 payload.
 
 **Score every candidate**, even here where a human confirms —
-[82b](../upcoming/82b-the-unattended-lookup-pass.md) needs the number and cannot invent it later.
+[82b](82b-the-unattended-lookup-pass.md) needs the number and cannot invent it later.
 Track count and per-track duration agreement against MusicBrainz's own search
 score; the dialog sorts by it.
 

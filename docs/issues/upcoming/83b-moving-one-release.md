@@ -14,7 +14,7 @@ nothing about this feature may route through a rescan.
 **The release is the unit.** It is what the layout is built around, it is what
 82b already resolved, and a half-moved release is the only state worth never
 leaving behind. `ScanLock` is taken per release, not for the pass, the way
-[82b](82b-the-unattended-lookup-pass.md) takes it: the mover rewrites the paths
+[82b](../done/82b-the-unattended-lookup-pass.md) takes it: the mover rewrites the paths
 a scan reads, but holding the lock for a four-hour backfill would block every
 scan in that window.
 

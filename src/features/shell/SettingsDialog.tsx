@@ -1,8 +1,10 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { useEffect } from "react";
 import { revealMainLog } from "../../ipc";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
 import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
+import { useLookupStore } from "./lookupStore";
 import { report } from "./statusStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
@@ -42,6 +44,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const step = useZoomStore((s) => s.step);
   const dynamicBackground = useDynamicBackgroundStore((s) => s.enabled);
   const setDynamicBackground = useDynamicBackgroundStore((s) => s.set);
+  const unattendedLookup = useLookupStore((s) => s.enabled);
+  const setUnattendedLookup = useLookupStore((s) => s.set);
+  const loadUnattendedLookup = useLookupStore((s) => s.load);
+
+  // Read here rather than at startup: nothing outside this dialog draws from
+  // it, and the backend reads the setting itself between releases. The dialog
+  // is mounted only while it is open, so this runs each time it is opened.
+  useEffect(() => {
+    void loadUnattendedLookup();
+  }, [loadUnattendedLookup]);
 
   // Reported on the status bar rather than in the dialog: the failure is a
   // file manager that would not open, which is neither about the log nor
@@ -114,6 +126,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               order of how far each reaches: how the app looks, then what it
               does on its own to the library, then what leaves the machine. */}
           <WatchFolderSettings />
+
+          {/* Beside the music folders, because both are things the app does to
+              the library unasked - and after them, because this is the one of
+              the two that also leaves the machine. */}
+          <div className="settings-row">
+            <label htmlFor="unattended-lookup">Look Up Releases Online</label>
+            <input
+              id="unattended-lookup"
+              type="checkbox"
+              checked={unattendedLookup}
+              onChange={(event) => void setUnattendedLookup(event.target.checked)}
+            />
+          </div>
 
           {/* Set apart: everything above it is a preference about how the app
               looks, and this is the one thing in Settings that makes the app

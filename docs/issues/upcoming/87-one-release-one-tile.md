@@ -4,7 +4,7 @@ A release with several artists — a compilation, a split — shows up once per
 artist. 356 titles in this library are in that state and they cost 1,364
 duplicate tiles.
 
-**[82b](82b-the-unattended-lookup-pass.md) is what fixes those, not this.** 332 of the 356
+**[82b](../done/82b-the-unattended-lookup-pass.md) is what fixes those, not this.** 332 of the 356
 have no album artist on any track, and 82 writes one for every release above the
 threshold: `Various Artists` for a compilation, the joint credit for a split. The
 existing `(album, GROUP_ARTIST)` key then collapses them on its own, and keeps
@@ -93,7 +93,7 @@ artists there are, not what to call them.
 the same artwork. Deterministic, and no change.
 
 **The lookup keys stay as they are.** `release_selections`, `release_members`
-and [82b](82b-the-unattended-lookup-pass.md)'s `release_lookup` all key on
+and [82b](../done/82b-the-unattended-lookup-pass.md)'s `release_lookup` all key on
 `(album, artist)`, and two pressings merged into one tile are still two sets of
 files with two tracklists to match. Drilling into a merged tile and looking it
 up splits it back into two lookups, which is correct: the tile is a display

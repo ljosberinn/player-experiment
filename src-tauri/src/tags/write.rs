@@ -71,6 +71,7 @@ struct Resolved {
     disc_no: Option<Option<i64>>,
     release_mbid: Option<Option<String>>,
     release_group_mbid: Option<Option<String>>,
+    release_type: Option<Option<String>>,
     cover: Option<CoverChange>,
 }
 
@@ -122,6 +123,7 @@ fn resolve(edit: &TagEdit, covers: &mut HashMap<String, Arc<Cover>>) -> AppResul
         disc_no: number(&edit.disc_no, "Disc number")?,
         release_mbid: text(&edit.release_mbid),
         release_group_mbid: text(&edit.release_group_mbid),
+        release_type: text(&edit.release_type),
         cover: match &edit.cover {
             None => None,
             Some(CoverEdit::Remove) => Some(CoverChange::Remove),
@@ -237,6 +239,12 @@ fn mutate(tag: &mut Tag, resolved: &Resolved) {
     }
     if let Some(value) = &resolved.release_group_mbid {
         set_or_remove(tag, ItemKey::MusicBrainzReleaseGroupId, value);
+    }
+    if let Some(value) = &resolved.release_type {
+        // Not in `MUSICBRAINZ_TXXX`, unlike the two ids above: lofty 0.25's
+        // ID3v2 conversion has an arm for this key and emits the TXXX frame
+        // without being told to.
+        set_or_remove(tag, ItemKey::MusicBrainzReleaseType, value);
     }
     if let Some(change) = &resolved.cover {
         // Every picture goes, not just the front cover: a file with three
@@ -364,8 +372,8 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
     conn.execute(
         "UPDATE tracks SET title = ?2, artist = ?3, album = ?4, album_artist = ?5,
                            genre = ?6, comment = ?7, year = ?8, track_no = ?9, disc_no = ?10,
-                           release_mbid = ?11, release_group_mbid = ?12,
-                           cover_hash = ?13, mtime = ?14, size = ?15
+                           release_mbid = ?11, release_group_mbid = ?12, release_type = ?13,
+                           cover_hash = ?14, mtime = ?15, size = ?16
          WHERE id = ?1",
         rusqlite::params![
             track_id,
@@ -380,6 +388,7 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
             tags.disc_no,
             tags.release_mbid,
             tags.release_group_mbid,
+            tags.release_type,
             cover_hash,
             metadata
                 .modified()

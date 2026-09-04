@@ -45,6 +45,13 @@
 - **The file is the source of truth.** Rows are re-read after a write, not
   assumed from the edit, and `mtime`/`size` update in the same step so an
   incremental rescan finds nothing to do.
+- **A match is confirmed by hand unless it is not a guess.** The one place the
+  app writes tags nobody approved is the release lookup pass, and only above
+  `tagsource::score::UNATTENDED_THRESHOLD` — a release whose track count, track
+  order and per-track durations all agree with MusicBrainz. Below it nothing is
+  written and a person decides. Confirming eight thousand certain matches by
+  hand is not review, it is clicking; the threshold is where the line sits and
+  it is a constant with its reasoning beside it, not a setting.
 - **One bad file does not cost the good ones.** A locked file mid-batch is
   counted and reported; the rest are written.
 - **A destructive action names the cost that is easy to miss**, and Cancel takes

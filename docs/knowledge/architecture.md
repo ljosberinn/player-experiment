@@ -22,7 +22,8 @@ src-tauri/src/
   export/     JSON export
   lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue
   tagsource/  MusicBrainz + Cover Art Archive lookup: transport seam, the
-              process-wide rate limiter, candidate scoring
+              process-wide rate limiter, candidate scoring, the unattended
+              pass (one release in `pass`, the thread in `worker`)
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   log.rs      every operation, one line each, rotated
@@ -84,10 +85,63 @@ replacement. Two rules make an unattended pass safe to run at all:
 
 **One lock serializes everything that rewrites rows from files on disk.**
 `scan::ScanLock`, managed beside `Db`, taken by `scan_library`,
-`tagsource_apply` and the poll. The poll `try_lock`s and skips the pass
-entirely; a user-asked scan waits, because a Rescan that silently did nothing
-is worse than one that starts its walk late. Poison-tolerant: a panicking scan must not leave the
+`tagsource_apply`, the poll and the release lookup pass. The poll `try_lock`s
+and skips the pass entirely; a user-asked scan waits, because a Rescan that
+silently did nothing is worse than one that starts its walk late. **The lookup
+pass takes it per write, never for the pass** — it rewrites the files a scan
+reads its `(mtime, size)` from, so each write has to be behind the lock, but
+holding it for the whole pass would block every scan for the best part of a
+day.
+Poison-tolerant: a panicking scan must not leave the
 library unscannable for the rest of the session.
+
+**A second background thread looks releases up.** `release-lookup` wakes on the
+same fifteen seconds, reads `lookup.unattended` from `settings`, and works
+through every release `release_lookup` has no row for: two MusicBrainz calls
+each. It reads the setting between releases and not only on waking, so turning
+the switch off cancels a pass in flight and turning it back on resumes from the
+table rather than from the top; a setting that cannot be read is logged and is
+not taken for a switch that is off. Above `score::UNATTENDED_THRESHOLD` it
+writes the release's tags; below it, it records the release for a person to
+decide and writes nothing. **Each release it writes announces itself on
+`library://changed`** — per release rather than per sweep, because a sweep runs
+for hours and may not end at all, and a view told only at the end of one is a
+view that never hears. `commands::invalidate` is what keeps that affordable. A
+dry run announces nothing, having written nothing.
+
+**Waking and sweeping are two cadences.** The switch is answered every fifteen
+seconds because that is what makes it feel immediate, and it costs one keyed
+row. A sweep costs two group-bys over every track in the library, so the gap
+between sweeps doubles — to a ten-minute ceiling — whenever one finds nothing to
+do or ends on a failure, and snaps back to fifteen seconds the moment one gets
+through releases. A release a scan has just added therefore waits up to ten
+minutes, which is nothing beside a pass measured in hours.
+
+**The limiter holds one request at a time, ten seconds apart.** Not the one a
+second [MusicBrainz documents](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting),
+because they decline with a 503 from three separate buckets — per user agent,
+per address and a global three hundred a second — and a client inside its own
+allowance still meets 503s when theirs is full, indistinguishably. Slowing down
+was measured and does not buy requests: releases reached before the first fatal
+503 were 72 at 1.1s, 26 at 3s and 35 at 5s, with roughly one request in twelve
+still being re-asked at the slowest of those. So the interval is not a rate
+expected to avoid 503s; it is the least the pass can ask of a service it depends
+on the spare capacity of. The gate is held for the whole request rather than
+only the gap before it, so the interval is measured from when an answer came
+back; a request that could work later is asked again twice, with the limiter
+rather than the caller deciding how long that takes — and the count of those goes
+in the log, on the release line and totalled on the sweep line, because a retry
+that works leaves no other trace and the interval it costs reads as a slow
+request.
+
+`APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
+which is how the threshold is tuned against a real library. **The rows are the
+real pass's cursor and cannot be the dry run's**, so a dry run pages
+`lookup::pending` by offset instead, skips the tag seed — the one row it would
+otherwise leave behind — and logs `would-write` and `would-queue` where a real
+pass logs `written` and `queued`. That offset is the thread's rather than the
+sweep's, so a sweep a 503 ended does not send the survey back to the first
+release.
 
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
@@ -107,8 +161,8 @@ it says the library moved and the views re-ask.
 **The ping is coalesced before it leaves**, in `commands::invalidate`. Leading
 edge plus trailing edge: an isolated write is announced the moment it commits,
 and a write that keeps committing is announced once per five-second window
-until it stops. That is for the writes that run for hours — the unattended
-lookup pass commits a release every couple of seconds, and one ping per commit
+until it stops. That is for the writes that run for hours — the release lookup
+pass commits a release every couple of seconds, and one ping per commit
 is one full re-query of the open view and one recount of every playlist per
 commit. The frontend's `INVALIDATE_DEBOUNCE_MS` still runs underneath and
 composes with it; it cannot solve this on its own, because by the time the
@@ -147,9 +201,14 @@ What gets a line:
 
 - **Every mutation and every long job** — roughly what already goes through
   `commands::announcing` and `commands::blocking`, plus the background work
-  that goes through neither: the unattended pass (`scan.watch`, including the
+  that goes through neither: the watch-folder pass (`scan.watch`, including the
   passes that found nothing), the cover-normalize pass, and each scrobble and
   now-playing submission.
+- **One line per release the lookup pass resolves or queues** (`lookup.release`,
+  with the score), and one per sweep (`lookup.sweep`). **Silence for a release
+  MusicBrainz has nothing for** — eight thousand lines about what was written is
+  nothing next to a threshold that cannot be diagnosed after the fact, and eight
+  thousand more about records nobody has heard of is noise.
 - **Every `Err`, reads included.** A read is `Op::quiet`: a `query_tracks` that
   fails leaves a trace, and the thousands that succeed do not — a line per page
   the table asks for would rotate the file past whatever is being investigated.
