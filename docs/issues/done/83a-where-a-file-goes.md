@@ -2,7 +2,7 @@
 
 The layout as a pure function: a row's tags in, a relative path out. No
 filesystem, no move, no setting — [83b](83b-moving-one-release.md) does that and
-[83c](../upcoming/83c-turning-the-library-folder-on.md) turns it on. Alone because it is the
+[83c](83c-turning-the-library-folder-on.md) turns it on. Alone because it is the
 half that is decidable in a unit test, and because a wrong path is only cheap
 before anything has been renamed 65,535 times.
 
@@ -87,7 +87,7 @@ without re-checking the budget, and the extension is never what gets cut.
 
 A root deep enough to leave no budget at all is floored rather than truncated to
 nothing here; `has_path_budget` is what
-[83c](../upcoming/83c-turning-the-library-folder-on.md) refuses such a root
+[83c](83c-turning-the-library-folder-on.md) refuses such a root
 with, at the picker.
 
 Testing: table-driven, no filesystem. Both real offenders above; a title that is

@@ -3,7 +3,7 @@
 //! The rules 79b's dialog leaves to a person, written down: which candidate,
 //! whether it is certain enough to write, and what to write. Everything here
 //! is a function over a connection and a transport - the thread that drives it
-//! is in [`crate::tagsource::worker`], and none of it is needed to test a
+//! is in [`crate::library::worker`], and none of it is needed to test a
 //! rule.
 //!
 //! **A reversal, deliberately.** The dialog confirms every match by hand and

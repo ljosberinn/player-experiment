@@ -2,7 +2,7 @@
 
 The mover: one release from wherever it is to where
 [83a](83a-where-a-file-goes.md) says it goes, with the rows following the files.
-Reachable from nothing yet — [83c](../upcoming/83c-turning-the-library-folder-on.md) is what
+Reachable from nothing yet — [83c](83c-turning-the-library-folder-on.md) is what
 calls it — so this phase is the operation and its tests.
 
 **`tracks.path` is the row's identity.** `insert_track` is `ON CONFLICT(path)`,
@@ -88,7 +88,7 @@ drop, which is the other half of it — and which needs the move below without t
 
 The playing release comes back as `Outcome::Deferred` rather than as a move of
 zero files, so it is distinguishable from a release already in place, and
-[83c](../upcoming/83c-turning-the-library-folder-on.md) defers it to the end of
+[83c](83c-turning-the-library-folder-on.md) defers it to the end of
 the run rather than dropping it — a user who leaves one album on does not find
 it the only one left behind. Which tracks are open is the caller's to say: the
 sink's prepared successor is not reachable from outside `audio::engine`.

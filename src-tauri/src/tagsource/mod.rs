@@ -19,7 +19,6 @@ pub mod pass;
 pub mod rate;
 pub mod score;
 pub mod transport;
-pub mod worker;
 
 use crate::error::AppResult;
 use crate::model::ReleaseDetail;

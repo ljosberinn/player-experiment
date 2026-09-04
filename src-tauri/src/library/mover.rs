@@ -1,7 +1,7 @@
 //! Moving one release to where [`super::layout`] says it goes.
 //!
 //! Reachable from nothing yet:
-//! [83c](../../../docs/issues/upcoming/83c-turning-the-library-folder-on.md) is
+//! [83c](../../../docs/issues/done/83c-turning-the-library-folder-on.md) is
 //! the worker that calls this, and the `log::Op` and the `library://changed`
 //! per release are its wiring to do - which is why [`Outcome`] carries the
 //! counts a log line wants rather than writing one.
@@ -65,7 +65,7 @@ pub enum Outcome {
     /// Left where it is: the player holds a file of this release open.
     ///
     /// Not an error and not a failure - the caller decides what to do with it.
-    /// [83c](../../../docs/issues/upcoming/83c-turning-the-library-folder-on.md)
+    /// [83c](../../../docs/issues/done/83c-turning-the-library-folder-on.md)
     /// defers these to the end of its run rather than dropping them, so a user
     /// who leaves one album playing does not find it the only one left behind.
     Deferred,
@@ -234,10 +234,17 @@ fn copy_across(source: &Path, target: &Path) -> AppResult<()> {
 
 /// The facts every file of the release shares.
 ///
+/// `pub(crate)` for [`super::survey`], which asks where a file goes without
+/// moving it: two answers to that question is the defect, and a survey that
+/// rebuilt the target beside this one would eventually give a different one.
+///
 /// `release.artist` goes in the `album_artist` slot because it is already
 /// `GROUP_ARTIST`'s value - the grid's expression, resolved - and the layout
 /// resolves that slot first.
-fn shape<'a>(release: &'a lookup::Release, files: &'a [query::ReleaseFile]) -> layout::Release<'a> {
+pub(crate) fn shape<'a>(
+    release: &'a lookup::Release,
+    files: &'a [query::ReleaseFile],
+) -> layout::Release<'a> {
     layout::Release {
         album_artist: release.artist.as_deref(),
         artist: None,
@@ -254,7 +261,7 @@ fn shape<'a>(release: &'a lookup::Release, files: &'a [query::ReleaseFile]) -> l
     }
 }
 
-fn track(file: &query::ReleaseFile) -> layout::TrackFile<'_> {
+pub(crate) fn track(file: &query::ReleaseFile) -> layout::TrackFile<'_> {
     layout::TrackFile {
         disc_no: file.disc_no,
         track_no: file.track_no,

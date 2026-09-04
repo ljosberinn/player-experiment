@@ -145,7 +145,7 @@ pub fn run() {
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
-            look_up_releases(app.handle().clone(), db.clone(), lock.clone(), log.clone());
+            library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
             app.manage(db);
             app.manage(log);
@@ -231,6 +231,9 @@ pub fn run() {
             commands::save_dynamic_background,
             commands::load_unattended_lookup,
             commands::save_unattended_lookup,
+            commands::load_library_folder,
+            commands::save_organize_library,
+            commands::set_library_root,
             commands::save_window_geometry,
             commands::load_window_geometry,
             commands::tracks_by_ids,
@@ -294,18 +297,18 @@ fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::
     );
 }
 
-/// Starts the thread that looks releases up on MusicBrainz.
+/// Starts the thread that looks releases up and files them.
 ///
-/// Started unconditionally and inert until the Settings switch is on: the
-/// thread reads the setting on every wake, so turning it on needs no restart
-/// and turning it off cancels a pass in flight.
+/// Started unconditionally and inert until a Settings switch is on: the thread
+/// reads both on every wake, so turning one on needs no restart and turning it
+/// off cancels its step in a pass that is running.
 ///
-/// Two channels. Each release the pass writes or queues says so on
+/// Two channels. Each release the pass writes, queues or moves says so on
 /// `library://changed`, and how far it has got goes on `task://progress` for
 /// the readout at the foot of the sidebar. Both per release rather than per
 /// sweep, because a sweep runs for hours and may not end at all; everything
 /// else the pass has to say goes in the log.
-fn look_up_releases(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
+fn library_pass(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
     let Ok(staging) = app.path().app_cache_dir() else {
         // No cache directory means nowhere to stage a fetched cover. The pass
         // could still write tags, but a library that cannot take artwork is
@@ -315,11 +318,25 @@ fn look_up_releases(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: lo
     let _ = std::fs::create_dir_all(&staging);
 
     let progress = app.clone();
-    tagsource::worker::spawn(
+    let playing = app.clone();
+    library::worker::spawn(
         db,
         lock,
         log,
         staging,
+        move || {
+            // The playing track and the queue's next, which are the two files
+            // `audio::sink` can hold open. A snapshot, so playback can still
+            // prepare a track of a release the pass has already decided to
+            // move: Rust opens files with `FILE_SHARE_DELETE`, so the rename
+            // succeeds and the decoder keeps reading the handle it has.
+            let state = playing.state::<Player>().state();
+            state
+                .track_id
+                .into_iter()
+                .chain(state.next_track_id)
+                .collect()
+        },
         move || crate::commands::announce_library_changed(&app),
         move |task| {
             // A dropped progress event is not worth anything: the next release

@@ -1969,6 +1969,54 @@ th.status {
   gap: 14px;
 }
 
+/* Ruled off like the two sections below it, and for the same reason: the rows
+   above are one control each, and this is controls plus prose. */
+.settings-library {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--chrome-border);
+}
+
+.settings-library h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* The path takes what the button leaves, and truncates rather than pushing the
+   button off the row - a library root is a long string and the button is the
+   only way to change it. */
+.settings-library-root {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-library-root > span {
+  overflow: hidden;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Prose, quieter than the controls above it - there to be read once. Same
+   treatment as the notes in the two sections below. */
+.settings-library-note {
+  margin: 0;
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* `--danger`, not `--destructive`, for the reason the last.fm error gives. */
+.settings-library-error {
+  margin: 0;
+  color: var(--danger);
+}
+
 /* Ruled off like the last.fm section below it, and for the same reason: the
    rows above are one control each, and this is controls plus a list plus
    prose. */
@@ -2014,6 +2062,15 @@ th.status {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Where a Remove button would be on every other row. The Library folder is
+   watched for as long as it is being filed into, and a row with nothing on its
+   right reads as a button that failed to render. */
+.settings-folders-locked {
+  flex: none;
+  color: var(--dim);
+  font-size: 11.5px;
 }
 
 /* Prose, quieter than the controls above it - there to be read once. Same

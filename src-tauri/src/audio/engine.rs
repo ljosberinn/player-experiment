@@ -105,6 +105,17 @@ pub enum Event {
 pub struct EngineState {
     pub status: PlaybackStatus,
     pub track_id: Option<i64>,
+    /// The queue's next track, whether or not the sink has prepared it yet.
+    ///
+    /// Here rather than left to a caller because the prepared successor is not
+    /// reachable from outside this module, and
+    /// [83c](../../../docs/issues/done/83c-turning-the-library-folder-on.md)'s
+    /// pass has to know which files playback may be holding open before it
+    /// renames any of them. Reported ahead of [`Engine::prepare_next_if_due`]
+    /// on purpose: at worst the pass defers one release more than it had to,
+    /// where the other way round is a decoder reading a file that has just
+    /// been deleted out from under it.
+    pub next_track_id: Option<i64>,
     pub queue_index: Option<u32>,
     pub queue_len: u32,
     pub position_ms: i64,
@@ -250,6 +261,7 @@ impl<S: AudioSink> Engine<S> {
         EngineState {
             status: self.status,
             track_id: self.current().map(|entry| entry.track_id),
+            next_track_id: self.next().map(|entry| entry.track_id),
             queue_index: self.index.map(|index| index as u32),
             queue_len: self.queue.len() as u32,
             position_ms: self.position_ms(),
@@ -262,6 +274,11 @@ impl<S: AudioSink> Engine<S> {
 
     fn current(&self) -> Option<&QueueEntry> {
         self.index.and_then(|index| self.queue.get(index))
+    }
+
+    /// The entry after the current one, which is the one the sink prepares.
+    fn next(&self) -> Option<&QueueEntry> {
+        self.index.and_then(|index| self.queue.get(index + 1))
     }
 
     fn position_ms(&self) -> i64 {

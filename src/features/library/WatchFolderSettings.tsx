@@ -34,22 +34,39 @@ function intervalLabel(minutes: number): string {
  * state - and local state rather than a store, since the dialog is mounted
  * when it opens: there is nothing to keep in step with while it is closed, and
  * a store would be a subscription the shell pays for on every launch.
+ *
+ * `lockedRoot` is the Library folder while the section above it is filing into
+ * one. Picking a root adds it to this list and `remove_watch_folder` then
+ * refuses it, because a library filed into a folder nobody watches is marked
+ * missing in full on the next scan - so the row is shown without a Remove
+ * button and the note points at the switch that releases it.
  */
-export function WatchFolderSettings() {
+export function WatchFolderSettings({ lockedRoot }: { lockedRoot: string | null }) {
   const [folders, setFolders] = useState<string[] | null>(null);
   const [minutes, setMinutes] = useState(15);
 
   useEffect(() => {
     void (async () => {
       try {
-        const [watched, stored] = await Promise.all([listWatchFolders(), loadWatchInterval()]);
-        setFolders(watched);
-        setMinutes(stored);
+        setMinutes(await loadWatchInterval());
       } catch (cause) {
         report(cause);
       }
     })();
   }, []);
+
+  // Re-read when the Library folder changes, not only on mount: picking one
+  // adds a watch folder, and this list is what has to show it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `lockedRoot` is what this re-runs on rather than what it reads - the row it adds is one the backend has just written.
+  useEffect(() => {
+    void (async () => {
+      try {
+        setFolders(await listWatchFolders());
+      } catch (cause) {
+        report(cause);
+      }
+    })();
+  }, [lockedRoot]);
 
   const changeInterval = async (next: number) => {
     // Set locally first, so the select answers the click rather than the round
@@ -104,13 +121,17 @@ export function WatchFolderSettings() {
             <li key={folder}>
               {/* The whole path in the tooltip, since the row truncates it. */}
               <span title={folder}>{folder}</span>
-              <button
-                type="button"
-                aria-label={`Stop watching ${folder}`}
-                onClick={() => void remove(folder)}
-              >
-                Remove
-              </button>
+              {folder === lockedRoot ? (
+                <span className="settings-folders-locked">Library folder</span>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`Stop watching ${folder}`}
+                  onClick={() => void remove(folder)}
+                >
+                  Remove
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -119,6 +140,9 @@ export function WatchFolderSettings() {
       <p className="settings-watch-note">
         Removing a folder only stops it being looked at. The songs already in your library stay
         until a check finds their files gone, and are then marked missing.
+        {lockedRoot === null
+          ? null
+          : " Your Library folder stays on this list until you turn off Organise My Library."}
       </p>
     </section>
   );

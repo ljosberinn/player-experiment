@@ -857,20 +857,37 @@ pub struct WriteProgress {
 /// the best part of half an hour, so a readout without decimals or an estimate
 /// reads as hung.
 ///
-/// One channel with more than one producer: the unattended lookup is the first
-/// and phase 83's move is the second, which is why the label is in the payload
-/// rather than in the component.
+/// One channel and one producer: looking a release up and moving it are two
+/// steps of one pass rather than two passes. The label is in the payload
+/// rather than in the component all the same, because it names the steps that
+/// are switched on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct BackgroundTask {
-    /// What is running, as the sidebar says it: "Looking up releases".
+    /// What is running, as the sidebar says it: "Looking up and filing
+    /// releases".
     pub label: String,
     pub done: u32,
     pub total: u32,
     /// How much longer, or none until there is enough history to say.
     #[ts(type = "number | null")]
     pub eta_ms: Option<i64>,
+}
+
+/// The Library folder, as Settings draws it.
+///
+/// Two fields rather than one optional root, because the dialog has to tell a
+/// root that is set and switched off from one that was never picked: the
+/// checkbox is disabled until there is a root, and the folder row shows the
+/// one that is there whether or not the filing is on.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LibraryFolder {
+    #[ts(type = "string | null")]
+    pub root: Option<String>,
+    pub organize: bool,
 }
 
 /// The totals behind a view, for the footer.

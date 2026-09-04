@@ -4,7 +4,7 @@
 //! they are filed under, in - a relative path out. No filesystem, no move, no
 //! setting; [83b](../../../docs/issues/done/83b-moving-one-release.md) does
 //! the moving and
-//! [83c](../../../docs/issues/upcoming/83c-turning-the-library-folder-on.md)
+//! [83c](../../../docs/issues/done/83c-turning-the-library-folder-on.md)
 //! turns it on.
 //!
 //! ```text
@@ -123,7 +123,7 @@ pub fn relative_path(root: &Path, release: &Release, track: &TrackFile) -> PathB
 /// Whether `root` leaves enough of [`MAX_PATH`] for a path to be built under it
 /// at all.
 ///
-/// [83c](../../../docs/issues/upcoming/83c-turning-the-library-folder-on.md)
+/// [83c](../../../docs/issues/done/83c-turning-the-library-folder-on.md)
 /// refuses a root this rejects, at the picker: better a sentence in Settings
 /// than every name in the library cut to nothing.
 pub fn has_path_budget(root: &Path) -> bool {

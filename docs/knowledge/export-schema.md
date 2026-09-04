@@ -140,3 +140,7 @@ written before one was added stays valid.
   rather than by someone remembering to exclude it. A last.fm session key or a
   Discogs token cannot appear in an export even if a future release forgets to
   think about it.
+- **Anything that names a path on this machine.** The watch folders, and
+  `library.organize` with `library.root`: an export read on another machine
+  would name a folder that is not there, and a switch saying the library is
+  filed into it.

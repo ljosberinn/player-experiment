@@ -19,6 +19,7 @@ import type { FilterRule } from "./bindings/FilterRule";
 import type { FilterValue } from "./bindings/FilterValue";
 import type { LastfmConnection } from "./bindings/LastfmConnection";
 import type { LastfmStatus } from "./bindings/LastfmStatus";
+import type { LibraryFolder } from "./bindings/LibraryFolder";
 import type { LibraryStats } from "./bindings/LibraryStats";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
@@ -66,6 +67,7 @@ export type {
   FilterValue,
   LastfmConnection,
   LastfmStatus,
+  LibraryFolder,
   LibraryStats,
   PlaybackStatus,
   PlayerPosition,
@@ -286,6 +288,38 @@ export function loadUnattendedLookup(): Promise<boolean> {
 
 export function saveUnattendedLookup(enabled: boolean): Promise<void> {
   return invoke<void>("save_unattended_lookup", { enabled });
+}
+
+/**
+ * The folder the library is filed into, and whether it is being filed.
+ *
+ * Both in one call because the dialog needs both to draw one section: the
+ * checkbox is disabled until a root is picked, so a root that is set and
+ * switched off has to be distinguishable from one that was never chosen.
+ */
+export function loadLibraryFolder(): Promise<LibraryFolder> {
+  return invoke<LibraryFolder>("load_library_folder");
+}
+
+/**
+ * Turning it off stops the pass filing and moves nothing back — the files are
+ * where the user asked them to be. Read between releases, so it cancels the
+ * step in a pass that is running.
+ */
+export function saveOrganizeLibrary(enabled: boolean): Promise<void> {
+  return invoke<void>("save_organize_library", { enabled });
+}
+
+/**
+ * Picks the folder the library is filed into, and starts watching it.
+ *
+ * Watching is not optional: a scan marks missing every row it did not walk, so
+ * a library filed into a folder nobody watches goes missing in full on the next
+ * one. Rejects with the sentence to show when the folder is nested too deeply
+ * to build a path under.
+ */
+export function setLibraryRoot(path: string): Promise<void> {
+  return invoke<void>("set_library_root", { path });
 }
 
 /**
