@@ -141,7 +141,7 @@ pub fn run() {
             normalize_covers(db.clone(), log.clone());
             // One lock for everything that rewrites rows from files on disk,
             // so the unattended pass can tell whether it would be racing a
-            // scan or an undo the user started.
+            // scan or a write the user started.
             let lock = scan::ScanLock::default();
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -233,8 +233,6 @@ pub fn run() {
             commands::write_tags,
             commands::stage_dropped_cover,
             commands::stage_picked_cover,
-            commands::undo_tag_edit,
-            commands::can_undo_tag_edit,
             commands::tagsource_groups,
             commands::tagsource_search,
             commands::tagsource_fetch,

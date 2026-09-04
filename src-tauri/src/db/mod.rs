@@ -99,6 +99,28 @@ mod tests {
         assert_eq!(version as usize, schema::MIGRATIONS.len());
     }
 
+    /// The journal was migration 3 and is deleted rather than emptied, so a
+    /// fresh database has eight migrations and never holds the table at all.
+    #[test]
+    fn a_fresh_database_has_no_undo_journal() {
+        let (_dir, db) = temp_db();
+        let conn = db.conn().unwrap();
+
+        let version: u32 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 8);
+
+        let journal: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'tag_undo')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!journal, "tag_undo is still in the schema");
+    }
+
     #[test]
     fn migrating_twice_is_a_no_op() {
         let (_dir, db) = temp_db();
@@ -125,7 +147,7 @@ mod tests {
         {
             let mut conn = Connection::open(&path).unwrap();
             let tx = conn.transaction().unwrap();
-            for (index, sql) in schema::MIGRATIONS.iter().enumerate().take(3) {
+            for (index, sql) in schema::MIGRATIONS.iter().enumerate().take(2) {
                 tx.execute_batch(sql).unwrap();
                 tx.pragma_update(None, "user_version", (index + 1) as i64)
                     .unwrap();

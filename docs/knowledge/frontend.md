@@ -201,8 +201,7 @@ absences are what nobody notices coming back — hence the guards in
   because a check that fails usually means the machine is offline, and last.fm
   keeps its own because `LastfmSettings` draws it inside the dialog it belongs
   to. Failures nobody asked for still stay silent — `loadColumns`,
-  `loadSections`, `toggleSection`, `refreshUndo` and `getAppInfo` keep their
-  bare `catch`.
+  `loadSections`, `toggleSection` and `getAppInfo` keep their bare `catch`.
 - **A dialog-only section keeps its state local.** `WatchFolderSettings` reads
   the folder list and the interval in a `useEffect` and holds them in
   `useState`. `SettingsDialog` is mounted when it opens, so there is nothing to
@@ -285,15 +284,17 @@ absences are what nobody notices coming back — hence the guards in
   releases in SQLite before anything leaves the machine, and the dialog works
   through them one at a time — search, pick, confirm, apply, next — because
   MusicBrainz allows one request a second and a folder-wide selection is dozens
-  of releases. Each release applies as its own undoable batch.
+  of releases. Each release applies as its own batch.
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.
-- **`tags://progress` now has three senders** — a tag save, its undo, and a
-  lookup's apply. The lookup subscribes to it separately and only records
-  events while its own write is running, and `TaskProgress` stands down for the
-  duration; otherwise a lookup would be reported behind the modal as
-  "Reverting".
+- **`tags://progress` has two senders** — a tag save and a lookup's apply, each
+  reporting in a dialog that is already on screen. The lookup subscribes to it
+  separately and only records events while its own write is running.
+  `TaskProgress` owns the subscription that fills the editor store and draws
+  nothing from it: something mounted for the whole session has to subscribe,
+  and doing it in the dialog would mean subscribing as the write it reports on
+  is already starting.
 - `useNativeFeel` swallows any drag the app did not claim. A file dropped where
   nothing handles it is *opened* by the webview, which navigates the window away
   from the app; the guard runs at the window, skips anything a target already

@@ -5,8 +5,7 @@ invisible at the ten releases a hand-driven lookup does. Independent of the
 pass, so it lands first and alone.
 
 The undo journal was this phase's other half. Bounding it was abandoned before
-it shipped; the journal comes out instead, in the reopened
-[82a](../upcoming/82a-what-eight-thousand-releases-break.md).
+it shipped; the journal comes out instead, in [82a — Undo goes](82a-undo-goes.md).
 
 ## `library://changed` is a re-query per release
 

@@ -45,10 +45,8 @@
 - **The file is the source of truth.** Rows are re-read after a write, not
   assumed from the edit, and `mtime`/`size` update in the same step so an
   incremental rescan finds nothing to do.
-- **One bad file does not undo the good ones.** A locked file mid-batch is
-  counted and reported; the rest are written, and failures are not journalled.
-- **Undo is one level and is not itself undoable.** A snapshot restores every
-  field, because an edit that *added* a value has to be cleared.
+- **One bad file does not cost the good ones.** A locked file mid-batch is
+  counted and reported; the rest are written.
 - **A destructive action names the cost that is easy to miss**, and Cancel takes
   focus, so a reflex Enter destroys nothing.
 - **Changing source resets the view.** Opening a playlist clears the search and

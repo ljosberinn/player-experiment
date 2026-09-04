@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
-import { canUndoTagEdit, onTagWriteProgress, tracksByIds, undoTagEdit, writeTags } from "../../ipc";
+import { onTagWriteProgress, tracksByIds, writeTags } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { useStatusStore } from "../shell/statusStore";
 import { useEditorStore } from "./store";
@@ -9,8 +9,6 @@ vi.mock("../../ipc", () => ({
   onTagWriteProgress: vi.fn(async () => () => {}),
   tracksByIds: vi.fn(),
   writeTags: vi.fn(),
-  undoTagEdit: vi.fn(),
-  canUndoTagEdit: vi.fn(),
   countTracks: vi.fn(async () => 0),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(async () => []),
@@ -68,7 +66,6 @@ beforeEach(() => {
   });
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
   useStatusStore.setState({ message: null, notice: null });
-  vi.mocked(canUndoTagEdit).mockResolvedValue(false);
 });
 
 describe("editor store", () => {
@@ -106,29 +103,6 @@ describe("editor store", () => {
 
     expect(useEditorStore.getState().progress).toBeNull();
     expect(useEditorStore.getState().tracks).not.toBeNull();
-  });
-
-  it("marks an undo as running before it knows how big it is", async () => {
-    let finish:
-      | ((summary: { written: number; failed: number; errors: string[] }) => void)
-      | undefined;
-    vi.mocked(undoTagEdit).mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-
-    const undoing = useEditorStore.getState().undo();
-
-    // A total of zero, because only the backend knows how many rows the last
-    // batch held; the readout says "Reverting" until the first event.
-    expect(useEditorStore.getState().progress).toEqual({ done: 0, total: 0 });
-
-    finish?.({ written: 1, failed: 0, errors: [] });
-    await undoing;
-
-    expect(useEditorStore.getState().progress).toBeNull();
   });
 
   it("records progress from tag write events", async () => {
@@ -216,36 +190,5 @@ describe("editor store", () => {
     await useEditorStore.getState().save(edit);
 
     expect(writeTags).not.toHaveBeenCalled();
-  });
-
-  it("undoes, and the re-read comes from the event like any other write", async () => {
-    vi.mocked(undoTagEdit).mockResolvedValue({ written: 2, failed: 0, errors: [] });
-    const before = useLibraryStore.getState().queryToken;
-
-    await useEditorStore.getState().undo();
-
-    expect(useStatusStore.getState().notice).toBe("Reverted 2 songs.");
-    expect(useLibraryStore.getState().queryToken).toBe(before);
-  });
-
-  it("surfaces having nothing to undo", async () => {
-    vi.mocked(undoTagEdit).mockRejectedValue("There is nothing to undo.");
-
-    await useEditorStore.getState().undo();
-
-    expect(useStatusStore.getState().message).toContain("nothing to undo");
-  });
-
-  it("tracks whether an undo is available", async () => {
-    vi.mocked(canUndoTagEdit).mockResolvedValue(true);
-    await useEditorStore.getState().refreshUndo();
-    expect(useEditorStore.getState().canUndo).toBe(true);
-
-    // A failure here leaves the control disabled rather than shouting: the
-    // worst case is a button you cannot press, not a lost edit.
-    vi.mocked(canUndoTagEdit).mockRejectedValue("db is locked");
-    await useEditorStore.getState().refreshUndo();
-    expect(useEditorStore.getState().canUndo).toBe(false);
-    expect(useStatusStore.getState().message).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Track, WriteProgress } from "../../ipc";
+import type { WriteProgress } from "../../ipc";
 import { onExportProgress, onTagWriteProgress } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { useExportStore } from "../export/store";
@@ -12,8 +12,6 @@ vi.mock("../../ipc", () => ({
   onTagWriteProgress: vi.fn(),
   tracksByIds: vi.fn(),
   writeTags: vi.fn(),
-  undoTagEdit: vi.fn(),
-  canUndoTagEdit: vi.fn(async () => false),
   countTracks: vi.fn(async () => 0),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0 })),
   queryTracks: vi.fn(async () => []),
@@ -28,30 +26,6 @@ let emitExport: ((progress: WriteProgress) => void) | undefined;
 let emitTags: ((progress: WriteProgress) => void) | undefined;
 const stopExport = vi.fn();
 const stopTags = vi.fn();
-
-function track(id: number): Track {
-  return {
-    id,
-    path: `/m/${id}.mp3`,
-    duration_ms: 1000,
-    title: `Track ${id}`,
-    artist: null,
-    album: null,
-    album_artist: null,
-    genre: null,
-    year: null,
-    track_no: null,
-    disc_no: null,
-    comment: null,
-    bitrate: null,
-    sample_rate: null,
-    cover_hash: null,
-    added_at: 0,
-    play_count: 0,
-    last_played_at: null,
-    missing_since: null,
-  };
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -108,28 +82,16 @@ describe("TaskProgress", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Exporting…");
   });
 
-  it("reports a tag undo, which has no dialog to report in", async () => {
+  it("feeds tag progress to the editor store without drawing a line of its own", async () => {
     await mounted();
 
     act(() => {
       emitTags?.({ done: 3, total: 12 });
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      `Reverting ${(3).toLocaleString()} of ${(12).toLocaleString()}`,
-    );
-  });
-
-  it("leaves a tag save to the dialog it is already showing in", async () => {
-    await mounted();
-
-    act(() => {
-      // An open editor means this write is a save, and the modal in front of
-      // this line is where the user is looking.
-      useEditorStore.setState({ tracks: [track(1)] });
-      emitTags?.({ done: 3, total: 12 });
-    });
-
+    // Every sender on `tags://progress` reports in a dialog that is already on
+    // screen, so this owns the subscription and draws nothing from it.
+    expect(useEditorStore.getState().progress).toEqual({ done: 3, total: 12 });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 

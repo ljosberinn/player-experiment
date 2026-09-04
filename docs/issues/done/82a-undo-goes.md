@@ -1,11 +1,11 @@
-# 82a — What eight thousand releases break
+# 82a — Undo goes
 
-A feature [82b](82b-the-unattended-lookup-pass.md) would make absurd, invisible
+A feature [82b](../upcoming/82b-the-unattended-lookup-pass.md) would make absurd, invisible
 at the ten releases a hand-driven lookup does. Independent of the pass, so it
 lands first and alone.
 
 This phase's other half — coalescing `library://changed` on the emit side — has
-shipped, in [82a](../done/82a-what-eight-thousand-releases-break.md). Bounding
+shipped, in [82a](82a-what-eight-thousand-releases-break.md). Bounding
 the journal was tried on that branch and reverted.
 
 ## Undo goes
@@ -24,7 +24,7 @@ have shipped.** It is one level, it is not itself undoable, and it stopped
 restoring artwork the moment `covers` became a 500px re-encode — an edit that
 replaced or removed a picture has been silently untakeable-back for phases. What
 protects the user from a bad automatic write is 82b's threshold and
-[82c](82c-the-review-queue-and-progress.md)'s review queue, not a journal that
+[82c](../upcoming/82c-the-review-queue-and-progress.md)'s review queue, not a journal that
 cannot hold the pass anyway.
 
 So the whole thing comes out, not its growth.
@@ -57,8 +57,8 @@ table. Three consequences, all accepted at pre-v1:
   path in the app.
 - Every migration number in prose moves: the table in
   [data-model.md](../../knowledge/data-model.md), the index
-  [87](87-one-release-one-tile.md) says shipped in migration 9,
-  [83a](83a-where-a-file-goes.md)'s reference to migration 9's two MBIDs, and
+  [87](../upcoming/87-one-release-one-tile.md) says shipped in migration 9,
+  [83a](../upcoming/83a-where-a-file-goes.md)'s reference to migration 9's two MBIDs, and
   the comments in `db/covers.rs` and `scan/mod.rs` that name one.
 
 **Edit with nothing selected is left holding only Settings…** — whether the menu

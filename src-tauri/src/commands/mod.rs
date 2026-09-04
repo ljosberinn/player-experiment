@@ -85,9 +85,9 @@ fn op(app: &tauri::AppHandle, name: &'static str) -> Op {
 
 /// Runs `work` off the async runtime, naming the task if the thread dies.
 ///
-/// Four commands do enough file I/O to freeze the window on the IPC thread -
-/// scanning, a tag write, its undo, and an export - and each one needs the
-/// same three lines around `spawn_blocking`. `what` appears only in the join
+/// Three commands do enough file I/O to freeze the window on the IPC thread -
+/// scanning, a tag write and an export - and each one needs the same three
+/// lines around `spawn_blocking`. `what` appears only in the join
 /// failure, which is a panic in the worker: without it every such failure
 /// reads the same and says nothing about which one it was.
 async fn blocking<T: Send + 'static>(
@@ -527,16 +527,10 @@ pub async fn write_tags(
             &app,
             op,
             || {
-                tags::write::apply_to_each(
-                    &mut conn,
-                    &track_ids,
-                    &edit,
-                    crate::now_seconds(),
-                    |p| {
-                        // A dropped progress event is not worth failing a write over.
-                        let _ = app.emit(TAG_PROGRESS, &p);
-                    },
-                )
+                tags::write::apply_to_each(&mut conn, &track_ids, &edit, |p| {
+                    // A dropped progress event is not worth failing a write over.
+                    let _ = app.emit(TAG_PROGRESS, &p);
+                })
             },
             written_fields,
         )
@@ -544,7 +538,7 @@ pub async fn write_tags(
     .await
 }
 
-/// What a tag write or its undo managed, for the log.
+/// What a tag write managed, for the log.
 ///
 /// `failed` is always written, zero included: "17 written" and "17 written, 3
 /// refused" are different outcomes and the line has to distinguish them.
@@ -662,39 +656,6 @@ fn stage_cover(dir: &std::path::Path, bytes: &[u8]) -> AppResult<String> {
 fn staged_cover_path(dir: &std::path::Path, mime: &str) -> PathBuf {
     let extension = if mime == "image/png" { "png" } else { "jpg" };
     dir.join(format!("{STAGED_COVER_STEM}.{extension}"))
-}
-
-/// Reverts the last edit, on a worker thread for the same reason.
-#[tauri::command]
-pub async fn undo_tag_edit(app: tauri::AppHandle) -> AppResult<TagWriteSummary> {
-    blocking("tag undo", move || {
-        let db = app.state::<Db>();
-        // Behind the same lock as a scan: it rewrites the files a pass reads
-        // its (mtime, size) from, and until the lock existed nothing stopped
-        // the two from running over each other.
-        let lock = app.state::<ScanLock>();
-        let _guard = lock.acquire();
-        let mut conn = db.conn()?;
-        announcing_with(
-            &app,
-            op(&app, "tags.undo"),
-            || {
-                tags::write::undo_last(&mut conn, |p| {
-                    let _ = app.emit(TAG_PROGRESS, &p);
-                })
-            },
-            written_fields,
-        )
-    })
-    .await
-}
-
-#[tauri::command]
-pub fn can_undo_tag_edit(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<bool> {
-    log.op("tags.can_undo").quiet().run(|| {
-        let conn = db.conn()?;
-        tags::write::can_undo(&conn)
-    })
 }
 
 /// The releases a selection covers, in the order they are worked through.
@@ -823,8 +784,8 @@ pub async fn tagsource_fetch(
 
 /// Writes a confirmed lookup: the mapped fields, and the release's identity.
 ///
-/// One batch, so undo takes the whole release back in one step - which is the
-/// entire reason [`tags::write::apply`] takes an edit per track.
+/// One batch of per-track edits, which is what [`tags::write::apply`] takes and
+/// the reason it does: a tracklist differs per file.
 ///
 /// The identifiers are the exception to the selection: every file of the
 /// release gets them, selected or not. Otherwise three of twelve tracks would
@@ -842,8 +803,8 @@ pub async fn tagsource_apply(
 
     blocking("release apply", move || {
         let db = app.state::<Db>();
-        // Behind the same lock as a scan and an undo: it rewrites the files a
-        // pass reads its (mtime, size) from.
+        // Behind the same lock as a scan: it rewrites the files a pass reads
+        // its (mtime, size) from.
         let lock = app.state::<ScanLock>();
         let _guard = lock.acquire();
         let mut conn = db.conn()?;
@@ -856,7 +817,7 @@ pub async fn tagsource_apply(
             &app,
             op,
             || {
-                tags::write::apply(&mut conn, &edits, crate::now_seconds(), |p| {
+                tags::write::apply(&mut conn, &edits, |p| {
                     let _ = app.emit(TAG_PROGRESS, &p);
                 })
             },

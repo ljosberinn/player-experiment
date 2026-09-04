@@ -467,7 +467,7 @@ export function tagsourceFetch(
 }
 
 /**
- * Writes a confirmed lookup as one undoable batch.
+ * Writes a confirmed lookup as one batch.
  *
  * `identity` is written to every file of the release, selected or not - it is
  * the one thing a lookup writes outside what was picked.
@@ -477,14 +477,6 @@ export function tagsourceApply(
   identity: ReleaseIdentity,
 ): Promise<TagWriteSummary> {
   return invoke<TagWriteSummary>("tagsource_apply", { edits, identity });
-}
-
-export function undoTagEdit(): Promise<TagWriteSummary> {
-  return invoke<TagWriteSummary>("undo_tag_edit");
-}
-
-export function canUndoTagEdit(): Promise<boolean> {
-  return invoke<boolean>("can_undo_tag_edit");
 }
 
 /**
@@ -583,10 +575,10 @@ export function onScanProgress(handler: (progress: ScanProgress) => void): Promi
 }
 
 /**
- * How far a tag write or its undo has got.
+ * How far a tag write has got.
  *
- * One channel for both: they write the same files the same way, and a dialog
- * watching one has no reason to distinguish.
+ * One channel for every writer: they write the same files the same way, and a
+ * dialog watching one has no reason to distinguish.
  */
 export function onTagWriteProgress(
   handler: (progress: WriteProgress) => void,
@@ -603,8 +595,8 @@ export function onExportProgress(handler: (progress: WriteProgress) => void): Pr
  * How long a subscriber waits after the library changes before reloading.
  *
  * A scan announces itself once, but a burst is ordinary - a tag write over a
- * selection, an undo, and a scan finishing can land together - and each
- * reload is a count, a page and a `list_playlists` that recounts every
+ * selection and a scan finishing can land together - and each reload is a
+ * count, a page and a `list_playlists` that recounts every
  * playlist, smart ones by re-running their compiled filter. A quarter of a
  * second is under the threshold at which a number feels stale and well above
  * the rate a burst arrives at.
@@ -615,7 +607,7 @@ export const INVALIDATE_DEBOUNCE_MS = 250;
  * The library is no longer what the view thinks it is.
  *
  * A bare ping, no payload: every write that commits emits it - a scan, a tag
- * write and its undo, removing missing rows, and each of the eight playlist
+ * write, removing missing rows, and each of the eight playlist
  * commands - and a subscriber reloads whatever it holds rather than being told
  * what changed. Debounce it by `INVALIDATE_DEBOUNCE_MS`; both subscribers do.
  *

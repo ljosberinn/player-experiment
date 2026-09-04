@@ -79,8 +79,6 @@ vi.mock("./ipc", () => ({
   loadWindowGeometry: vi.fn(async () => null),
   tracksByIds: vi.fn(),
   writeTags: vi.fn(),
-  undoTagEdit: vi.fn(),
-  canUndoTagEdit: vi.fn(async () => false),
   listPlaylists: vi.fn(async () => []),
   createPlaylist: vi.fn(),
   createSmartPlaylist: vi.fn(),

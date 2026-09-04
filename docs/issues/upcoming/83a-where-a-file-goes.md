@@ -38,7 +38,7 @@ phases agree on what a release is.
 ## The release type has nowhere to come from yet
 
 `Album` in the example is MusicBrainz's release-group primary type, and nothing
-in this codebase carries it. It arrives the same way migration 9's two MBIDs
+in this codebase carries it. It arrives the same way migration 8's two MBIDs
 did, and for the same reason — the file is the source of truth, so a library
 Picard already tagged is placed correctly before any lookup runs at all:
 

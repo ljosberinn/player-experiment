@@ -1,10 +1,8 @@
-//! Writing tags back to disk, and undoing it.
+//! Writing tags back to disk.
 //!
-//! Two rules shape everything here. A file is never edited in place - tags are
+//! One rule shapes everything here: a file is never edited in place - tags are
 //! written to a copy that then replaces the original, so a crash or a full
-//! disk cannot leave a half-written mp3 where music used to be. And nothing is
-//! written without first recording what was there, so a bulk edit over 500
-//! files is one undoable step rather than 500 irreversible ones.
+//! disk cannot leave a half-written mp3 where music used to be.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,7 +16,6 @@ use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::probe::Probe;
 use lofty::tag::{Tag, TagType};
 use rusqlite::{Connection, OptionalExtension};
-use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 use crate::model::{CoverEdit, TagEdit, TagWriteSummary, WriteProgress};
@@ -55,33 +52,6 @@ const MUSICBRAINZ_TXXX: [(ItemKey, &str); 2] = [
 /// to move a readout by a pixel. `scan` chunks at 200 for the same reason and
 /// is doing much cheaper work per item.
 const PROGRESS_INTERVAL: usize = 25;
-
-/// Everything an edit can change, as it was before the edit.
-///
-/// Stored as JSON in `tag_undo`. `cover_hash` is written but no longer read:
-/// undo stopped restoring artwork once `covers` began holding a re-encode
-/// rather than the file's own bytes. It stays in the snapshot because it costs
-/// a hash to record and is the only trace of what a file's artwork was.
-///
-/// `serde(default)` because the journal outlives this struct: a row written by
-/// an older build is missing whatever fields were added since, and it has to
-/// stay undoable rather than becoming an unreadable record.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct TagSnapshot {
-    pub title: Option<String>,
-    pub artist: Option<String>,
-    pub album: Option<String>,
-    pub album_artist: Option<String>,
-    pub genre: Option<String>,
-    pub comment: Option<String>,
-    pub year: Option<i64>,
-    pub track_no: Option<i64>,
-    pub disc_no: Option<i64>,
-    pub release_mbid: Option<String>,
-    pub release_group_mbid: Option<String>,
-    pub cover_hash: Option<String>,
-}
 
 /// Which fields an edit touches, resolved from the request's strings.
 ///
@@ -210,25 +180,6 @@ fn read_cover(path: &str) -> AppResult<Cover> {
         hash: hash_bytes(&bytes),
         mime: mime.to_owned(),
         bytes,
-    })
-}
-
-/// The tags a file carries right now, for the undo journal.
-fn snapshot(path: &Path) -> AppResult<TagSnapshot> {
-    let tags = crate::tags::read(path)?;
-    Ok(TagSnapshot {
-        title: tags.title,
-        artist: tags.artist,
-        album: tags.album,
-        album_artist: tags.album_artist,
-        genre: tags.genre,
-        comment: tags.comment,
-        year: tags.year,
-        track_no: tags.track_no,
-        disc_no: tags.disc_no,
-        release_mbid: tags.release_mbid,
-        release_group_mbid: tags.release_group_mbid,
-        cover_hash: tags.cover.map(|cover| cover.hash),
     })
 }
 
@@ -450,28 +401,25 @@ pub fn apply_to_each(
     conn: &mut Connection,
     track_ids: &[i64],
     edit: &TagEdit,
-    now: i64,
     on_progress: impl FnMut(WriteProgress),
 ) -> AppResult<TagWriteSummary> {
     let edits: Vec<(i64, TagEdit)> = track_ids.iter().map(|&id| (id, edit.clone())).collect();
-    apply(conn, &edits, now, on_progress)
+    apply(conn, &edits, on_progress)
 }
 
-/// Applies one edit per track, as a single undoable batch.
+/// Applies one edit per track, in one batch.
 ///
 /// Per track rather than one edit over many files, because a tracklist is the
 /// case that cannot be spelled the other way: title, track number and disc
-/// number all differ per file, and applying them file by file would leave a
-/// release restorable only one track at a time.
+/// number all differ per file.
 ///
 /// Files are written first and the database second, because the file is what
 /// survives this application. A file that cannot be written is reported and
 /// skipped rather than failing the batch - a locked file in the middle of 500
-/// should not undo the other 499.
+/// should not stop the other 499.
 pub fn apply(
     conn: &mut Connection,
     edits: &[(i64, TagEdit)],
-    now: i64,
     mut on_progress: impl FnMut(WriteProgress),
 ) -> AppResult<TagWriteSummary> {
     // Every edit is resolved before any file is opened, so an unparseable
@@ -485,13 +433,8 @@ pub fn apply(
     // Before the first file, so a dialog showing this has a fraction to draw
     // rather than a blank while the first write is in flight.
     on_progress(WriteProgress { done: 0, total });
-    // A batch id groups one user action, so undo restores all of it at once.
-    let batch_id = now
-        .checked_mul(1000)
-        .unwrap_or(now)
-        .saturating_add(conn.query_row("SELECT count(*) FROM tag_undo", [], |row| row.get(0))?);
 
-    let mut written: Vec<(i64, PathBuf, TagSnapshot)> = Vec::new();
+    let mut written: Vec<(i64, PathBuf)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
 
     for (index, (track_id, resolved)) in resolved.iter().enumerate() {
@@ -503,10 +446,8 @@ pub fn apply(
             .optional()?;
 
         if let Some(path) = path.map(PathBuf::from) {
-            // Snapshot before writing, so undo has something to restore even
-            // if the write half-succeeds.
-            match snapshot(&path).and_then(|before| write_file(&path, resolved).map(|()| before)) {
-                Ok(before) => written.push((track_id, path, before)),
+            match write_file(&path, resolved) {
+                Ok(()) => written.push((track_id, path)),
                 Err(error) => failures.push(error.to_string()),
             }
         }
@@ -524,19 +465,8 @@ pub fn apply(
     on_progress(WriteProgress { done: total, total });
 
     let tx = conn.transaction()?;
-    for (track_id, path, before) in &written {
+    for (track_id, path) in &written {
         sync_row(&tx, *track_id, path)?;
-        tx.execute(
-            "INSERT INTO tag_undo (batch_id, track_id, prev_tags_json, applied_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![
-                batch_id,
-                track_id,
-                serde_json::to_string(before)
-                    .map_err(|e| AppError::Internal(format!("could not record undo: {e}")))?,
-                now
-            ],
-        )?;
     }
     // In the same transaction as the rows it is derived from, so a suggestion
     // list can never describe a library state that was rolled back.
@@ -548,130 +478,6 @@ pub fn apply(
         failed: failures.len() as u32,
         errors: failures,
     })
-}
-
-/// Reverts the most recent edit batch.
-///
-/// Undo is itself an edit - it writes files - but it is deliberately *not*
-/// journalled: a redo stack invites the "undo, edit, undo" confusion, and one
-/// level of certainty is worth more here than two levels of guessing.
-pub fn undo_last(
-    conn: &mut Connection,
-    mut on_progress: impl FnMut(WriteProgress),
-) -> AppResult<TagWriteSummary> {
-    let batch_id: Option<i64> = conn
-        .query_row("SELECT max(batch_id) FROM tag_undo", [], |row| row.get(0))
-        .optional()?
-        .flatten();
-    let Some(batch_id) = batch_id else {
-        return Err(AppError::Internal("There is nothing to undo.".to_owned()));
-    };
-
-    let mut stmt = conn.prepare(
-        "SELECT tag_undo.track_id, tracks.path, tag_undo.prev_tags_json
-         FROM tag_undo JOIN tracks ON tracks.id = tag_undo.track_id
-         WHERE tag_undo.batch_id = ?1",
-    )?;
-    let entries: Vec<(i64, String, String)> = stmt
-        .query_map([batch_id], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(stmt);
-
-    let mut restored: Vec<(i64, PathBuf)> = Vec::new();
-    let mut failures: Vec<String> = Vec::new();
-
-    let total = entries.len() as u32;
-    on_progress(WriteProgress { done: 0, total });
-
-    for (index, (track_id, path, json)) in entries.into_iter().enumerate() {
-        let path = PathBuf::from(path);
-        let before: TagSnapshot = match serde_json::from_str(&json) {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                failures.push(format!(
-                    "{}: unreadable undo record ({error})",
-                    path.display()
-                ));
-                continue;
-            }
-        };
-
-        let resolved = match to_resolved(&before) {
-            Ok(resolved) => resolved,
-            Err(error) => {
-                failures.push(error.to_string());
-                continue;
-            }
-        };
-
-        match write_file(&path, &resolved) {
-            Ok(()) => restored.push((track_id, path)),
-            Err(error) => failures.push(error.to_string()),
-        }
-
-        let done = index as u32 + 1;
-        if (done as usize).is_multiple_of(PROGRESS_INTERVAL) {
-            on_progress(WriteProgress { done, total });
-        }
-    }
-    on_progress(WriteProgress { done: total, total });
-
-    let tx = conn.transaction()?;
-    for (track_id, path) in &restored {
-        sync_row(&tx, *track_id, path)?;
-    }
-    // The batch goes whether or not every file came back: leaving it would
-    // make the next undo try the same failures again forever.
-    tx.execute("DELETE FROM tag_undo WHERE batch_id = ?1", [batch_id])?;
-    // An undo changes tags, so it changes the vocabulary - and this is the
-    // direction that matters most: a typo corrected and then un-corrected has
-    // to come back as a suggestion, or the list quietly disagrees with disk.
-    crate::db::tag_values::rebuild(&tx)?;
-    tx.commit()?;
-
-    Ok(TagWriteSummary {
-        written: restored.len() as u32,
-        failed: failures.len() as u32,
-        errors: failures,
-    })
-}
-
-/// Turns a snapshot into an edit that sets every field to what it was.
-///
-/// Undo has to clear a field the edit *added*, so every text field is `Some`
-/// here - including the ones that were empty before.
-///
-/// **Artwork is the exception, and no longer comes back.** `covers` holds a
-/// 500px JPEG re-encode of what the file carried rather than the bytes
-/// themselves, so restoring from it would bake a thumbnail into the mp3 -
-/// worse than not undoing at all. `cover` is therefore `None`, which means
-/// leave the file's picture exactly as the edit left it, and an edit that
-/// replaced or removed artwork is no longer undoable. Recorded in
-/// `docs/knowledge/limitations.md`; it is also what frees `covers` from having
-/// to keep every cover it has ever seen.
-fn to_resolved(before: &TagSnapshot) -> AppResult<Resolved> {
-    Ok(Resolved {
-        title: Some(before.title.clone()),
-        artist: Some(before.artist.clone()),
-        album: Some(before.album.clone()),
-        album_artist: Some(before.album_artist.clone()),
-        genre: Some(before.genre.clone()),
-        comment: Some(before.comment.clone()),
-        year: Some(before.year),
-        track_no: Some(before.track_no),
-        disc_no: Some(before.disc_no),
-        release_mbid: Some(before.release_mbid.clone()),
-        release_group_mbid: Some(before.release_group_mbid.clone()),
-        cover: None,
-    })
-}
-
-/// Whether there is a batch to undo, for enabling the menu item.
-pub fn can_undo(conn: &Connection) -> AppResult<bool> {
-    let count: i64 = conn.query_row("SELECT count(*) FROM tag_undo", [], |row| row.get(0))?;
-    Ok(count > 0)
 }
 
 #[cfg(test)]
@@ -751,41 +557,5 @@ mod tests {
     #[test]
     fn a_missing_cover_file_is_reported_rather_than_panicking() {
         assert!(read_cover("C:\\nowhere\\missing.jpg").is_err());
-    }
-
-    #[test]
-    fn an_undo_record_written_before_a_field_existed_is_still_readable() {
-        // The journal outlives this struct. A snapshot from a build that had
-        // no MBID columns has to restore the fields it does carry rather than
-        // failing the whole batch as an unreadable record.
-        let older = r#"{"title":"Maki","artist":null,"album":null,"album_artist":null,
-                        "genre":"Post Shoegaze","comment":null,"year":2012,"track_no":1,
-                        "disc_no":null,"cover_hash":null}"#;
-
-        let before: TagSnapshot = serde_json::from_str(older).expect("older record");
-
-        assert_eq!(before.title.as_deref(), Some("Maki"));
-        assert_eq!(before.release_mbid, None);
-    }
-
-    #[test]
-    fn an_undo_restores_every_tag_and_leaves_the_artwork_on_disk_alone() {
-        // The hash names artwork that is still in `covers`, which is exactly
-        // the case that used to be restored from.
-        let before = TagSnapshot {
-            title: Some("Maki".to_owned()),
-            cover_hash: Some("a".to_owned()),
-            ..Default::default()
-        };
-
-        let resolved = to_resolved(&before).unwrap();
-
-        assert_eq!(resolved.title, Some(Some("Maki".to_owned())));
-        // Absent means leave alone. What the `covers` table holds is a 500px
-        // re-encode, so writing it back would bake a thumbnail into the file.
-        assert!(
-            resolved.cover.is_none(),
-            "undo would write stored artwork into the mp3"
-        );
     }
 }

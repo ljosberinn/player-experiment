@@ -4,13 +4,12 @@ import { exportSelectionLabel, menus } from "./menus";
 
 const noop = () => {};
 
-/** A menu bar with nothing selected, no missing files and nothing to undo. */
+/** A menu bar with nothing selected and no missing files. */
 function build(overrides: Partial<Parameters<typeof menus>[0]> = {}) {
   return menus({
     selectionCount: 0,
     missingCount: 0,
     removedCount: 0,
-    canUndoTags: false,
     hasExportTarget: false,
     exportSelectionLabel: "Export Selection…",
     lastfmConfigured: false,
@@ -21,7 +20,6 @@ function build(overrides: Partial<Parameters<typeof menus>[0]> = {}) {
     onRemoveFromLibrary: noop,
     onRemoveMissing: noop,
     onForgetRemoved: noop,
-    onUndoTags: noop,
     onSettings: noop,
     onExportAll: noop,
     onExportSelection: noop,
@@ -164,25 +162,13 @@ describe("the menu bar", () => {
         "Play",
         "Edit 2 Songs",
         "---",
-        "Undo Tag Edit",
-        "---",
         "Settings…",
       ]);
     });
 
-    it("is Undo and Settings alone when nothing is selected", () => {
+    it("is Settings alone when nothing is selected", () => {
       // And no leading separator: a menu that opens with a rule looks broken.
-      expect(labels(menu("Edit").items)).toEqual(["Undo Tag Edit", "---", "Settings…"]);
-    });
-
-    it("disables Undo until there is an edit to undo", () => {
-      const undoItem = (canUndoTags: boolean) =>
-        menu("Edit", { canUndoTags }).items.find(
-          (item) => item.kind !== "separator" && item.label === "Undo Tag Edit",
-        );
-
-      expect(undoItem(false)).toMatchObject({ disabled: true });
-      expect(undoItem(true)).toMatchObject({ disabled: false });
+      expect(labels(menu("Edit").items)).toEqual(["Settings…"]);
     });
   });
 

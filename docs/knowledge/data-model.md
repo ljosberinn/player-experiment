@@ -8,13 +8,18 @@ edit a shipped one.
 | --- | --- |
 | 1 | `covers`, `tracks`, `playlists`, `playlist_tracks`, `settings`, `watch_folders` |
 | 2 | `tracks_fts` (FTS5 external-content over title/artist/album/album_artist/genre/comment, kept current by triggers) |
-| 3 | `tag_undo` — one row per track per edit, grouped by `batch_id` |
-| 4 | `tracks.missing_since` + a **partial** index |
-| 5 | `tag_values` — the distinct values a library uses, for autocompletion |
-| 6 | `covers.palette` — the dominant colours of a cover |
-| 7 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
-| 8 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
-| 9 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
+| 3 | `tracks.missing_since` + a **partial** index |
+| 4 | `tag_values` — the distinct values a library uses, for autocompletion |
+| 5 | `covers.palette` — the dominant colours of a cover |
+| 6 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
+| 7 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
+| 8 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
+
+**The rule has been broken once, before v1.** The tag-edit undo journal was
+migration 3, and 82a deleted the entry rather than adding one that drops the
+table: the numbering above shifted under every database in existence, so
+`migrate` refuses them all and the fix is to delete `library.sqlite3` and
+rescan. Only a pre-v1 schema can be treated that way; the rule stands.
 
 ## One query, narrowed
 
@@ -63,7 +68,7 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   55,781 decodes on a first scan rather than 5,799, inside the serial write
   transactions.
 - **Normalizing an existing library is a thread, not a migration** — the
-  reasoning migration 6 already settled. `covers.normalized` marks it done in
+  reasoning migration 5 already settled. `covers.normalized` marks it done in
   the shape of `playlists.seeded`, and `covers.normalizedThrough` holds the
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
