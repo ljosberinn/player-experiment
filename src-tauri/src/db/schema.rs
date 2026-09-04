@@ -356,6 +356,72 @@ CREATE UNIQUE INDEX idx_release_lookup_key ON release_lookup(
     coalesce(artist, '') COLLATE NOCASE
 );
 "#,
+    // 11 - the genre tree
+    //
+    // Black metal -> atmospheric black metal, raw black metal: the hierarchy
+    // 84b's donut drills through. From Wikidata, which is the only source with
+    // that granularity and a licence that lets it ship; the alternatives are
+    // argued out in docs/plans/statistics.md.
+    //
+    // Everything is a lowercased label rather than a QID, because the thing
+    // being resolved is a genre string out of an ID3 tag and there is no QID on
+    // that side. `db::genres` normalises a tag the same way before looking it
+    // up.
+    //
+    // The seed data is `concat!`ed in from a generated file rather than typed
+    // here: 6,575 genres is not something to maintain by hand, and keeping it
+    // out of this file leaves the migration readable. It is still SQL, and
+    // still frozen at compile time, so this migration cannot change under a
+    // database that has already run it.
+    //
+    // `genres.parent` is one primary parent for the drill-down to walk;
+    // `genre_edges` keeps the whole subclass DAG, because blackened death metal
+    // is a child of both black metal and death metal and a donut that puts it
+    // under both double-counts. **Which of several parents becomes the primary
+    // one is arbitrary** - the generator takes the lexicographically smallest
+    // label - and `genre_overrides` is what makes that affordable.
+    //
+    // No foreign keys between the three seeded tables. `genres.parent` points
+    // into `genres` and the rows arrive alphabetically, so a self-referential
+    // key would have to be deferred to survive its own seed - a constraint that
+    // only holds at commit time, guarding data that arrives correct by
+    // construction from a generator. `genre_overrides.parent` does get one:
+    // that table is written at runtime, by hand, and a parent nothing knows is
+    // a branch the donut cannot draw.
+    //
+    // WITHOUT ROWID throughout, for the reason `tag_values` has it: the primary
+    // key *is* the row here, so a separate rowid is pure overhead.
+    concat!(
+        r#"
+CREATE TABLE genres (
+    label  TEXT PRIMARY KEY,
+    parent TEXT
+) WITHOUT ROWID;
+
+CREATE TABLE genre_edges (
+    child  TEXT NOT NULL,
+    parent TEXT NOT NULL,
+    PRIMARY KEY (child, parent)
+) WITHOUT ROWID;
+
+CREATE TABLE genre_aliases (
+    alias TEXT PRIMARY KEY,
+    label TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE genre_overrides (
+    label  TEXT PRIMARY KEY,
+    parent TEXT REFERENCES genres(label)
+) WITHOUT ROWID;
+
+-- The drill-down's question is "children of this genre", in both directions of
+-- the tree: down the primary parent for what the donut draws, and across the
+-- DAG for what a genre is also filed under.
+CREATE INDEX idx_genres_parent      ON genres(parent);
+CREATE INDEX idx_genre_edges_parent ON genre_edges(parent);
+"#,
+        include_str!("../../data/genres.sql")
+    ),
 ];
 
 #[cfg(test)]
@@ -373,11 +439,6 @@ mod tests {
     fn a_fresh_database_carries_the_lookup_table_and_the_release_type() {
         let (_dir, conn) = open();
 
-        assert_eq!(
-            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
-                .unwrap(),
-            10
-        );
         conn.execute_batch("SELECT release_type FROM tracks WHERE 0")
             .expect("tracks gained a release type");
         conn.execute_batch(

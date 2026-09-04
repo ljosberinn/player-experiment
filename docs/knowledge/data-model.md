@@ -16,6 +16,7 @@ edit a shipped one.
 | 8 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
 | 9 | `release_lookup` — what the unattended lookup pass has been through — plus `tracks.release_type`, MusicBrainz's release-group primary type, read off the file the way the two ids above are |
 | 10 | a fourth `release_lookup.status`, `aside` — a queued release the user has said to leave alone. A whole-table rebuild, because the vocabulary is a CHECK constraint and SQLite cannot widen one in place |
+| 11 | `genres`, `genre_edges`, `genre_aliases`, `genre_overrides` — the genre hierarchy, seeded from a generated data file `concat!`ed into the migration |
 
 **The rule has been broken once, before v1.** The tag-edit undo journal was
 migration 3, and 82a deleted the entry rather than adding one that drops the
@@ -203,3 +204,46 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
   instead, sorting the open playlist would change which songs it holds and a
   search inside it would search the whole library.
 - The backend validates every filter by compiling it before storing.
+
+## The genre tree
+
+An ID3 genre frame is free text, and the drill-down 84b wants is black metal →
+atmospheric black metal, raw black metal. Migration 11 carries the hierarchy
+that makes that possible, and `db::genres` turns one tag string into a genre and
+a parent.
+
+| Table | Holds |
+| --- | --- |
+| `genres` | every genre label, with **one** primary parent |
+| `genre_edges` | the whole `subclass of` DAG |
+| `genre_aliases` | alias → label, so "DSBM" reaches depressive black metal |
+| `genre_overrides` | the user's corrections — the only one written at runtime |
+
+- **From Wikidata, and committed.** `scripts/genres.mjs` (`npm run genres`) runs
+  three SPARQL queries and writes `src-tauri/data/genres.sql`, which the
+  migration `concat!`s in. It is CC0, so it ships with no attribution burden,
+  and it is the only source with both the granularity and the licence — the
+  alternatives are argued out in [plans/statistics.md](../plans/statistics.md).
+  **The runtime never touches the network**; offline-first and the CSP both
+  require it. Run the script by hand, not from CI: the file is a snapshot of a
+  wiki other people edit, so there is nothing for a drift check to be right
+  about.
+- **Everything is a lowercased label, never a QID**, because the thing being
+  resolved comes out of a tag and has no QID. `db::genres::normalize` and the
+  script's `normalize` must stay in lockstep — Rust's `to_lowercase`, not
+  SQLite's ASCII-only `lower()`.
+- **Resolution is three layers: Wikidata label or alias → suffix derivation →
+  override.** The suffix layer treats a genre as a child of any shorter genre
+  its name ends with **at a word boundary**, longest match winning, and is
+  reported as `ParentSource::Derived` so 84b can label a guess as a guess.
+- **The primary parent is arbitrary where a genre has several.** Blackened death
+  metal is a child of both black metal and death metal; the generator takes the
+  lexicographically smallest label, `genre_edges` keeps both, and
+  `genre_overrides` is what makes an arbitrary rule affordable.
+- **`genres.parent` is a forest, not a graph.** P279 in the wild is not acyclic
+  and a parent chain that loops is a drill-down that never terminates, so the
+  generator skips any candidate that would close a cycle.
+- **The tree is loaded whole, then resolution is pure.** A panel resolves every
+  distinct genre in the library at once, and the suffix layer needs the entire
+  label set to answer even one string. `tests/perf.rs` budgets both the seed and
+  the load — the seed is paid by every test that opens a database.
