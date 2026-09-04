@@ -110,6 +110,31 @@ subscription, so its count measures `App`, not the real table; the honest
 subject for a selection change is `PlaylistSidebar`, which wants nothing from
 the selection.
 
+### Seeing it, before counting it
+
+`npm run dev:scan` is `tauri dev` with react-scan attached: it outlines every
+component that re-rendered in the running window and names the prop or store
+read that woke it. The two render tests stay the CI guard — react-scan needs a
+real browser and a canvas, and a live overlay asserts nothing — but it is the
+instrument to reach for *before* writing a count, and the one that says which
+prop moved when a count you expected to be zero is not.
+
+It has to be the app rather than a browser tab on the dev server: without
+`window.__TAURI__` the first query throws and nothing renders, so there is
+nothing to outline. That is why the script is a `tauri dev` with a config
+overlay (`src-tauri/tauri.scan.conf.json`) that swaps `beforeDevCommand` for
+`vite --mode scan`, rather than a second Vite script.
+
+The import sits in `main.tsx` behind `import.meta.env.DEV &&
+import.meta.env.VITE_SCAN === "true"`, which the mode file `.env.scan` sets, so
+`npm run dev` and `npm run tauri dev` show no overlay. `DEV` is what guarantees
+the elimination: a build carrying `VITE_SCAN=true` in its environment produces a
+byte-identical bundle to one without.
+
+React Compiler is what makes the overlay honest rather than confusing: a child
+the compiler holds still simply does not light up, and the two components behind
+`"use no memo"` light up because they really did render.
+
 ### React Compiler
 
 Enabled in `vite.config.ts` through `@vitejs/plugin-react`'s own oxc port, over
