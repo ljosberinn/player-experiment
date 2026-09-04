@@ -2,7 +2,7 @@
 //!
 //! The layout as a pure function: a release, one of its tracks, and the root
 //! they are filed under, in - a relative path out. No filesystem, no move, no
-//! setting; [83b](../../../docs/issues/upcoming/83b-moving-one-release.md) does
+//! setting; [83b](../../../docs/issues/done/83b-moving-one-release.md) does
 //! the moving and
 //! [83c](../../../docs/issues/upcoming/83c-turning-the-library-folder-on.md)
 //! turns it on.
@@ -132,6 +132,37 @@ pub fn has_path_budget(root: &Path) -> bool {
         .copied()
         .max_by_key(|extension| utf16_len(extension));
     segment_budget(root, longest) >= SEPARATORS * MIN_SEGMENT
+}
+
+/// The same path with ` (nth)` before the extension, still inside
+/// [`MAX_PATH`].
+///
+/// What [83b](../../../docs/issues/done/83b-moving-one-release.md) names a
+/// collision with: two releases whose tags sanitize to one folder. Here rather
+/// than in the mover because the ceiling is here - a path built to the last
+/// character of its budget would otherwise outgrow it by the length of the
+/// marker, and fail to be created at all.
+pub fn suffixed(path: &Path, nth: u32) -> PathBuf {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let extension = path
+        .extension()
+        .map(|extension| extension.to_string_lossy());
+    let marker = format!(" ({nth})");
+
+    // Everything but the stem: the folders, the separators and the extension,
+    // none of which a collision may cut into.
+    let around = utf16_len(&path.to_string_lossy()) - utf16_len(&stem);
+    // One more than the marker, for the underscore `finish` adds when the cut
+    // it makes lands on a device name.
+    let room = (MAX_PATH - 1).saturating_sub(around + utf16_len(&marker) + 1);
+
+    let mut name = finish(&stem, room);
+    name.push_str(&marker);
+    if let Some(extension) = extension {
+        name.push('.');
+        name.push_str(&extension);
+    }
+    path.with_file_name(name)
 }
 
 /// The artist a track is filed under: `db::query`'s `GROUP_ARTIST`, where
@@ -669,5 +700,42 @@ mod tests {
             "C:\\{}",
             "deep\\".repeat(50)
         ))));
+    }
+
+    #[test]
+    fn a_collision_marker_goes_before_the_extension() {
+        assert_eq!(
+            suffixed(Path::new("C:\\Music\\Elffor\\11 - Kortirion.mp3"), 2)
+                .to_string_lossy()
+                .replace('\\', "/"),
+            "C:/Music/Elffor/11 - Kortirion (2).mp3"
+        );
+    }
+
+    /// The marker is four characters the budget never reserved, so a path built
+    /// to the last of it pays for them out of the stem.
+    #[test]
+    fn a_collision_marker_does_not_push_a_path_over_the_ceiling() {
+        let long = "Looking for Europe The Neofolk Compendium ".repeat(6);
+        let release = Release {
+            album_artist: Some(&long),
+            album: Some(&long),
+            ..release()
+        };
+        let track = TrackFile {
+            title: Some(&long),
+            ..track()
+        };
+        let root = PathBuf::from(format!("C:\\{}", "deep\\".repeat(20)));
+        let full = root.join(relative_path(&root, &release, &track));
+
+        let marked = suffixed(&full, 2);
+
+        assert!(
+            utf16_len(&marked.to_string_lossy()) < MAX_PATH,
+            "{}",
+            marked.display()
+        );
+        assert!(marked.to_string_lossy().ends_with(" (2).mp3"));
     }
 }

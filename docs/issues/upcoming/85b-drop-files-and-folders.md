@@ -23,7 +23,7 @@ and **with it off a file drop is refused and says why**.
 a window in which a row points outside every watch root, and the very next
 `plan` — a timer tick away — marks it missing. So the file is placed by
 [83a](../done/83a-where-a-file-goes.md)'s layout and moved by
-[83b](83b-moving-one-release.md)'s primitive first, and inserted at the target.
+[83b](../done/83b-moving-one-release.md)'s primitive first, and inserted at the target.
 That is the seam 83b has to leave: the file-level move, without the row update
 that a dropped file has no row for yet.
 

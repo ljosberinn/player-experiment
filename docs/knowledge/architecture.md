@@ -25,7 +25,8 @@ src-tauri/src/
               process-wide rate limiter, candidate scoring, the unattended
               pass (one release in `pass`, the thread in `worker`)
   library/    the Library folder: `layout` is where a file goes, as a pure
-              function of a release and one of its tracks
+              function of a release and one of its tracks; `mover` puts one
+              release there, files and rows in one transaction
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   log.rs      every operation, one line each, rotated
@@ -87,13 +88,17 @@ replacement. Two rules make an unattended pass safe to run at all:
 
 **One lock serializes everything that rewrites rows from files on disk.**
 `scan::ScanLock`, managed beside `Db`, taken by `scan_library`,
-`tagsource_apply`, the poll and the release lookup pass. The poll `try_lock`s
+`tagsource_apply`, the poll, the release lookup pass and `library::mover`. The poll `try_lock`s
 and skips the pass entirely; a user-asked scan waits, because a Rescan that
 silently did nothing is worse than one that starts its walk late. **The lookup
 pass takes it per write, never for the pass** — it rewrites the files a scan
 reads its `(mtime, size)` from, so each write has to be behind the lock, but
 holding it for the whole pass would block every scan for the best part of a
-day.
+day. **The mover takes it per release** for the same reason, and rewrites
+`tracks.path` in the same transaction as the rename: `insert_track` is
+`ON CONFLICT(path)`, so a move a rescan discovered would be a new row plus an
+old one marked missing, at the cost of the play count, `added_at` and every
+playlist the track was in.
 Poison-tolerant: a panicking scan must not leave the
 library unscannable for the rest of the session.
 

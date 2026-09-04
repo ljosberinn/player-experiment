@@ -2,3 +2,4 @@
 //! that puts them there.
 
 pub mod layout;
+pub mod mover;

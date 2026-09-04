@@ -127,7 +127,7 @@ pub fn walk(roots: &[PathBuf]) -> Vec<(PathBuf, i64, i64)> {
     found
 }
 
-fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
+pub(crate) fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
     meta.modified()
         .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())

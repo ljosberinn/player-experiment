@@ -30,7 +30,7 @@ disable scanning for the rest of the session — taken by `scan_library`,
 `undo_tag_edit` and the poll. The poll `try_lock`s and skips the pass entirely;
 a user-asked scan waits for it, because a Rescan that silently does nothing is
 worse than one that starts a walk late. [82b](82b-the-unattended-lookup-pass.md)'s lookup
-and [83b](../upcoming/83b-moving-one-release.md)'s mover take it too when they land — those
+and [83b](83b-moving-one-release.md)'s mover take it too when they land — those
 chain off an ingest rather than racing it.
 
 **A root that is not there must be skipped, not walked.** `walk` on a missing
