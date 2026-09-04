@@ -24,6 +24,8 @@ src-tauri/src/
   tagsource/  MusicBrainz + Cover Art Archive lookup: transport seam, the
               process-wide rate limiter, candidate scoring, the unattended
               pass (one release in `pass`, the thread in `worker`)
+  library/    the Library folder: `layout` is where a file goes, as a pure
+              function of a release and one of its tracks
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   log.rs      every operation, one line each, rotated
