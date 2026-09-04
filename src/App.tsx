@@ -31,6 +31,7 @@ import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { usePlaylistsStore } from "./features/playlists/store";
 import { AppMenus } from "./features/shell/AppMenus";
+import { BackgroundTaskProgress } from "./features/shell/BackgroundTaskProgress";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
@@ -48,6 +49,7 @@ import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
 import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { ReleaseLookup } from "./features/tagsource/ReleaseLookup";
+import { ReviewQueue } from "./features/tagsource/ReviewQueue";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, getAppInfo, stageDroppedCover, stagePickedCover } from "./ipc";
@@ -318,6 +320,15 @@ export function App() {
             onSelect={(view) => void showTab(view)}
           />
           <PlaylistSidebar onExport={(playlist) => void runExport(exportChoice([], playlist))} />
+          {/* Under the playlists because it is the same kind of thing: a place
+              to go, with a count beside it. Draws nothing until the unattended
+              pass has queued something, and subscribes to its own count rather
+              than taking one from here. */}
+          <ReviewQueue />
+          {/* Last, and pinned to the bottom by the sidebar's own layout. Like
+              `ScanBar` it stays mounted whatever it is drawing, because it is
+              what subscribes to `task://progress`. */}
+          <BackgroundTaskProgress />
         </Sidebar>
 
         <main className="content">

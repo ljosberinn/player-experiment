@@ -240,6 +240,10 @@ pub fn run() {
             commands::tagsource_search,
             commands::tagsource_fetch,
             commands::tagsource_apply,
+            commands::tagsource_review_queue,
+            commands::tagsource_review_counts,
+            commands::tagsource_set_aside,
+            commands::tagsource_restore_review,
             commands::suggest_tag_values,
             commands::player_play,
             commands::player_toggle,
@@ -295,11 +299,11 @@ fn watch_library(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::
 /// thread reads the setting on every wake, so turning it on needs no restart
 /// and turning it off cancels a pass in flight.
 ///
-/// One channel, not two: each release the pass writes says so on
-/// `library://changed`, and everything else it has to say goes in the log.
-/// Per release rather than per sweep, because a sweep runs for hours and may
-/// not end at all. There is no progress readout yet - 82c is where that
-/// lives.
+/// Two channels. Each release the pass writes or queues says so on
+/// `library://changed`, and how far it has got goes on `task://progress` for
+/// the readout at the foot of the sidebar. Both per release rather than per
+/// sweep, because a sweep runs for hours and may not end at all; everything
+/// else the pass has to say goes in the log.
 fn look_up_releases(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
     let Ok(staging) = app.path().app_cache_dir() else {
         // No cache directory means nowhere to stage a fetched cover. The pass
@@ -309,9 +313,19 @@ fn look_up_releases(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: lo
     };
     let _ = std::fs::create_dir_all(&staging);
 
-    tagsource::worker::spawn(db, lock, log, staging, move || {
-        crate::commands::announce_library_changed(&app);
-    });
+    let progress = app.clone();
+    tagsource::worker::spawn(
+        db,
+        lock,
+        log,
+        staging,
+        move || crate::commands::announce_library_changed(&app),
+        move |task| {
+            // A dropped progress event is not worth anything: the next release
+            // sends another one twenty seconds later.
+            let _ = progress.emit(crate::commands::TASK_PROGRESS, task);
+        },
+    );
 }
 
 /// Re-encodes artwork a previous build stored whole, off the setup path.

@@ -24,7 +24,7 @@ have shipped.** It is one level, it is not itself undoable, and it stopped
 restoring artwork the moment `covers` became a 500px re-encode — an edit that
 replaced or removed a picture has been silently untakeable-back for phases. What
 protects the user from a bad automatic write is 82b's threshold and
-[82c](../upcoming/82c-the-review-queue-and-progress.md)'s review queue, not a journal that
+[82c](82c-the-review-queue-and-progress.md)'s review queue, not a journal that
 cannot hold the pass anyway.
 
 So the whole thing comes out, not its growth.

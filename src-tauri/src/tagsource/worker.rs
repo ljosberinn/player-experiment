@@ -15,12 +15,14 @@
 //! a library with nothing left to look up backs off towards [`IDLE_MAX`]
 //! rather than asking that question four times a minute forever.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::db::{lookup, settings, Db};
 use crate::error::AppResult;
 use crate::log::{Fields, Log};
+use crate::model::BackgroundTask;
 use crate::scan::ScanLock;
 use crate::tagsource::pass::{self, Outcome, Verdict};
 use crate::tagsource::transport::Transport;
@@ -50,9 +52,9 @@ const BATCH: usize = 200;
 
 /// What a sweep runs by, and where the last one got to.
 ///
-/// Owned by the thread rather than built per sweep, because `surveyed` has to
-/// outlive a sweep that ended early.
-#[derive(Debug, Clone, Copy)]
+/// Owned by the thread rather than built per sweep, because neither `surveyed`
+/// nor the pace may die with a sweep that ended early.
+#[derive(Debug, Default)]
 pub struct Plan {
     /// Report the verdict per release and write nothing - neither files nor
     /// rows.
@@ -66,6 +68,8 @@ pub struct Plan {
     /// and over. It survives a sweep that a 503 ended, and it does not survive
     /// the process - a rehearsal is one sitting.
     pub surveyed: usize,
+    /// What the readout is told, and what it takes to say it.
+    pub pace: Pace,
 }
 
 impl Plan {
@@ -74,28 +78,104 @@ impl Plan {
         Self {
             dry_run: pass::dry_run(),
             batch: BATCH,
-            surveyed: 0,
+            ..Self::default()
         }
     }
 }
 
 /// What a sweep calls back into the thread that owns it.
 ///
-/// Two closures rather than two parameters, because a sweep already takes as
-/// many as it should.
+/// Closures rather than parameters, because a sweep already takes as many as
+/// it should.
 pub struct Signals<'a> {
     /// Whether the pass may still run. Asked before every release, so the
     /// switch cancels a pass rather than merely stopping the next one, and it
     /// answers with a `Result` because a switch that cannot be read is not a
     /// switch that is off.
     pub enabled: &'a dyn Fn() -> AppResult<bool>,
-    /// A release's files were written.
+    /// A release was written or queued.
     ///
     /// **Per release, not per sweep.** A sweep is hours long and may not end
     /// at all, so a view told at the end of one is a view that never hears.
     /// `commands::invalidate` is what keeps the cost of saying so per release
     /// down, and it was built for exactly this.
-    pub wrote: &'a dyn Fn(),
+    ///
+    /// Queuing counts as a change even though no file moved: 82c's review row
+    /// carries the count, and a sidebar that learns of four hundred queued
+    /// releases at the end of a forty-five hour pass has not been told. The
+    /// rate is unchanged - written and queued are the same release's two
+    /// outcomes, never both.
+    pub changed: &'a dyn Fn(),
+    /// How far the pass has got, per release attempted.
+    pub progress: &'a dyn Fn(&BackgroundTask),
+}
+
+/// What the readout says, and what it takes to say it.
+///
+/// Part of the [`Plan`] rather than built per sweep, for the same reason the
+/// dry run's cursor is: a sweep that a 503 ended would otherwise throw away the
+/// history the estimate is built from, and the pass would show no estimate for
+/// its first few releases over and over.
+#[derive(Debug, Default)]
+pub struct Pace {
+    /// Releases with a row, counted once a sweep and then kept here.
+    ///
+    /// Counted rather than re-read, because reading it is two group-bys over
+    /// every track - and a dry run writes no rows at all, so re-reading would
+    /// leave its readout at zero for the length of the survey.
+    done: usize,
+    total: usize,
+    /// How long each of the last [`RECENT`] releases took, oldest first.
+    recent: VecDeque<Duration>,
+}
+
+/// How many releases the estimate is drawn from.
+///
+/// The rate is not steady: a release whose files already carry an MBID costs
+/// nothing and a searched one costs two rate-limited requests, so an average
+/// over the whole pass describes a pass that is not the one running.
+const RECENT: usize = 100;
+
+/// How many releases it takes before there is an estimate worth showing.
+const ENOUGH: usize = 3;
+
+/// What the pass is called where the readout draws it.
+const LABEL: &str = "Looking up releases";
+
+impl Pace {
+    /// Reads where the pass stands. Once a sweep; see [`Pace::done`].
+    fn begin(&mut self, conn: &rusqlite::Connection) -> AppResult<()> {
+        (self.done, self.total) = lookup::progress(conn)?;
+        Ok(())
+    }
+
+    /// Counts one release and says what the readout should now show.
+    fn advance(&mut self, took: Duration) -> BackgroundTask {
+        self.done += 1;
+        if self.recent.len() == RECENT {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(took);
+
+        BackgroundTask {
+            label: LABEL.to_owned(),
+            done: u32::try_from(self.done).unwrap_or(u32::MAX),
+            total: u32::try_from(self.total).unwrap_or(u32::MAX),
+            eta_ms: self.eta(),
+        }
+    }
+
+    /// How much longer, from the recent rate, or none while there is not
+    /// enough of it to be worth showing.
+    fn eta(&self) -> Option<i64> {
+        if self.recent.len() < ENOUGH {
+            return None;
+        }
+        let remaining = self.total.saturating_sub(self.done) as u128;
+        let each: u128 =
+            self.recent.iter().map(Duration::as_millis).sum::<u128>() / self.recent.len() as u128;
+        i64::try_from(remaining * each).ok()
+    }
 }
 
 /// What a sweep came to.
@@ -144,6 +224,9 @@ pub fn sweep(
     if !plan.dry_run {
         lookup::seed_from_tags(&conn, crate::now_seconds())?;
     }
+    // After the seed, so the readout opens on what the seed already resolved
+    // rather than counting it as work still to do.
+    plan.pace.begin(&conn)?;
 
     loop {
         let batch = lookup::pending(&conn, plan.batch, plan.surveyed)?;
@@ -166,6 +249,7 @@ pub fn sweep(
                 .op("lookup.release")
                 .add("album", release.album.as_deref().unwrap_or("-"))
                 .add("artist", release.artist.as_deref().unwrap_or("-"));
+            let started = Instant::now();
             let outcome = pass::look_up(
                 &mut conn,
                 transport,
@@ -175,6 +259,12 @@ pub fn sweep(
                 plan.dry_run,
                 crate::now_seconds(),
             );
+            // Only where a release was actually attempted: one that failed
+            // wrote no row, so counting it would put the readout ahead of the
+            // table the next sweep resumes from.
+            if outcome.is_ok() {
+                (signals.progress)(&plan.pace.advance(started.elapsed()));
+            }
             // Per release attempted rather than per batch read, and past one
             // that failed as well: a survey with a hole in it is worth more
             // than one stuck on the release that always fails.
@@ -207,10 +297,17 @@ pub fn sweep(
                     // hours long and may not end at all. A dry run wrote
                     // nothing, so there is nothing for a view to re-read.
                     if !plan.dry_run {
-                        (signals.wrote)();
+                        (signals.changed)();
                     }
                 }
-                Ok(Verdict::Queued { .. }) => summary.queued += 1,
+                Ok(Verdict::Queued { .. }) => {
+                    summary.queued += 1;
+                    // The review row is what changed, and the sidebar's count
+                    // is drawn from it.
+                    if !plan.dry_run {
+                        (signals.changed)();
+                    }
+                }
                 Ok(Verdict::NotFound) => summary.missed += 1,
                 // A release that failed keeps no row, so a real pass tries it
                 // again next sweep - right for a network that was down,
@@ -282,16 +379,20 @@ fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
 
 /// Starts the `release-lookup` thread.
 ///
-/// `on_change` runs per release written, not per sweep: a sweep is hours long
-/// and may not end at all. A release that was only queued or missed says
-/// nothing to the window, and neither does a dry run - nothing a view draws
-/// changed.
+/// `on_change` runs per release written or queued, not per sweep: a sweep is
+/// hours long and may not end at all. A release MusicBrainz has never heard of
+/// says nothing to the window, and neither does a dry run - nothing a view
+/// draws changed.
+///
+/// `on_progress` is the readout at the foot of the sidebar, told per release
+/// attempted and told `None` when the sweep ends, whatever ended it.
 pub fn spawn(
     db: Db,
     lock: ScanLock,
     log: Log,
     staging: PathBuf,
     on_change: impl Fn() + Send + 'static,
+    on_progress: impl Fn(Option<&BackgroundTask>) + Send + 'static,
 ) {
     let _ = std::thread::Builder::new()
         .name("release-lookup".to_owned())
@@ -351,9 +452,13 @@ pub fn spawn(
                     &mut plan,
                     &Signals {
                         enabled: &enabled,
-                        wrote: &on_change,
+                        changed: &on_change,
+                        progress: &|task| on_progress(Some(task)),
                     },
                 );
+                // Whatever ended it - a finished library, the switch, a 503 -
+                // there is no longer a task to report on.
+                on_progress(None);
 
                 let attempted = summary.as_ref().map_or(0, |summary| summary.attempted());
                 quiet = next_sweep(quiet, attempted);
@@ -386,7 +491,7 @@ mod tests {
         Plan {
             dry_run: false,
             batch: BATCH,
-            surveyed: 0,
+            ..Plan::default()
         }
     }
 
@@ -396,7 +501,7 @@ mod tests {
         Plan {
             dry_run: true,
             batch: 1,
-            surveyed: 0,
+            ..Plan::default()
         }
     }
 
@@ -410,7 +515,8 @@ mod tests {
     fn unwatched<'a>(enabled: &'a dyn Fn() -> AppResult<bool>) -> Signals<'a> {
         Signals {
             enabled,
-            wrote: &|| {},
+            changed: &|| {},
+            progress: &|_| {},
         }
     }
 
@@ -549,13 +655,16 @@ mod tests {
         assert_eq!(transport.call_count(), 0);
     }
 
-    /// The view has to hear about a write while the pass is running, not when
-    /// it stops. A sweep is hours long and may not stop at all, so a window
-    /// told at the end of one is a window that never hears - which is what
-    /// made a pass look like it was doing nothing while it rewrote the
+    /// The view has to hear about a decision while the pass is running, not
+    /// when it stops. A sweep is hours long and may not stop at all, so a
+    /// window told at the end of one is a window that never hears - which is
+    /// what made a pass look like it was doing nothing while it rewrote the
     /// library underneath.
+    ///
+    /// Queued counts as well as written. No file moved, but the review row
+    /// did, and that is what the sidebar's count is drawn from.
     #[test]
-    fn every_release_written_tells_the_window() {
+    fn every_release_decided_tells_the_window() {
         let (dir, db) = two_releases();
         let told = std::cell::Cell::new(0);
 
@@ -568,16 +677,121 @@ mod tests {
             &mut live(),
             &Signals {
                 enabled: &on(),
-                wrote: &|| told.set(told.get() + 1),
+                changed: &|| told.set(told.get() + 1),
+                progress: &|_| {},
             },
         )
         .unwrap();
 
         assert!(summary.resolved > 0, "the sweep wrote nothing to announce");
+        assert!(summary.queued > 0, "the sweep queued nothing to announce");
         assert_eq!(
             told.get(),
-            summary.resolved,
-            "once per release written, not once per sweep"
+            summary.resolved + summary.queued,
+            "once per release decided, not once per sweep"
+        );
+    }
+
+    /// One percent of a real pass is eighty releases and the better part of
+    /// half an hour, so the readout has to move per release or it reads as
+    /// hung.
+    #[test]
+    fn the_readout_is_told_where_the_pass_stands_per_release() {
+        let (dir, db) = two_releases();
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &Signals {
+                enabled: &on(),
+                changed: &|| {},
+                progress: &|task| seen.borrow_mut().push(task.clone()),
+            },
+        )
+        .unwrap();
+
+        let seen = seen.into_inner();
+        assert_eq!(seen.len(), summary.attempted());
+        assert_eq!(
+            seen.iter().map(|task| task.done).collect::<Vec<_>>(),
+            [1, 2],
+            "the fraction counts up as releases are decided"
+        );
+        assert!(seen.iter().all(|task| task.total == 2));
+    }
+
+    /// A survey is worth watching too, and it writes no rows - so the count
+    /// has to come from the pass rather than from the table.
+    #[test]
+    fn a_dry_run_reports_progress_it_is_not_writing_down() {
+        let (dir, db) = two_releases();
+        let seen = std::cell::Cell::new(0u32);
+
+        sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut dry(),
+            &Signals {
+                enabled: &on(),
+                changed: &|| {},
+                progress: &|task| seen.set(task.done),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(seen.get(), 2);
+    }
+
+    #[test]
+    fn there_is_no_estimate_until_there_is_history_to_draw_one_from() {
+        let mut pace = Pace {
+            done: 0,
+            total: 10,
+            recent: VecDeque::new(),
+        };
+
+        assert_eq!(pace.advance(Duration::from_secs(20)).eta_ms, None);
+        assert_eq!(pace.advance(Duration::from_secs(20)).eta_ms, None);
+        assert_eq!(
+            pace.advance(Duration::from_secs(20)).eta_ms,
+            Some(7 * 20_000),
+            "seven releases left at twenty seconds each"
+        );
+    }
+
+    /// The rate is not steady - a release whose files already carry an MBID
+    /// costs nothing and a searched one costs two rate-limited requests - so
+    /// an average over the whole pass describes a pass that is not running.
+    #[test]
+    fn the_estimate_forgets_a_rate_the_pass_has_left_behind() {
+        let mut pace = Pace {
+            done: 0,
+            total: 3 * RECENT,
+            recent: VecDeque::new(),
+        };
+
+        // A hundred instant releases, the way a library Picard already tagged
+        // starts, and then a hundred at the rate the pass actually runs at.
+        for _ in 0..RECENT {
+            pace.advance(Duration::ZERO);
+        }
+        for _ in 0..RECENT {
+            pace.advance(Duration::from_secs(20));
+        }
+
+        assert_eq!(pace.recent.len(), RECENT);
+        assert_eq!(
+            pace.eta(),
+            Some(RECENT as i64 * 20_000),
+            "a hundred left at twenty seconds each - the free ones are gone"
         );
     }
 
@@ -598,7 +812,8 @@ mod tests {
             &mut dry(),
             &Signals {
                 enabled: &on(),
-                wrote: &|| told.set(told.get() + 1),
+                changed: &|| told.set(told.get() + 1),
+                progress: &|_| {},
             },
         )
         .unwrap();

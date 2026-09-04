@@ -6,6 +6,10 @@
  * Everything here comes out of the search response, which carries no
  * tracklist: `inc` is not accepted on a search, so a release costs two calls
  * and this is what the first one buys.
+ * `Deserialize` as well, unlike its neighbours: the unattended pass stores a
+ * queued release's candidates as JSON so the review dialog opens on them
+ * rather than paying a rate-limited ten seconds per entry, and reading that
+ * cache back is what needs it.
  */
 export type ReleaseCandidate = { mbid: string, releaseGroupMbid: string | null, title: string, artist: string, 
 /**

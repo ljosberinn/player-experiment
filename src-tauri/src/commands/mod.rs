@@ -12,15 +12,15 @@ use tauri::{Emitter, Manager, State};
 pub(crate) use invalidate::{announce as announce_library_changed, Invalidations};
 
 use crate::audio::{Command, Player};
-use crate::db::{playback, playlists, query, settings, tag_values, Db};
+use crate::db::{lookup, playback, playlists, query, settings, tag_values, Db};
 use crate::error::AppResult;
 use crate::export::{self, ExportScope};
 use crate::log::{Fields, Log, Op};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, FilterGroup, LastfmConnection,
     LastfmStatus, LibraryStats, PlayerSnapshot, Playlist, ReleaseCandidate, ReleaseDetail,
-    ReleaseIdentity, ReleaseSelection, ScanSummary, SmartOrder, TagEdit, TagValueField,
-    TagWriteSummary, Track, TrackEdit, TrackQuery,
+    ReleaseIdentity, ReleaseSelection, ReviewCounts, ReviewEntry, ScanSummary, SmartOrder, TagEdit,
+    TagValueField, TagWriteSummary, Track, TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags, tagsource};
@@ -28,6 +28,12 @@ use crate::{crash, lastfm, scan, tags, tagsource};
 /// Progress channels for the writes long enough to watch.
 const TAG_PROGRESS: &str = "tags://progress";
 const EXPORT_PROGRESS: &str = "export://progress";
+/// The channel a task measured in hours reports on, read by the readout at the
+/// foot of the sidebar. `None` clears it.
+///
+/// Named here rather than in `tagsource` because the pass is its first
+/// producer and not its only one.
+pub(crate) const TASK_PROGRESS: &str = "task://progress";
 /// Named rather than inline since the unattended pass in `lib.rs` reports on
 /// it too - the bar does not care which of the two started the work.
 pub(crate) const SCAN_PROGRESS: &str = "scan://progress";
@@ -677,6 +683,91 @@ pub fn tagsource_groups(
         })
 }
 
+/// The releases the unattended pass would not write, in the order to work
+/// through them.
+///
+/// Each carries the candidates the pass had in hand when it queued it, so the
+/// dialog opens on the results step: searching again at review time is a
+/// rate-limited ten seconds an entry, and four hundred entries is over an hour
+/// of waiting to click.
+///
+/// A candidate list that no longer parses comes back as none rather than as an
+/// error. It is a cache, and the answer to a bad cache is the search the dialog
+/// already offers.
+#[tauri::command]
+pub fn tagsource_review_queue(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+) -> AppResult<Vec<ReviewEntry>> {
+    log.op("tagsource.queue").run_with(
+        || {
+            let conn = db.conn()?;
+            Ok(lookup::queue(&conn)?
+                .into_iter()
+                .map(|queued| ReviewEntry {
+                    candidates: queued
+                        .candidates_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok()),
+                    release: ReleaseSelection {
+                        album: queued.album,
+                        artist: queued.artist,
+                        track_ids: queued.track_ids,
+                    },
+                })
+                .collect())
+        },
+        |entries: &Vec<ReviewEntry>| Fields::new().add("releases", entries.len()),
+    )
+}
+
+/// How many releases are waiting for a decision, and how many were set aside.
+#[tauri::command]
+pub fn tagsource_review_counts(db: State<'_, Db>) -> AppResult<ReviewCounts> {
+    let conn = db.conn()?;
+    Ok(ReviewCounts {
+        review: u32::try_from(lookup::review_count(&conn)?).unwrap_or(u32::MAX),
+        aside: u32::try_from(lookup::aside_count(&conn)?).unwrap_or(u32::MAX),
+    })
+}
+
+/// Takes one release out of the review queue for good.
+///
+/// The other thing Skip could have meant, kept apart from it: skipping is "not
+/// now" and the entry is offered again, this is "leave this alone".
+/// [`tagsource_restore_review`] is the way back, which is what stops it being a
+/// trap.
+#[tauri::command]
+pub fn tagsource_set_aside(
+    app: tauri::AppHandle,
+    album: Option<String>,
+    artist: Option<String>,
+) -> AppResult<()> {
+    // Announced like a write: nothing in `tracks` moved, but the count beside
+    // the sidebar's review row did, and that is the channel it listens on.
+    let op = op(&app, "tagsource.aside").add("album", album.as_deref().unwrap_or("-"));
+    announcing(&app, op, || {
+        let conn = app.state::<Db>().conn()?;
+        lookup::set_aside(&conn, &lookup::Release { album, artist })
+    })
+}
+
+/// Puts every set-aside release back in the queue, and says how many.
+#[tauri::command]
+pub fn tagsource_restore_review(app: tauri::AppHandle) -> AppResult<u32> {
+    let op = op(&app, "tagsource.restore");
+    let restored = announcing_with(
+        &app,
+        op,
+        || {
+            let conn = app.state::<Db>().conn()?;
+            lookup::restore_aside(&conn)
+        },
+        |restored: &usize| Fields::new().add("releases", restored),
+    )?;
+    Ok(u32::try_from(restored).unwrap_or(u32::MAX))
+}
+
 /// The transport, or a sentence saying why there is none.
 fn tagsource_ready() -> AppResult<&'static tagsource::transport::HttpTransport> {
     tagsource::transport::shared().ok_or_else(|| {
@@ -813,7 +904,7 @@ pub async fn tagsource_apply(
             query::release_members(&conn, identity.album.as_deref(), identity.artist.as_deref())?;
         let edits = with_identity(edits, &members, &identity);
 
-        announcing_with(
+        let summary = announcing_with(
             &app,
             op,
             || {
@@ -822,7 +913,35 @@ pub async fn tagsource_apply(
                 })
             },
             written_fields,
-        )
+        )?;
+
+        // The key that was just written, recorded as settled. Two things need
+        // it. A release reviewed out of 82c's queue leaves that queue on this
+        // path and no other - the write usually changes the album or the
+        // artist, so the row that queued it is about to be orphaned under its
+        // old key, and without this the count would never come down. And a
+        // release somebody tagged by hand is a release the unattended pass has
+        // no business searching for later.
+        //
+        // After the write and outside it: a lookup the user confirmed is worth
+        // recording, but a bookkeeping row is not worth failing an apply whose
+        // files are already on disk.
+        let release = lookup::Release {
+            album: identity.album,
+            artist: identity.artist,
+        };
+        if let Err(error) = lookup::record(
+            &conn,
+            &release,
+            lookup::Status::Resolved,
+            Some(&identity.release_mbid),
+            None,
+            None,
+            crate::now_seconds(),
+        ) {
+            app.state::<Log>().op("tagsource.record").failed(&error);
+        }
+        Ok(summary)
     })
     .await
 }

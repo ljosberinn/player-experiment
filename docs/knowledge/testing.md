@@ -76,7 +76,19 @@ auth - only a network, which is why it is not in CI.
 real request to musicbrainz.org from the running app, which would make every CI
 run depend on somebody else's service being up and under its rate limit.
 `ReleaseLookup.test.tsx` covers the markup and the flow against mocked IPC; the
-dialog against the live service is a manual check before a release.
+dialog against the live service is a manual check before a release. The review
+queue's sidebar row is the same case for the same reason - only the unattended
+pass writes the rows it counts - so `ReviewQueue.test.tsx` covers it and no
+spec seeds them.
+
+**The progress readout is photographed against a sent payload.** Its only
+producer is that same pass, which needs the network and runs for the better part
+of two days, so `e2e/specs/task-progress.test.ts` emits `task://progress` from
+the webview: Tauri routes it through the backend and back to the listener, so
+the component hears it exactly as it hears the real thing. What that leaves to
+`invoke.ts`'s `emit` rather than to the app is nothing - no test-only path ships
+- and the arithmetic behind the numbers is asserted on `Pace` in
+`tagsource::worker`.
 
 The rate limiter is asserted at its real ten seconds, from **two** callers at
 once, and again for a slow request not shortening the gap after it: the limit

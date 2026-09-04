@@ -322,6 +322,40 @@ CREATE UNIQUE INDEX idx_release_lookup_key ON release_lookup(
     coalesce(artist, '') COLLATE NOCASE
 );
 "#,
+    // 10 - a fourth status, for a queued release the user wants left alone
+    //
+    // Skipping in 82c's review queue means "not now": the entry stays and is
+    // offered again. "Leave this alone" is a decision of its own, and a queue
+    // that cannot express it is a queue whose count never reaches zero.
+    //
+    // A whole-table rebuild because the vocabulary is a CHECK constraint and
+    // SQLite has no way to widen one in place. Nothing else about the table
+    // changes, and no row's status does either.
+    r#"
+CREATE TABLE release_lookup_new (
+    id              INTEGER PRIMARY KEY,
+    album           TEXT,
+    artist          TEXT,
+    status          TEXT NOT NULL CHECK (status IN ('resolved', 'review', 'none', 'aside')),
+    release_mbid    TEXT,
+    score           REAL,
+    candidates_json TEXT,
+    attempted_at    INTEGER NOT NULL
+);
+
+INSERT INTO release_lookup_new
+    (id, album, artist, status, release_mbid, score, candidates_json, attempted_at)
+SELECT id, album, artist, status, release_mbid, score, candidates_json, attempted_at
+  FROM release_lookup;
+
+DROP TABLE release_lookup;
+ALTER TABLE release_lookup_new RENAME TO release_lookup;
+
+CREATE UNIQUE INDEX idx_release_lookup_key ON release_lookup(
+    coalesce(album,  '') COLLATE NOCASE,
+    coalesce(artist, '') COLLATE NOCASE
+);
+"#,
 ];
 
 #[cfg(test)]
@@ -342,7 +376,7 @@ mod tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            9
+            10
         );
         conn.execute_batch("SELECT release_type FROM tracks WHERE 0")
             .expect("tracks gained a release type");
@@ -393,6 +427,21 @@ mod tests {
              VALUES ('Loveless', 'MBV', 'maybe', 0)",
             [],
         )
-        .expect_err("the three statuses are the whole vocabulary");
+        .expect_err("the four statuses are the whole vocabulary");
+    }
+
+    /// Migration 10 rebuilds the table to widen the CHECK. A rebuild that
+    /// dropped the index would let an untagged release insert twice again,
+    /// and one that dropped a row would lose an attempt the pass paid for.
+    #[test]
+    fn the_rebuilt_table_keeps_its_key_and_takes_the_fourth_status() {
+        let (_dir, conn) = open();
+        let insert = "INSERT INTO release_lookup (album, artist, status, attempted_at)
+                      VALUES (?1, ?2, ?3, 0)";
+
+        conn.execute(insert, rusqlite::params!["Loveless", "MBV", "aside"])
+            .expect("a release can be set aside");
+        conn.execute(insert, rusqlite::params!["loveless", "mbv", "review"])
+            .expect_err("the unique index survived the rebuild");
     }
 }

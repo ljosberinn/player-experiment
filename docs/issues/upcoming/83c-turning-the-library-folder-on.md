@@ -42,7 +42,7 @@ no I/O in them. The state is derived from the paths, which is the same property
 that makes 83b's retries free, and it survives the setting being turned off and
 on again.
 
-**Second producer for [82c](82c-the-review-queue-and-progress.md)'s progress
+**Second producer for [82c](../done/82c-the-review-queue-and-progress.md)'s progress
 readout** — that channel is a label, a done, a total and an estimate, and it
 exists in that shape because of this phase. Total is the releases not yet at
 their targets when the run starts.

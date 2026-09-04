@@ -1,6 +1,7 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AppInfo } from "./bindings/AppInfo";
+import type { BackgroundTask } from "./bindings/BackgroundTask";
 import type { BrowseFilter } from "./bindings/BrowseFilter";
 import type { BrowseGroup } from "./bindings/BrowseGroup";
 import type { BrowseKind } from "./bindings/BrowseKind";
@@ -29,6 +30,8 @@ import type { ReleaseDetail } from "./bindings/ReleaseDetail";
 import type { ReleaseIdentity } from "./bindings/ReleaseIdentity";
 import type { ReleaseSelection } from "./bindings/ReleaseSelection";
 import type { RemoteTrack } from "./bindings/RemoteTrack";
+import type { ReviewCounts } from "./bindings/ReviewCounts";
+import type { ReviewEntry } from "./bindings/ReviewEntry";
 import type { ScanProgress } from "./bindings/ScanProgress";
 import type { ScanSummary } from "./bindings/ScanSummary";
 import type { SmartOrder } from "./bindings/SmartOrder";
@@ -45,6 +48,7 @@ import type { WriteProgress } from "./bindings/WriteProgress";
 
 export type {
   AppInfo,
+  BackgroundTask,
   BrowseFilter,
   BrowseGroup,
   BrowseKind,
@@ -73,6 +77,8 @@ export type {
   ReleaseIdentity,
   ReleaseSelection,
   RemoteTrack,
+  ReviewCounts,
+  ReviewEntry,
   ScanProgress,
   ScanSummary,
   SmartOrder,
@@ -497,6 +503,39 @@ export function tagsourceApply(
 }
 
 /**
+ * The releases the unattended pass would not write, in the order to work
+ * through them.
+ *
+ * Each carries the candidates the pass found when it queued it, so the dialog
+ * opens on the results rather than on a rate-limited ten seconds. Opening the
+ * queue is also what drops entries for releases that have since been retagged
+ * or removed, so the length of this is the honest count.
+ */
+export function tagsourceReviewQueue(): Promise<ReviewEntry[]> {
+  return invoke<ReviewEntry[]>("tagsource_review_queue");
+}
+
+/** How many releases await a decision, and how many were set aside. */
+export function tagsourceReviewCounts(): Promise<ReviewCounts> {
+  return invoke<ReviewCounts>("tagsource_review_counts");
+}
+
+/**
+ * Takes one release out of the review queue until somebody asks for it back.
+ *
+ * The other thing Skip could have meant. Skip is "not now" and offers the
+ * release again; this is "leave this alone".
+ */
+export function tagsourceSetAside(album: string | null, artist: string | null): Promise<void> {
+  return invoke<void>("tagsource_set_aside", { album, artist });
+}
+
+/** Puts every set-aside release back in the queue, and says how many. */
+export function tagsourceRestoreReview(): Promise<number> {
+  return invoke<number>("tagsource_restore_review");
+}
+
+/**
  * Values already in the library for `field`, best match first.
  *
  * Matched in SQLite rather than here: the alternative is shipping every
@@ -606,6 +645,20 @@ export function onTagWriteProgress(
 /** How far an export has got gathering the tracks it will write. */
 export function onExportProgress(handler: (progress: WriteProgress) => void): Promise<UnlistenFn> {
   return listen<WriteProgress>("export://progress", (event) => handler(event.payload));
+}
+
+/**
+ * How far a task measured in hours has got, or null when none is running.
+ *
+ * Not one of the two channels above: those report on writes that finish in a
+ * minute, from the content header. This one stands at the foot of the sidebar
+ * for as long as the task runs, and it carries the label because it has more
+ * than one producer - the unattended lookup pass is only the first.
+ */
+export function onTaskProgress(
+  handler: (task: BackgroundTask | null) => void,
+): Promise<UnlistenFn> {
+  return listen<BackgroundTask | null>("task://progress", (event) => handler(event.payload));
 }
 
 /**

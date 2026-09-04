@@ -13,6 +13,8 @@ declare global {
   interface Window {
     __TAURI__?: {
       core: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
+      /** Used by `emit` below to stand in for a producer the driver has none of. */
+      event?: { emit: (event: string, payload?: unknown) => Promise<void> };
       /** Used by `viewport.ts` to zoom for a screenshot without persisting it. */
       webview?: { getCurrentWebview: () => { setZoom: (factor: number) => Promise<void> } };
     };
@@ -72,4 +74,40 @@ export async function invoke<T>(
     throw new Error(`${command} failed: ${result.error}`);
   }
   return result?.value as T;
+}
+
+/**
+ * Sends `event` as though the backend had, and waits for the round trip.
+ *
+ * For a channel whose producer a spec cannot start. The unattended lookup pass
+ * is the only thing that reports on `task://progress`, it needs the network and
+ * it runs for the better part of two days - so the readout it feeds is
+ * photographed against a payload rather than against a real pass. What is under
+ * test is the subscription, the formatting and the layout, which is all of it
+ * bar the arithmetic the Rust tests cover.
+ *
+ * Tauri routes an emit from the webview through the backend and back out to
+ * every listener, this one included, so the component hears it exactly as it
+ * hears the real thing.
+ */
+export async function emit(event: string, payload: unknown): Promise<void> {
+  const failure = await browser.execute(
+    async (name: string, body: unknown) => {
+      const tauri = window.__TAURI__;
+      if (tauri?.event === undefined) {
+        return "window.__TAURI__.event is missing - is withGlobalTauri set?";
+      }
+      try {
+        await tauri.event.emit(name, body);
+        return null;
+      } catch (cause) {
+        return String(cause);
+      }
+    },
+    event,
+    payload,
+  );
+  if (failure !== null) {
+    throw new Error(`${event} could not be emitted: ${failure}`);
+  }
 }
