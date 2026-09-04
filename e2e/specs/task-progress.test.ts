@@ -11,7 +11,7 @@ import { capture } from "../screenshot";
  * from the webview instead and Tauri routes it back through the backend to the
  * listener, which is exactly the path the real thing takes. What that leaves
  * untested here is the arithmetic behind the numbers, and `Pace` in
- * `tagsource::worker` covers that.
+ * `library::worker` covers that.
  *
  * A screenshot because a standing readout is worth capturing going forward:
  * `taskSummary.test.ts` proves the words and `App.renders.test.tsx` proves it

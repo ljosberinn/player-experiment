@@ -77,6 +77,11 @@ export const config: WebdriverIO.Config = {
     // rather than a real pass, so songs would only put a table behind it. It
     // leaves the sidebar with no task in it either way.
     "./specs/task-progress.test.ts",
+    // Also before the library, and for a reason of its own: it picks a Library
+    // folder, which is a watch folder from then on, and the specs that count
+    // what a scan finds must not be given an extra root half way through. It
+    // hands the list back as it found it.
+    "./specs/library-folder.test.ts",
     "./specs/library.test.ts",
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.

@@ -1,7 +1,8 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { revealMainLog } from "../../ipc";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
+import { LibraryFolderSettings } from "../library/LibraryFolderSettings";
 import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
@@ -38,6 +39,12 @@ import { useZoomStore } from "./zoomStore";
  * The activity log joins it in issue 86, at the end: it is not a preference at
  * all, and the only other route to a file this app writes - the crash log - is
  * behind a notice that only appears after a crash.
+ *
+ * The Library folder joins it in issue 83c, above the music folders: it is the
+ * stronger statement of the same thing. The one piece of state held here rather
+ * than inside a section is the folder those two have to agree about - the root
+ * is a watch folder that cannot be removed while the filing is on, and a value
+ * two siblings read has to come from above them.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const factor = useZoomStore((s) => s.factor);
@@ -47,6 +54,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const unattendedLookup = useLookupStore((s) => s.enabled);
   const setUnattendedLookup = useLookupStore((s) => s.set);
   const loadUnattendedLookup = useLookupStore((s) => s.load);
+  const [lockedRoot, setLockedRoot] = useState<string | null>(null);
+  // Stable, so the section below does not re-read the folder on every render
+  // of this dialog.
+  const lock = useCallback((root: string | null) => setLockedRoot(root), []);
 
   // Read here rather than at startup: nothing outside this dialog draws from
   // it, and the backend reads the setting itself between releases. The dialog
@@ -125,7 +136,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           {/* Below the two appearance rows and above last.fm, which is the
               order of how far each reaches: how the app looks, then what it
               does on its own to the library, then what leaves the machine. */}
-          <WatchFolderSettings />
+          <LibraryFolderSettings onLockChange={lock} />
+
+          <WatchFolderSettings lockedRoot={lockedRoot} />
 
           {/* Beside the music folders, because both are things the app does to
               the library unasked - and after them, because this is the one of

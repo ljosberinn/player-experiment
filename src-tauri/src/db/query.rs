@@ -3,7 +3,7 @@
 //! Every query is paged. Nothing here ever loads the whole library: the table
 //! asks for the window it is about to render plus a count for the scrollbar.
 
-use rusqlite::{Connection, Row};
+use rusqlite::{Connection, OptionalExtension, Row};
 
 use crate::error::AppResult;
 use crate::model::{
@@ -508,14 +508,17 @@ fn same_release(
     album: &Option<String>,
     artist: &Option<String>,
 ) -> bool {
-    fn same(a: &Option<String>, b: &Option<String>) -> bool {
-        match (a, b) {
-            (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
-            (None, None) => true,
-            _ => false,
-        }
+    same_key(&selection.album, album) && same_key(&selection.artist, artist)
+}
+
+/// Whether two halves of a release key are the same one, ASCII-only like the
+/// `NOCASE` collation the queries group by.
+fn same_key(a: &Option<String>, b: &Option<String>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        (None, None) => true,
+        _ => false,
     }
-    same(&selection.album, album) && same(&selection.artist, artist)
 }
 
 /// One file of a release, as the lookup needs it.
@@ -603,9 +606,7 @@ pub fn release_files(
     // release tagged two ways is one release, and half a release moved is the
     // one state this is written to avoid.
     let sql = format!(
-        "SELECT tracks.id, tracks.path, tracks.title, tracks.artist, tracks.year,
-                tracks.track_no, tracks.disc_no, tracks.release_type,
-                tracks.missing_since IS NOT NULL
+        "SELECT {RELEASE_FILE_COLUMNS}
            FROM tracks
           WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
             AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
@@ -614,21 +615,107 @@ pub fn release_files(
 
     let mut stmt = conn.prepare(&sql)?;
     let files = stmt
-        .query_map(rusqlite::params![album, artist], |row| {
-            Ok(ReleaseFile {
-                id: row.get(0)?,
-                path: row.get(1)?,
-                title: row.get(2)?,
-                artist: row.get(3)?,
-                year: row.get(4)?,
-                track_no: row.get(5)?,
-                disc_no: row.get(6)?,
-                release_type: row.get(7)?,
-                missing: row.get(8)?,
-            })
-        })?
+        .query_map(rusqlite::params![album, artist], |row| release_file(row, 0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(files)
+}
+
+/// The columns a [`ReleaseFile`] is read from, spelled once for the two
+/// statements that select them.
+const RELEASE_FILE_COLUMNS: &str = "tracks.id, tracks.path, tracks.title, tracks.artist,
+                tracks.year, tracks.track_no, tracks.disc_no, tracks.release_type,
+                tracks.missing_since IS NOT NULL";
+
+fn release_file(row: &Row<'_>, first: usize) -> rusqlite::Result<ReleaseFile> {
+    Ok(ReleaseFile {
+        id: row.get(first)?,
+        path: row.get(first + 1)?,
+        title: row.get(first + 2)?,
+        artist: row.get(first + 3)?,
+        year: row.get(first + 4)?,
+        track_no: row.get(first + 5)?,
+        disc_no: row.get(first + 6)?,
+        release_type: row.get(first + 7)?,
+        missing: row.get(first + 8)?,
+    })
+}
+
+/// Every release in the library with its files, one release at a time.
+///
+/// One ordered pass, grouping consecutive rows the way [`release_selections`]
+/// does, rather than a [`release_files`] per release: that one matches on the
+/// grouping expressions, so a call per release is a full table scan per
+/// release - 8,044 of them over 65,535 rows to be told a filed library is
+/// filed.
+///
+/// **Not free either.** The order is over `coalesce(nullif(…))` expressions
+/// with no index behind them, so it is a temp-b-tree sort of every row in
+/// `tracks` plus a path per row.
+///
+/// Missing rows are handed over too, exactly as [`release_files`] hands them
+/// over: what the release is called, when it came out and how many discs it
+/// has are facts about the release rather than about the files present today,
+/// and a caller that drew them from a subset would compute a different answer
+/// than one that called [`release_files`].
+pub fn for_each_release(
+    conn: &Connection,
+    mut each: impl FnMut(Option<String>, Option<String>, &[ReleaseFile]),
+) -> AppResult<()> {
+    // The same order `lookup::pending` reads releases in, so a pass over this
+    // and a pass over that one work through the library the same way.
+    let sql = format!(
+        "SELECT {GROUP_ALBUM}, {GROUP_ARTIST}, {RELEASE_FILE_COLUMNS}
+           FROM tracks
+          ORDER BY {GROUP_ARTIST} IS NULL, {GROUP_ARTIST} COLLATE NOCASE,
+                   {GROUP_ALBUM}  IS NULL, {GROUP_ALBUM}  COLLATE NOCASE,
+                   {RELEASE_ORDER}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([])?;
+    // The key of the release being accumulated, in the casing of its first
+    // row: rows of one release can disagree about that, and the folder they
+    // are filed into has to be one answer that does not move between sweeps.
+    let mut key: Option<(Option<String>, Option<String>)> = None;
+    let mut files: Vec<ReleaseFile> = Vec::new();
+
+    while let Some(row) = rows.next()? {
+        let album: Option<String> = row.get(0)?;
+        let artist: Option<String> = row.get(1)?;
+        let started = match &key {
+            Some((album_of, artist_of)) => {
+                !same_key(album_of, &album) || !same_key(artist_of, &artist)
+            }
+            None => true,
+        };
+        if started {
+            if let Some((album_of, artist_of)) = key.take() {
+                each(album_of, artist_of, &files);
+                files.clear();
+            }
+            key = Some((album.clone(), artist.clone()));
+        }
+        files.push(release_file(row, 2)?);
+    }
+    if let Some((album, artist)) = key {
+        each(album, artist, &files);
+    }
+    Ok(())
+}
+
+/// What release a track now belongs to.
+///
+/// By id, so it answers for a row whose tags have just been rewritten - which
+/// is what the unattended pass asks after a lookup wrote a new album and
+/// artist onto every file of a release, and its old key stopped naming it.
+pub fn release_of(
+    conn: &Connection,
+    track_id: i64,
+) -> AppResult<Option<(Option<String>, Option<String>)>> {
+    let sql = format!("SELECT {GROUP_ALBUM}, {GROUP_ARTIST} FROM tracks WHERE tracks.id = ?1");
+    Ok(conn
+        .query_row(&sql, [track_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()?)
 }
 
 /// Cover bytes for the custom protocol handler.
@@ -2304,5 +2391,61 @@ mod tests {
                 "asking as {artist:?} must still name the whole release"
             );
         }
+    }
+
+    /// The walk the unattended pass surveys the library with. A release tagged
+    /// two ways is one release here too - unfolded it would be filed into two
+    /// folders, and each sweep would move it back into the other.
+    #[test]
+    fn the_walk_groups_a_release_tagged_two_ways_as_one() {
+        let (_dir, db) = mixed_cased();
+        let conn = db.conn().unwrap();
+
+        let mut seen = Vec::new();
+        for_each_release(&conn, |album, artist, files| {
+            seen.push((album, artist, files.len()));
+        })
+        .unwrap();
+
+        assert_eq!(
+            seen.iter()
+                .map(|(album, artist, count)| (album.as_deref(), artist.as_deref(), *count))
+                .collect::<Vec<_>>(),
+            [
+                // Artist first, which is the order `lookup::pending` reads
+                // releases in.
+                (Some("Requiembryo"), Some("ASP"), 2),
+                (Some("A Sense Of Purpose"), Some("In Flames"), 2),
+                // The untagged file, where the grid puts it: last, and one
+                // release of its own rather than one per file.
+                (None, None, 1),
+            ],
+            "one group per release, in the casing of its first row"
+        );
+    }
+
+    /// What the pass asks after a lookup has rewritten every file of a release
+    /// and the key it arrived under has stopped naming anything.
+    #[test]
+    fn a_track_says_which_release_it_now_belongs_to() {
+        let (_dir, db) = mixed_cased();
+        let conn = db.conn().unwrap();
+        let id: i64 = conn
+            .query_row("SELECT id FROM tracks WHERE path = '/c/3.mp3'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        conn.execute(
+            "UPDATE tracks SET album = 'Zutiefst', album_artist = 'ASP' WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
+
+        assert_eq!(
+            release_of(&conn, id).unwrap(),
+            Some((Some("Zutiefst".to_owned()), Some("ASP".to_owned())))
+        );
+        assert_eq!(release_of(&conn, -1).unwrap(), None);
     }
 }

@@ -75,6 +75,30 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
 
+## The Library folder
+
+Two keys in `settings` and no table: `library.organize`, and `library.root` for
+the folder itself. **Neither is exportable** — a root names a path on this
+machine — and both have to be set for anything to happen, because organize-on
+with no root is not a state the dialog can reach and a hand-edited row must not
+make it one.
+
+**There is no resume table for the filing, and no migration.** A release whose
+files all sit at the target `library::layout` computes is filed; one whose files
+do not is not. The state is derived from `tracks.path` on every sweep, which is
+what makes it survive a quit, a kill, and the switch being turned off and on
+again. `library::survey` and `library::mover` compute that target through the
+same two builders, because two answers to where a file goes is the defect: the
+harmless direction is a release the survey calls filed and the mover would have
+moved, and the other is a release offered to a mover that does nothing with it,
+every sweep, forever.
+
+**The root is a `watch_folders` row for as long as the switch is on.**
+`scan::plan` marks missing every known row it did not walk, so a library filed
+into a folder nobody watches is marked missing in full on the next scan;
+`scan::remove_watch_folder` refuses the root until the switch goes off. The
+previous root stays watched after a change — it is where the files came from.
+
 ## The release lookup
 
 `release_lookup` is one row per release the unattended pass has attempted, and

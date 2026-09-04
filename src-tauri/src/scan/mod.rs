@@ -371,7 +371,20 @@ pub fn add_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
 /// marks them missing, which is the route that already exists - a second kind
 /// of removal, deleting rows because a folder left the list, would take the
 /// play counts and playlist places on them with it.
+///
+/// **Except the Library folder, while the library is being filed into it.**
+/// [`plan`] marks missing every known row it did not walk, not only rows under
+/// the roots it walked, so a library organised into a folder nobody watches is
+/// a library marked missing in full on the next scan. Refused here rather than
+/// only hidden in Settings, because two clicks in the panel below the switch
+/// is not far enough away from 65,535 rows marked missing.
 pub fn remove_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
+    if crate::db::settings::library_root(conn)?.as_deref() == Some(path) {
+        return Err(AppError::Internal(
+            "This is your Library folder. Turn off Organise My Library to stop watching it."
+                .to_owned(),
+        ));
+    }
     conn.execute(
         "DELETE FROM watch_folders WHERE path = ?1",
         [path.to_string_lossy().as_ref()],
@@ -664,6 +677,32 @@ mod tests {
     /// `plan` as a scan the user asked for: no tombstones, every root walked.
     fn plan(known: &HashMap<String, Known>, on_disk: &[(PathBuf, i64, i64)]) -> ScanPlan {
         super::plan(known, on_disk, &HashSet::new(), &[])
+    }
+
+    /// The invariant [`plan`] would otherwise break: a library filed into a
+    /// folder nobody watches is marked missing in full on the next scan.
+    #[test]
+    fn the_library_folder_cannot_be_unwatched_while_it_is_being_filed_into() {
+        use crate::db::{settings, Db};
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        std::fs::create_dir(&root).unwrap();
+        let listed = || watch_folders(&conn).unwrap();
+
+        add_watch_folder(&conn, &root).unwrap();
+        settings::set(&conn, settings::LIBRARY_ROOT, &root.to_string_lossy()).unwrap();
+        settings::set(&conn, settings::ORGANIZE, "true").unwrap();
+
+        assert!(remove_watch_folder(&conn, &root).is_err());
+        assert_eq!(listed(), [root.as_path()].map(PathBuf::from));
+
+        // Turning the switch off is what releases it.
+        settings::set(&conn, settings::ORGANIZE, "false").unwrap();
+        remove_watch_folder(&conn, &root).unwrap();
+        assert!(listed().is_empty());
     }
 
     #[test]

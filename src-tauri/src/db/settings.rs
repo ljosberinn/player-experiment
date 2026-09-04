@@ -3,6 +3,8 @@
 //! Small, rarely-read preferences that belong to the library rather than to a
 //! track: volume today, window geometry and the last view later.
 
+use std::path::PathBuf;
+
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::AppResult;
@@ -38,6 +40,18 @@ pub const DYNAMIC_BACKGROUND: &str = "appearance.dynamicBackground";
 /// the tag sources are inert unless somebody asks. The ask is this switch,
 /// once, rather than a confirmation per release.
 pub const UNATTENDED_LOOKUP: &str = "lookup.unattended";
+/// Whether the pass files the library into [`LIBRARY_ROOT`].
+///
+/// Off unless it has been turned on, for [`UNATTENDED_LOOKUP`]'s reason in the
+/// other direction: this one moves every file in the library, and a value this
+/// app did not write must not start four hours of renames.
+pub const ORGANIZE: &str = "library.organize";
+/// The folder the library is filed into, absolute.
+///
+/// Machine-local, like the watch folders and unlike a preference: it names a
+/// path that exists on this machine, which is why neither this nor
+/// [`ORGANIZE`] joins [`EXPORTABLE`].
+pub const LIBRARY_ROOT: &str = "library.root";
 /// Set once the built-in smart playlists have been created. A flag rather than
 /// a check for the playlists themselves, so deleting Most Played deletes it
 /// instead of asking for it back on the next launch.
@@ -177,6 +191,20 @@ pub fn unattended_lookup(conn: &Connection) -> AppResult<bool> {
     Ok(get(conn, UNATTENDED_LOOKUP)?.as_deref() == Some("true"))
 }
 
+/// Where the library is filed, if it is filed at all.
+///
+/// The two keys have four combinations and only three of them mean anything:
+/// organize on with no root is not a state the dialog can reach, and it reads
+/// as off here so that a hand-edited row cannot make it one.
+pub fn library_root(conn: &Connection) -> AppResult<Option<PathBuf>> {
+    if get(conn, ORGANIZE)?.as_deref() != Some("true") {
+        return Ok(None);
+    }
+    Ok(get(conn, LIBRARY_ROOT)?
+        .filter(|root| !root.is_empty())
+        .map(PathBuf::from))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,6 +341,36 @@ mod tests {
             !unattended_lookup(&conn).unwrap(),
             "a value this app did not write must not start four hours of traffic"
         );
+    }
+
+    /// The three combinations of the two keys that mean anything, and the
+    /// fourth that does not: organize on with no root is not a state the
+    /// dialog can reach, and a hand-edited row must not make it one.
+    #[test]
+    fn the_library_root_needs_both_keys() {
+        let (_dir, conn) = conn();
+        assert_eq!(library_root(&conn).unwrap(), None);
+
+        set(&conn, LIBRARY_ROOT, "D:\\Music").unwrap();
+        assert_eq!(library_root(&conn).unwrap(), None, "picked, not turned on");
+
+        set(&conn, ORGANIZE, "true").unwrap();
+        assert_eq!(
+            library_root(&conn).unwrap(),
+            Some(PathBuf::from("D:\\Music"))
+        );
+
+        set(&conn, LIBRARY_ROOT, "").unwrap();
+        assert_eq!(library_root(&conn).unwrap(), None, "turned on with no root");
+    }
+
+    /// Both sides of the line an export draws. A root names a folder on this
+    /// machine, and an export read on another one would name a folder that is
+    /// not there.
+    #[test]
+    fn neither_library_folder_key_is_exportable() {
+        assert!(!is_exportable(ORGANIZE));
+        assert!(!is_exportable(LIBRARY_ROOT));
     }
 
     #[test]

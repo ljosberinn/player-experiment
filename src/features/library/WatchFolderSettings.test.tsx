@@ -28,7 +28,7 @@ describe("the music folders section", () => {
   });
 
   it("lists what is being watched", async () => {
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
 
     expect(await screen.findByText("C:\\Music")).toBeInTheDocument();
     expect(screen.getByText("D:\\More Music")).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe("the music folders section", () => {
 
   it("removes a folder and takes it out of the list", async () => {
     const user = userEvent.setup();
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
     await screen.findByText("C:\\Music");
 
     await user.click(screen.getByRole("button", { name: "Stop watching C:\\Music" }));
@@ -50,21 +50,21 @@ describe("the music folders section", () => {
 
   it("says so when nothing is watched, rather than showing an empty list", async () => {
     vi.mocked(listWatchFolders).mockResolvedValue([]);
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
 
     expect(await screen.findByText(/Nothing is being watched/)).toBeInTheDocument();
   });
 
   it("opens on the stored interval", async () => {
     vi.mocked(loadWatchInterval).mockResolvedValue(60);
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
 
     await waitFor(() => expect(interval().value).toBe("60"));
   });
 
   it("saves a new interval", async () => {
     const user = userEvent.setup();
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
     await waitFor(() => expect(interval().value).toBe("15"));
 
     await user.selectOptions(interval(), "30");
@@ -75,7 +75,7 @@ describe("the music folders section", () => {
 
   it("offers turning the checks off", async () => {
     const user = userEvent.setup();
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
     await waitFor(() => expect(interval().value).toBe("15"));
 
     // Zero rather than a separate flag: off is an interval like any other, so
@@ -85,11 +85,29 @@ describe("the music folders section", () => {
     expect(saveWatchInterval).toHaveBeenCalledWith(0);
   });
 
+  it("shows the Library folder without a way to stop watching it", async () => {
+    // A library filed into a folder nobody watches is marked missing in full
+    // on the next scan, so the row cannot offer a Remove button - and the note
+    // has to say what does release it.
+    render(<WatchFolderSettings lockedRoot={"C:\\Music"} />);
+    await screen.findByText("C:\\Music");
+
+    expect(
+      screen.queryByRole("button", { name: "Stop watching C:\\Music" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Library folder")).toBeInTheDocument();
+    expect(screen.getByText(/turn off Organise My Library/)).toBeInTheDocument();
+    // And the other row is untouched.
+    expect(
+      screen.getByRole("button", { name: "Stop watching D:\\More Music" }),
+    ).toBeInTheDocument();
+  });
+
   it("says what removing a folder does to the songs in it", async () => {
     // The section cannot list a Remove button without it: the marking happens
     // later, on a pass nobody is watching, and a user who is not told will
     // read it as the app losing their library.
-    render(<WatchFolderSettings />);
+    render(<WatchFolderSettings lockedRoot={null} />);
 
     expect(await screen.findByText(/marked missing/)).toBeInTheDocument();
   });

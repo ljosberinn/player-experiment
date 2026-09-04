@@ -12,13 +12,15 @@
  * the best part of half an hour, so a readout without decimals or an estimate
  * reads as hung.
  *
- * One channel with more than one producer: the unattended lookup is the first
- * and phase 83's move is the second, which is why the label is in the payload
- * rather than in the component.
+ * One channel and one producer: looking a release up and moving it are two
+ * steps of one pass rather than two passes. The label is in the payload
+ * rather than in the component all the same, because it names the steps that
+ * are switched on.
  */
 export type BackgroundTask = { 
 /**
- * What is running, as the sidebar says it: "Looking up releases".
+ * What is running, as the sidebar says it: "Looking up and filing
+ * releases".
  */
 label: string, done: number, total: number, 
 /**

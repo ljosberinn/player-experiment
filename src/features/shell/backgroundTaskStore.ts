@@ -4,10 +4,10 @@ import { type BackgroundTask, onTaskProgress } from "../../ipc";
 /**
  * What long task is running, if any.
  *
- * One channel with more than one producer: the unattended lookup pass is the
- * first and phase 83's library move is the second, which is why the payload
- * carries its own label. Two tasks cannot run at once - both take the scan
- * lock per write - so this holds one rather than a list.
+ * One channel, one producer: looking a release up and moving it are two steps
+ * of one pass rather than two passes, which is why this holds a task rather
+ * than a list. The payload still carries its own label, because that label
+ * names the steps that are switched on.
  *
  * Nothing is asked for at startup. The producer says where it is per release,
  * and it says `null` when it stops, so the readout is empty until a task has

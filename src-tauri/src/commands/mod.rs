@@ -13,14 +13,14 @@ pub(crate) use invalidate::{announce as announce_library_changed, Invalidations}
 
 use crate::audio::{Command, Player};
 use crate::db::{lookup, playback, playlists, query, settings, tag_values, Db};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::export::{self, ExportScope};
 use crate::log::{Fields, Log, Op};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, FilterGroup, LastfmConnection,
-    LastfmStatus, LibraryStats, PlayerSnapshot, Playlist, ReleaseCandidate, ReleaseDetail,
-    ReleaseIdentity, ReleaseSelection, ReviewCounts, ReviewEntry, ScanSummary, SmartOrder, TagEdit,
-    TagValueField, TagWriteSummary, Track, TrackEdit, TrackQuery,
+    LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot, Playlist, ReleaseCandidate,
+    ReleaseDetail, ReleaseIdentity, ReleaseSelection, ReviewCounts, ReviewEntry, ScanSummary,
+    SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track, TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags, tagsource};
@@ -31,8 +31,8 @@ const EXPORT_PROGRESS: &str = "export://progress";
 /// The channel a task measured in hours reports on, read by the readout at the
 /// foot of the sidebar. `None` clears it.
 ///
-/// Named here rather than in `tagsource` because the pass is its first
-/// producer and not its only one.
+/// Named here rather than in `library` because the readout does not care
+/// which task is reporting, only that one is.
 pub(crate) const TASK_PROGRESS: &str = "task://progress";
 /// Named rather than inline since the unattended pass in `lib.rs` reports on
 /// it too - the bar does not care which of the two started the work.
@@ -1174,6 +1174,60 @@ pub fn save_unattended_lookup(db: State<'_, Db>, enabled: bool) -> AppResult<()>
         settings::UNATTENDED_LOOKUP,
         if enabled { "true" } else { "false" },
     )
+}
+
+/// The Library folder as Settings draws it.
+#[tauri::command]
+pub fn load_library_folder(db: State<'_, Db>) -> AppResult<LibraryFolder> {
+    let conn = db.conn()?;
+    Ok(LibraryFolder {
+        root: settings::get(&conn, settings::LIBRARY_ROOT)?.filter(|root| !root.is_empty()),
+        organize: settings::get(&conn, settings::ORGANIZE)?.as_deref() == Some("true"),
+    })
+}
+
+/// Turning it off stops the pass filing and moves nothing back: the files are
+/// where the user asked them to be, and a second bulk move to undo a bulk move
+/// is not an undo.
+///
+/// Read between releases rather than once at start, so turning it off cancels
+/// the step in a pass that is running.
+#[tauri::command]
+pub fn save_organize_library(db: State<'_, Db>, enabled: bool) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(
+        &conn,
+        settings::ORGANIZE,
+        if enabled { "true" } else { "false" },
+    )
+}
+
+/// Picks the folder the library is filed into, and starts watching it.
+///
+/// **Watching it is not optional.** `scan::plan` marks missing every known row
+/// it did not walk, so a library organised into a folder nobody watches is a
+/// library marked missing in full on the next scan. The previous root stays
+/// watched and stays listed: it is where the files came from, and nothing else
+/// in the app knows to keep looking at it.
+///
+/// A root with no path budget left is refused here rather than at the first
+/// rename, per 83a's `has_path_budget`: better a sentence in Settings than
+/// every filename in the library truncated to nothing.
+#[tauri::command]
+pub fn set_library_root(app: tauri::AppHandle, db: State<'_, Db>, path: String) -> AppResult<()> {
+    op(&app, "library.root").add("path", &path).run(|| {
+        let root = PathBuf::from(&path);
+        if !crate::library::layout::has_path_budget(&root) {
+            return Err(AppError::Internal(
+                "That folder is too deep inside other folders to file a library into. \
+                 Choose one nearer the top of the drive."
+                    .to_owned(),
+            ));
+        }
+        let conn = db.conn()?;
+        scan::add_watch_folder(&conn, &root)?;
+        settings::set(&conn, settings::LIBRARY_ROOT, &path)
+    })
 }
 
 #[tauri::command]

@@ -186,10 +186,10 @@ pub struct Queued {
 }
 
 /// A release as [`queue`] matches it in memory: the album and artist, folded.
-type Key = (Option<String>, Option<String>);
+pub type Key = (Option<String>, Option<String>);
 
 /// How a release is keyed in memory, folding case the way `NOCASE` does.
-fn fold(album: &Option<String>, artist: &Option<String>) -> Key {
+pub fn fold(album: &Option<String>, artist: &Option<String>) -> Key {
     (
         album.as_ref().map(|value| value.to_ascii_lowercase()),
         artist.as_ref().map(|value| value.to_ascii_lowercase()),
@@ -355,30 +355,21 @@ pub fn restore_aside(conn: &Connection) -> AppResult<usize> {
     )?)
 }
 
-/// How far the pass has got: releases with a row, and releases in the library.
+/// Every release the pass has already been through, folded for matching.
 ///
-/// Two group-bys over every track, which is why the worker asks once a sweep
-/// and counts the rest itself.
-pub fn progress(conn: &Connection) -> AppResult<(usize, usize)> {
-    // The grouping is a derived table for the same reason `pending`'s is:
-    // SQLite refuses an aggregate inside a correlated subquery, so the label
-    // has to be a column before a row can be matched against it.
-    let sql = format!(
-        "SELECT count(*), sum(attempted)
-           FROM (SELECT EXISTS (
-                            SELECT 1 FROM release_lookup
-                             WHERE coalesce(release_lookup.album,  '') = coalesce(releases.album,  '') COLLATE NOCASE
-                               AND coalesce(release_lookup.artist, '') = coalesce(releases.artist, '') COLLATE NOCASE
-                        ) AS attempted
-                   FROM (SELECT min({ALBUM}) AS album, min({ARTIST}) AS artist
-                           FROM tracks
-                          WHERE tracks.missing_since IS NULL
-                          GROUP BY {ALBUM} COLLATE NOCASE, {ARTIST} COLLATE NOCASE) AS releases) AS counted"
-    );
-    let (total, done) = conn.query_row(&sql, [], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+/// The whole table rather than a row per release: the survey walks the library
+/// once and asks this of every release it groups, and a keyed query per
+/// release would be 8,044 of them. Small - one row per release ever attempted,
+/// with no candidates or scores read.
+pub fn attempted(conn: &Connection) -> AppResult<std::collections::HashSet<Key>> {
+    let mut stmt = conn.prepare("SELECT album, artist FROM release_lookup")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(fold(
+            &row.get::<_, Option<String>>(0)?,
+            &row.get::<_, Option<String>>(1)?,
+        ))
     })?;
-    Ok((done.unwrap_or(0) as usize, total as usize))
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
 #[cfg(test)]
@@ -833,30 +824,24 @@ mod tests {
         assert_eq!(aside_count(&conn).unwrap(), 0);
     }
 
+    /// What the survey matches every release it groups against, in the folding
+    /// the unique index uses.
     #[test]
-    fn progress_counts_releases_with_a_row_against_every_release() {
+    fn what_has_been_attempted_comes_back_folded() {
         let (_dir, conn) = open();
         track(&conn, "a.mp3", "Loveless", "My Bloody Valentine", None);
-        track(
-            &conn,
-            "b.mp3",
-            "Isn't Anything",
-            "My Bloody Valentine",
-            None,
-        );
-        track(&conn, "c.mp3", "Spiderland", "Slint", None);
+        track(&conn, "b.mp3", "Spiderland", "Slint", None);
 
-        assert_eq!(progress(&conn).unwrap(), (0, 3));
+        assert!(attempted(&conn).unwrap().is_empty());
 
         let release = pending(&conn, 1, 0).unwrap().remove(0);
         record(&conn, &release, Status::NotFound, None, None, None, 100).unwrap();
 
-        assert_eq!(progress(&conn).unwrap(), (1, 3));
-    }
-
-    #[test]
-    fn an_empty_library_is_no_progress_rather_than_a_null() {
-        let (_dir, conn) = open();
-        assert_eq!(progress(&conn).unwrap(), (0, 0));
+        let seen = attempted(&conn).unwrap();
+        assert_eq!(seen.len(), 1);
+        assert!(seen.contains(&fold(
+            &Some("LOVELESS".to_owned()),
+            &Some("my bloody valentine".to_owned())
+        )));
     }
 }

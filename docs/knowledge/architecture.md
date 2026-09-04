@@ -22,11 +22,13 @@ src-tauri/src/
   export/     JSON export
   lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue
   tagsource/  MusicBrainz + Cover Art Archive lookup: transport seam, the
-              process-wide rate limiter, candidate scoring, the unattended
-              pass (one release in `pass`, the thread in `worker`)
+              process-wide rate limiter, candidate scoring, one release's
+              lookup in `pass`
   library/    the Library folder: `layout` is where a file goes, as a pure
               function of a release and one of its tracks; `mover` puts one
-              release there, files and rows in one transaction
+              release there, files and rows in one transaction; `survey` is
+              what the library still needs; `worker` is the thread that does
+              both steps
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   log.rs      every operation, one line each, rotated
@@ -102,35 +104,61 @@ playlist the track was in.
 Poison-tolerant: a panicking scan must not leave the
 library unscannable for the rest of the session.
 
-**A second background thread looks releases up.** `release-lookup` wakes on the
-same fifteen seconds, reads `lookup.unattended` from `settings`, and works
-through every release `release_lookup` has no row for: two MusicBrainz calls
-each. It reads the setting between releases and not only on waking, so turning
-the switch off cancels a pass in flight and turning it back on resumes from the
-table rather than from the top; a setting that cannot be read is logged and is
-not taken for a switch that is off. Above `score::UNATTENDED_THRESHOLD` it
-writes the release's tags; below it, it records the release for a person to
-decide and writes nothing. **Each release it decides announces itself on
-`library://changed`** — written or queued, and per release rather than per
-sweep, because a sweep runs for hours and may not end at all, and a view told
-only at the end of one is a view that never hears. Queuing counts because the
-sidebar's review count is drawn from that row; the rate is unchanged either way,
-since written and queued are one release's two outcomes and never both.
-`commands::invalidate` is what keeps it affordable. A dry run announces nothing,
-having written nothing.
+**A second background thread looks releases up and files them.** `library-pass`
+wakes on the same fifteen seconds and reads two settings: `lookup.unattended`
+and `library.organize` with `library.root`. It works through every release with
+either step left to do, and does both in one visit — looked up first, then moved
+to where `library::layout` says the tags the lookup just wrote belong. **One
+pass rather than two**, because placing a release means reading the tags the
+lookup writes: as two passes a gate would stall the backfill behind forty-five
+hours of lookups, no gate would move 8,044 releases twice, and either way
+`task://progress` would have two producers whose labels overwrite each other.
+
+It reads both settings between releases and not only on waking, so turning one
+off cancels its own step in a pass that is running and leaves the other going; a
+setting that cannot be read is logged and is not taken for a switch that is off.
+Above `score::UNATTENDED_THRESHOLD` the lookup writes the release's tags; below
+it, it records the release for a person to decide and writes nothing — and the
+release is filed either way, from its own tags, because waiting for an identity
+that is never coming is a release that never moves.
+
+**What is left to do is derived, not recorded.** `library::survey` walks the
+library once, groups consecutive rows into releases and asks two questions of
+each: whether `release_lookup` has a row, and whether every file of it already
+sits at the target `library::mover` would compute. No resume table and no
+migration: the state is in the paths, so it survives a quit, a kill and the
+setting being turned off and on again. A release that will not move is logged,
+skipped and not offered again for the length of that run; the release the player
+has a file open on goes to a tail tried once at the end of the sweep.
+
+**Each release it touches announces itself on `library://changed`** — written,
+queued or moved, once per release rather than once per step, and per release
+rather than per sweep, because a sweep runs for hours and may not end at all,
+and a view told only at the end of one is a view that never hears. Queuing counts
+because the sidebar's review count is drawn from that row. `commands::invalidate`
+is what keeps it affordable. A dry run announces nothing, having written nothing
+and moved nothing.
+
+**The Library folder is a watch folder, and cannot stop being one while the
+filing is on.** `scan::plan` marks missing every known row it did not walk, so a
+library organised into a folder nobody watches is a library marked missing in
+full on the next scan. Picking a root adds it to `watch_folders` and
+`scan::remove_watch_folder` refuses it until the switch goes off.
 
 **It also reports where it stands on `task://progress`**, per release attempted
 and `null` when the sweep ends, whatever ended it. Its own channel rather than
 one of the per-write ones: this is a task measured in days, drawn at the foot of
-the sidebar for its whole life, and the payload carries a label because the
-channel has more than one producer. The estimate comes from the last hundred
-releases rather than from the whole pass — one whose files already carry an MBID
-costs nothing and a searched one costs two rate-limited requests, so an average
+the sidebar for its whole life, and the payload carries a label because that
+label names which steps are switched on. The total is what the survey found left
+to do, which is the number the fraction reaches. The estimate comes from the last
+hundred releases rather than from the whole pass — one whose files already carry
+an MBID costs nothing and a searched one costs two rate-limited requests, and a
+sub-second move beside a ten-second lookup is only more of that, so an average
 over the run describes a pass that is not the one running.
 
-**Waking and sweeping are two cadences.** The switch is answered every fifteen
-seconds because that is what makes it feel immediate, and it costs one keyed
-row. A sweep costs two group-bys over every track in the library, so the gap
+**Waking and sweeping are two cadences.** The switches are answered every fifteen
+seconds because that is what makes them feel immediate, and it costs two keyed
+rows. A sweep sorts every row in the library, so the gap
 between sweeps doubles — to a ten-minute ceiling — whenever one finds nothing to
 do or ends on a failure, and snaps back to fifteen seconds the moment one gets
 through releases. A release a scan has just added therefore waits up to ten
@@ -154,13 +182,14 @@ that works leaves no other trace and the interval it costs reads as a slow
 request.
 
 `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
-which is how the threshold is tuned against a real library. **The rows are the
-real pass's cursor and cannot be the dry run's**, so a dry run pages
-`lookup::pending` by offset instead, skips the tag seed — the one row it would
-otherwise leave behind — and logs `would-write` and `would-queue` where a real
-pass logs `written` and `queued`. That offset is the thread's rather than the
-sweep's, so a sweep a 503 ended does not send the survey back to the first
-release.
+which is how the threshold is tuned against a real library. **The library is the
+real pass's cursor and cannot be the dry run's** — it writes no rows and moves no
+files, so every survey would hand it the same release. It keeps its own set of
+what it has reported on instead, skips the tag seed (the one row it would
+otherwise leave behind), and logs `would-write`, `would-queue` and `would-move`
+where a real pass logs `written`, `queued` and `moved`. That set is the thread's
+rather than the sweep's, so a sweep a 503 ended does not send the rehearsal back
+to the first release.
 
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
@@ -228,8 +257,9 @@ What gets a line:
   that goes through neither: the watch-folder pass (`scan.watch`, including the
   passes that found nothing), the cover-normalize pass, and each scrobble and
   now-playing submission.
-- **One line per release the lookup pass resolves or queues** (`lookup.release`,
-  with the score), and one per sweep (`lookup.sweep`). **Silence for a release
+- **One line per release the pass resolves or queues** (`lookup.release`, with
+  the score), one per release it moves (`library.place`, with the counts), and
+  one per sweep (`pass.sweep`). **Silence for a release
   MusicBrainz has nothing for** — eight thousand lines about what was written is
   nothing next to a threshold that cannot be diagnosed after the fact, and eight
   thousand more about records nobody has heard of is noise.

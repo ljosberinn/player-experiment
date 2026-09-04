@@ -89,7 +89,7 @@ the webview: Tauri routes it through the backend and back to the listener, so
 the component hears it exactly as it hears the real thing. What that leaves to
 `invoke.ts`'s `emit` rather than to the app is nothing - no test-only path ships
 - and the arithmetic behind the numbers is asserted on `Pace` in
-`tagsource::worker`.
+`library::worker`.
 
 The rate limiter is asserted at its real ten seconds, from **two** callers at
 once, and again for a slow request not shortening the gap after it: the limit

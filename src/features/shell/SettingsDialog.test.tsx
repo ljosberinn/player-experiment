@@ -19,7 +19,13 @@ vi.mock("../../ipc", () => ({
   revealMainLog: vi.fn(async () => undefined),
   loadUnattendedLookup: vi.fn(async () => false),
   saveUnattendedLookup: vi.fn(async () => undefined),
+  loadLibraryFolder: vi.fn(async () => ({ root: null, organize: false })),
+  saveOrganizeLibrary: vi.fn(async () => undefined),
+  setLibraryRoot: vi.fn(async () => undefined),
+  countTracks: vi.fn(async () => 0),
+  defaultTrackQuery: {},
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 function checkbox(): HTMLInputElement {
   return screen.getByRole("checkbox", { name: "Colour From Album Art" });
@@ -93,6 +99,16 @@ describe("the Settings dialog", () => {
     // argument as the row above, one section later.
     expect(screen.getByText("Music Folders")).toBeInTheDocument();
     expect(screen.getByLabelText("Check For Changes")).toBeInTheDocument();
+  });
+
+  it("carries the library folder section, above the music folders", () => {
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    // Above, because it is the stronger statement of the same thing: what the
+    // app does to the library while nobody is watching.
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headings.indexOf("Library Folder")).toBeLessThan(headings.indexOf("Music Folders"));
+    expect(screen.getByLabelText("Organise My Library")).toBeInTheDocument();
   });
 
   it("opts the library into looking releases up online", async () => {
