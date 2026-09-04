@@ -60,7 +60,7 @@ Mixed keys are the permanent state, not a transitional one: a file nobody ever
 looks up never gets an MBID. 11 of the 356 titles are already mixed within a
 single title.
 
-**It composes with [81](81-two-casings-two-tiles.md) either way round.** 81
+**It composes with [81](../done/81-two-casings-two-tiles.md) either way round.** 81
 folds the grouping to `COLLATE NOCASE`; the collation applies to the whole
 identity string here, and MBIDs are lowercase hex, so folding them costs
 nothing and changes nothing.
