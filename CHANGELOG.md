@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.9.0](https://github.com/ljosberinn/player-experiment/compare/v0.8.0...v0.9.0) (2026-09-04)
+
+
+### Features
+
+* compute where a file goes ([#148](https://github.com/ljosberinn/player-experiment/issues/148)) ([256657e](https://github.com/ljosberinn/player-experiment/commit/256657ead9c63ad8977d06171809f07477682310))
+* every operation in a logfile ([#136](https://github.com/ljosberinn/player-experiment/issues/136)) ([208a440](https://github.com/ljosberinn/player-experiment/commit/208a440301502b99226f458246cbe3263310382f))
+* in-app dragging without HTML5 drag and drop ([#137](https://github.com/ljosberinn/player-experiment/issues/137)) ([01a20fe](https://github.com/ljosberinn/player-experiment/commit/01a20fe6c599e6e3d53bd5d804b351168298e17e))
+* look a release up on MusicBrainz ([#140](https://github.com/ljosberinn/player-experiment/issues/140)) ([eaa6083](https://github.com/ljosberinn/player-experiment/commit/eaa6083075197da41ad460f4bb2731a9b8a9a912))
+* look releases up unattended ([#146](https://github.com/ljosberinn/player-experiment/issues/146)) ([abb6af0](https://github.com/ljosberinn/player-experiment/commit/abb6af04a3fd4fe72f9ec756befaf870f1e8eefb))
+* move one release to where it goes ([#149](https://github.com/ljosberinn/player-experiment/issues/149)) ([70cf5c1](https://github.com/ljosberinn/player-experiment/commit/70cf5c1f35c4877679b2e16cb1c6b67bff6759a9))
+* per-track edits and the release MBIDs ([#139](https://github.com/ljosberinn/player-experiment/issues/139)) ([c17fa36](https://github.com/ljosberinn/player-experiment/commit/c17fa36bea2818e32bee2e8628c5dff0a72814e0))
+* remove the tag-edit undo journal ([#145](https://github.com/ljosberinn/player-experiment/issues/145)) ([b437283](https://github.com/ljosberinn/player-experiment/commit/b4372833508064cb64e90d37370b2c354c02cd9a))
+* review the pass's queue, and watch it run ([#147](https://github.com/ljosberinn/player-experiment/issues/147)) ([044b30a](https://github.com/ljosberinn/player-experiment/commit/044b30ab79b6bbdaf5323ce51c47881d2a4dc03e))
+* see the re-renders while working ([#144](https://github.com/ljosberinn/player-experiment/issues/144)) ([3d52ae7](https://github.com/ljosberinn/player-experiment/commit/3d52ae78749aca58f6bd1830c483b2917d23c257))
+* the chart primitives the statistics view is drawn from ([#153](https://github.com/ljosberinn/player-experiment/issues/153)) ([2a6d15c](https://github.com/ljosberinn/player-experiment/commit/2a6d15c5620bab3ab3a44775d7753e80038cf5ab))
+* turn the library folder on ([#150](https://github.com/ljosberinn/player-experiment/issues/150)) ([781a904](https://github.com/ljosberinn/player-experiment/commit/781a9046ad94bb50a00fe7d9949b839794434130))
+* watch folders actually watch ([#135](https://github.com/ljosberinn/player-experiment/issues/135)) ([387bca6](https://github.com/ljosberinn/player-experiment/commit/387bca6b9a2ea85a34538284dacdac0886dfc28a))
+
+
+### Bug Fixes
+
+* fold case when grouping releases ([#142](https://github.com/ljosberinn/player-experiment/issues/142)) ([b03ffd8](https://github.com/ljosberinn/player-experiment/commit/b03ffd8f6689d1558eeacd6bab8686f43d7cd141))
+* sort a page by reading an index rather than sorting the library ([#152](https://github.com/ljosberinn/player-experiment/issues/152)) ([4a1a713](https://github.com/ljosberinn/player-experiment/commit/4a1a713f7ecf39ab5713fb24e5985bd74e9012bf))
+
+
+### Performance
+
+* coalesce library://changed on the emit side ([#143](https://github.com/ljosberinn/player-experiment/issues/143)) ([b933b48](https://github.com/ljosberinn/player-experiment/commit/b933b485d9bb6b9cc4e0e7eb7a0814bcb73fd944))
+* store cover art at the size it is drawn ([#133](https://github.com/ljosberinn/player-experiment/issues/133)) ([dc453de](https://github.com/ljosberinn/player-experiment/commit/dc453deb24e017b757f0306eda8ac7af85e1b159))
+
 ## [0.8.0](https://github.com/ljosberinn/player-experiment/compare/v0.7.0...v0.8.0) (2026-09-02)
 
 
