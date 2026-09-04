@@ -51,7 +51,7 @@ after it.
 
 - **Above the threshold**, the write happens: title, artist, album, album
   artist, year, track and disc number, both MBIDs, the release type
-  ([83a](../upcoming/83a-where-a-file-goes.md)'s column and field, written here because this
+  ([83a](83a-where-a-file-goes.md)'s column and field, written here because this
   is what writes the rest of the release's identity), and artwork where there is
   none.
 - **Below it**, nothing is written and the release goes in the review queue for

@@ -58,7 +58,7 @@ table. Three consequences, all accepted at pre-v1:
 - Every migration number in prose moves: the table in
   [data-model.md](../../knowledge/data-model.md), the index
   [87](../upcoming/87-one-release-one-tile.md) says shipped in migration 9,
-  [83a](../upcoming/83a-where-a-file-goes.md)'s reference to migration 9's two MBIDs, and
+  [83a](83a-where-a-file-goes.md)'s reference to migration 9's two MBIDs, and
   the comments in `db/covers.rs` and `scan/mod.rs` that name one.
 
 **Edit with nothing selected is left holding only Settings…** — whether the menu

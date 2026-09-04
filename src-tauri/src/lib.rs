@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod export;
 pub mod lastfm;
+pub mod library;
 pub mod log;
 pub mod model;
 pub mod palette;

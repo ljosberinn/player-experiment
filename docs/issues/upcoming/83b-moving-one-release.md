@@ -1,7 +1,7 @@
 # 83b — Moving one release
 
 The mover: one release from wherever it is to where
-[83a](83a-where-a-file-goes.md) says it goes, with the rows following the files.
+[83a](../done/83a-where-a-file-goes.md) says it goes, with the rows following the files.
 Reachable from nothing yet — [83c](83c-turning-the-library-folder-on.md) is what
 calls it — so this phase is the operation and its tests.
 
