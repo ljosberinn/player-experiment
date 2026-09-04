@@ -367,15 +367,19 @@ then simplest first. The gaps below are those issues.
 | 77 | Query layer — `db/stats.rs`, `ListenQuery`, IPC types | 76 |
 | 78 | last.fm history import — worker, cursor, progress, settings surface | 76 |
 | 80 | Statistics shell — sidebar, tabs, filter bar, `StatsPath` history, CSV export | 70, 77 |
-| 84 | Panels | 75, 78, 80 |
+| 84a | Listening panels | 78, 80 |
+| 84b | Library panels | 75, 80 |
 
 70, 75 and 76 are independent and belong in parallel worktrees. 77 and 78 both
-stack on 76; 80 waits on 70 and 77.
+stack on 76; 80 waits on 70 and 77. **84 split into a phase per tab when the
+issues were written**, which is the split this document expected, and the two
+halves turn out to share only the chart primitives — the library tab needs
+neither the play log nor the import.
 
 ## Open, and deliberately so
 
 - **Which panels earn their place** is answered by using them, not by this
-  document. Phase 84 is expected to split, and to drop some of the list above.
+  document. 84a and 84b are both expected to drop some of the list above.
 - **CSV export mechanics** — whether the panels' row exports reuse `export/`'s
   generator and `export://progress` or get a smaller path of their own — is
   decided in 80, when there is a first export to shape it.
