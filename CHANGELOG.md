@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.1](https://github.com/ljosberinn/player-experiment/compare/v0.10.0...v0.10.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* a file the user removed is not a free name ([#173](https://github.com/ljosberinn/player-experiment/issues/173)) ([e45f26f](https://github.com/ljosberinn/player-experiment/commit/e45f26f819cc8b1bed8bcdeb2bae5ce10a660181))
+* a marker only survives while something holds the name ([#176](https://github.com/ljosberinn/player-experiment/issues/176)) ([14288ad](https://github.com/ljosberinn/player-experiment/commit/14288adc09e0d9a993c9fbd794f936ddcab21592))
+* a move that moved nothing is not a placement ([#168](https://github.com/ljosberinn/player-experiment/issues/168)) ([0925b18](https://github.com/ljosberinn/player-experiment/commit/0925b1823c7f7bf3ada7347b4d255dd3ef6fb102))
+* one file is one row, whatever it is spelled like ([#167](https://github.com/ljosberinn/player-experiment/issues/167)) ([f448168](https://github.com/ljosberinn/player-experiment/commit/f448168e55877b89a57d9e1d3de57af0508bfbcb))
+* the failure run outlives the sweep it parked ([#175](https://github.com/ljosberinn/player-experiment/issues/175)) ([77b459f](https://github.com/ljosberinn/player-experiment/commit/77b459f153f9379337d2b39b98d9ae7c49531589))
+* the row records the path the file landed on ([#172](https://github.com/ljosberinn/player-experiment/issues/172)) ([e854aba](https://github.com/ljosberinn/player-experiment/commit/e854aba9db28f60a858a8a4c7e50a61887c9f800))
+
+
+### Documentation
+
+* drop the schema draft and file the leak it turned up ([#171](https://github.com/ljosberinn/player-experiment/issues/171)) ([cb71fcd](https://github.com/ljosberinn/player-experiment/commit/cb71fcd502c62aba2bd1563901c0575ca50acc24))
+* what the placement loop is made of, and three issues beside it ([#166](https://github.com/ljosberinn/player-experiment/issues/166)) ([3811b3b](https://github.com/ljosberinn/player-experiment/commit/3811b3b898c40ef065fcee926bc311410a2b010e))
+
 ## [0.10.0](https://github.com/ljosberinn/player-experiment/compare/v0.9.0...v0.10.0) (2026-09-16)
 
 
