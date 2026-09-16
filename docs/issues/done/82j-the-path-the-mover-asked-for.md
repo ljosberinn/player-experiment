@@ -18,7 +18,7 @@ The next `scan.watch` walks the real tree and reads the real spelling, which
 Every sweep costs one generation of rows. 492 rows in the database are a present
 row's path in another casing, and 1,580 more are earlier generations whose file
 has since been renamed out from under them. This is the cost
-[83b](../done/83b-moving-one-release.md) wrote `UPDATE tracks SET path` in the
+[83b](83b-moving-one-release.md) wrote `UPDATE tracks SET path` in the
 rename's transaction to avoid, routed around by a rename that did not go where it
 said.
 

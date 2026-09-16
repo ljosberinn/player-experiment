@@ -1,13 +1,13 @@
 # 82m — Undoing the placement loop
 
-What [82i](82i-paths-compare-byte-exact.md), [82j](82j-the-path-the-mover-asked-for.md)
+What [82i](../done/82i-paths-compare-byte-exact.md), [82j](../done/82j-the-path-the-mover-asked-for.md)
 and [82k](82k-a-missing-row-claims-its-target.md) leave behind. **It runs after
 all three**, or it re-creates what it cleaned on the next sweep.
 
 ## The rows
 
 2,072 rows are marked missing. The 492 that fold onto a present row's path are
-[82i](82i-paths-compare-byte-exact.md)'s, merged by the migration that collides
+[82i](../done/82i-paths-compare-byte-exact.md)'s, merged by the migration that collides
 on them. **The other 1,580 are this one's**: earlier generations, whose file has
 since been renamed to the next marker, so nothing folds onto them and nothing
 proves what they are.
@@ -23,7 +23,7 @@ rather than a menu item whose cost is only visible after it has run.
 819 present files carry a ` (n)` collision marker across 132 folders, one number
 per sweep they were in — `(2)` through `(13)`, and one release at `(30)`.
 `at_target` accepts a marker on purpose, so once
-[82i](82i-paths-compare-byte-exact.md) lands they read as placed and keep the
+[82i](../done/82i-paths-compare-byte-exact.md) lands they read as placed and keep the
 number they have.
 
 For 750 of them the unsuffixed name is held by a missing row and by nothing
@@ -43,4 +43,4 @@ It walks 67,520 rows and renames some hundreds of files. A menu action beside
 Testing: a marked file whose ideal is free asserted renamed down with its row in
 one transaction; a marked file whose ideal a present row of another release
 holds asserted left at the number it has; the missing count asserted to report
-rows the merge in [82i](82i-paths-compare-byte-exact.md) has already taken.
+rows the merge in [82i](../done/82i-paths-compare-byte-exact.md) has already taken.

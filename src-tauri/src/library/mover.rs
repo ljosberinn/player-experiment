@@ -10,7 +10,9 @@
 //! `ON CONFLICT(path)`, so a move the scanner discovers is a new row plus an
 //! old row marked missing, which costs the play count, `added_at` and every
 //! playlist the track was in. The `UPDATE tracks SET path` commits in the same
-//! transaction as the rename, and nothing here routes through a rescan.
+//! transaction as the rename, and nothing here routes through a rescan. The
+//! path it writes is the one the file landed on rather than the one it was
+//! sent to - see [`landed_at`].
 //!
 //! **Failure does not need unwinding, because the target is derived.** A
 //! release left with some files moved and some not computes the same targets on
@@ -163,15 +165,16 @@ pub fn move_release(
 
         for (file, source, target) in &moves {
             place_file(fs, source, target)?;
-            let meta =
-                std::fs::metadata(target).map_err(|error| AppError::io(target.display(), error))?;
+            let landed = landed_at(root, target)?;
+            let meta = std::fs::metadata(&landed)
+                .map_err(|error| AppError::io(landed.display(), error))?;
             set_path.execute(rusqlite::params![
                 file.id,
-                key(target),
+                key(&landed),
                 scan::mtime_secs(&meta),
                 meta.len() as i64,
             ])?;
-            lift.execute([key(target)])?;
+            lift.execute([key(&landed)])?;
         }
 
         for (source, target) in &covers {
@@ -403,6 +406,35 @@ fn prune_empty(dir: &Path, stop: &[PathBuf]) {
         let Some(parent) = dir.parent() else { break };
         dir = parent.to_path_buf();
     }
+}
+
+/// Where a file actually landed: `root` as the caller spells it, and
+/// underneath it the spelling the filesystem has.
+///
+/// [82j](../../../docs/issues/done/82j-the-path-the-mover-asked-for.md):
+/// `create_dir_all` will not re-case a directory that already exists, so a
+/// file renamed into `Loveless - 1991 - Album` lands in
+/// `loveless - 1991 - Album` if that folder is already there, and the rename
+/// still reports success. `insert_track`'s `ON CONFLICT` updates everything
+/// but `path`, so a row holding the asked-for spelling holds it forever.
+///
+/// Only the part below the root is taken from `canonicalize`. Its answer is a
+/// `\\?\` path with short names expanded and junctions followed, so a library
+/// folder reached through any of those would give every row a path that no
+/// longer starts with the folder the user named - and `survey::at_target`
+/// compares against exactly that.
+fn landed_at(root: &Path, target: &Path) -> AppResult<PathBuf> {
+    let real_root =
+        std::fs::canonicalize(root).map_err(|error| AppError::io(root.display(), error))?;
+    let full =
+        std::fs::canonicalize(target).map_err(|error| AppError::io(target.display(), error))?;
+    Ok(match full.strip_prefix(&real_root) {
+        Ok(under) => root.join(under),
+        // Nothing builds a target outside the root, and a row is worth more
+        // than a guess: the asked-for path is at least under the folder the
+        // rest of the library measures against.
+        Err(_) => target.to_path_buf(),
+    })
 }
 
 /// A path as `tracks.path` and `scan::plan` spell it.
@@ -699,6 +731,72 @@ mod tests {
 
         assert_eq!(outcome, moved(0, 0, 0));
         assert_eq!(fixture.paths(), [folded]);
+    }
+
+    /// 82j: the folder is already there under another casing, and
+    /// `create_dir_all` leaves it that way, so the file lands in a spelling
+    /// nobody computed. The row has to say where it went.
+    #[test]
+    fn a_row_carries_the_casing_the_folder_has_rather_than_the_one_it_asked_for() {
+        let fixture = Fixture::new();
+        fixture.watch("Incoming");
+        fixture.watch("Library");
+        loveless(&fixture);
+        let folded = "Library\\My Bloody Valentine\\loveless - 1991 - album";
+        std::fs::create_dir_all(fixture.at(folded)).unwrap();
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            fixture.paths(),
+            [
+                format!("{folded}\\01 - Only Shallow.mp3"),
+                format!("{folded}\\02 - Loomer.mp3")
+            ]
+        );
+
+        // And what the scanner reads back is those same two rows: nothing
+        // added under the real spelling, nothing missing under the asked-for
+        // one.
+        let mut conn = fixture.conn();
+        scan::scan(&mut conn, |_| {}).unwrap();
+        let (rows, missing): (i64, i64) = conn
+            .query_row(
+                "SELECT count(*), count(missing_since) FROM tracks",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((rows, missing), (2, 0));
+    }
+
+    /// And only below the root: `canonicalize` expands short names and follows
+    /// junctions, so a row built out of its answer whole would stop starting
+    /// with the folder `survey::at_target` measures against.
+    #[test]
+    fn the_root_is_spelled_the_way_the_caller_spells_it() {
+        let fixture = Fixture::new();
+        loveless(&fixture);
+        std::fs::create_dir_all(fixture.at("Library")).unwrap();
+
+        let mut conn = fixture.conn();
+        move_release(
+            &mut conn,
+            &ScanLock::default(),
+            &OsRename,
+            &fixture.at("library"),
+            &fixture.release(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            fixture.paths(),
+            [
+                FIRST.replacen("Library", "library", 1),
+                SECOND.replacen("Library", "library", 1)
+            ]
+        );
     }
 
     #[test]
