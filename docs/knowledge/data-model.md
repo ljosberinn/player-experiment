@@ -121,6 +121,13 @@ compare a path to a stored one. **ASCII-only**, which is what `NOCASE` is — a
 path differing by `Ä`/`ä` stays two paths, the limit 81 already records for
 release keys.
 
+**A row records the spelling the filesystem has, not the one that was asked
+for.** `create_dir_all` will not re-case a directory that already exists, so a
+file computed into `The Corpse of Rebirth` lands in `The Corpse Of Rebirth`
+with the rename reporting success; `insert_track`'s `ON CONFLICT` updates every
+column but `path`, so a row that took the asked-for spelling would keep it
+forever. `library::mover` canonicalizes each target it moved to and stores that.
+
 **The root is a `watch_folders` row for as long as the switch is on.**
 `scan::plan` marks missing every known row it did not walk, so a library filed
 into a folder nobody watches is marked missing in full on the next scan;

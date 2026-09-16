@@ -24,7 +24,7 @@ the next number and the file was renamed for it.
 
 The markers already written do not come off by themselves: `at_target` accepts a
 marker deliberately, so a file at `(5)` reads as placed once
-[82i](82i-paths-compare-byte-exact.md) lands.
+[82i](../done/82i-paths-compare-byte-exact.md) lands.
 [82m](82m-undoing-the-placement-loop.md) takes them off.
 
 Testing: a release whose ideal path is held by a missing row, asserted to move

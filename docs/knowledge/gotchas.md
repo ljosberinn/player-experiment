@@ -149,6 +149,10 @@ no other signal; the fallback is copy, compare the size, delete the source.
 Nothing on a CI runner can produce a second volume, so the error is injected
 through the `Rename` seam instead.
 
+**`std::fs::canonicalize` answers with a `\\?\` path** — `\\?\D:\Library\…`, or
+`\\?\UNC\server\share\…` for a share. Every path stored anywhere else is a plain
+`D:\…`, so the prefix comes off before the answer is written down.
+
 ## Colour extraction
 
 Median cut splits a box at its median **pixel**, so an album cover that is 70%

@@ -10,7 +10,9 @@
 //! `ON CONFLICT(path)`, so a move the scanner discovers is a new row plus an
 //! old row marked missing, which costs the play count, `added_at` and every
 //! playlist the track was in. The `UPDATE tracks SET path` commits in the same
-//! transaction as the rename, and nothing here routes through a rescan.
+//! transaction as the rename, and nothing here routes through a rescan. The
+//! path it writes is the one the file landed on rather than the one it was
+//! sent to - see [`on_disk`].
 //!
 //! **Failure does not need unwinding, because the target is derived.** A
 //! release left with some files moved and some not computes the same targets on
@@ -163,15 +165,16 @@ pub fn move_release(
 
         for (file, source, target) in &moves {
             place_file(fs, source, target)?;
-            let meta =
-                std::fs::metadata(target).map_err(|error| AppError::io(target.display(), error))?;
+            let landed = on_disk(target)?;
+            let meta = std::fs::metadata(&landed)
+                .map_err(|error| AppError::io(landed.display(), error))?;
             set_path.execute(rusqlite::params![
                 file.id,
-                key(target),
+                key(&landed),
                 scan::mtime_secs(&meta),
                 meta.len() as i64,
             ])?;
-            lift.execute([key(target)])?;
+            lift.execute([key(&landed)])?;
         }
 
         for (source, target) in &covers {
@@ -405,6 +408,35 @@ fn prune_empty(dir: &Path, stop: &[PathBuf]) {
     }
 }
 
+/// Where a file actually landed, spelled the way the filesystem spells it.
+///
+/// [82j](../../../docs/issues/done/82j-the-path-the-mover-asked-for.md):
+/// `create_dir_all` will not re-case a directory that already exists, so a
+/// file renamed into `Loveless - 1991 - Album` lands in
+/// `loveless - 1991 - Album` if that folder is already there, and the rename
+/// still reports success. `insert_track`'s `ON CONFLICT` updates everything
+/// but `path`, so a row holding the asked-for spelling holds it forever.
+fn on_disk(target: &Path) -> AppResult<PathBuf> {
+    let full =
+        std::fs::canonicalize(target).map_err(|error| AppError::io(target.display(), error))?;
+    Ok(plain(full))
+}
+
+/// A `canonicalize` answer as the rest of the library writes paths.
+///
+/// Every other row in `tracks` is a plain `D:\…`, and the whole point of
+/// [`on_disk`] is that one file has one spelling.
+fn plain(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy().into_owned();
+    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{share}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => path,
+    }
+}
+
 /// A path as `tracks.path` and `scan::plan` spell it.
 fn key(path: &Path) -> String {
     path.to_string_lossy().into_owned()
@@ -455,19 +487,28 @@ mod tests {
 
     /// A library on disk with its database beside it.
     struct Fixture {
-        dir: tempfile::TempDir,
+        /// Held for the drop, which is what removes the directory.
+        _dir: tempfile::TempDir,
+        /// The same directory canonicalized, so the paths a test builds are
+        /// the paths [`on_disk`] answers with.
+        base: PathBuf,
         db: Db,
     }
 
     impl Fixture {
         fn new() -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
-            Self { dir, db }
+            let base = plain(std::fs::canonicalize(dir.path()).unwrap());
+            let db = Db::open(base.join("library.sqlite3")).unwrap();
+            Self {
+                _dir: dir,
+                base,
+                db,
+            }
         }
 
         fn at(&self, relative: &str) -> PathBuf {
-            self.dir.path().join(relative)
+            self.base.join(relative)
         }
 
         fn root(&self) -> PathBuf {
@@ -555,7 +596,7 @@ mod tests {
                 .unwrap()
                 .collect::<rusqlite::Result<Vec<_>>>()
                 .unwrap();
-            let prefix = format!("{}\\", self.dir.path().to_string_lossy());
+            let prefix = format!("{}\\", self.base.to_string_lossy());
             rows.into_iter()
                 .map(|path| path.strip_prefix(&prefix).unwrap_or(&path).to_owned())
                 .collect()
@@ -699,6 +740,53 @@ mod tests {
 
         assert_eq!(outcome, moved(0, 0, 0));
         assert_eq!(fixture.paths(), [folded]);
+    }
+
+    /// 82j: the folder is already there under another casing, and
+    /// `create_dir_all` leaves it that way, so the file lands in a spelling
+    /// nobody computed. The row has to say where it went.
+    #[test]
+    fn a_row_carries_the_casing_the_folder_has_rather_than_the_one_it_asked_for() {
+        let fixture = Fixture::new();
+        fixture.watch("Incoming");
+        fixture.watch("Library");
+        loveless(&fixture);
+        let folded = "Library\\My Bloody Valentine\\loveless - 1991 - album";
+        std::fs::create_dir_all(fixture.at(folded)).unwrap();
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            fixture.paths(),
+            [
+                format!("{folded}\\01 - Only Shallow.mp3"),
+                format!("{folded}\\02 - Loomer.mp3")
+            ]
+        );
+
+        // And what the scanner reads back is those same two rows: nothing
+        // added under the real spelling, nothing missing under the asked-for
+        // one.
+        let mut conn = fixture.conn();
+        scan::scan(&mut conn, |_| {}).unwrap();
+        let (rows, missing): (i64, i64) = conn
+            .query_row(
+                "SELECT count(*), count(missing_since) FROM tracks",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((rows, missing), (2, 0));
+    }
+
+    /// A library on a share: `canonicalize` answers `\\?\UNC\…` there, and
+    /// the row has to read like the `\\server\share\…` the user named.
+    #[test]
+    fn a_canonicalized_share_comes_back_as_the_unc_path() {
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\UNC\nas\music\a.mp3")),
+            PathBuf::from(r"\\nas\music\a.mp3")
+        );
     }
 
     #[test]
