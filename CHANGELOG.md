@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.0](https://github.com/ljosberinn/player-experiment/compare/v0.9.0...v0.10.0) (2026-09-16)
+
+
+### Features
+
+* the genre tree the statistics donut drills through ([#154](https://github.com/ljosberinn/player-experiment/issues/154)) ([a7073b1](https://github.com/ljosberinn/player-experiment/commit/a7073b11aa6a1daba85cb26a33f21351bbc721c0))
+
+
+### Bug Fixes
+
+* a 503 defers the release rather than ending the sweep ([#156](https://github.com/ljosberinn/player-experiment/issues/156)) ([b1dd590](https://github.com/ljosberinn/player-experiment/commit/b1dd5905ec8aee5cea16bbd40e69504fec470028))
+* twenty seconds between MusicBrainz requests ([#155](https://github.com/ljosberinn/player-experiment/issues/155)) ([bbfc4f1](https://github.com/ljosberinn/player-experiment/commit/bbfc4f170e9c4814ab3467dedbd505f6b0ff3590))
+
+
+### Documentation
+
+* refine the play log phase against the code it will be built on ([#165](https://github.com/ljosberinn/player-experiment/issues/165)) ([0aea208](https://github.com/ljosberinn/player-experiment/commit/0aea208dbb3dcb4125bba1f5ef8678d3e3ac955f))
+
 ## [0.9.0](https://github.com/ljosberinn/player-experiment/compare/v0.8.0...v0.9.0) (2026-09-04)
 
 
