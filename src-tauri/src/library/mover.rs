@@ -296,7 +296,10 @@ pub(crate) fn track(file: &query::ReleaseFile) -> layout::TrackFile<'_> {
 /// interrupted copy left behind, and `rename` overwrites that for free.
 ///
 /// `removed_paths` is the third: see [`removed_by_hand`].
-fn free_target(
+///
+/// [`super::survey`] asks it too, with an empty `taken`, so that a marker and
+/// the name it stepped around have one answer between them rather than two.
+pub(super) fn free_target(
     conn: &Connection,
     id: i64,
     source: &Path,
@@ -458,7 +461,7 @@ fn prune_empty(dir: &Path, stop: &[PathBuf]) {
 /// Only the part below the root is taken from `canonicalize`. Its answer is a
 /// `\\?\` path with short names expanded and junctions followed, so a library
 /// folder reached through any of those would give every row a path that no
-/// longer starts with the folder the user named - and `survey::at_target`
+/// longer starts with the folder the user named - and `survey::placed`
 /// compares against exactly that.
 fn landed_at(root: &Path, target: &Path) -> AppResult<PathBuf> {
     let real_root =
@@ -809,7 +812,7 @@ mod tests {
 
     /// And only below the root: `canonicalize` expands short names and follows
     /// junctions, so a row built out of its answer whole would stop starting
-    /// with the folder `survey::at_target` measures against.
+    /// with the folder `survey::placed` measures against.
     #[test]
     fn the_root_is_spelled_the_way_the_caller_spells_it() {
         let fixture = Fixture::new();

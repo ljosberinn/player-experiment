@@ -99,7 +99,7 @@ pub fn survey(
         let place = steps
             .root
             .as_deref()
-            .is_some_and(|root| !placed(root, &release, files));
+            .is_some_and(|root| !placed(conn, root, &release, files));
         if !look_up && !place {
             return;
         }
@@ -119,46 +119,65 @@ pub fn survey(
 
 /// Whether every file of `release` is already where it goes.
 ///
-/// Through [`mover::shape`] and [`mover::track`] rather than rebuilding the
-/// target beside them: two answers to where a file goes is the defect. The
-/// harmless direction is a release this calls placed and the mover would have
-/// moved; the other direction is a sweep offering the same release to a mover
-/// that does nothing with it, every sweep, forever.
+/// Through [`mover::shape`], [`mover::track`] and [`mover::free_target`] rather
+/// than rebuilding the answer beside them: two answers to where a file goes is
+/// the defect. The harmless direction is a release this calls placed and the
+/// mover would have moved; the other direction is a sweep offering the same
+/// release to a mover that does nothing with it, every sweep, forever.
 ///
 /// Missing rows do not count either way - there is no file to move - so a
 /// release of nothing but missing rows is placed.
-fn placed(root: &Path, release: &lookup::Release, files: &[query::ReleaseFile]) -> bool {
+fn placed(
+    conn: &Connection,
+    root: &Path,
+    release: &lookup::Release,
+    files: &[query::ReleaseFile],
+) -> bool {
     let shape = mover::shape(release, files);
     files.iter().filter(|file| !file.missing).all(|file| {
+        let source = Path::new(&file.path);
         let ideal = root.join(layout::relative_path(root, &shape, &mover::track(file)));
-        at_target(Path::new(&file.path), &ideal)
+        // Through `layout::same`, which is where the case fold and its reasons
+        // are. First because it answers the whole placed library without a
+        // query: only a file that is somewhere else reaches the ask below.
+        if layout::same(source, &ideal) {
+            return true;
+        }
+        marked(source) && earns_its_marker(conn, file.id, source, &ideal)
     })
 }
 
-/// Whether `actual` is `ideal`, or `ideal` wearing a collision marker.
+/// Whether the marker `source` wears is the one the mover would give it.
 ///
-/// Through [`layout::same`], which is where the case fold and its reasons are.
+/// [82i](../../../docs/issues/done/82i-paths-compare-byte-exact.md) accepted
+/// any marker, which is what stopped the loop and is too generous by exactly
+/// the markers the loop itself left behind:
+/// [82m](../../../docs/issues/done/82m-a-marker-only-survives-while-held.md).
+/// A number is earned while another row holds the plain name - including a row
+/// marked missing, which `owned_by_other` counts on purpose - and is litter
+/// once nothing does.
 ///
-/// Folding the marker in is what keeps a collided release - two releases whose
-/// tags sanitize to one name - from reading as unplaced on every sweep,
-/// forever. Compared against [`layout::suffixed`]'s own answer rather than by
-/// stripping the marker, because that one also cuts the stem to keep the path
-/// inside the ceiling, and a path built to the last character of its budget
-/// does not carry the whole stem plus a marker.
-fn at_target(actual: &Path, ideal: &Path) -> bool {
-    layout::same(actual, ideal)
-        || collision_nth(actual)
-            .is_some_and(|nth| layout::same(actual, &layout::suffixed(ideal, nth)))
+/// Asked with an empty `taken` where the mover asks with the release's
+/// in-flight one, so the mover's answer can only be this one or higher. After
+/// a move every file's row owns its target, so the next pass reproduces the
+/// choice rather than offering the release again.
+fn earns_its_marker(conn: &Connection, id: i64, source: &Path, ideal: &Path) -> bool {
+    match mover::free_target(conn, id, source, ideal, &HashSet::new()) {
+        Ok(target) => layout::same(source, &target),
+        // A question that could not be asked reads as placed, which is the
+        // harmless direction above.
+        Err(_) => true,
+    }
 }
 
-/// The `n` of a trailing ` (n)` on the file's stem.
-fn collision_nth(path: &Path) -> Option<u32> {
-    let stem = path.file_stem()?.to_str()?;
-    let (before, nth) = stem.strip_suffix(')')?.rsplit_once(" (")?;
-    if before.is_empty() {
-        return None;
-    }
-    nth.parse().ok()
+/// Whether the file's stem ends in a ` (n)` collision marker.
+fn marked(path: &Path) -> bool {
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    stem.strip_suffix(')')
+        .and_then(|stem| stem.rsplit_once(" ("))
+        .is_some_and(|(before, nth)| !before.is_empty() && nth.parse::<u32>().is_ok())
 }
 
 #[cfg(test)]
@@ -193,6 +212,45 @@ mod tests {
             [path],
         )
         .unwrap();
+    }
+
+    /// The same row with a file behind it, for the tests that let the mover act
+    /// on what the survey found.
+    fn on_disk(conn: &Connection, path: &str, album: &str, artist: &str, track_no: i64) {
+        let at = Path::new(path);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(at, path).unwrap();
+        track(conn, path, album, artist, track_no);
+    }
+
+    fn place(conn: &mut Connection, root: &Path, album: &str) -> mover::Outcome {
+        mover::move_release(
+            conn,
+            &crate::scan::ScanLock::default(),
+            &mover::OsRename,
+            root,
+            &lookup::Release {
+                album: Some(album.to_owned()),
+                artist: Some(ARTIST.to_owned()),
+            },
+            &HashSet::new(),
+        )
+        .unwrap()
+    }
+
+    fn paths(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("SELECT path FROM tracks ORDER BY id").unwrap();
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0)).unwrap();
+        rows.collect::<rusqlite::Result<Vec<_>>>().unwrap()
+    }
+
+    /// Two albums that sanitize to one folder, which is what a collision
+    /// marker is for: `?` and `*` are both illegal, and both become `_`.
+    const COLLIDING: [&str; 2] = ["Loveless?", "Loveless*"];
+
+    /// Where either of [`COLLIDING`]'s tracks belongs under `root`.
+    fn shared_target(root: &Path, track_no: i64) -> String {
+        target(root, track_no).replace("Loveless -", "Loveless_ -")
     }
 
     /// Where the fixture's two tracks belong under `root`.
@@ -242,15 +300,77 @@ mod tests {
 
     /// The collision suffix is 83b's, not a file out of place. Without this a
     /// collided release reads as unplaced on every sweep, forever.
+    ///
     #[test]
-    fn a_collision_suffix_still_counts_as_placed() {
+    fn a_marker_another_release_holds_the_name_for_is_placed() {
+        let (dir, db) = open();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        track(&conn, &shared_target(&root, 1), COLLIDING[0], ARTIST, 1);
+        let collided = shared_target(&root, 1).replace(".mp3", " (2).mp3");
+        track(&conn, &collided, COLLIDING[1], ARTIST, 1);
+
+        assert_eq!(found(&conn, &organizing(&root)).total, 0);
+    }
+
+    /// The marker the placement loop left behind: nothing holds the plain name,
+    /// so the file is not where it goes and the mover takes the number off.
+    #[test]
+    fn a_marker_no_row_holds_the_name_for_comes_down() {
+        let (dir, db) = open();
+        let mut conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let marked = target(&root, 1).replace(".mp3", " (2).mp3");
+        on_disk(&conn, &marked, ALBUM, ARTIST, 1);
+
+        assert_eq!(found(&conn, &organizing(&root)).total, 1);
+
+        place(&mut conn, &root, ALBUM);
+
+        assert_eq!(paths(&conn), vec![target(&root, 1)]);
+        assert!(Path::new(&target(&root, 1)).exists());
+        assert_eq!(found(&conn, &organizing(&root)).total, 0);
+    }
+
+    /// A row marked missing holds the name too: `owned_by_other` counts it so
+    /// that `UPDATE tracks SET path` cannot collide with it when the drive
+    /// comes back. The marker stays until the user removes the row.
+    #[test]
+    fn a_marker_a_missing_row_holds_the_name_for_is_placed() {
         let (dir, db) = open();
         let conn = db.conn().unwrap();
         let root = dir.path().join("Library");
         track(&conn, &target(&root, 1), ALBUM, ARTIST, 1);
-        let collided = target(&root, 2).replace(".mp3", " (2).mp3");
-        track(&conn, &collided, ALBUM, ARTIST, 2);
+        mark_missing(&conn, &target(&root, 1));
+        let collided = target(&root, 1).replace(".mp3", " (2).mp3");
+        track(&conn, &collided, ALBUM, ARTIST, 1);
 
+        assert_eq!(found(&conn, &organizing(&root)).total, 0);
+    }
+
+    /// The mover asks with the release's in-flight `taken` and this asks with
+    /// none, so two files of one release sanitizing to one name settle in the
+    /// pass that moved them rather than being offered again.
+    #[test]
+    fn a_release_whose_own_files_collide_settles_in_one_pass() {
+        let (dir, db) = open();
+        let mut conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let inbox = dir.path().join("Inbox");
+        for name in ["a.mp3", "b.mp3"] {
+            let at = inbox.join(name).to_string_lossy().into_owned();
+            on_disk(&conn, &at, ALBUM, ARTIST, 1);
+        }
+
+        place(&mut conn, &root, ALBUM);
+
+        assert_eq!(
+            paths(&conn),
+            vec![
+                target(&root, 1),
+                target(&root, 1).replace(".mp3", " (2).mp3")
+            ]
+        );
         assert_eq!(found(&conn, &organizing(&root)).total, 0);
     }
 
@@ -269,24 +389,25 @@ mod tests {
         assert_eq!(found(&conn, &organizing(&root)), Found::default());
     }
 
-    /// And the marker is folded in on the same terms.
+    /// And the row that makes a marker earned is matched on the same terms: it
+    /// is the file that holds the name, whatever casing it is spelled in.
     #[test]
-    fn a_collision_suffix_under_another_casing_still_counts_as_placed() {
+    fn the_row_holding_the_name_is_matched_case_insensitively() {
         let (dir, db) = open();
         let conn = db.conn().unwrap();
         let root = dir.path().join("Library");
-        let collided = target(&root, 1)
-            .replace("Loveless", "loveless")
-            .replace(".mp3", " (2).mp3");
-        track(&conn, &collided, ALBUM, ARTIST, 1);
+        let folded = shared_target(&root, 1).replace("Loveless_", "loveless_");
+        track(&conn, &folded, COLLIDING[0], ARTIST, 1);
+        let collided = shared_target(&root, 1).replace(".mp3", " (2).mp3");
+        track(&conn, &collided, COLLIDING[1], ARTIST, 1);
 
         assert_eq!(found(&conn, &organizing(&root)).total, 0);
     }
 
-    /// A number in the name is not a marker, and a marker on the wrong target
-    /// is not one either.
+    /// A number in the name is not a marker, and a marker on another name is
+    /// not one on this file's.
     #[test]
-    fn only_a_real_collision_marker_is_folded_in() {
+    fn a_file_under_another_name_is_not_placed_by_its_number() {
         let (dir, db) = open();
         let conn = db.conn().unwrap();
         let root = dir.path().join("Library");

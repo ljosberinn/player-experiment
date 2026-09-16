@@ -104,17 +104,28 @@ files all sit at the target `library::layout` computes is filed; one whose files
 do not is not. The state is derived from `tracks.path` on every sweep, which is
 what makes it survive a quit, a kill, and the switch being turned off and on
 again. `library::survey` and `library::mover` compute that target through the
-same two builders, because two answers to where a file goes is the defect: the
+same builders, because two answers to where a file goes is the defect: the
 harmless direction is a release the survey calls filed and the mover would have
 moved, and the other is a release offered to a mover that does nothing with it,
 every sweep, forever.
+
+**A ` (n)` collision marker is where a file goes only while another row holds
+the plain name.** Two releases sanitizing to one name earn the number; the
+marker a filing loop left behind does not, and accepting every marker left 819
+files wearing one that nothing justified. `survey::placed` asks
+`mover::free_target` — the mover's own function, with an empty `taken` where the
+mover passes the release's in-flight one — so the answer can only be the same or
+higher, and the file is offered until the number comes off. A row marked missing
+holds the name too: `owned_by_other` counts it because `UPDATE tracks SET path`
+would otherwise collide with it when the drive comes back, so those markers
+stay until the user removes the rows.
 
 **A path is compared with case folded, everywhere it is compared.** NTFS
 treats `The Corpse of Rebirth` and `The Corpse Of Rebirth` as one directory;
 the ideal path is built from the tags and the actual one is what the directory
 is really called, so byte-exact the release was unfiled on every sweep,
 forever, and the scanner read the mover's own writes back as new files. The one
-answer is `library::layout::same` and its `fold`, used by `survey::at_target`,
+answer is `library::layout::same` and its `fold`, used by `survey::placed`,
 the mover's collision search and `scan::plan`; in SQL it is the `NOCASE`
 collation on `tracks.path`, and `COLLATE NOCASE` on the two statements that
 compare a path to a stored one. **ASCII-only**, which is what `NOCASE` is — a
@@ -129,7 +140,8 @@ column but `path`, so a row that took the asked-for spelling would keep it
 forever. `library::mover` reads each target back with `canonicalize` and stores
 the part below the library folder, joined onto the folder as it was configured —
 the answer resolves short names and junctions too, and a row that no longer
-starts with the folder the user named is a release `at_target` can never accept.
+starts with the folder the user named is a release `survey::placed` can never
+accept.
 
 **The root is a `watch_folders` row for as long as the switch is on.**
 `scan::plan` marks missing every known row it did not walk, so a library filed
