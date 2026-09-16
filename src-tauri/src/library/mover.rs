@@ -132,8 +132,8 @@ pub fn move_release(
         let source = PathBuf::from(&file.path);
         let ideal = root.join(layout::relative_path(root, &shape, &track(file)));
         let target = free_target(conn, file.id, &ideal, &taken)?;
-        taken.insert(key(&target));
-        if target != source {
+        taken.insert(layout::fold(&target));
+        if !layout::same(&target, &source) {
             moves.push((file, source, target));
         }
     }
@@ -155,7 +155,11 @@ pub fn move_release(
         // means marked missing on every scan, forever. Nothing writes a
         // tombstone for the source: only an explicit removal tombstones, and
         // this only ever moves rows that exist.
-        let mut lift = tx.prepare("DELETE FROM removed_paths WHERE path = ?1")?;
+        //
+        // `COLLATE NOCASE` for the reason `owned_by_other` has it: `scan::plan`
+        // folds the tombstones it reads, so one written in another casing is on
+        // this file and has to come off with it.
+        let mut lift = tx.prepare("DELETE FROM removed_paths WHERE path = ?1 COLLATE NOCASE")?;
 
         for (file, source, target) in &moves {
             place_file(fs, source, target)?;
@@ -203,7 +207,7 @@ pub fn move_release(
 /// A source that is gone with the target already there is an interrupted
 /// attempt finishing, not a failure - see the module header.
 pub fn place_file(fs: &dyn Rename, source: &Path, target: &Path) -> AppResult<()> {
-    if source == target || (!source.exists() && target.exists()) {
+    if layout::same(source, target) || (!source.exists() && target.exists()) {
         return Ok(());
     }
     if let Some(parent) = target.parent() {
@@ -291,21 +295,26 @@ fn free_target(
     conn: &Connection,
     id: i64,
     ideal: &Path,
-    taken: &HashSet<String>,
+    taken: &HashSet<Vec<u8>>,
 ) -> AppResult<PathBuf> {
     let mut candidate = ideal.to_path_buf();
     let mut nth = 2;
-    while taken.contains(&key(&candidate)) || owned_by_other(conn, id, &candidate)? {
+    while taken.contains(&layout::fold(&candidate)) || owned_by_other(conn, id, &candidate)? {
         candidate = layout::suffixed(ideal, nth);
         nth += 1;
     }
     Ok(candidate)
 }
 
+/// Whether another row already holds `path`.
+///
+/// `COLLATE NOCASE` because `tracks.path` does: a row owning the same path in
+/// another casing owns the file, and asking byte-exact hands back a ` (n)`
+/// beside a name nothing is using.
 fn owned_by_other(conn: &Connection, id: i64, path: &Path) -> AppResult<bool> {
     let owned: Option<i64> = conn
         .query_row(
-            "SELECT 1 FROM tracks WHERE path = ?1 AND id <> ?2",
+            "SELECT 1 FROM tracks WHERE path = ?1 COLLATE NOCASE AND id <> ?2",
             rusqlite::params![key(path), id],
             |row| row.get(0),
         )
@@ -322,7 +331,10 @@ fn travelling_covers(
     files: &[query::ReleaseFile],
     moves: &[(&query::ReleaseFile, PathBuf, PathBuf)],
 ) -> Vec<(PathBuf, PathBuf)> {
-    let members: HashSet<String> = files.iter().map(|file| file.path.clone()).collect();
+    let members: HashSet<Vec<u8>> = files
+        .iter()
+        .map(|file| layout::fold(Path::new(&file.path)))
+        .collect();
     let mut covers = Vec::new();
     let mut folders = HashSet::new();
 
@@ -330,7 +342,7 @@ fn travelling_covers(
         let (Some(from), Some(to)) = (source.parent(), target.parent()) else {
             continue;
         };
-        if from == to || !folders.insert(from.to_path_buf()) {
+        if layout::same(from, to) || !folders.insert(layout::fold(from)) {
             continue;
         }
         let Ok(entries) = std::fs::read_dir(from) else {
@@ -342,7 +354,7 @@ fn travelling_covers(
         for entry in entries.flatten() {
             let path = entry.path();
             if scan::is_audio_file(&path) {
-                shared |= !members.contains(&key(&path));
+                shared |= !members.contains(&layout::fold(&path));
             } else if is_cover(&path) {
                 found.push(path);
             }
@@ -675,6 +687,20 @@ mod tests {
         assert_eq!(fixture.paths(), [FIRST, SECOND]);
     }
 
+    /// The other half of 82i: a target the filesystem already holds under
+    /// another casing is where the file is, so there is nothing to move.
+    #[test]
+    fn a_target_that_differs_only_in_case_is_where_the_file_already_is() {
+        let fixture = Fixture::new();
+        let folded = FIRST.replace("Loveless - 1991", "loveless - 1991");
+        fixture.track(&folded, Row::default());
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(outcome, moved(0, 0, 0));
+        assert_eq!(fixture.paths(), [folded]);
+    }
+
     #[test]
     fn a_rename_that_fails_partway_rolls_the_rows_back() {
         let fixture = Fixture::new();
@@ -865,6 +891,39 @@ mod tests {
             .unwrap();
         assert_eq!(missing, 0);
         assert_eq!(fixture.paths(), [FIRST, SECOND]);
+    }
+
+    /// And it is lifted off the file rather than off the spelling: `plan`
+    /// folds the tombstone it reads, so one left behind in another casing
+    /// would suppress the file the release just landed on.
+    #[test]
+    fn a_tombstone_under_another_casing_is_lifted_too() {
+        let fixture = Fixture::new();
+        fixture.watch("Incoming");
+        fixture.watch("Library");
+        loveless(&fixture);
+        fixture
+            .conn()
+            .execute(
+                "INSERT INTO removed_paths (path, removed_at) VALUES (?1, 0)",
+                [key(
+                    &fixture.at(&FIRST.replace("Only Shallow", "only shallow"))
+                )],
+            )
+            .unwrap();
+
+        fixture.move_it(&OsRename).unwrap();
+        let mut conn = fixture.conn();
+        scan::scan(&mut conn, |_| {}).unwrap();
+
+        let missing: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM tracks WHERE missing_since IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(missing, 0);
     }
 
     #[test]

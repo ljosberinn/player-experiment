@@ -19,6 +19,7 @@ use rusqlite::{Connection, OptionalExtension};
 use walkdir::WalkDir;
 
 use crate::error::{AppError, AppResult};
+use crate::library::layout;
 use crate::model::{ScanProgress, ScanSummary};
 use crate::tags::{self, TrackTags};
 
@@ -65,9 +66,13 @@ impl ScanLock {
 }
 
 /// What the database already knows about a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Keyed by [`layout::fold`] wherever it is collected, so `path` is the
+/// spelling the row carries rather than the one the walk read.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Known {
     id: i64,
+    path: String,
     mtime: i64,
     size: i64,
     /// Whether the last scan failed to find it.
@@ -159,16 +164,16 @@ pub fn now_secs() -> i64 {
 /// track on it missing - which is the answer a Rescan is asking for and the
 /// last thing the unattended pass should do on its own.
 pub fn plan(
-    known: &HashMap<String, Known>,
+    known: &HashMap<Vec<u8>, Known>,
     on_disk: &[(PathBuf, i64, i64)],
-    removed: &HashSet<String>,
+    removed: &HashSet<Vec<u8>>,
     absent: &[PathBuf],
 ) -> ScanPlan {
     let mut plan = ScanPlan::default();
     let mut seen = HashSet::with_capacity(on_disk.len());
 
     for (path, mtime, size) in on_disk {
-        let key = path.to_string_lossy().to_string();
+        let key = layout::fold(path);
         if removed.contains(&key) {
             continue;
         }
@@ -193,7 +198,7 @@ pub fn plan(
     }
 
     for (key, entry) in known {
-        if !seen.contains(key) && !entry.missing && !is_under(key, absent) {
+        if !seen.contains(key) && !entry.missing && !is_under(&entry.path, absent) {
             plan.missing.push(entry.id);
         }
     }
@@ -210,13 +215,15 @@ fn is_under(path: &str, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
 
-fn load_known(conn: &Connection) -> AppResult<HashMap<String, Known>> {
+fn load_known(conn: &Connection) -> AppResult<HashMap<Vec<u8>, Known>> {
     let mut stmt = conn.prepare("SELECT id, path, mtime, size, missing_since FROM tracks")?;
     let rows = stmt.query_map([], |row| {
+        let path: String = row.get(1)?;
         Ok((
-            row.get::<_, String>(1)?,
+            layout::fold(Path::new(&path)),
             Known {
                 id: row.get(0)?,
+                path,
                 mtime: row.get(2)?,
                 size: row.get(3)?,
                 missing: row.get::<_, Option<i64>>(4)?.is_some(),
@@ -227,9 +234,12 @@ fn load_known(conn: &Connection) -> AppResult<HashMap<String, Known>> {
 }
 
 /// The paths a removal has tombstoned. See migration 7.
-fn load_removed(conn: &Connection) -> AppResult<HashSet<String>> {
+fn load_removed(conn: &Connection) -> AppResult<HashSet<Vec<u8>>> {
     let mut stmt = conn.prepare("SELECT path FROM removed_paths")?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let rows = stmt.query_map([], |row| {
+        let path: String = row.get(0)?;
+        Ok(layout::fold(Path::new(&path)))
+    })?;
     Ok(rows.collect::<rusqlite::Result<HashSet<_>>>()?)
 }
 
@@ -640,20 +650,21 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
 mod tests {
     use super::*;
 
-    fn known(entries: &[(&str, i64, i64)]) -> HashMap<String, Known> {
+    fn known(entries: &[(&str, i64, i64)]) -> HashMap<Vec<u8>, Known> {
         marked(entries, &[])
     }
 
     /// The same, with the named paths already marked missing.
-    fn marked(entries: &[(&str, i64, i64)], missing: &[&str]) -> HashMap<String, Known> {
+    fn marked(entries: &[(&str, i64, i64)], missing: &[&str]) -> HashMap<Vec<u8>, Known> {
         entries
             .iter()
             .enumerate()
             .map(|(i, (path, mtime, size))| {
                 (
-                    (*path).to_owned(),
+                    layout::fold(Path::new(path)),
                     Known {
                         id: i as i64 + 1,
+                        path: (*path).to_owned(),
                         mtime: *mtime,
                         size: *size,
                         missing: missing.contains(path),
@@ -670,12 +681,12 @@ mod tests {
             .collect()
     }
 
-    fn tombstones(paths: &[&str]) -> HashSet<String> {
-        paths.iter().map(|p| (*p).to_owned()).collect()
+    fn tombstones(paths: &[&str]) -> HashSet<Vec<u8>> {
+        paths.iter().map(|p| layout::fold(Path::new(p))).collect()
     }
 
     /// `plan` as a scan the user asked for: no tombstones, every root walked.
-    fn plan(known: &HashMap<String, Known>, on_disk: &[(PathBuf, i64, i64)]) -> ScanPlan {
+    fn plan(known: &HashMap<Vec<u8>, Known>, on_disk: &[(PathBuf, i64, i64)]) -> ScanPlan {
         super::plan(known, on_disk, &HashSet::new(), &[])
     }
 
@@ -724,6 +735,36 @@ mod tests {
         assert!(plan.added.is_empty());
         assert!(plan.updated.is_empty());
         assert!(plan.missing.is_empty());
+    }
+
+    /// `tracks.path` folds case since 82i, so a row the mover wrote in one
+    /// casing and the walk reads back in another is one file. Compared
+    /// byte-exact here, that file is marked missing and then insert's
+    /// `ON CONFLICT` folds it onto the row that was just marked - a file on
+    /// disk that the library cannot see.
+    #[test]
+    fn a_path_cased_differently_than_its_row_is_the_same_file() {
+        let plan = plan(
+            &known(&[("D:\\M\\The Corpse Of Rebirth\\01.mp3", 10, 100)]),
+            &on_disk(&[("D:\\M\\The Corpse of Rebirth\\01.mp3", 10, 100)]),
+        );
+
+        assert_eq!(plan.unchanged, 1);
+        assert!(plan.added.is_empty());
+        assert!(plan.missing.is_empty());
+    }
+
+    /// And a tombstone is on the file, not on the spelling.
+    #[test]
+    fn a_tombstone_holds_under_another_casing() {
+        let plan = super::plan(
+            &HashMap::new(),
+            &on_disk(&[("D:\\M\\The Corpse of Rebirth\\01.mp3", 10, 100)]),
+            &tombstones(&["D:\\M\\The Corpse Of Rebirth\\01.mp3"]),
+            &[],
+        );
+
+        assert!(plan.added.is_empty());
     }
 
     #[test]

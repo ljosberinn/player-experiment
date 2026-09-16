@@ -422,6 +422,143 @@ CREATE INDEX idx_genre_edges_parent ON genre_edges(parent);
 "#,
         include_str!("../../data/genres.sql")
     ),
+    // 12 - one file is one row, whatever it is spelled like
+    //
+    // `tracks.path TEXT NOT NULL UNIQUE` compared component bytes, on a
+    // filesystem that folds case. The release whose directory is called
+    // `The Corpse Of Rebirth` while its tags compute `The Corpse of Rebirth`
+    // was two paths here and one directory to NTFS, which is what turned one
+    // file into two rows and offered the release to the mover on every sweep,
+    // forever. See 82i.
+    //
+    // NOCASE is ASCII-only, the limit 81 records, and `library::layout::same`
+    // folds the same way on the Rust side so the two answers cannot diverge.
+    //
+    // **The fold and the merge are one migration**: rows that were distinct
+    // byte-exact collide under it - in the library this was written against,
+    // 492 of them - so the rebuild cannot be applied around them. The survivor
+    // is the row whose file is still there, because the other one is what the
+    // move left behind. It takes the higher `play_count`, the earlier
+    // `added_at` and the playlist places of the row it absorbs, so nothing the
+    // user did to either is lost. Rows that collide with nothing are left
+    // exactly as they are: a missing row is also an unplugged drive, and no
+    // migration may decide that.
+    r#"
+CREATE INDEX idx_tracks_path_fold ON tracks(path COLLATE NOCASE);
+
+CREATE TABLE tracks_merge (
+    absorbed INTEGER PRIMARY KEY,
+    keeper   INTEGER NOT NULL
+);
+
+INSERT INTO tracks_merge (absorbed, keeper)
+SELECT t.id,
+       (SELECT k.id FROM tracks k
+         WHERE k.path = t.path COLLATE NOCASE
+         ORDER BY k.missing_since IS NOT NULL, k.id
+         LIMIT 1)
+  FROM tracks t;
+
+DELETE FROM tracks_merge WHERE absorbed = keeper;
+
+-- Zero rather than NULL through the comparison: `last_played_at` is unix
+-- seconds and never played is the smaller of the two either way.
+UPDATE tracks SET
+    play_count = max(play_count,
+        (SELECT max(a.play_count) FROM tracks a
+           JOIN tracks_merge m ON m.absorbed = a.id
+          WHERE m.keeper = tracks.id)),
+    added_at = min(added_at,
+        (SELECT min(a.added_at) FROM tracks a
+           JOIN tracks_merge m ON m.absorbed = a.id
+          WHERE m.keeper = tracks.id)),
+    last_played_at = nullif(max(coalesce(last_played_at, 0),
+        coalesce((SELECT max(a.last_played_at) FROM tracks a
+                    JOIN tracks_merge m ON m.absorbed = a.id
+                   WHERE m.keeper = tracks.id), 0)), 0)
+  WHERE id IN (SELECT keeper FROM tracks_merge);
+
+-- OR IGNORE for the playlist that already holds the surviving row: the entry
+-- is the same place twice, and the DELETE below takes the one left behind.
+UPDATE OR IGNORE playlist_tracks
+   SET track_id = (SELECT keeper FROM tracks_merge WHERE absorbed = track_id)
+ WHERE track_id IN (SELECT absorbed FROM tracks_merge);
+
+DELETE FROM playlist_tracks WHERE track_id IN (SELECT absorbed FROM tracks_merge);
+
+-- Before the rebuild, so `tracks_fts_delete` is still on the table to take
+-- these rows out of the search index.
+DELETE FROM tracks WHERE id IN (SELECT absorbed FROM tracks_merge);
+
+DROP TABLE tracks_merge;
+DROP INDEX idx_tracks_path_fold;
+
+CREATE TABLE tracks_new (
+    id                 INTEGER PRIMARY KEY,
+    path               TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    mtime              INTEGER NOT NULL,
+    size               INTEGER NOT NULL,
+    duration_ms        INTEGER NOT NULL DEFAULT 0,
+    title              TEXT,
+    artist             TEXT,
+    album              TEXT,
+    album_artist       TEXT,
+    genre              TEXT,
+    year               INTEGER,
+    track_no           INTEGER,
+    disc_no            INTEGER,
+    comment            TEXT,
+    bitrate            INTEGER,
+    sample_rate        INTEGER,
+    cover_hash         TEXT REFERENCES covers(hash),
+    added_at           INTEGER NOT NULL,
+    play_count         INTEGER NOT NULL DEFAULT 0,
+    last_played_at     INTEGER,
+    missing_since      INTEGER,
+    release_mbid       TEXT,
+    release_group_mbid TEXT,
+    release_type       TEXT
+);
+
+-- The ids come across unchanged: `tracks_fts` is an external content table
+-- keyed by them, and `playlist_tracks` points at them.
+INSERT INTO tracks_new
+    (id, path, mtime, size, duration_ms, title, artist, album, album_artist, genre, year,
+     track_no, disc_no, comment, bitrate, sample_rate, cover_hash, added_at, play_count,
+     last_played_at, missing_since, release_mbid, release_group_mbid, release_type)
+SELECT id, path, mtime, size, duration_ms, title, artist, album, album_artist, genre, year,
+       track_no, disc_no, comment, bitrate, sample_rate, cover_hash, added_at, play_count,
+       last_played_at, missing_since, release_mbid, release_group_mbid, release_type
+  FROM tracks;
+
+DROP TABLE tracks;
+ALTER TABLE tracks_new RENAME TO tracks;
+
+CREATE INDEX idx_tracks_album  ON tracks(album_artist, album, disc_no, track_no);
+CREATE INDEX idx_tracks_artist ON tracks(artist);
+CREATE INDEX idx_tracks_year   ON tracks(year);
+CREATE INDEX idx_tracks_added  ON tracks(added_at);
+CREATE INDEX idx_tracks_missing ON tracks(missing_since) WHERE missing_since IS NOT NULL;
+CREATE INDEX idx_tracks_release_group ON tracks(release_group_mbid)
+    WHERE release_group_mbid IS NOT NULL;
+
+CREATE TRIGGER tracks_fts_insert AFTER INSERT ON tracks BEGIN
+    INSERT INTO tracks_fts(rowid, title, artist, album, album_artist, genre, comment)
+    VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre, new.comment);
+END;
+
+CREATE TRIGGER tracks_fts_delete AFTER DELETE ON tracks BEGIN
+    INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, album_artist, genre, comment)
+    VALUES ('delete', old.id, old.title, old.artist, old.album, old.album_artist, old.genre, old.comment);
+END;
+
+CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
+    INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, album_artist, genre, comment)
+    VALUES ('delete', old.id, old.title, old.artist, old.album, old.album_artist, old.genre, old.comment);
+    INSERT INTO tracks_fts(rowid, title, artist, album, album_artist, genre, comment)
+    VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre, new.comment);
+END;
+"#,
 ];
 
 #[cfg(test)]
@@ -433,6 +570,167 @@ mod tests {
         let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
         let conn = db.conn().unwrap();
         (dir, conn)
+    }
+
+    /// A database as it stood before migration 12, so the merge that migration
+    /// runs has two rows to merge. The one case where a test has to stop
+    /// short of the latest version.
+    fn before_the_fold() -> (tempfile::TempDir, rusqlite::Connection) {
+        const BEFORE: usize = 11;
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join("library.sqlite3")).unwrap();
+        for (index, sql) in super::MIGRATIONS.iter().take(BEFORE).enumerate() {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", (index + 1) as i64)
+                .unwrap();
+        }
+        (dir, conn)
+    }
+
+    fn track(conn: &rusqlite::Connection, path: &str, play_count: i64, added_at: i64) -> i64 {
+        conn.execute(
+            "INSERT INTO tracks (path, mtime, size, added_at, play_count, title)
+             VALUES (?1, 0, 0, ?3, ?2, 'Track')",
+            rusqlite::params![path, play_count, added_at],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn paths(conn: &rusqlite::Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("SELECT path FROM tracks ORDER BY id").unwrap();
+        let rows = stmt.query_map([], |row| row.get(0)).unwrap();
+        rows.collect::<rusqlite::Result<Vec<_>>>().unwrap()
+    }
+
+    const PRESENT: &str = "D:\\Library\\A Forest of Stars\\The Corpse of Rebirth\\01 - God.mp3";
+    const ABSORBED: &str = "D:\\Library\\A Forest of Stars\\The Corpse Of Rebirth\\01 - God.mp3";
+
+    /// The loop's last stop: the scanner reads back a spelling the mover did
+    /// not write, and byte-exact that is a second row rather than the same one.
+    #[test]
+    fn a_path_read_back_in_another_casing_is_the_same_row() {
+        let (_dir, conn) = open();
+        let insert = "INSERT INTO tracks (path, mtime, size, added_at, title)
+                      VALUES (?1, 0, 0, 0, ?2)
+                      ON CONFLICT(path) DO UPDATE SET title = excluded.title";
+
+        conn.execute(insert, rusqlite::params![PRESENT, "first"])
+            .unwrap();
+        conn.execute(insert, rusqlite::params![ABSORBED, "second"])
+            .unwrap();
+
+        assert_eq!(paths(&conn), [PRESENT], "one file is one row");
+        let title: String = conn
+            .query_row("SELECT title FROM tracks", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(title, "second", "the second read updated rather than added");
+    }
+
+    /// 492 rows in the user's library are a present row's path in another
+    /// casing, so the fold cannot be applied without saying what happens to
+    /// them.
+    #[test]
+    fn the_fold_merges_the_missing_row_into_the_present_one() {
+        let (_dir, mut conn) = before_the_fold();
+        let present = track(&conn, PRESENT, 2, 500);
+        let absorbed = track(&conn, ABSORBED, 9, 100);
+        conn.execute(
+            "UPDATE tracks SET missing_since = 1, last_played_at = 400 WHERE id = ?1",
+            [absorbed],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO playlists (name, kind, created_at) VALUES ('Mix', 'static', 0)",
+            [],
+        )
+        .unwrap();
+        let playlist = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, 3)",
+            rusqlite::params![playlist, absorbed],
+        )
+        .unwrap();
+
+        crate::db::migrate(&mut conn).unwrap();
+
+        assert_eq!(paths(&conn), [PRESENT], "the present row is the survivor");
+        let (id, plays, added, played): (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT id, play_count, added_at, last_played_at FROM tracks",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(id, present);
+        assert_eq!(plays, 9, "the higher play count");
+        assert_eq!(added, 100, "the earlier added_at");
+        assert_eq!(played, 400, "and the play count's own timestamp with it");
+        let owner: i64 = conn
+            .query_row("SELECT track_id FROM playlist_tracks", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(owner, present, "the playlist place came across");
+    }
+
+    /// The other 1,580 are 82m's: nothing folds onto them, so nothing here may
+    /// decide what they are.
+    #[test]
+    fn a_missing_row_that_collides_with_nothing_keeps_its_row() {
+        let (_dir, mut conn) = before_the_fold();
+        let alone = track(&conn, ABSORBED, 0, 0);
+        conn.execute("UPDATE tracks SET missing_since = 1 WHERE id = ?1", [alone])
+            .unwrap();
+
+        crate::db::migrate(&mut conn).unwrap();
+
+        assert_eq!(paths(&conn), [ABSORBED]);
+    }
+
+    /// The rebuild drops and recreates `tracks`, which with foreign keys on
+    /// would cascade every playlist entry in the library away.
+    #[test]
+    fn the_rebuild_keeps_the_playlist_entries_of_rows_that_did_not_collide() {
+        let (_dir, mut conn) = before_the_fold();
+        let kept = track(&conn, PRESENT, 0, 0);
+        conn.execute(
+            "INSERT INTO playlists (name, kind, created_at) VALUES ('Mix', 'static', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position)
+             VALUES (last_insert_rowid(), ?1, 0)",
+            [kept],
+        )
+        .unwrap();
+
+        crate::db::migrate(&mut conn).unwrap();
+
+        let entries: i64 = conn
+            .query_row("SELECT count(*) FROM playlist_tracks", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(entries, 1);
+    }
+
+    /// The rebuild carries the search index across with it: the triggers go
+    /// with the table they are on, and `tracks_fts` is keyed by a row id the
+    /// copy has to preserve.
+    #[test]
+    fn the_rebuilt_table_is_still_searchable_and_still_indexed() {
+        let (_dir, mut conn) = before_the_fold();
+        track(&conn, PRESENT, 0, 0);
+
+        crate::db::migrate(&mut conn).unwrap();
+        track(&conn, &ABSORBED.replace("01 - God", "02 - Raven"), 0, 0);
+
+        let hits: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM tracks_fts WHERE tracks_fts MATCH 'Track'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(hits, 2, "the trigger survived the rebuild");
     }
 
     #[test]

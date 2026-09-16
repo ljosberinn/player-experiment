@@ -137,6 +137,8 @@ fn placed(root: &Path, release: &lookup::Release, files: &[query::ReleaseFile]) 
 
 /// Whether `actual` is `ideal`, or `ideal` wearing a collision marker.
 ///
+/// Through [`layout::same`], which is where the case fold and its reasons are.
+///
 /// Folding the marker in is what keeps a collided release - two releases whose
 /// tags sanitize to one name - from reading as unplaced on every sweep,
 /// forever. Compared against [`layout::suffixed`]'s own answer rather than by
@@ -144,8 +146,9 @@ fn placed(root: &Path, release: &lookup::Release, files: &[query::ReleaseFile]) 
 /// inside the ceiling, and a path built to the last character of its budget
 /// does not carry the whole stem plus a marker.
 fn at_target(actual: &Path, ideal: &Path) -> bool {
-    actual == ideal
-        || collision_nth(actual).is_some_and(|nth| actual == layout::suffixed(ideal, nth))
+    layout::same(actual, ideal)
+        || collision_nth(actual)
+            .is_some_and(|nth| layout::same(actual, &layout::suffixed(ideal, nth)))
 }
 
 /// The `n` of a trailing ` (n)` on the file's stem.
@@ -247,6 +250,35 @@ mod tests {
         track(&conn, &target(&root, 1), ALBUM, ARTIST, 1);
         let collided = target(&root, 2).replace(".mp3", " (2).mp3");
         track(&conn, &collided, ALBUM, ARTIST, 2);
+
+        assert_eq!(found(&conn, &organizing(&root)).total, 0);
+    }
+
+    /// The ideal is built from the tags and the directory is what it is really
+    /// called. Compared byte-exact, the release is offered on every sweep,
+    /// forever - the loop 82i ends.
+    #[test]
+    fn a_directory_cased_differently_than_its_tags_is_placed() {
+        let (dir, db) = open();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let folded = |nth| target(&root, nth).replace("Loveless", "loveless");
+        track(&conn, &folded(1), ALBUM, ARTIST, 1);
+        track(&conn, &folded(2), ALBUM, ARTIST, 2);
+
+        assert_eq!(found(&conn, &organizing(&root)), Found::default());
+    }
+
+    /// And the marker is folded in on the same terms.
+    #[test]
+    fn a_collision_suffix_under_another_casing_still_counts_as_placed() {
+        let (dir, db) = open();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let collided = target(&root, 1)
+            .replace("Loveless", "loveless")
+            .replace(".mp3", " (2).mp3");
+        track(&conn, &collided, ALBUM, ARTIST, 1);
 
         assert_eq!(found(&conn, &organizing(&root)).total, 0);
     }
