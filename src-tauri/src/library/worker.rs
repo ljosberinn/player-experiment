@@ -58,13 +58,15 @@ const IDLE_MAX: Duration = Duration::from_secs(600);
 
 /// How many lookups may fail in a row before the step is parked for the sweep.
 ///
-/// A backstop against a network that is down, not a response to a burst: three
-/// releases each exhausting three attempts is nine consecutive declines over
-/// three minutes. One 503 says nothing about the next request - roughly a third
-/// of requests to MusicBrainz are declined, so three in a row is ordinary - and
-/// the run it takes to be an outage cannot be read off a log written while a
-/// single failure ended the sweep. Read it back off `failed` on the sweep line.
-const OUTAGE: usize = 3;
+/// A backstop against a network that is down, not a response to a burst. The
+/// run it takes to be an outage still cannot be read off the log - parking
+/// caps every run at this number - so it is drawn from what the two mistakes
+/// cost instead. A park that comes late costs `OUTAGE` * 3 throttled requests,
+/// seven minutes at seven; a park that comes early costs the rest of one
+/// sweep's lookups. Both are cheap, so this is set above the ordinary rate:
+/// three in ten lookups are declined outright, which puts a run of three every
+/// 53 lookups and a run of seven every 6,600.
+const OUTAGE: usize = 7;
 
 /// How many releases are taken from one survey.
 ///
@@ -94,6 +96,18 @@ pub struct Plan {
     pub rehearsed: HashSet<lookup::Key>,
     /// What the readout is told, and what it takes to say it.
     pub pace: Pace,
+    /// Lookups that have failed since the last one to reach a verdict.
+    ///
+    /// Here rather than in the sweep, for the reason the pace is: a run that
+    /// dies with the sweep it parked cannot tell an outage from a burst. Every
+    /// sweep would open the count at zero, and `next_sweep` returns [`TICK`]
+    /// while there is placement work, so a network that is down would be asked
+    /// again fifteen seconds later for another [`OUTAGE`] failed lookups.
+    ///
+    /// Only the count carries. Parking is a local of the sweep, so each one
+    /// probes with a single lookup: a verdict clears the run, a failure parks
+    /// it again.
+    pub failures: usize,
 }
 
 impl Plan {
@@ -226,10 +240,12 @@ pub struct Summary {
     pub unmovable: usize,
     /// Releases whose lookup exhausted its three attempts.
     ///
-    /// The number [`OUTAGE`] has to be read back against, and the one the
-    /// sweep line could not carry while a single failure ended the sweep: a
-    /// release that failed returns an error rather than an outcome, so its
-    /// `retries` are lost and it is not counted in `visited` either.
+    /// How much a pass is paying for a service that is declining, which the
+    /// `run` beside it does not say: scattered failures never reach the
+    /// threshold however many there are, and the tail asks a deferred release
+    /// a second time. A release that failed returns an error rather than an
+    /// outcome, so its `retries` are lost and it is not counted in `visited`
+    /// either.
     pub failed: usize,
     /// How many requests this sweep had to ask again before one was answered.
     ///
@@ -237,6 +253,14 @@ pub struct Summary {
     /// that works leaves no other trace: the release resolves, and the five
     /// seconds it cost read as a slow request.
     pub retries: usize,
+    /// The longest the failure run reached, which is what [`OUTAGE`] is read
+    /// back against.
+    ///
+    /// `failed` cannot stand in for it, and neither can the log: the run is
+    /// what the threshold is, and a `NotFound` verdict resets it without
+    /// writing a line, so runs counted off `lookup.release` are longer than
+    /// the ones the sweep parked on.
+    pub run: usize,
 }
 
 /// The things a sweep does not change between releases.
@@ -325,8 +349,8 @@ pub fn sweep(
     // or a migration.
     let mut skip = plan.rehearsed.clone();
     let mut deferred: Vec<Pending> = Vec::new();
-    // Lookups that have failed since the last one to reach a verdict.
-    let mut failures = 0;
+    // `plan.failures` carries whatever the run stood at when the last sweep
+    // ended; parking does not, so this one probes before it believes it.
     let mut hobbled = false;
     let mut counted = false;
 
@@ -374,7 +398,7 @@ pub fn sweep(
             match visited.outcome {
                 Visit::Next => {
                     if looked_up {
-                        failures = 0;
+                        plan.failures = 0;
                     }
                 }
                 // Its lookup is done, so the tail must not run it again: it
@@ -383,7 +407,7 @@ pub fn sweep(
                 // tail has to move it under the name it has now.
                 Visit::Deferred => {
                     if looked_up {
-                        failures = 0;
+                        plan.failures = 0;
                     }
                     deferred.push(Pending {
                         look_up: false,
@@ -392,8 +416,9 @@ pub fn sweep(
                     });
                 }
                 Visit::LookupFailed => {
-                    failures += 1;
-                    hobbled = failures >= OUTAGE;
+                    plan.failures += 1;
+                    summary.run = summary.run.max(plan.failures);
+                    hobbled = plan.failures >= OUTAGE;
                     deferred.push(pending);
                 }
             }
@@ -780,6 +805,7 @@ pub fn spawn(
                             .add("unmovable", summary.unmovable)
                             .add("failed", summary.failed)
                             .add("retries", summary.retries)
+                            .add("run", summary.run)
                             .add("next", format!("{}s", quiet.as_secs())),
                     ),
                     Err(error) => op.failed(error),
@@ -1527,6 +1553,107 @@ mod tests {
             OUTAGE * 3,
             "three attempts each, and the release after the run was never asked"
         );
+    }
+
+    /// The threshold is the run, not the rate: a library of ordinary declines
+    /// has to keep being asked right up to it.
+    #[test]
+    fn a_run_one_short_of_the_threshold_leaves_the_step_on() {
+        let (dir, db) = releases(OUTAGE - 1);
+        let transport = declining();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(
+            summary.run,
+            OUTAGE - 1,
+            "the last of them was asked, so the step was on for it"
+        );
+        assert_eq!(
+            summary.failed,
+            (OUTAGE - 1) * 2,
+            "and the tail asked every one of them a second time"
+        );
+        assert_eq!(transport.call_count(), (OUTAGE - 1) * 2 * 3);
+    }
+
+    /// The one the sweep-scoped count could not do: a network that is down
+    /// must not be worth another [`OUTAGE`] lookups every fifteen seconds.
+    #[test]
+    fn the_run_outlives_the_sweep_it_ended() {
+        let (dir, db) = releases(OUTAGE - 1);
+        let transport = declining();
+        let mut plan = live();
+        let steps = held(looking_up());
+        let signals = unwatched(&steps);
+
+        let first = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &signals,
+        )
+        .unwrap();
+        assert_eq!(first.run, OUTAGE - 1, "one short, so nothing parked");
+        assert_eq!(plan.failures, OUTAGE - 1, "and the run is what it carries");
+
+        let asked = transport.call_count();
+        let second = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &signals,
+        )
+        .unwrap();
+
+        assert_eq!(second.failed, 1, "the probe, and then the step is parked");
+        assert_eq!(second.run, OUTAGE);
+        assert_eq!(
+            transport.call_count() - asked,
+            3,
+            "one lookup's three attempts, not another run of them"
+        );
+    }
+
+    /// The carry is evidence about the network, so the network is what drops
+    /// it - otherwise a burst at the end of one sweep parks the next one.
+    #[test]
+    fn a_verdict_clears_a_carried_run() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut plan = Plan {
+            failures: OUTAGE - 1,
+            ..live()
+        };
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.resolved, 1);
+        assert_eq!(plan.failures, 0);
+        assert_eq!(summary.run, 0, "and the line says nothing happened");
     }
 
     /// A 503 must not file a release under the tags the lookup was about to
