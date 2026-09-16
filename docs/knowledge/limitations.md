@@ -34,17 +34,16 @@ Known, decided, and not scheduled. Anything with work attached lives in
   missing nor removed until the user runs a Rescan.
 - **A failed unattended pass is silent.** It was not asked for, so it is not an
   error popover; the line in `main.log` is where it says so.
-- **A first release lookup over a large library takes two days.** Two
-  MusicBrainz calls per release, one request in flight at a time and ten
-  seconds between them, which is roughly forty-five hours for eight thousand
+- **A first release lookup over a large library takes the best part of four
+  days.** Two MusicBrainz calls per release, one request in flight at a time and
+  twenty seconds between them, which is roughly ninety hours for eight thousand
   releases — all but twenty minutes of that is the interval itself, and absorbed
   retries add to it. Deliberately far slower than their documented allowance: a
   503 there can mean their global budget is full rather than anything about this
-  client, and slowing down has been measured not to buy requests, so the pass
-  asks as little as it can rather than as much as it may. The gate is
-  process-wide, so **an open lookup dialog waits behind the pass** — up to ten
-  seconds before its request even goes out. A library already tagged with
-  release MBIDs pays none of it.
+  client, so the pass asks as little as it can rather than as much as it may.
+  The gate is process-wide, so **an open lookup dialog waits behind the pass** —
+  up to twenty seconds before its request even goes out. A library already
+  tagged with release MBIDs pays none of it.
 - **A release MusicBrainz has nothing for is never looked up again.**
   Deliberate: MusicBrainz grows, so today's miss is next year's match, but
   re-searching every miss on every launch would be the best part of a day

@@ -22,7 +22,7 @@ use super::LIBRARY_CHANGED;
 ///
 /// Provisional, and no longer sized by what it was sized for. It was reasoned
 /// against 82b's lookup pass committing a release every two seconds; 82e's
-/// limiter put that at one every twenty, so the pass now coalesces nothing here
+/// limiter put that at one every forty, so the pass now coalesces nothing here
 /// and needs nothing to. What the window still earns its keep on is a write
 /// that really does commit in a run - a scan, an import, a bulk tag edit -
 /// which is what it should be measured against when anyone does.

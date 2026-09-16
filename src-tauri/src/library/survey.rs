@@ -10,7 +10,7 @@
 //! **It is not free.** [`query::for_each_release`] sorts every row in `tracks`
 //! over expressions with no index behind them, which is why the worker's idle
 //! backoff is not optional - and why this is re-run per batch rather than once
-//! per sweep: a sweep runs for forty-five hours, and a release retagged inside
+//! per sweep: a sweep runs for ninety hours, and a release retagged inside
 //! one has to be picked up before it ends.
 
 use std::collections::HashSet;
