@@ -54,15 +54,22 @@ work because the path registers with `history.ts`. Leaving for the Songs table
 is a separate, explicit action — "Show these 412 songs" — so the first click
 cannot end the exploration.
 
-**The import takes MBIDs and the loved flag.** `extended=1` costs no extra
-requests. With a nullable `tracks.mbid` filled from the MusicBrainz frames many
-rips carry, matching is exact where both sides have an id and falls back to
-string matching otherwise — which is the difference between telling two bands
-of the same name apart and not.
+**The import takes MBIDs.** `extended=1` costs no extra requests. With a
+nullable `tracks.recording_mbid` filled from the MusicBrainz frames many rips
+carry, matching is exact where both sides have an id and falls back to string
+matching otherwise — which is the difference between telling two bands of the
+same name apart and not. Both arrive in the import phase, not the log phase:
+before an import there is not one MBID in `plays` to match on.
+
+**Loved is not a column on `plays`.** It is the current state of a track rather
+than a fact about a moment, so an imported flag would freeze at whatever the
+first import saw and every locally written row would read `0` forever. A set
+keyed by `match_key`, replaced wholesale from `user.getLovedTracks`, answers the
+question the panels actually ask.
 
 ## Shape
 
-### Migration 10 — the play log
+### Migration 12 — the play log
 
 ```sql
 CREATE TABLE plays (
@@ -75,19 +82,16 @@ CREATE TABLE plays (
     duration_ms  INTEGER,
     artist_mbid  TEXT,
     track_mbid   TEXT,
-    loved        INTEGER NOT NULL DEFAULT 0,
     match_key    TEXT NOT NULL,      -- normalized artist + title
     track_id     INTEGER REFERENCES tracks(id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX idx_plays_identity ON plays(started_at, match_key);
 CREATE INDEX idx_plays_started ON plays(started_at);
 CREATE INDEX idx_plays_track   ON plays(track_id, started_at);
-
-ALTER TABLE tracks ADD COLUMN mbid TEXT;
-ALTER TABLE tracks ADD COLUMN match_key TEXT;
-CREATE INDEX idx_tracks_mbid ON tracks(mbid);
-CREATE INDEX idx_tracks_key  ON tracks(match_key);
 ```
+
+The import phase adds what only it can use: `tracks.recording_mbid` for the MBID
+tier, and `lastfm_loved(match_key)` for the loved set.
 
 **The text columns are the play, for the reason `scrobble_queue` gives**: a play
 is a historical fact about a moment, and the row it came from can be retagged or
@@ -96,9 +100,10 @@ one thing carrying a foreign key — deleting a file forgets the link and keeps
 the play.
 
 **`idx_plays_identity` is the dedupe rule, and it is exact rather than fuzzy.**
-`Event::Played` carries the second the track *started* (derived from
-`now - position_ms`, because anything else is wrong after a pause or a seek);
-the scrobbler sends that same integer to last.fm; last.fm hands it back. An
+`Event::Played` carries the second the track *started*, recorded at load rather
+than derived from `now - position_ms`, which is wrong for any track that was
+paused or seeked; the scrobbler sends that same integer to last.fm; last.fm
+hands it back. An
 import is therefore `INSERT OR IGNORE` and a play made in this app cannot be
 counted twice. It follows that `source` means *which writer got there first*,
 not where you were listening — worth a comment at the column, because it reads
@@ -109,7 +114,7 @@ recent play is recoverable from them; manufacturing timestamps for the rest
 would put invented data in the table the whole feature reads. The import covers
 that history properly.
 
-### Migration 9 — the genre tree
+### Migration 11 — the genre tree
 
 ```sql
 CREATE TABLE genres          (label TEXT PRIMARY KEY, parent TEXT);
@@ -125,7 +130,9 @@ the app writes at runtime.
 
 ## Matching and resolution
 
-Two tiers: exact on MBID where both sides have one, then `match_key`.
+Two tiers: exact on MBID where both sides have one, then `match_key`. The log
+phase ships the second; the MBID tier arrives with the import, which is what
+first puts an MBID in the table.
 
 Normalization is **deliberately conservative** — lowercase, collapsed
 whitespace, a trailing `(feat. …)` or `(with …)` dropped, and nothing else.
@@ -134,18 +141,27 @@ there to preserve. It runs in Rust: SQLite's `lower()` is ASCII-only and would
 leave Motörhead and Sigur Rós unfolded, and `COLLATE NOCASE` has the same limit.
 
 **Resolution is a rebuild, not bookkeeping.** `plays::resolve` recomputes
-`track_id` for every row from two indexed `UPDATE`s, and runs wherever
-`tag_values::rebuild` already runs — after a scan, a tag write, an undo, a
-removal. The argument is the one
+`track_id` for every row and runs wherever `tag_values::rebuild` already runs —
+after a scan, a tag write, an undo, a removal. The argument is the one
 [tag_values.rs](../../src-tauri/src/db/tag_values.rs) makes at length: there is
 no drift to detect and no repair path to write.
 
-**This is the plan's one perf risk.** 237k plays re-resolved after a three-track
-tag edit is a cost `tag_values::rebuild` does not pay. It gets a budget in
-`tests/perf.rs` from the first phase, before any panel depends on it. If it
-misses, the fallback is to re-resolve only rows whose `match_key` belongs to a
-changed track — correct but with a repair path, which is why it is the fallback
-and not the design.
+**The key is not stored on `tracks`.** Normalization is Rust-side, so a
+`tracks.match_key` column would have to be filled at every site that writes a
+track row — the ordering dependency `tag_values` exists to refuse — or
+recomputed over the whole library on every rebuild, which costs more than the
+thing it was meant to make cheap. `resolve` reads `id, artist, title`,
+normalizes in Rust, materializes a temporary `keys(key PRIMARY KEY, track_id)`,
+and runs one `UPDATE` over `plays` against it.
+
+**That `UPDATE` is guarded by `WHERE track_id IS NOT (SELECT …)`**, which is
+what makes the plan's one perf risk affordable: 237k plays re-resolved after a
+three-track tag edit is a cost `tag_values::rebuild` does not pay, and the guard
+turns it into a scan that writes only the rows whose link actually moved. A
+budget lands in `tests/perf.rs` in the first phase, before any panel depends on
+it. If it misses anyway, the fallback is to re-resolve only the keys a write
+touched — correct, but with an ordering dependency on every caller, which is why
+it is the fallback and not the design.
 
 ## The genre tree, and where it comes from
 
@@ -195,7 +211,9 @@ is — which is what `genre_overrides` exists to correct.
   that share a second.
 - **The `nowplaying` entry has no `date`** and is not a play. Skipped.
 - `@attr total` and `totalPages` from the first response drive progress.
-- **`extended=1`** adds the loved flag and the MBIDs at no extra request cost.
+- **`extended=1`** adds the MBIDs at no extra request cost. Its loved flag is
+  ignored; the loved set comes from `user.getLovedTracks`, because the flag
+  describes the track now rather than the play then.
 
 Mechanically it is the shape the codebase already has: a dedicated worker thread
 behind `lastfm::transport::Transport`, one transaction per page, progress on
@@ -224,7 +242,7 @@ pub struct ListenQuery {
     pub genre: Option<String>,   // the genre and its descendants
     pub album: Option<String>,
     pub owned: Option<bool>,
-    pub loved: Option<bool>,
+    pub loved: Option<bool>,   // with the import; nothing to filter before it
 }
 ```
 
@@ -285,7 +303,7 @@ The filter bar's contents follow the tab:
 | --- | --- |
 | Range: all time / this year / last 12 months / this month / last 7 days / custom | Scope: whole library / current view / a playlist |
 | Facet chips pushed by the drill-down (artist, genre, album) | Genre facet |
-| Owned · Loved toggles | — |
+| Owned · Loved toggles — Loved once the import has run | — |
 
 The range persists in `settings`, the way a column layout does. The drill path
 does not — that is what history is for.
@@ -339,8 +357,10 @@ row a link into the filtered Songs table.
 - The import is tested against a mocked `Transport`, as every last.fm phase
   already is: a resumed cursor, a duplicated boundary page, a `nowplaying`
   entry, a mid-import failure, and a page whose oldest rows share a second.
-- `tests/perf.rs` gets budgets for `plays::resolve` and for each aggregate at
-  237k rows, seeded synthetically like the existing 150k-row fixtures.
+- `tests/perf.rs` gets budgets for `plays::resolve` and for each aggregate at a
+  quarter of a million plays, from a `db::synthetic::seed_plays` the log phase
+  adds beside the existing track seeder. Budgeted against the CI runner rather
+  than a developer machine, which is roughly a tenfold spread.
 - Charts assert geometry — `path` commands and `rect` extents — never pixels.
 - Panels get `role="img"` with a generated summary label, and a show-as-table
   toggle where the numbers matter more than the shape.
@@ -349,11 +369,11 @@ row a link into the filtered Songs table.
 ## Steps
 
 **Migration numbers are not reserved here.** Migrations are append-only and
-numbered by the order they land, and 9 has since gone to
-[79a](../issues/done/79a-per-track-edits-and-the-release-mbid.md) with 10 and 11
-spoken for by [82b](../issues/done/82b-the-unattended-lookup-pass.md) and
-[83a](../issues/upcoming/83a-where-a-file-goes.md). Each phase below takes
-whatever number is next when it lands.
+numbered by the order they land: 9 and 10 went to
+[82b](../issues/done/82b-the-unattended-lookup-pass.md)'s lookup table and its
+`aside` status, and 11 to the genre tree above. The numbers named in this file
+are the ones already taken plus the next one free; each phase below takes
+whatever is next when it lands.
 
 These phases interleave with the issues in
 [upcoming/](../issues/upcoming/), which share one order: dependencies first,
