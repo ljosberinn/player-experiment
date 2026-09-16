@@ -8,7 +8,7 @@ are required before merge:
 | Job | Runs |
 | --- | --- |
 | `changes` | path filter that decides which jobs are needed |
-| `frontend` (ubuntu) | `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build` |
+| `frontend` (ubuntu) | `npm run tauri:parity`, `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build` |
 | `rust` (windows) | `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`, and a check that committed bindings match the Rust types |
 | `cargo-deny` (ubuntu) | advisories, licences, sources, bans |
 | `notices` | the third-party notices can still be generated |
@@ -34,6 +34,15 @@ red run points at one suspect. Two npm groups are the exception —
 `vite` + `@vitejs/*` and `vitest` + `@vitest/*` — because those cannot be
 installed one at a time: the first scheduled run opened four separate pull
 requests that each failed at `npm ci` with ERESOLVE.
+
+**Tauri updates always arrive half-done.** `tauri-plugin-updater` is a cargo
+dependency and `@tauri-apps/plugin-updater` an npm one, Dependabot groups per
+ecosystem, and `tauri build` refuses to start unless the two agree on
+major.minor — so a Tauri bump is red by construction until the other half is
+pushed onto the same branch by hand. `npm run tauri:parity` says so in the
+`frontend` job rather than minutes into the e2e build. Pushing to a
+`dependabot/*` branch also costs the auto-merge below, whose `actor` condition
+no longer holds; merge those by hand.
 
 `.github/workflows/dependabot.yml` then lands them: green run on a
 `dependabot/*` branch → squash-merge. Majors included; the gate is the same six

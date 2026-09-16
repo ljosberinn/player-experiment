@@ -79,6 +79,11 @@ jobs:
           cache: npm
       - run: npm ci
         if: needs.changes.outputs.code == 'true'
+      # Ahead of everything else in the job: `tauri build` rejects a mismatch
+      # too, but only in the e2e job and only after several minutes of Rust.
+      - name: Tauri packages agree across lockfiles
+        if: needs.changes.outputs.code == 'true'
+        run: npm run tauri:parity
       - name: Typecheck
         if: needs.changes.outputs.code == 'true'
         run: npm run typecheck
