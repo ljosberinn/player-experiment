@@ -69,6 +69,13 @@ pub enum Outcome {
     /// defers these to the end of its run rather than dropping them, so a user
     /// who leaves one album playing does not find it the only one left behind.
     Deferred,
+    /// No row carries this album and artist, so there was nothing to move.
+    ///
+    /// Its own outcome rather than `Done(Moved::default())`, which is what a
+    /// release already at its targets comes to: the two are the same counts
+    /// and opposite facts, and a caller counting placements off `Done` counts
+    /// one for a release that was never here.
+    Absent,
 }
 
 /// What moving one release cost.
@@ -105,7 +112,7 @@ pub fn move_release(
 ) -> AppResult<Outcome> {
     let files = query::release_files(conn, release.album.as_deref(), release.artist.as_deref())?;
     if files.is_empty() {
-        return Ok(Outcome::Done(Moved::default()));
+        return Ok(Outcome::Absent);
     }
     if files.iter().any(|file| open.contains(&file.id)) {
         return Ok(Outcome::Deferred);
@@ -903,11 +910,13 @@ mod tests {
         );
     }
 
+    /// And it is not `Done` either: a caller that counts placements would
+    /// count one for a release that was never here.
     #[test]
-    fn a_release_with_no_rows_is_nothing_to_do() {
+    fn a_release_with_no_rows_is_not_a_placement() {
         let fixture = Fixture::new();
 
-        assert_eq!(fixture.move_it(&OsRename).unwrap(), moved(0, 0, 0));
+        assert_eq!(fixture.move_it(&OsRename).unwrap(), Outcome::Absent);
     }
 
     #[test]

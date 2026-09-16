@@ -254,6 +254,21 @@ struct Context<'a> {
     label: &'a str,
 }
 
+/// What one release came to, and what it is called now.
+struct Visited {
+    outcome: Visit,
+    /// The album and artist the release carries after the visit, which is the
+    /// pair it arrived with unless a lookup rewrote its tags.
+    ///
+    /// **The key the sweep has to remember is this one, not the one the
+    /// release arrived under.** A rewritten release stops answering to the key
+    /// the survey found it by, so a `skip` holding only that key hands the
+    /// same release back in the next batch - a second search for a release
+    /// that is already resolved. It is what the tail has to move the release
+    /// under, too: the name it arrived with names no files any more.
+    release: lookup::Release,
+}
+
 /// What one release came to, from the sweep's point of view.
 enum Visit {
     /// On to the next one.
@@ -347,21 +362,32 @@ pub fn sweep(
             // as well - a batch of those between two failures would clear the
             // count and a real outage would never reach the threshold.
             let looked_up = pending.look_up && steps.look_up;
-            match visit(&mut conn, &context, plan, &steps, &pending, &mut summary) {
+            let visited = visit(&mut conn, &context, plan, &steps, &pending, &mut summary);
+            // Under the name it has now as well as the one it arrived with: a
+            // lookup that rewrote the tags left the release answering to a key
+            // the survey has not been told about, and the next batch would
+            // offer it again.
+            skip.insert(lookup::fold(
+                &visited.release.album,
+                &visited.release.artist,
+            ));
+            match visited.outcome {
                 Visit::Next => {
                     if looked_up {
                         failures = 0;
                     }
                 }
-                // Its lookup is done, and `pending` still names it under the
-                // tags that lookup replaced, so the tail must not run it
-                // again: it would search on tags nothing carries any more.
+                // Its lookup is done, so the tail must not run it again: it
+                // would search on tags nothing carries any more. The refreshed
+                // release rather than `pending`'s for the same reason - the
+                // tail has to move it under the name it has now.
                 Visit::Deferred => {
                     if looked_up {
                         failures = 0;
                     }
                     deferred.push(Pending {
                         look_up: false,
+                        release: visited.release,
                         ..pending
                     });
                 }
@@ -429,7 +455,7 @@ fn visit(
     steps: &Steps,
     pending: &Pending,
     summary: &mut Summary,
-) -> Visit {
+) -> Visited {
     let started = Instant::now();
     let mut release = pending.release.clone();
     let mut visit = Visit::Next;
@@ -541,6 +567,13 @@ fn visit(
                     op.succeeded(Fields::new().add("status", "playing"));
                     visit = Visit::Deferred;
                 }
+                // Nothing carries the name any more - the release was removed
+                // while the sweep ran. Not counted in `placed`, which would
+                // otherwise report a library filed that nothing was done to.
+                Ok(mover::Outcome::Absent) => {
+                    attempted = true;
+                    op.succeeded(Fields::new().add("status", "absent"));
+                }
                 // Logged, skipped, and not offered again during this run: a
                 // locked file must not end a four-hour backfill. Across sweeps
                 // it is retried, which costs one attempt and one log line each
@@ -564,7 +597,10 @@ fn visit(
         summary.visited += 1;
         (context.signals.progress)(&plan.pace.advance(started.elapsed(), context.label));
     }
-    visit
+    Visited {
+        outcome: visit,
+        release,
+    }
 }
 
 /// What the readout calls a pass with these steps on.
@@ -876,6 +912,33 @@ mod tests {
             .count()
     }
 
+    /// The tracks the player holds a `std::fs::File` on: the first `tracks` of
+    /// them, let go once `asks` releases have been through the mover.
+    ///
+    /// `move_release` reads this once per release, so the ask after the batch
+    /// is the tail's - which is what puts a release on the tail and finds it
+    /// free when the tail gets to it.
+    fn held_until(db: &Db, tracks: usize, asks: usize) -> impl Fn() -> HashSet<i64> {
+        let held: RefCell<HashSet<i64>> = RefCell::new(
+            db.conn()
+                .unwrap()
+                .prepare("SELECT id FROM tracks ORDER BY path LIMIT ?1")
+                .unwrap()
+                .query_map([tracks as i64], |row| row.get::<_, i64>(0))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap(),
+        );
+        let asked = Cell::new(0);
+        move || {
+            asked.set(asked.get() + 1);
+            if asked.get() > asks {
+                held.borrow_mut().clear();
+            }
+            held.borrow().clone()
+        }
+    }
+
     fn log_to(dir: &Path) -> Log {
         Log::to(dir.join("apex.log"))
     }
@@ -941,6 +1004,35 @@ mod tests {
             "a file was left outside the library folder"
         );
         assert_eq!(left(&db, &steps), 0);
+    }
+
+    /// A release the lookup renames stops answering to the key the survey
+    /// found it by, so a run that remembered only that key would be handed the
+    /// same release in the next batch - and search it again, on a pass that
+    /// spends twenty seconds a request.
+    #[test]
+    fn a_release_the_lookup_renamed_is_not_surveyed_again() {
+        // A name MusicBrainz replaces: the write lands as "Loveless" by
+        // "My Bloody Valentine", which is a key the survey has not been told
+        // about.
+        let (dir, db) = library("Lovless", "M.B.V.", &LOVELESS_DURATIONS);
+        let root = root_of(dir.path());
+        let transport = musicbrainz();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(both(&root))),
+        )
+        .unwrap();
+
+        assert_eq!(summary.visited, 1);
+        assert_eq!(summary.resolved, 1);
+        assert_eq!(searches(&transport), 1);
     }
 
     /// A release MusicBrainz could not settle is still filed, from its own
@@ -1091,6 +1183,46 @@ mod tests {
         assert_eq!(summary.placed, 1, "the sweep carried on to the other one");
     }
 
+    /// A release whose rows went away between the survey and the mover is a
+    /// release nothing was done to. Counting it would put the readout ahead of
+    /// the library: the number says releases were filed, and none were.
+    #[test]
+    fn a_release_that_left_the_library_mid_sweep_is_not_placed() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let root = root_of(dir.path());
+
+        // Asked once per release and immediately before the move, which is the
+        // seam a removal in that window lands in.
+        let removed = Cell::new(0);
+        let open = || {
+            removed.set(removed.get() + 1);
+            db.conn()
+                .unwrap()
+                .execute("DELETE FROM tracks", [])
+                .unwrap();
+            HashSet::new()
+        };
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &Signals {
+                steps: &held(filing(&root)),
+                changed: &|| {},
+                progress: &|_| {},
+                open: &open,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(removed.get(), 1, "the release did reach the mover");
+        assert_eq!(summary.placed, 0);
+    }
+
     /// The playing release goes to a tail rather than being dropped: a user
     /// who leaves one album on must not find it the only one left behind.
     #[test]
@@ -1099,27 +1231,9 @@ mod tests {
         let root = root_of(dir.path());
         let steps = filing(&root);
 
-        // Held open until the tail. `move_release` reads this per release, so
-        // releasing it after the batch is what the tail then finds.
-        let held_open: RefCell<HashSet<i64>> = RefCell::new(
-            db.conn()
-                .unwrap()
-                .prepare("SELECT id FROM tracks ORDER BY path LIMIT 1")
-                .unwrap()
-                .query_map([], |row| row.get::<_, i64>(0))
-                .unwrap()
-                .collect::<rusqlite::Result<_>>()
-                .unwrap(),
-        );
-        let asked = Cell::new(0);
-        let open = || {
-            asked.set(asked.get() + 1);
-            // Two releases in the batch, and the third ask is the tail.
-            if asked.get() > 2 {
-                held_open.borrow_mut().clear();
-            }
-            held_open.borrow().clone()
-        };
+        // One track of one release, and two releases in the batch, so the
+        // third ask is the tail's.
+        let open = held_until(&db, 1, 2);
 
         let summary = sweep(
             &db,
@@ -1449,27 +1563,10 @@ mod tests {
         let root = root_of(dir.path());
         let transport = musicbrainz();
 
-        // Held open for the batch and let go for the tail, which is what puts
-        // the release on the tail with its lookup already done.
-        let held_open: RefCell<HashSet<i64>> = RefCell::new(
-            db.conn()
-                .unwrap()
-                .prepare("SELECT id FROM tracks")
-                .unwrap()
-                .query_map([], |row| row.get::<_, i64>(0))
-                .unwrap()
-                .collect::<rusqlite::Result<_>>()
-                .unwrap(),
-        );
-        let asked = Cell::new(0);
-        let open = || {
-            asked.set(asked.get() + 1);
-            // One release in the batch, so the second ask is the tail.
-            if asked.get() > 1 {
-                held_open.borrow_mut().clear();
-            }
-            held_open.borrow().clone()
-        };
+        // The whole release, and one release in the batch, so the second ask
+        // is the tail's, which is what puts the release on the tail with its
+        // lookup already done.
+        let open = held_until(&db, LOVELESS_DURATIONS.len(), 1);
 
         let summary = sweep(
             &db,
@@ -1491,6 +1588,47 @@ mod tests {
         assert_eq!(summary.resolved, 1);
         assert_eq!(summary.queued, 0, "the second lookup would have queued it");
         assert_eq!(searches(&transport), 1);
+    }
+
+    /// And it is filed under the name the lookup left on it. The deferral
+    /// carries the refreshed release rather than the tags the release arrived
+    /// with: a move under those finds no file, and the release sits where it
+    /// is until the next sweep.
+    #[test]
+    fn the_tail_moves_a_deferred_release_under_the_name_it_has_now() {
+        let (dir, db) = library("Lovless", "M.B.V.", &LOVELESS_DURATIONS);
+        let root = root_of(dir.path());
+        let steps = both(&root);
+        let transport = musicbrainz();
+
+        // As above: the second ask is the tail's.
+        let open = held_until(&db, LOVELESS_DURATIONS.len(), 1);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &Signals {
+                steps: &held(steps.clone()),
+                changed: &|| {},
+                progress: &|_| {},
+                open: &open,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.placed, 1);
+        assert!(
+            paths(&db)
+                .iter()
+                .all(|path| Path::new(path).starts_with(&root)),
+            "a file was left outside the library folder"
+        );
+        assert_eq!(left(&db, &filing(&root)), 0);
+        assert_eq!(searches(&transport), 1, "and looked up once");
     }
 
     /// The pass spends most of its life over a finished library, and a sweep

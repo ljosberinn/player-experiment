@@ -19,6 +19,12 @@ counting:
 - The tail has to move the release under the name it has now. `Visit::Deferred`
   carrying the refreshed `lookup::Release` is the smallest way to say it.
 
+A third, found while testing the second: `skip` holds the name the release
+arrived under, so a lookup that renames it puts it back in the next batch's
+survey — `visited: 2, resolved: 2, searches: 2` for one release, on a pass
+that spends twenty seconds a request. The refreshed release the deferral needs
+is the key `skip` needs, so `visit` returns it for every outcome.
+
 Found while reading [82g](../done/82g-a-503-defers-the-release.md), which fixes
 the double lookup on the same line and leaves this.
 
