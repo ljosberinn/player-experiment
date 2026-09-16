@@ -126,7 +126,10 @@ for.** `create_dir_all` will not re-case a directory that already exists, so a
 file computed into `The Corpse of Rebirth` lands in `The Corpse Of Rebirth`
 with the rename reporting success; `insert_track`'s `ON CONFLICT` updates every
 column but `path`, so a row that took the asked-for spelling would keep it
-forever. `library::mover` canonicalizes each target it moved to and stores that.
+forever. `library::mover` reads each target back with `canonicalize` and stores
+the part below the library folder, joined onto the folder as it was configured —
+the answer resolves short names and junctions too, and a row that no longer
+starts with the folder the user named is a release `at_target` can never accept.
 
 **The root is a `watch_folders` row for as long as the switch is on.**
 `scan::plan` marks missing every known row it did not walk, so a library filed

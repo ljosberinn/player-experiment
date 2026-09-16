@@ -12,7 +12,7 @@
 //! playlist the track was in. The `UPDATE tracks SET path` commits in the same
 //! transaction as the rename, and nothing here routes through a rescan. The
 //! path it writes is the one the file landed on rather than the one it was
-//! sent to - see [`on_disk`].
+//! sent to - see [`landed_at`].
 //!
 //! **Failure does not need unwinding, because the target is derived.** A
 //! release left with some files moved and some not computes the same targets on
@@ -165,7 +165,7 @@ pub fn move_release(
 
         for (file, source, target) in &moves {
             place_file(fs, source, target)?;
-            let landed = on_disk(target)?;
+            let landed = landed_at(root, target)?;
             let meta = std::fs::metadata(&landed)
                 .map_err(|error| AppError::io(landed.display(), error))?;
             set_path.execute(rusqlite::params![
@@ -408,7 +408,8 @@ fn prune_empty(dir: &Path, stop: &[PathBuf]) {
     }
 }
 
-/// Where a file actually landed, spelled the way the filesystem spells it.
+/// Where a file actually landed: `root` as the caller spells it, and
+/// underneath it the spelling the filesystem has.
 ///
 /// [82j](../../../docs/issues/done/82j-the-path-the-mover-asked-for.md):
 /// `create_dir_all` will not re-case a directory that already exists, so a
@@ -416,25 +417,24 @@ fn prune_empty(dir: &Path, stop: &[PathBuf]) {
 /// `loveless - 1991 - Album` if that folder is already there, and the rename
 /// still reports success. `insert_track`'s `ON CONFLICT` updates everything
 /// but `path`, so a row holding the asked-for spelling holds it forever.
-fn on_disk(target: &Path) -> AppResult<PathBuf> {
+///
+/// Only the part below the root is taken from `canonicalize`. Its answer is a
+/// `\\?\` path with short names expanded and junctions followed, so a library
+/// folder reached through any of those would give every row a path that no
+/// longer starts with the folder the user named - and `survey::at_target`
+/// compares against exactly that.
+fn landed_at(root: &Path, target: &Path) -> AppResult<PathBuf> {
+    let real_root =
+        std::fs::canonicalize(root).map_err(|error| AppError::io(root.display(), error))?;
     let full =
         std::fs::canonicalize(target).map_err(|error| AppError::io(target.display(), error))?;
-    Ok(plain(full))
-}
-
-/// A `canonicalize` answer as the rest of the library writes paths.
-///
-/// Every other row in `tracks` is a plain `D:\…`, and the whole point of
-/// [`on_disk`] is that one file has one spelling.
-fn plain(path: PathBuf) -> PathBuf {
-    let text = path.to_string_lossy().into_owned();
-    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
-        return PathBuf::from(format!(r"\\{share}"));
-    }
-    match text.strip_prefix(r"\\?\") {
-        Some(rest) => PathBuf::from(rest),
-        None => path,
-    }
+    Ok(match full.strip_prefix(&real_root) {
+        Ok(under) => root.join(under),
+        // Nothing builds a target outside the root, and a row is worth more
+        // than a guess: the asked-for path is at least under the folder the
+        // rest of the library measures against.
+        Err(_) => target.to_path_buf(),
+    })
 }
 
 /// A path as `tracks.path` and `scan::plan` spell it.
@@ -487,28 +487,19 @@ mod tests {
 
     /// A library on disk with its database beside it.
     struct Fixture {
-        /// Held for the drop, which is what removes the directory.
-        _dir: tempfile::TempDir,
-        /// The same directory canonicalized, so the paths a test builds are
-        /// the paths [`on_disk`] answers with.
-        base: PathBuf,
+        dir: tempfile::TempDir,
         db: Db,
     }
 
     impl Fixture {
         fn new() -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let base = plain(std::fs::canonicalize(dir.path()).unwrap());
-            let db = Db::open(base.join("library.sqlite3")).unwrap();
-            Self {
-                _dir: dir,
-                base,
-                db,
-            }
+            let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+            Self { dir, db }
         }
 
         fn at(&self, relative: &str) -> PathBuf {
-            self.base.join(relative)
+            self.dir.path().join(relative)
         }
 
         fn root(&self) -> PathBuf {
@@ -596,7 +587,7 @@ mod tests {
                 .unwrap()
                 .collect::<rusqlite::Result<Vec<_>>>()
                 .unwrap();
-            let prefix = format!("{}\\", self.base.to_string_lossy());
+            let prefix = format!("{}\\", self.dir.path().to_string_lossy());
             rows.into_iter()
                 .map(|path| path.strip_prefix(&prefix).unwrap_or(&path).to_owned())
                 .collect()
@@ -779,13 +770,32 @@ mod tests {
         assert_eq!((rows, missing), (2, 0));
     }
 
-    /// A library on a share: `canonicalize` answers `\\?\UNC\…` there, and
-    /// the row has to read like the `\\server\share\…` the user named.
+    /// And only below the root: `canonicalize` expands short names and follows
+    /// junctions, so a row built out of its answer whole would stop starting
+    /// with the folder `survey::at_target` measures against.
     #[test]
-    fn a_canonicalized_share_comes_back_as_the_unc_path() {
+    fn the_root_is_spelled_the_way_the_caller_spells_it() {
+        let fixture = Fixture::new();
+        loveless(&fixture);
+        std::fs::create_dir_all(fixture.at("Library")).unwrap();
+
+        let mut conn = fixture.conn();
+        move_release(
+            &mut conn,
+            &ScanLock::default(),
+            &OsRename,
+            &fixture.at("library"),
+            &fixture.release(),
+            &HashSet::new(),
+        )
+        .unwrap();
+
         assert_eq!(
-            plain(PathBuf::from(r"\\?\UNC\nas\music\a.mp3")),
-            PathBuf::from(r"\\nas\music\a.mp3")
+            fixture.paths(),
+            [
+                FIRST.replacen("Library", "library", 1),
+                SECOND.replacen("Library", "library", 1)
+            ]
         );
     }
 

@@ -149,9 +149,12 @@ no other signal; the fallback is copy, compare the size, delete the source.
 Nothing on a CI runner can produce a second volume, so the error is injected
 through the `Rename` seam instead.
 
-**`std::fs::canonicalize` answers with a `\\?\` path** — `\\?\D:\Library\…`, or
-`\\?\UNC\server\share\…` for a share. Every path stored anywhere else is a plain
-`D:\…`, so the prefix comes off before the answer is written down.
+**`std::fs::canonicalize` answers with more than the real spelling.** It returns
+a `\\?\` path, with 8.3 short names expanded and junctions and symlinks
+followed, so its answer is not interchangeable with the path it was given —
+`%TEMP%` on a GitHub runner is enough to make the two differ. Use it to read how
+the filesystem spells what was just written, then put that back under the path
+the caller gave; never store it whole.
 
 ## Colour extraction
 
