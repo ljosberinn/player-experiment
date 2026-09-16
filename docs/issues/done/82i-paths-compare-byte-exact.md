@@ -43,8 +43,10 @@ rows collide under it** — a present row and the missing row the same file left
 behind in another casing. It cannot rebuild around them, so the fold and the
 merge are one migration: the surviving row is the present one, taking the
 higher `play_count`, the earlier `added_at` and the playlist rows of the one it
-absorbs. The 1,580 rows of earlier generations do not collide and are
-[82m](82m-undoing-the-placement-loop.md)'s.
+absorbs. The 1,580 rows of earlier generations do not collide, and removing
+them stays the user's gesture — they are what File ▸ Remove *n* Missing Songs
+is for. Accepting any marker is itself too generous, which is
+[82m](82m-a-marker-only-survives-while-held.md)'s.
 
 Testing: a release whose directory sits under a different casing than its tags,
 asserted placed and asserted to leave the survey; a second release sanitizing to

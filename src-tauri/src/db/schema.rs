@@ -672,8 +672,9 @@ mod tests {
         assert_eq!(owner, present, "the playlist place came across");
     }
 
-    /// The other 1,580 are 82m's: nothing folds onto them, so nothing here may
-    /// decide what they are.
+    /// The other 1,580 fold onto nothing, so nothing here may decide what they
+    /// are - they are indistinguishable from an unplugged drive, and removing
+    /// them is the user's gesture.
     #[test]
     fn a_missing_row_that_collides_with_nothing_keeps_its_row() {
         let (_dir, mut conn) = before_the_fold();

@@ -30,10 +30,9 @@ stops holding a name. It cannot be done:
   [82j](82j-the-path-the-mover-asked-for.md) just put out.
 - `scan::mark_missing` marks a row from the player when a file will not open.
   A lock or a permission is not an absent file, and `rename` overwrites.
-- The 1,580 stale rows are indistinguishable from an unplugged drive.
-  [82m](../upcoming/82m-undoing-the-placement-loop.md) is where they are
-  counted and where the user removes them; a sweep ignoring them decides that
-  for them, unattended.
+- The 1,580 stale rows are indistinguishable from an unplugged drive. File ▸
+  Remove *n* Missing Songs is where the user removes them; a sweep ignoring
+  them decides that for them, unattended.
 
 Testing: a release whose ideal holds a removed-but-present file, asserted to
 take the marker and leave the file where it is; a release whose ideal is only
