@@ -1,8 +1,8 @@
 # 82m — Undoing the placement loop
 
-What [82i](../done/82i-paths-compare-byte-exact.md), [82j](../done/82j-the-path-the-mover-asked-for.md)
-and [82k](82k-a-missing-row-claims-its-target.md) leave behind. **It runs after
-all three**, or it re-creates what it cleaned on the next sweep.
+What [82i](../done/82i-paths-compare-byte-exact.md) and
+[82j](../done/82j-the-path-the-mover-asked-for.md) leave behind. **It runs
+after both**, or it re-creates what it cleaned on the next sweep.
 
 ## The rows
 

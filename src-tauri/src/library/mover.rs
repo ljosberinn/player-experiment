@@ -133,7 +133,7 @@ pub fn move_release(
         }
         let source = PathBuf::from(&file.path);
         let ideal = root.join(layout::relative_path(root, &shape, &track(file)));
-        let target = free_target(conn, file.id, &ideal, &taken)?;
+        let target = free_target(conn, file.id, &source, &ideal, &taken)?;
         taken.insert(layout::fold(&target));
         if !layout::same(&target, &source) {
             moves.push((file, source, target));
@@ -294,15 +294,21 @@ pub(crate) fn track(file: &query::ReleaseFile) -> layout::TrackFile<'_> {
 /// separates them: a row owning the path is a real collision - two releases
 /// that sanitize to one name - where a path no row owns is the partial file an
 /// interrupted copy left behind, and `rename` overwrites that for free.
+///
+/// `removed_paths` is the third: see [`removed_by_hand`].
 fn free_target(
     conn: &Connection,
     id: i64,
+    source: &Path,
     ideal: &Path,
     taken: &HashSet<Vec<u8>>,
 ) -> AppResult<PathBuf> {
     let mut candidate = ideal.to_path_buf();
     let mut nth = 2;
-    while taken.contains(&layout::fold(&candidate)) || owned_by_other(conn, id, &candidate)? {
+    while taken.contains(&layout::fold(&candidate))
+        || owned_by_other(conn, id, &candidate)?
+        || removed_by_hand(conn, source, &candidate)?
+    {
         candidate = layout::suffixed(ideal, nth);
         nth += 1;
     }
@@ -323,6 +329,37 @@ fn owned_by_other(conn: &Connection, id: i64, path: &Path) -> AppResult<bool> {
         )
         .optional()?;
     Ok(owned.is_some())
+}
+
+/// Whether a file sits at `path` that the user took out of the library.
+///
+/// `scan::remove_tracks` drops the row, tombstones the path and leaves the
+/// file alone, so a tombstoned path with a file behind it is the one case
+/// where nothing owns a path and what is there is not the partial copy the
+/// header licenses `rename` to overwrite. The tombstone is what tells the two
+/// apart.
+///
+/// Both halves are needed. Without the file check a tombstone whose file is
+/// long gone would cost the release its ideal name for nothing - and landing
+/// on that path is what `lift` exists to finish. Without the tombstone every
+/// existing file would be a collision, which is the partial copy again.
+///
+/// `source` is excluded so a file already at its target stays there, the
+/// invariant the module header's resume argument rests on.
+fn removed_by_hand(conn: &Connection, source: &Path, path: &Path) -> AppResult<bool> {
+    if layout::same(source, path) || !path.exists() {
+        return Ok(false);
+    }
+    // `COLLATE NOCASE` for `lift`'s reason: the tombstone is on the file, not
+    // on the spelling it was written in.
+    let removed: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM removed_paths WHERE path = ?1 COLLATE NOCASE",
+            [key(path)],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(removed.is_some())
 }
 
 /// The artwork moving with the release, as (source, target) pairs.
@@ -1022,6 +1059,57 @@ mod tests {
             )
             .unwrap();
         assert_eq!(missing, 0);
+    }
+
+    /// The tombstone with its file still there: `remove_tracks` leaves the
+    /// file alone, so this is the user's copy and not a partial one.
+    #[test]
+    fn a_removed_file_at_the_target_is_a_collision_rather_than_an_orphan() {
+        let fixture = Fixture::new();
+        fixture.write(FIRST, "the rip the user removed");
+        fixture
+            .conn()
+            .execute(
+                "INSERT INTO removed_paths (path, removed_at) VALUES (?1, 0)",
+                [key(&fixture.at(FIRST))],
+            )
+            .unwrap();
+        fixture.track("Incoming\\mbv\\a.mp3", Row::default());
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(outcome, moved(1, 0, 0));
+        assert_eq!(
+            fixture.paths(),
+            ["Library\\My Bloody Valentine\\Loveless - 1991 - Album\\01 - Only Shallow (2).mp3"]
+        );
+        assert_eq!(
+            std::fs::read_to_string(fixture.at(FIRST)).unwrap(),
+            "the rip the user removed"
+        );
+    }
+
+    #[test]
+    fn a_removed_file_under_another_casing_is_a_collision_too() {
+        let fixture = Fixture::new();
+        fixture.write(FIRST, "the rip the user removed");
+        fixture
+            .conn()
+            .execute(
+                "INSERT INTO removed_paths (path, removed_at) VALUES (?1, 0)",
+                [key(
+                    &fixture.at(&FIRST.replace("Only Shallow", "only shallow"))
+                )],
+            )
+            .unwrap();
+        fixture.track("Incoming\\mbv\\a.mp3", Row::default());
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            fixture.paths(),
+            ["Library\\My Bloody Valentine\\Loveless - 1991 - Album\\01 - Only Shallow (2).mp3"]
+        );
     }
 
     #[test]
