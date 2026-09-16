@@ -70,6 +70,18 @@ pub fn migrate(conn: &mut Connection) -> AppResult<()> {
         )));
     }
 
+    // SQLite's own procedure for a migration that rebuilds a table: with
+    // enforcement on, `DROP TABLE tracks` is an implicit `DELETE FROM` and
+    // `playlist_tracks`' `ON DELETE CASCADE` takes every playlist in the
+    // library with it. The pragma is a no-op inside a transaction, so it has
+    // to be set out here rather than in the migration that needs it.
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    let result = apply(conn, applied);
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    result
+}
+
+fn apply(conn: &mut Connection, applied: usize) -> AppResult<()> {
     for (index, sql) in schema::MIGRATIONS.iter().enumerate().skip(applied) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;

@@ -17,6 +17,14 @@ edit a shipped one.
 | 9 | `release_lookup` — what the unattended lookup pass has been through — plus `tracks.release_type`, MusicBrainz's release-group primary type, read off the file the way the two ids above are |
 | 10 | a fourth `release_lookup.status`, `aside` — a queued release the user has said to leave alone. A whole-table rebuild, because the vocabulary is a CHECK constraint and SQLite cannot widen one in place |
 | 11 | `genres`, `genre_edges`, `genre_aliases`, `genre_overrides` — the genre hierarchy, seeded from a generated data file `concat!`ed into the migration |
+| 12 | `tracks.path` collates `NOCASE` — one file is one row whatever it is spelled like. A whole-table rebuild, because the constraint is on the column, and a merge in the same migration for the rows that collide under the fold |
+
+**Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
+around the whole run and back on afterwards, which is SQLite's own procedure
+for a migration that rebuilds a table: with enforcement on, `DROP TABLE tracks`
+is an implicit `DELETE FROM` and `playlist_tracks`' `ON DELETE CASCADE` takes
+every playlist in the library with it. The pragma is a no-op inside a
+transaction, so it cannot be set by the migration that needs it.
 
 **The rule has been broken once, before v1.** The tag-edit undo journal was
 migration 3, and 82a deleted the entry rather than adding one that drops the
@@ -100,6 +108,18 @@ same two builders, because two answers to where a file goes is the defect: the
 harmless direction is a release the survey calls filed and the mover would have
 moved, and the other is a release offered to a mover that does nothing with it,
 every sweep, forever.
+
+**A path is compared with case folded, everywhere it is compared.** NTFS
+treats `The Corpse of Rebirth` and `The Corpse Of Rebirth` as one directory;
+the ideal path is built from the tags and the actual one is what the directory
+is really called, so byte-exact the release was unfiled on every sweep,
+forever, and the scanner read the mover's own writes back as new files. The one
+answer is `library::layout::same` and its `fold`, used by `survey::at_target`,
+the mover's collision search and `scan::plan`; in SQL it is the `NOCASE`
+collation on `tracks.path`, and `COLLATE NOCASE` on the two statements that
+compare a path to a stored one. **ASCII-only**, which is what `NOCASE` is — a
+path differing by `Ä`/`ä` stays two paths, the limit 81 already records for
+release keys.
 
 **The root is a `watch_folders` row for as long as the switch is on.**
 `scan::plan` marks missing every known row it did not walk, so a library filed

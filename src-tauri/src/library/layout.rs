@@ -165,6 +165,31 @@ pub fn suffixed(path: &Path, nth: u32) -> PathBuf {
     path.with_file_name(name)
 }
 
+/// Whether two paths name one file.
+///
+/// Byte-exact was
+/// [82i](../../../docs/issues/done/82i-paths-compare-byte-exact.md): the ideal
+/// is built from the tags and the actual is what the directory is really
+/// called, so a release filed under a casing its tags do not compute reads as
+/// unplaced on every sweep, forever.
+///
+/// ASCII-only, to match the `NOCASE` collation `tracks.path` compares under -
+/// the limit [81](../../../docs/issues/done/81-two-casings-two-tiles.md)
+/// already records. A path differing by `Ä`/`ä` stays two paths.
+pub fn same(first: &Path, second: &Path) -> bool {
+    first
+        .as_os_str()
+        .as_encoded_bytes()
+        .eq_ignore_ascii_case(second.as_os_str().as_encoded_bytes())
+}
+
+/// A path as a key that folds the way [`same`] compares.
+///
+/// For the sets that ask the question over a collection rather than in pairs.
+pub fn fold(path: &Path) -> Vec<u8> {
+    path.as_os_str().as_encoded_bytes().to_ascii_lowercase()
+}
+
 /// The artist a track is filed under: `db::query`'s `GROUP_ARTIST`, where
 /// `nullif` folding `''` into NULL is why an empty tag is untagged here too.
 fn group_artist<'a>(release: &Release<'a>) -> &'a str {
