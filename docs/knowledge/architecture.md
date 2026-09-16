@@ -150,11 +150,15 @@ kinds, and refuses to place a release whose lookup never reached it: filing it
 under the tags the lookup was about to replace is a release the next sweep moves
 again. A second failure in the tail drops the release, which keeps no row, so
 the next sweep has it back. The backstop against a network that really is down
-is a run rather than the first failure — three consecutive failures, nine
-declines over three minutes, park the lookup for the rest of the sweep, and any
-lookup that reaches a verdict resets the count. `failed` on the sweep line is
-what that threshold is read back against: a release that failed returns an error
-rather than an outcome, so it is counted nowhere else.
+is a run rather than the first failure — seven consecutive failures park the
+lookup for the rest of the sweep, and any lookup that reaches a verdict resets
+the count. **The run outlives the sweep it parked.** A count that opened at zero
+every sweep could not detect an outage at all: the next sweep comes fifteen
+seconds later while there is placement work, and would spend another seven
+lookups learning the same thing. Parking does not carry, so each sweep probes
+with one lookup — a verdict clears the run, a failure parks it again. `run` on
+the sweep line is what the threshold is read back against; `failed` beside it
+says what the declines cost, which is not the same question.
 
 **Each release it touches announces itself on `library://changed`** — written,
 queued or moved, once per release rather than once per step, and per release
@@ -288,7 +292,9 @@ What gets a line:
   one per sweep (`pass.sweep`). **Silence for a release
   MusicBrainz has nothing for** — eight thousand lines about what was written is
   nothing next to a threshold that cannot be diagnosed after the fact, and eight
-  thousand more about records nobody has heard of is noise.
+  thousand more about records nobody has heard of is noise. Those silences
+  break the failure runs the file appears to hold, which is why the run itself
+  is on the sweep line and is not counted off `lookup.release`.
 - **Every `Err`, reads included.** A read is `Op::quiet`: a `query_tracks` that
   fails leaves a trace, and the thousands that succeed do not — a line per page
   the table asks for would rotate the file past whatever is being investigated.
