@@ -1,4 +1,5 @@
 pub mod covers;
+pub mod genres;
 pub mod lookup;
 pub mod playback;
 pub mod playlists;
