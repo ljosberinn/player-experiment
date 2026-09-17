@@ -18,7 +18,7 @@ pub mod tagsource;
 use tauri::{Emitter, Manager};
 
 use crate::audio::{Event, Player, RodioSink};
-use crate::db::{playback, settings, Db};
+use crate::db::{playback, plays, settings, Db};
 
 /// The environment this build reads, which exists only in the e2e build.
 ///
@@ -485,11 +485,22 @@ fn forward(
             // Logged, unlike pause, seek or volume: this is the moment the
             // library changes and the scrobbler is handed something to send,
             // which is what makes "my play count is wrong" answerable.
-            if let Ok(conn) = db.conn() {
-                let _ = log
-                    .op("playback.played")
-                    .add("track", track_id)
-                    .run(|| playback::mark_played(&conn, *track_id, now_seconds()));
+            //
+            // The count and the log go in one transaction so they cannot
+            // disagree about what was played. Not about when: the count
+            // records the moment the play counted, the log the moment the
+            // track started, which is what identifies a play everywhere else.
+            //
+            // Written whether or not an account is connected - the scrobbler
+            // below is the optional half.
+            if let Ok(mut conn) = db.conn() {
+                let _ = log.op("playback.played").add("track", track_id).run(|| {
+                    let tx = conn.transaction()?;
+                    playback::mark_played(&tx, *track_id, now_seconds())?;
+                    plays::record(&tx, *track_id, *started_at)?;
+                    tx.commit()?;
+                    Ok(())
+                });
             }
             // Handed to a thread of its own rather than sent here: this is the
             // player thread, and it is the one thread in the app that must not

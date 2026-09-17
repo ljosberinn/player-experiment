@@ -294,6 +294,9 @@ pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
     // Those rows were carrying tag values, and a value nothing carries any more
     // should stop being suggested.
     crate::db::tag_values::rebuild(conn)?;
+    // The plays those files answered for are still facts; only the link to a
+    // file is gone, and that is what a rebuild recomputes.
+    crate::db::plays::resolve(conn)?;
     Ok(removed as u32)
 }
 
@@ -340,6 +343,7 @@ pub fn remove_tracks(conn: &mut Connection, ids: &[i64]) -> AppResult<u32> {
     // across five fields. The rebuild is the cheaper thing to be sure of, and
     // it is what `remove_missing` already does.
     crate::db::tag_values::rebuild(conn)?;
+    crate::db::plays::resolve(conn)?;
     Ok(removed)
 }
 
@@ -533,6 +537,7 @@ pub fn scan_roots(
     // either way, and running it 50 times during a first scan would pay for
     // the same answer 50 times.
     crate::db::tag_values::rebuild(conn)?;
+    crate::db::plays::resolve(conn)?;
 
     on_progress(ScanProgress {
         scanned,

@@ -69,7 +69,7 @@ question the panels actually ask.
 
 ## Shape
 
-### Migration 12 — the play log
+### Migration 13 — the play log
 
 ```sql
 CREATE TABLE plays (
@@ -99,15 +99,22 @@ deleted afterwards. `track_id` is the one derived field, which is why it is the
 one thing carrying a foreign key — deleting a file forgets the link and keeps
 the play.
 
-**`idx_plays_identity` is the dedupe rule, and it is exact rather than fuzzy.**
-`Event::Played` carries the second the track *started*, recorded at load rather
-than derived from `now - position_ms`, which is wrong for any track that was
-paused or seeked; the scrobbler sends that same integer to last.fm; last.fm
-hands it back. An
-import is therefore `INSERT OR IGNORE` and a play made in this app cannot be
-counted twice. It follows that `source` means *which writer got there first*,
-not where you were listening — worth a comment at the column, because it reads
-like the other thing.
+**`idx_plays_identity` is the dedupe rule within one source, and it is exact
+rather than fuzzy.** `Event::Played` carries the second the track *started*,
+recorded at load rather than derived from `now - position_ms`, which is wrong
+for any track that was paused or seeked, and the scrobbler sends that same
+integer to last.fm. An import is therefore `INSERT OR IGNORE`, and it re-fetches
+a boundary page the index eats. It follows that `source` means *which writer got
+there first*, not where you were listening — worth a comment at the column,
+because it reads like the other thing.
+
+**It is not the whole cross-source rule.** last.fm autocorrects artist and title
+on the way in and `getRecentTracks` returns the corrected spelling, which
+computes a different `match_key` — so the index alone would let the import
+count a local play a second time. Across sources the rule is `started_at` alone,
+because within a second this app played exactly one thing, and it is narrow
+enough to leave two last.fm rows sharing a second alone. The import applies it;
+the log phase only states it.
 
 **`play_count` and `last_played_at` stay and are not backfilled.** Only the most
 recent play is recoverable from them; manufacturing timestamps for the rest

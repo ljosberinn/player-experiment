@@ -3,6 +3,7 @@ pub mod genres;
 pub mod lookup;
 pub mod playback;
 pub mod playlists;
+pub mod plays;
 pub mod query;
 pub mod schema;
 pub mod settings;
