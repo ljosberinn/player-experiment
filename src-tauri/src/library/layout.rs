@@ -173,21 +173,26 @@ pub fn suffixed(path: &Path, nth: u32) -> PathBuf {
 /// called, so a release filed under a casing its tags do not compute reads as
 /// unplaced on every sweep, forever.
 ///
-/// ASCII-only, to match the `NOCASE` collation `tracks.path` compares under -
-/// the limit [81](../../../docs/issues/done/81-two-casings-two-tiles.md)
-/// already records. A path differing by `Ä`/`ä` stays two paths.
+/// ASCII-only was
+/// [94](../../../docs/issues/done/94-a-folder-the-case-fold-cannot-see.md): the
+/// filesystem folds `Ü` and `Ø` as readily as `U`, so a release under
+/// `LÜGENKABINETT` was renamed into the folder it was already in - on the same
+/// file, successfully, on every sweep, forever.
+///
+/// `to_lowercase` rather than full Unicode case folding, which is not what
+/// NTFS does either. The `NOCASE` collation `tracks.path` compares under
+/// cannot be taught this and stays ASCII; it only has to agree with itself,
+/// and [81](../../../docs/issues/done/81-two-casings-two-tiles.md) records the
+/// cost of that.
 pub fn same(first: &Path, second: &Path) -> bool {
-    first
-        .as_os_str()
-        .as_encoded_bytes()
-        .eq_ignore_ascii_case(second.as_os_str().as_encoded_bytes())
+    fold(first) == fold(second)
 }
 
 /// A path as a key that folds the way [`same`] compares.
 ///
 /// For the sets that ask the question over a collection rather than in pairs.
 pub fn fold(path: &Path) -> Vec<u8> {
-    path.as_os_str().as_encoded_bytes().to_ascii_lowercase()
+    path.to_string_lossy().to_lowercase().into_bytes()
 }
 
 /// The artist a track is filed under: `db::query`'s `GROUP_ARTIST`, where
@@ -709,6 +714,33 @@ mod tests {
             let length = utf16_len(&full.to_string_lossy());
             assert!(length < MAX_PATH, "depth {depth}: {length} characters");
         }
+    }
+
+    /// 94: NTFS folds `Ü` into `ü`, so a release whose tags compute
+    /// `Lügenkabinett` and whose folder is spelled `LÜGENKABINETT` is in the
+    /// folder it belongs in. Compared ASCII-only it was re-placed into itself,
+    /// on every sweep, forever.
+    #[test]
+    fn a_path_differing_only_in_a_non_ascii_case_is_one_path() {
+        assert!(same(
+            Path::new("D:\\Akrea\\LÜGENKABINETT - 2010 - Album"),
+            Path::new("D:\\Akrea\\Lügenkabinett - 2010 - Album")
+        ));
+        assert_eq!(
+            fold(Path::new("D:\\FJØRT\\Couleur")),
+            fold(Path::new("D:\\Fjørt\\Couleur"))
+        );
+    }
+
+    /// And a character the fold does not reach is still a different path: the
+    /// compare is case, not a resemblance.
+    #[test]
+    fn a_path_differing_by_a_character_rather_than_its_case_is_two_paths() {
+        assert!(!same(
+            Path::new("D:\\Akrea\\Lugenkabinett"),
+            Path::new("D:\\Akrea\\Lügenkabinett")
+        ));
+        assert_ne!(fold(Path::new("D:\\Fjort")), fold(Path::new("D:\\Fjørt")));
     }
 
     #[test]

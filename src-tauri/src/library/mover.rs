@@ -774,6 +774,42 @@ mod tests {
         assert_eq!(fixture.paths(), [folded]);
     }
 
+    /// 94: and a casing the ASCII fold could not see. The rename was a no-op
+    /// on the same file - NTFS folds `Ø` too - counted as a move and offered
+    /// again on the next sweep, forever.
+    #[test]
+    fn a_target_that_differs_only_in_a_non_ascii_case_is_where_the_file_already_is() {
+        let fixture = Fixture::new();
+        let folded = "Library\\Fjørt\\Couleur - 2013 - Album\\01 - Kontakt.mp3";
+        fixture.track(
+            folded,
+            Row {
+                album: "Couleur",
+                artist: "FJØRT",
+                title: "Kontakt",
+                year: Some(2013),
+                ..Row::default()
+            },
+        );
+
+        let mut conn = fixture.conn();
+        let outcome = move_release(
+            &mut conn,
+            &ScanLock::default(),
+            &OsRename,
+            &fixture.root(),
+            &lookup::Release {
+                album: Some("Couleur".to_owned()),
+                artist: Some("FJØRT".to_owned()),
+            },
+            &HashSet::new(),
+        )
+        .unwrap();
+
+        assert_eq!(outcome, moved(0, 0, 0));
+        assert_eq!(fixture.paths(), [folded]);
+    }
+
     /// 82j: the folder is already there under another casing, and
     /// `create_dir_all` leaves it that way, so the file lands in a spelling
     /// nobody computed. The row has to say where it went.
