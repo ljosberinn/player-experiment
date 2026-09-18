@@ -252,10 +252,18 @@ pub struct Summary {
     /// Releases moved to where they go.
     pub placed: usize,
     /// Releases left where they are because the player had a file of one open.
+    ///
+    /// Once per release however many drains it stayed open for: this is a
+    /// state the sweep found the library in rather than a cost it paid, and an
+    /// album left on all evening is one album.
     pub deferred: usize,
     /// Releases a move failed on - a locked file, a full disk.
     pub unmovable: usize,
-    /// Releases whose lookup exhausted its three attempts, declined or not.
+    /// Lookups that exhausted their three attempts, declined or not.
+    ///
+    /// Lookups rather than releases, and a release the drain asks again counts
+    /// twice: this is what the pass paid, and a second visit is three more
+    /// requests. `deferred` beside it is the counter that is a state.
     ///
     /// How much a pass is paying for a service that is declining, which the
     /// `run` beside it no longer says at all: a decline never reaches the run.
@@ -306,7 +314,7 @@ struct Visited {
     /// release arrived under.** A rewritten release stops answering to the key
     /// the survey found it by, so a `skip` holding only that key hands the
     /// same release back in the next batch - a second search for a release
-    /// that is already resolved. It is what the tail has to move the release
+    /// that is already resolved. It is what the drain has to move the release
     /// under, too: the name it arrived with names no files any more.
     release: lookup::Release,
 }
@@ -315,15 +323,17 @@ struct Visited {
 enum Visit {
     /// On to the next one.
     Next,
-    /// The player holds a file of it open. Tried once more at the end of the
-    /// sweep rather than dropped: a user who leaves one album on must not find
-    /// it the only one left behind.
+    /// The player holds a file of it open. Tried again at the end of every
+    /// batch until it is not, rather than dropped: a user who leaves one album
+    /// on must not find it the only one left behind, and the wait is a track's
+    /// rather than a sweep's.
     Deferred,
     /// The lookup exhausted its three attempts against a MusicBrainz that
-    /// declined every one. The release goes to the same tail the mover's
-    /// deferrals go to, and the sweep carries on through the batch: a 503 says
-    /// nothing about the next request in either direction, so it neither
-    /// counts towards the run nor clears it. See [`declined`].
+    /// declined every one. The release is retried by the drain at the end of
+    /// the batch and then left to the next sweep, and the sweep carries on
+    /// through the batch: a 503 says nothing about the next request in either
+    /// direction, so it neither counts towards the run nor clears it. See
+    /// [`declined`].
     Declined,
     /// The lookup exhausted its three attempts on something that was not an
     /// answer. Deferred the same way, but counted: a run of [`OUTAGE`] parks
@@ -391,7 +401,16 @@ pub fn sweep(
     // a permanent failure from being retried within the run, without a table
     // or a migration.
     let mut skip = plan.rehearsed.clone();
-    let mut deferred: Vec<Pending> = Vec::new();
+    // The two deferrals, apart because they are bounded by different things.
+    //
+    // `playing` is bounded by the player: `(signals.open)()` is the playing
+    // track and the prepared next, so a drain sheds every entry but the one
+    // open at that moment, and an entry may go back on it as often as it
+    // likes. `declined` has no such bound - a service that goes on declining
+    // offers a quarter of every batch - so an entry there is retried once and
+    // then left to the next sweep.
+    let mut playing: Vec<Pending> = Vec::new();
+    let mut declined: Vec<Pending> = Vec::new();
     // `plan.failures` carries whatever the run stood at when the last sweep
     // ended; parking does not, so this one probes before it believes it.
     let mut hobbled = false;
@@ -434,7 +453,15 @@ pub fn sweep(
             // as well - a batch of those between two failures would clear the
             // count and a real outage would never reach the threshold.
             let looked_up = pending.look_up && steps.look_up;
-            let visited = visit(&mut conn, &context, plan, &steps, &pending, &mut summary);
+            let visited = visit(
+                &mut conn,
+                &context,
+                plan,
+                &steps,
+                &pending,
+                false,
+                &mut summary,
+            );
             // Under the name it has now as well as the one it arrived with: a
             // lookup that rewrote the tags left the release answering to a key
             // the survey has not been told about, and the next batch would
@@ -449,15 +476,15 @@ pub fn sweep(
                         plan.failures = 0;
                     }
                 }
-                // Its lookup is done, so the tail must not run it again: it
+                // Its lookup is done, so the drain must not run it again: it
                 // would search on tags nothing carries any more. The refreshed
                 // release rather than `pending`'s for the same reason - the
-                // tail has to move it under the name it has now.
+                // drain has to move it under the name it has now.
                 Visit::Deferred => {
                     if looked_up {
                         plan.failures = 0;
                     }
-                    deferred.push(Pending {
+                    playing.push(Pending {
                         look_up: false,
                         release: visited.release,
                         ..pending
@@ -466,41 +493,72 @@ pub fn sweep(
                 // The service answered, so there is nothing here to learn
                 // about the next release - the run is left exactly where it
                 // stood rather than advanced or cleared.
-                Visit::Declined => deferred.push(pending),
+                Visit::Declined => declined.push(pending),
                 Visit::LookupFailed => {
                     plan.failures += 1;
                     summary.run = summary.run.max(plan.failures);
                     hobbled = plan.failures >= OUTAGE;
-                    deferred.push(pending);
+                    declined.push(pending);
                 }
             }
             seen += 1;
             note_progress(log, seen, plan.progress_every, &summary);
         }
-    }
 
-    // The tail. Once, and then it waits for the next sweep: a release never
-    // re-enters the survey mid-sweep, so an album left playing all evening
-    // cannot spin the pass - and a release that fails here a second time is
-    // dropped rather than deferred again, which keeps no row, so the next
-    // sweep has it back.
-    for pending in deferred {
-        let steps = live_steps(&opening, signals, log, hobbled);
-        // Either step, not the mover's alone: the tail now carries releases a
-        // 503 deferred, and a lookup-only pass would never reach its own.
-        if !steps.any() {
-            break;
+        // The drain, at the end of every batch rather than at the end of the
+        // sweep: a sweep runs the library to exhaustion now, so a tail is
+        // ninety hours away from the release it is holding, and the mover's
+        // deferral is a wait of minutes.
+        //
+        // One rule for both lists, because the asymmetry is in which outcomes
+        // can happen twice rather than in the rule - whatever is still playing
+        // goes back on, and everything else is done with for this sweep. A
+        // release that declines a second time is therefore dropped, and it
+        // keeps no row, so the next sweep has it back.
+        //
+        // Nothing here touches `plan.failures`: a second opinion about a
+        // release the batch already counted says nothing more about the
+        // network than the first one did.
+        let again = std::mem::take(&mut playing);
+        let once = std::mem::take(&mut declined);
+        for (pending, announced) in again
+            .into_iter()
+            .map(|pending| (pending, true))
+            .chain(once.into_iter().map(|pending| (pending, false)))
+        {
+            let steps = live_steps(&opening, signals, log, hobbled);
+            // Either step, not the mover's alone: the list carries releases a
+            // 503 deferred, and a lookup-only pass would never reach its own.
+            if !steps.any() {
+                break;
+            }
+            // **A release whose lookup could not reach it is not placed.**
+            // `visit` already refuses that behind `Visit::Next`, and the drain
+            // has to keep refusing it, or a 503 would file the release under
+            // the tags the lookup was about to replace and the next sweep
+            // would move it again.
+            if pending.look_up && !steps.look_up {
+                continue;
+            }
+            let visited = visit(
+                &mut conn,
+                &context,
+                plan,
+                &steps,
+                &pending,
+                announced,
+                &mut summary,
+            );
+            if matches!(visited.outcome, Visit::Deferred) {
+                playing.push(Pending {
+                    look_up: false,
+                    release: visited.release,
+                    ..pending
+                });
+            }
+            seen += 1;
+            note_progress(log, seen, plan.progress_every, &summary);
         }
-        // **A release whose lookup could not reach it is not placed.** `visit`
-        // already refuses that behind `Visit::Next`, and the tail has to keep
-        // refusing it, or a 503 would file the release under the tags the
-        // lookup was about to replace and the next sweep would move it again.
-        if pending.look_up && !steps.look_up {
-            continue;
-        }
-        visit(&mut conn, &context, plan, &steps, &pending, &mut summary);
-        seen += 1;
-        note_progress(log, seen, plan.progress_every, &summary);
     }
     Ok(summary)
 }
@@ -555,12 +613,20 @@ fn live_steps(opening: &Steps, signals: &Signals<'_>, log: &Log, hobbled: bool) 
 /// written, queued for review, or nothing found. A release the lookup could not
 /// resolve is placed from its own tags with `Album` as the type, which is what
 /// 83a already says such a release gets.
+///
+/// `announced` says this release's deferral has already been counted and
+/// written down - it is on the drain's `playing` list. A deferral is a state
+/// rather than a cost, so it is one of each per release however many drains
+/// the release goes through: an album left on all evening would otherwise
+/// report as hundreds and write a `library.place` line per batch for ninety
+/// hours.
 fn visit(
     conn: &mut Connection,
     context: &Context<'_>,
     plan: &mut Plan,
     steps: &Steps,
     pending: &Pending,
+    announced: bool,
     summary: &mut Summary,
 ) -> Visited {
     let started = Instant::now();
@@ -674,8 +740,10 @@ fn visit(
                     );
                 }
                 Ok(mover::Outcome::Deferred) => {
-                    summary.deferred += 1;
-                    op.succeeded(Fields::new().add("status", "playing"));
+                    if !announced {
+                        summary.deferred += 1;
+                        op.succeeded(Fields::new().add("status", "playing"));
+                    }
                     visit = Visit::Deferred;
                 }
                 // Nothing carries the name any more - the release was removed
@@ -986,6 +1054,32 @@ mod tests {
         (dir, db)
     }
 
+    /// Three releases whose path order and survey order agree, so a test that
+    /// holds the first track open holds the release the first batch is given.
+    ///
+    /// `two_releases` cannot do it: it writes `Loveless` first and the survey
+    /// reads `Isn't Anything` first, which is fine for a batch of both and
+    /// wrong for a batch of one.
+    fn three_releases() -> (tempfile::TempDir, Db) {
+        let (dir, db) = library("Isn't Anything", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        for album in ["Loveless", "Tremolo"] {
+            add_release(
+                &db,
+                dir.path(),
+                album,
+                "My Bloody Valentine",
+                &LOVELESS_DURATIONS,
+            );
+        }
+        (dir, db)
+    }
+
+    /// One release at a time, so a drain lands between two batches rather than
+    /// at the end of the only one.
+    fn paged() -> Plan {
+        Plan { batch: 1, ..live() }
+    }
+
     /// `count` releases, all answerable by the same fixtures and all named
     /// apart, so the survey hands them over one at a time.
     fn releases(count: usize) -> (tempfile::TempDir, Db) {
@@ -1040,23 +1134,27 @@ mod tests {
             .count()
     }
 
+    /// The first `tracks` rows by path, which for these fixtures is the front
+    /// of the first release the survey offers.
+    fn leading_tracks(db: &Db, tracks: usize) -> HashSet<i64> {
+        db.conn()
+            .unwrap()
+            .prepare("SELECT id FROM tracks ORDER BY path LIMIT ?1")
+            .unwrap()
+            .query_map([tracks as i64], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    }
+
     /// The tracks the player holds a `std::fs::File` on: the first `tracks` of
     /// them, let go once `asks` releases have been through the mover.
     ///
     /// `move_release` reads this once per release, so the ask after the batch
-    /// is the tail's - which is what puts a release on the tail and finds it
-    /// free when the tail gets to it.
+    /// is the drain's - which is what puts a release on the list and finds it
+    /// free when the drain gets to it.
     fn held_until(db: &Db, tracks: usize, asks: usize) -> impl Fn() -> HashSet<i64> {
-        let held: RefCell<HashSet<i64>> = RefCell::new(
-            db.conn()
-                .unwrap()
-                .prepare("SELECT id FROM tracks ORDER BY path LIMIT ?1")
-                .unwrap()
-                .query_map([tracks as i64], |row| row.get::<_, i64>(0))
-                .unwrap()
-                .collect::<rusqlite::Result<_>>()
-                .unwrap(),
-        );
+        let held: RefCell<HashSet<i64>> = RefCell::new(leading_tracks(db, tracks));
         let asked = Cell::new(0);
         move || {
             asked.set(asked.get() + 1);
@@ -1071,12 +1169,16 @@ mod tests {
         Log::to(dir.join("apex.log"))
     }
 
-    /// The `pass.progress` lines a sweep left behind, oldest first.
-    fn progress_lines(dir: &Path) -> Vec<String> {
+    /// The lines one operation left behind, oldest first.
+    ///
+    /// The order is the assertion in most of these: whether a release was
+    /// retried at the end of its batch or at the end of the sweep is not
+    /// visible in any counter, and it is the whole of what a drain changes.
+    fn lines_of(dir: &Path, op: &str) -> Vec<String> {
         std::fs::read_to_string(dir.join("apex.log"))
             .unwrap_or_default()
             .lines()
-            .filter(|line| line.contains("pass.progress"))
+            .filter(|line| line.contains(op))
             .map(str::to_owned)
             .collect()
     }
@@ -1361,16 +1463,16 @@ mod tests {
         assert_eq!(summary.placed, 0);
     }
 
-    /// The playing release goes to a tail rather than being dropped: a user
-    /// who leaves one album on must not find it the only one left behind.
+    /// The playing release is kept rather than dropped: a user who leaves one
+    /// album on must not find it the only one left behind.
     #[test]
-    fn the_playing_release_is_tried_again_at_the_end_of_the_sweep() {
+    fn the_playing_release_is_tried_again() {
         let (dir, db) = two_releases();
         let root = root_of(dir.path());
         let steps = filing(&root);
 
         // One track of one release, and two releases in the batch, so the
-        // third ask is the tail's.
+        // third ask is the drain's.
         let open = held_until(&db, 1, 2);
 
         let summary = sweep(
@@ -1390,8 +1492,151 @@ mod tests {
         .unwrap();
 
         assert_eq!(summary.deferred, 1, "it was left alone while it played");
-        assert_eq!(summary.placed, 2, "and moved by the tail");
+        assert_eq!(summary.placed, 2, "and moved by the drain");
         assert_eq!(left(&db, &steps), 0);
+    }
+
+    /// The one a tail could not do. A sweep now runs the library to
+    /// exhaustion, so a release the tail is holding waits the ninety hours out
+    /// - and the counters cannot tell the two apart, only the order can.
+    #[test]
+    fn a_release_left_playing_is_retried_before_the_next_batch() {
+        let (dir, db) = three_releases();
+        let root = root_of(dir.path());
+        let steps = filing(&root);
+
+        // The first release's first track, let go after one ask: the batch
+        // defers it, and the drain at the end of that same batch finds it
+        // free.
+        let open = held_until(&db, 1, 1);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut paged(),
+            &Signals {
+                steps: &held(steps.clone()),
+                changed: &|| {},
+                progress: &|_| {},
+                open: &open,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.deferred, 1);
+        assert_eq!(summary.placed, 3);
+        let lines = lines_of(dir.path(), "library.place");
+        assert!(
+            lines[1].contains("album=Isn't Anything") && lines[1].contains("status=moved"),
+            "the second line is a tail's second release, not the drain: {}",
+            lines[1]
+        );
+        assert_eq!(left(&db, &steps), 0);
+    }
+
+    /// An album left on for the length of the sweep is retried at every drain
+    /// and never dropped. The open set is what bounds that list - the playing
+    /// track and the prepared next - so a drop rule would buy nothing and
+    /// strand the one release the deferral exists for.
+    #[test]
+    fn a_release_played_all_sweep_is_retried_at_every_drain() {
+        let (dir, db) = three_releases();
+        let root = root_of(dir.path());
+        let steps = filing(&root);
+
+        let playing = leading_tracks(&db, 1);
+        let asks = Cell::new(0);
+        let open = || {
+            asks.set(asks.get() + 1);
+            playing.clone()
+        };
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut paged(),
+            &Signals {
+                steps: &held(steps.clone()),
+                changed: &|| {},
+                progress: &|_| {},
+                open: &open,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.placed, 2, "the two that were not playing");
+        assert_eq!(asks.get(), 6, "three batches, each with a drain after it");
+        assert_eq!(
+            summary.deferred, 1,
+            "one release, however many drains it went through"
+        );
+        assert_eq!(
+            lines_of(dir.path(), "status=playing").len(),
+            1,
+            "and one line, not one per batch for ninety hours"
+        );
+        assert_eq!(left(&db, &steps), 1, "and the next sweep has it");
+    }
+
+    /// The other half of the list. A sweep that no longer parks would hand a
+    /// tail two thousand declined releases and start it after the last of
+    /// them; the retry comes at the end of the batch that declined instead.
+    #[test]
+    fn a_declined_release_is_asked_again_at_the_end_of_its_batch() {
+        let (dir, db) = three_releases();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &declining(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut paged(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, 6, "each release asked twice");
+        let lines = lines_of(dir.path(), "lookup.release");
+        assert!(
+            lines[1].contains("album=Isn't Anything"),
+            "the second line is a tail's second release, not the drain: {}",
+            lines[1]
+        );
+    }
+
+    /// And asked twice and no more. The list has to shed what it retried, or a
+    /// service that goes on declining fills it with a quarter of every batch
+    /// and the bound is gone again.
+    #[test]
+    fn a_release_that_declines_twice_is_left_to_the_next_sweep() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let transport = declining();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, 2, "the batch's attempt and the drain's");
+        assert_eq!(
+            transport.call_count(),
+            2 * 3,
+            "two visits of three attempts, and no third"
+        );
+        assert_eq!(left(&db, &looking_up()), 1, "the next sweep has it back");
     }
 
     /// A rehearsal that renamed the library would be the opposite of the mode.
@@ -1619,10 +1864,10 @@ mod tests {
         );
     }
 
-    /// A 503 says nothing about the release, so it goes to the tail the mover
+    /// A 503 says nothing about the release, so it goes to the list the mover
     /// already keeps rather than being dropped for the sweep.
     #[test]
-    fn a_release_a_503_deferred_is_resolved_by_the_tail() {
+    fn a_release_a_503_deferred_is_resolved_by_the_drain() {
         let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
 
         let summary = sweep(
@@ -1637,7 +1882,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(summary.failed, 1, "its only visit in the batch failed");
-        assert_eq!(summary.resolved, 1, "so the tail is what resolved it");
+        assert_eq!(summary.resolved, 1, "so the drain is what resolved it");
         assert_eq!(left(&db, &looking_up()), 0);
     }
 
@@ -1693,7 +1938,7 @@ mod tests {
         assert_eq!(
             summary.failed,
             (OUTAGE - 1) * 2,
-            "and the tail asked every one of them a second time"
+            "and the drain asked every one of them a second time"
         );
         assert_eq!(transport.call_count(), (OUTAGE - 1) * 2 * 3);
     }
@@ -1794,7 +2039,7 @@ mod tests {
         assert_eq!(
             transport.call_count(),
             (OUTAGE + 3) * 2 * 3,
-            "every release asked, and asked again by the tail"
+            "every release asked, and asked again by the drain"
         );
     }
 
@@ -1816,7 +2061,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(summary.failed, 2, "the batch's attempt and the tail's");
+        assert_eq!(summary.failed, 2, "the batch's attempt and the drain's");
         assert_eq!(summary.run, 0);
         assert_eq!(plan.failures, 0);
     }
@@ -1876,7 +2121,7 @@ mod tests {
     /// the tags it was about to replace, or the next sweep would move it a
     /// second time.
     #[test]
-    fn the_tail_does_not_place_a_release_whose_lookup_never_reached_it() {
+    fn the_drain_does_not_place_a_release_whose_lookup_never_reached_it() {
         let (dir, db) = releases(OUTAGE);
         let root = root_of(dir.path());
         let steps = both(&root);
@@ -1921,7 +2166,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(summary.visited, 5);
-        let lines = progress_lines(dir.path());
+        let lines = lines_of(dir.path(), "pass.progress");
         assert_eq!(lines.len(), 2, "at the second release and at the fourth");
         assert!(lines[0].contains("visited=2"), "{}", lines[0]);
         assert!(lines[1].contains("visited=4"), "{}", lines[1]);
@@ -1950,7 +2195,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(summary.run, OUTAGE, "the sweep ended parked");
-        let lines = progress_lines(dir.path());
+        let lines = lines_of(dir.path(), "pass.progress");
         let releases = OUTAGE + 1;
         assert_eq!(lines.len(), releases / 2, "one every two releases");
         assert!(
@@ -1966,17 +2211,17 @@ mod tests {
         );
     }
 
-    /// The tail carries the mover's deferrals as well as the lookup's, and the
+    /// The drain carries the mover's deferrals as well as the lookup's, and the
     /// mover's have already been looked up: a second lookup would search on
     /// tags nothing carries any more and queue a release that was resolved.
     #[test]
-    fn a_release_the_mover_deferred_is_not_looked_up_again_by_the_tail() {
+    fn a_release_the_mover_deferred_is_not_looked_up_again_by_the_drain() {
         let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
         let root = root_of(dir.path());
         let transport = musicbrainz();
 
         // The whole release, and one release in the batch, so the second ask
-        // is the tail's, which is what puts the release on the tail with its
+        // is the drain's, which is what puts the release on the list with its
         // lookup already done.
         let open = held_until(&db, LOVELESS_DURATIONS.len(), 1);
 
@@ -2007,13 +2252,13 @@ mod tests {
     /// with: a move under those finds no file, and the release sits where it
     /// is until the next sweep.
     #[test]
-    fn the_tail_moves_a_deferred_release_under_the_name_it_has_now() {
+    fn the_drain_moves_a_deferred_release_under_the_name_it_has_now() {
         let (dir, db) = library("Lovless", "M.B.V.", &LOVELESS_DURATIONS);
         let root = root_of(dir.path());
         let steps = both(&root);
         let transport = musicbrainz();
 
-        // As above: the second ask is the tail's.
+        // As above: the second ask is the drain's.
         let open = held_until(&db, LOVELESS_DURATIONS.len(), 1);
 
         let summary = sweep(

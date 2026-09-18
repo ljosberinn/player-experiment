@@ -68,8 +68,9 @@ pub enum Outcome {
     ///
     /// Not an error and not a failure - the caller decides what to do with it.
     /// [83c](../../../docs/issues/done/83c-turning-the-library-folder-on.md)
-    /// defers these to the end of its run rather than dropping them, so a user
-    /// who leaves one album playing does not find it the only one left behind.
+    /// retries these at the end of every batch rather than dropping them, so a
+    /// user who leaves one album playing does not find it the only one left
+    /// behind.
     Deferred,
     /// No row carries this album and artist, so there was nothing to move.
     ///

@@ -143,21 +143,28 @@ has a file open on goes to a tail tried once at the end of the sweep.
 new name.** The key the survey found the release by stops naming anything the
 moment the write lands, so the set of what this run has been through takes the
 name the release ends its visit with — otherwise the next batch's survey hands
-the same release back under its new name and searches it a second time. The tail
-carries it for the same reason: a deferral filed under the name the release
+the same release back under its new name and searches it a second time. The
+deferral carries it for the same reason: one filed under the name the release
 arrived with finds no files and leaves the release where it is. Finding no rows
 under a name is its own outcome rather than a move of nothing, so a sweep cannot
 count it as a release filed.
 
-**A lookup that exhausts its three attempts defers the release onto that same
-tail rather than ending the sweep's lookups.** One 503 says nothing about the
-next request — something near a third of requests to MusicBrainz are declined,
-so three in a row is ordinary — and parking the step on the first one left 34 of
-38 sweeps in an evening ending within five seconds of it. The tail takes both
-kinds, and refuses to place a release whose lookup never reached it: filing it
-under the tags the lookup was about to replace is a release the next sweep moves
-again. A second failure in the tail drops the release, which keeps no row, so
-the next sweep has it back. The backstop against a network that really is down
+**A lookup that exhausts its three attempts defers the release the same way
+rather than ending the sweep's lookups.** One 503 says nothing about the next
+request — something near a third of requests to MusicBrainz are declined, so
+three in a row is ordinary — and parking the step on the first one left 34 of
+38 sweeps in an evening ending within five seconds of it.
+
+**Both kinds of deferral are drained at the end of every batch**, not at the end
+of the sweep: a sweep runs the library to exhaustion, about ninety hours, so a
+tail would strand an album the user is playing for the length of one and would
+hold every declined release in the library by the time it ran. A release still
+playing goes back on the list and is asked again next batch — the player holds
+at most the playing track and the prepared next, so that list cannot grow — and
+one that declines a second time is dropped, which keeps no row, so the next
+sweep has it back. The drain refuses to place a release whose lookup never
+reached it: filing it under the tags the lookup was about to replace is a
+release the next sweep moves again. The backstop against a network that really is down
 is a run rather than the first failure — three consecutive failures park the
 lookup for the rest of the sweep, and any lookup that reaches a verdict resets
 the count.

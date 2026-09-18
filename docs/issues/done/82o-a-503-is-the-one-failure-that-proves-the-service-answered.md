@@ -55,7 +55,7 @@ declined requests and parks again:
 ```
 
 What cleared it was the 11:02 restart — `Plan` dies with the process — which is
-[82p](../upcoming/82p-the-deferred-tail-has-no-bound.md)'s restart. The minutes
+[82p](82p-the-deferred-tail-has-no-bound.md)'s restart. The minutes
 are small. The instrument is the problem: the counter cannot detect the one
 thing it exists for, and fires steadily on a non-event.
 
@@ -91,7 +91,7 @@ What this does not fix: a third of a pass is still spent on requests that are
 declined. It also removes the only thing bounding the tail today — sweeps park
 after forty to ninety minutes, so nothing has yet grown a deferred list past 2.
 Once they run to exhaustion,
-[82p](../upcoming/82p-the-deferred-tail-has-no-bound.md) is what happens, and it
+[82p](82p-the-deferred-tail-has-no-bound.md) is what happens, and it
 wants landing alongside this.
 
 Testing: a run of declines asserted to leave the step on however long it runs; a

@@ -27,7 +27,7 @@ mid-sweep, at 11:02:15, which is why the 13:28 sweep opened at `run = 7` again
 after the 10:30 one had reached 11.
 
 A sweep parks after forty to ninety minutes today, so the line lands anyway.
-**82o and [82p](../upcoming/82p-the-deferred-tail-has-no-bound.md) both end
+**82o and [82p](82p-the-deferred-tail-has-no-bound.md) both end
 that**: a sweep runs to the end of the library instead — about 90 sweep-hours at
 the observed ~45s a lookup — against a process restarted about daily. The line
 stops arriving.
