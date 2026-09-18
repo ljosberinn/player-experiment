@@ -20,7 +20,7 @@
 //! resume mechanism and the retry mechanism at once, and it is why there is no
 //! state table here.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension};
@@ -124,20 +124,24 @@ pub fn move_release(
     let _guard = lock.acquire();
 
     let shape = shape(release, &files);
+    let targets: Vec<(&query::ReleaseFile, PathBuf, PathBuf)> = files
+        .iter()
+        .filter(|file| !file.missing)
+        .map(|file| {
+            let source = PathBuf::from(&file.path);
+            let ideal = root.join(layout::relative_path(root, &shape, &track(file)));
+            (file, source, ideal)
+        })
+        .collect();
+
     let mut moves = Vec::new();
-    let mut taken = HashSet::new();
-    let mut skipped = 0;
-    for file in &files {
-        if file.missing {
-            skipped += 1;
-            continue;
-        }
-        let source = PathBuf::from(&file.path);
-        let ideal = root.join(layout::relative_path(root, &shape, &track(file)));
-        let target = free_target(conn, file.id, &source, &ideal, &taken)?;
-        taken.insert(layout::fold(&target));
-        if !layout::same(&target, &source) {
-            moves.push((file, source, target));
+    let mut taken = carried_names(&targets);
+    let skipped = files.iter().filter(|file| file.missing).count() as u32;
+    for (file, source, ideal) in &targets {
+        let target = free_target(conn, file.id, source, ideal, &taken)?;
+        taken.insert(layout::fold(&target), file.id);
+        if !layout::same(&target, source) {
+            moves.push((*file, source.clone(), target));
         }
     }
 
@@ -264,9 +268,7 @@ pub(crate) fn shape<'a>(
         album_artist: release.artist.as_deref(),
         artist: None,
         album: release.album.as_deref(),
-        // The first row that has one, in tracklist order. Rows of one release
-        // can disagree, and a release that is one folder has to be one answer.
-        year: files.iter().find_map(|file| file.year),
+        year: common_year(files),
         release_type: files.iter().find_map(|file| file.release_type.as_deref()),
         disc_count: files
             .iter()
@@ -274,6 +276,70 @@ pub(crate) fn shape<'a>(
             .collect::<HashSet<_>>()
             .len() as u32,
     }
+}
+
+/// The year of the release: the one most of its rows agree on, the lowest of
+/// them where they tie.
+///
+/// Rows of one release can disagree - two rips merged into one - and a release
+/// that is one folder has to be one answer. The first row that had one, in
+/// tracklist order, was
+/// [95](../../../docs/issues/done/95-two-rips-swap-the-marker-forever.md):
+/// `" ("` sorts before `"."`, so the answer came from whichever file wore the
+/// collision marker, and the marker is a property of the folder the release is
+/// leaving. A folder named through it is named through itself.
+fn common_year(files: &[query::ReleaseFile]) -> Option<i64> {
+    let mut counts: HashMap<i64, u32> = HashMap::new();
+    for year in files.iter().filter_map(|file| file.year) {
+        *counts.entry(year).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|&(year, count)| (count, std::cmp::Reverse(year)))
+        .map(|(year, _)| year)
+}
+
+/// The targets the release's rows already hold, as `fold`ed path to the row
+/// holding it, for [`free_target`] to hand back to the same rows.
+///
+/// [`free_target`] hands out the plain name to the first row in iteration
+/// order and a marker to the next, which is stable only while the folder is:
+/// a release whose folder is renamed puts every name back up for grabs, and
+/// 95's two rips swapped names on every sweep. A row that already wears its
+/// target name - marker and all - carries that claim into the new folder, so
+/// the numbering travels with the release rather than being drawn again.
+///
+/// Only where the folder changes. Inside one folder the rows already own their
+/// paths, which is what `owned_by_other` reads, and a name a tag edit freed is
+/// meant to be given out again.
+fn carried_names(targets: &[(&query::ReleaseFile, PathBuf, PathBuf)]) -> HashMap<Vec<u8>, i64> {
+    let mut carried = HashMap::new();
+    for (file, source, ideal) in targets {
+        let (Some(from), Some(to)) = (source.parent(), ideal.parent()) else {
+            continue;
+        };
+        if layout::same(from, to) {
+            continue;
+        }
+        if let Some(name) = carried_name(source, ideal) {
+            carried.insert(layout::fold(&name), file.id);
+        }
+    }
+    carried
+}
+
+/// `ideal` under the name the file already wears, where the two differ by
+/// nothing but a collision marker.
+///
+/// A name that differs by anything else is a name the tags changed, and a
+/// claim on it would keep some other row off a target nothing is using.
+fn carried_name(source: &Path, ideal: &Path) -> Option<PathBuf> {
+    let carried = ideal.with_file_name(source.file_name()?);
+    if layout::same(&carried, ideal) {
+        return Some(carried);
+    }
+    let nth = layout::marker(source)?;
+    layout::same(&carried, &layout::suffixed(ideal, nth)).then_some(carried)
 }
 
 pub(crate) fn track(file: &query::ReleaseFile) -> layout::TrackFile<'_> {
@@ -298,6 +364,10 @@ pub(crate) fn track(file: &query::ReleaseFile) -> layout::TrackFile<'_> {
 ///
 /// `removed_paths` is the third: see [`removed_by_hand`].
 ///
+/// `taken` is the release's in-flight claims, as [`carried_names`] seeds them
+/// and the loop adds to them: the row each one belongs to, so that a row is
+/// never kept off a name by its own claim.
+///
 /// [`super::survey`] asks it too, with an empty `taken`, so that a marker and
 /// the name it stepped around have one answer between them rather than two.
 pub(super) fn free_target(
@@ -305,11 +375,13 @@ pub(super) fn free_target(
     id: i64,
     source: &Path,
     ideal: &Path,
-    taken: &HashSet<Vec<u8>>,
+    taken: &HashMap<Vec<u8>, i64>,
 ) -> AppResult<PathBuf> {
     let mut candidate = ideal.to_path_buf();
     let mut nth = 2;
-    while taken.contains(&layout::fold(&candidate))
+    while taken
+        .get(&layout::fold(&candidate))
+        .is_some_and(|holder| *holder != id)
         || owned_by_other(conn, id, &candidate)?
         || removed_by_hand(conn, source, &candidate)?
     {
@@ -894,6 +966,93 @@ mod tests {
                 "Library\\My Bloody Valentine\\Loveless - 1991 - Album\\01 - Only Shallow (2).mp3"
             ]
         );
+    }
+
+    /// 95: `free_target` hands out names in iteration order, which is stable
+    /// only while the folder is. A release moving as a unit put every name back
+    /// up for grabs, and the marker landed on whichever of the two rips sorted
+    /// first - the other one.
+    #[test]
+    fn a_marked_file_keeps_its_marker_when_the_release_moves() {
+        let fixture = Fixture::new();
+        // Two rips of one track, merged into one release: same number, same
+        // title, one of them wearing the marker already.
+        fixture.track("Incoming\\mbv\\01 - Only Shallow.mp3", Row::default());
+        fixture.track("Incoming\\mbv\\01 - Only Shallow (2).mp3", Row::default());
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            fixture.paths(),
+            [FIRST.to_owned(), FIRST.replace(".mp3", " (2).mp3")]
+        );
+    }
+
+    /// The other half: the year names the folder, so it may not be read out of
+    /// a path order the marker decides. The first row that had one was
+    /// [95](../../../docs/issues/done/95-two-rips-swap-the-marker-forever.md).
+    #[test]
+    fn the_year_is_the_one_most_rows_agree_on_rather_than_the_first() {
+        let fixture = Fixture::new();
+        fixture.track("Incoming\\mbv\\01 - Only Shallow.mp3", Row::default());
+        fixture.track(
+            "Incoming\\mbv\\01 - Only Shallow (2).mp3",
+            Row {
+                year: Some(1992),
+                ..Row::default()
+            },
+        );
+        fixture.track(
+            "Incoming\\mbv\\02 - Loomer.mp3",
+            Row {
+                title: "Loomer",
+                track_no: Some(2),
+                ..Row::default()
+            },
+        );
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            fixture.paths(),
+            [
+                FIRST.to_owned(),
+                FIRST.replace(".mp3", " (2).mp3"),
+                SECOND.to_owned()
+            ]
+        );
+    }
+
+    /// And on a tie - every pair of a two-rip release disagreeing - the lowest.
+    /// Both halves are needed: the second sweep is where the loop was.
+    #[test]
+    fn rows_tied_about_the_year_resolve_to_the_lowest_and_stay_there() {
+        let fixture = Fixture::new();
+        fixture.track(
+            "Incoming\\mbv\\01 - Only Shallow.mp3",
+            Row {
+                year: Some(1994),
+                ..Row::default()
+            },
+        );
+        fixture.track(
+            "Incoming\\mbv\\01 - Only Shallow (2).mp3",
+            Row {
+                year: Some(1995),
+                ..Row::default()
+            },
+        );
+        let placed = FIRST.replace("1991", "1994");
+        let expected = [placed.clone(), placed.replace(".mp3", " (2).mp3")];
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(fixture.paths(), expected);
+
+        let again = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(again, moved(0, 0, 0));
+        assert_eq!(fixture.paths(), expected);
     }
 
     #[test]

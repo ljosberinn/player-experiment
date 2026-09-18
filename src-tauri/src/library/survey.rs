@@ -13,7 +13,7 @@
 //! per sweep: a sweep runs for ninety hours, and a release retagged inside
 //! one has to be picked up before it ends.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
@@ -143,7 +143,7 @@ fn placed(
         if layout::same(source, &ideal) {
             return true;
         }
-        marked(source) && earns_its_marker(conn, file.id, source, &ideal)
+        layout::marker(source).is_some() && earns_its_marker(conn, file.id, source, &ideal)
     })
 }
 
@@ -162,22 +162,12 @@ fn placed(
 /// a move every file's row owns its target, so the next pass reproduces the
 /// choice rather than offering the release again.
 fn earns_its_marker(conn: &Connection, id: i64, source: &Path, ideal: &Path) -> bool {
-    match mover::free_target(conn, id, source, ideal, &HashSet::new()) {
+    match mover::free_target(conn, id, source, ideal, &HashMap::new()) {
         Ok(target) => layout::same(source, &target),
         // A question that could not be asked reads as placed, which is the
         // harmless direction above.
         Err(_) => true,
     }
-}
-
-/// Whether the file's stem ends in a ` (n)` collision marker.
-fn marked(path: &Path) -> bool {
-    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
-        return false;
-    };
-    stem.strip_suffix(')')
-        .and_then(|stem| stem.rsplit_once(" ("))
-        .is_some_and(|(before, nth)| !before.is_empty() && nth.parse::<u32>().is_ok())
 }
 
 #[cfg(test)]
@@ -202,6 +192,16 @@ mod tests {
                                  track_no, release_type, added_at)
              VALUES (?1, 0, 0, ?2, ?3, ?3, ?4, 1991, ?5, 'Album', 0)",
             rusqlite::params![path, album, artist, format!("Track {track_no}"), track_no],
+        )
+        .unwrap();
+    }
+
+    /// Two rips merged into one release can disagree about the year, which is
+    /// what 95 is about.
+    fn set_year(conn: &Connection, path: &str, year: i64) {
+        conn.execute(
+            "UPDATE tracks SET year = ?2 WHERE path = ?1",
+            rusqlite::params![path, year],
         )
         .unwrap();
     }
@@ -370,6 +370,39 @@ mod tests {
                 target(&root, 1),
                 target(&root, 1).replace(".mp3", " (2).mp3")
             ]
+        );
+        assert_eq!(found(&conn, &organizing(&root)).total, 0);
+    }
+
+    /// 95: two rips of one release, disagreeing about the year, with the
+    /// marker on the row whose year lost. The folder was named through the
+    /// marker, the move handed the marker to the other row, and the next sweep
+    /// named the folder back - every file moving, every 15 seconds, forever.
+    #[test]
+    fn a_release_whose_rips_disagree_about_the_year_settles_in_one_pass() {
+        let (dir, db) = open();
+        let mut conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let inbox = dir.path().join("Inbox");
+        let plain = inbox
+            .join("01 - Track 1.mp3")
+            .to_string_lossy()
+            .into_owned();
+        let marked = inbox
+            .join("01 - Track 1 (2).mp3")
+            .to_string_lossy()
+            .into_owned();
+        on_disk(&conn, &plain, ALBUM, ARTIST, 1);
+        on_disk(&conn, &marked, ALBUM, ARTIST, 1);
+        set_year(&conn, &plain, 1994);
+        set_year(&conn, &marked, 1995);
+
+        place(&mut conn, &root, ALBUM);
+
+        let placed = target(&root, 1).replace("1991", "1994");
+        assert_eq!(
+            paths(&conn),
+            vec![placed.clone(), placed.replace(".mp3", " (2).mp3")]
         );
         assert_eq!(found(&conn, &organizing(&root)).total, 0);
     }
