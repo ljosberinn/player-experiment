@@ -76,6 +76,15 @@ const OUTAGE: usize = 7;
 /// retagged mid-pass is picked up within a batch.
 const BATCH: usize = 200;
 
+/// How many releases a sweep gets through between `pass.progress` lines.
+///
+/// Counted in releases rather than minutes because that is what bounds the
+/// file: a pass writes at most one line per this many releases whatever its
+/// pace - eighty over 8,008 - and a sweep with nothing to do gets through none
+/// and writes none. A minute cadence would be spent against the ninety
+/// sweep-hours instead.
+const PROGRESS: usize = 100;
+
 /// What a sweep runs by, and where the last one got to.
 ///
 /// Owned by the thread rather than built per sweep, because neither the
@@ -108,6 +117,13 @@ pub struct Plan {
     /// probes with a single lookup: a verdict clears the run, a failure parks
     /// it again.
     pub failures: usize,
+    /// How many releases apart the `pass.progress` lines are, or zero for
+    /// none.
+    ///
+    /// Here rather than a constant read at the site, for the reason [`Plan::batch`]
+    /// is: a test has to reach a second line without a library of a hundred
+    /// releases.
+    pub progress_every: usize,
 }
 
 impl Plan {
@@ -116,6 +132,7 @@ impl Plan {
         Self {
             dry_run: pass::dry_run(),
             batch: BATCH,
+            progress_every: PROGRESS,
             ..Self::default()
         }
     }
@@ -353,6 +370,11 @@ pub fn sweep(
     // ended; parking does not, so this one probes before it believes it.
     let mut hobbled = false;
     let mut counted = false;
+    // Releases this sweep has been through, whatever came of them - which is
+    // not `summary.visited`, because a release whose lookup failed is not
+    // counted there and a cadence on it would go quiet during exactly the
+    // failure these lines exist to record.
+    let mut seen = 0;
 
     loop {
         let steps = live_steps(&opening, signals, log, hobbled);
@@ -422,6 +444,8 @@ pub fn sweep(
                     deferred.push(pending);
                 }
             }
+            seen += 1;
+            note_progress(log, seen, plan.progress_every, &summary);
         }
     }
 
@@ -445,8 +469,36 @@ pub fn sweep(
             continue;
         }
         visit(&mut conn, &context, plan, &steps, &pending, &mut summary);
+        seen += 1;
+        note_progress(log, seen, plan.progress_every, &summary);
     }
     Ok(summary)
+}
+
+/// What the sweep has counted so far, every [`Plan::progress_every`] releases.
+///
+/// **The counters have to leave the sweep before the sweep does.** They live on
+/// a [`Summary`] built per sweep and on a [`Plan`] owned by the pass thread, so
+/// a process that dies mid-sweep takes all of them - and once a sweep runs the
+/// library to exhaustion rather than parking on a 503, that is ninety hours
+/// against a process restarted about daily. `pass.sweep` would be a line that
+/// never arrives.
+///
+/// [`Log::note`] rather than [`Log::op`]: an `Op` measures `ms` from the moment
+/// it is created, and one created to be finished in the same statement would
+/// write `ms=0` onto every line.
+fn note_progress(log: &Log, seen: usize, every: usize, summary: &Summary) {
+    if every == 0 || !seen.is_multiple_of(every) {
+        return;
+    }
+    log.note(
+        "pass.progress",
+        Fields::new()
+            .add("visited", summary.visited)
+            .add("failed", summary.failed)
+            .add("retries", summary.retries)
+            .add("run", summary.run),
+    );
 }
 
 /// The switches as they stand, with whatever the sweep has learned folded in.
@@ -967,6 +1019,16 @@ mod tests {
 
     fn log_to(dir: &Path) -> Log {
         Log::to(dir.join("apex.log"))
+    }
+
+    /// The `pass.progress` lines a sweep left behind, oldest first.
+    fn progress_lines(dir: &Path) -> Vec<String> {
+        std::fs::read_to_string(dir.join("apex.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| line.contains("pass.progress"))
+            .map(str::to_owned)
+            .collect()
     }
 
     fn root_of(dir: &Path) -> PathBuf {
@@ -1679,6 +1741,74 @@ mod tests {
         assert_eq!(summary.failed, OUTAGE, "the run that parked the step");
         assert_eq!(summary.placed, 0);
         assert_eq!(paths(&db), before, "and nothing moved");
+    }
+
+    /// `pass.sweep` is written when the sweep ends, and a sweep that runs the
+    /// library to exhaustion is ninety hours long against a process restarted
+    /// about daily.
+    #[test]
+    fn a_sweep_writes_its_counters_down_before_it_ends() {
+        let (dir, db) = releases(5);
+        let mut plan = Plan {
+            progress_every: 2,
+            ..live()
+        };
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &musicbrainz(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.visited, 5);
+        let lines = progress_lines(dir.path());
+        assert_eq!(lines.len(), 2, "at the second release and at the fourth");
+        assert!(lines[0].contains("visited=2"), "{}", lines[0]);
+        assert!(lines[1].contains("visited=4"), "{}", lines[1]);
+    }
+
+    /// Written where it was reached rather than backfilled from an end that
+    /// may never come - and written at all across a stretch that visits
+    /// nothing, which is what an outage is.
+    #[test]
+    fn a_progress_line_carries_the_run_the_sweep_had_reached() {
+        let (dir, db) = releases(OUTAGE + 1);
+        let mut plan = Plan {
+            progress_every: 2,
+            ..live()
+        };
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &declining(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.run, OUTAGE, "the sweep ended parked");
+        let lines = progress_lines(dir.path());
+        let releases = OUTAGE + 1;
+        assert_eq!(lines.len(), releases / 2, "one every two releases");
+        assert!(
+            lines[0].contains("run=2"),
+            "the run then, not the {} it ended on: {}",
+            summary.run,
+            lines[0]
+        );
+        assert!(
+            lines[0].contains("visited=0"),
+            "a failed lookup is not visited, and the line came anyway: {}",
+            lines[0]
+        );
     }
 
     /// The tail carries the mover's deferrals as well as the lookup's, and the
