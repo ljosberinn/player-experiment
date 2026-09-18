@@ -33,9 +33,15 @@ function tile(label: string) {
   return browser.$(`//dl[@class='stat-tile'][dt[text()='${label}']]/dd[@class='stat-tile-value']`);
 }
 
-/** The bar list under a panel heading. */
+/**
+ * The panel under a heading.
+ *
+ * `.//h3` rather than `h3`: the heading sits inside the panel's `<header>`
+ * beside whatever control is that panel's own, so a child-axis predicate
+ * matches nothing.
+ */
 function panel(title: string) {
-  return browser.$(`//section[@class='stats-panel'][h3[text()='${title}']]`);
+  return browser.$(`//section[@class='stats-panel'][.//h3[normalize-space()='${title}']]`);
 }
 
 describe("the Statistics view", () => {
@@ -87,9 +93,9 @@ describe("the Statistics view", () => {
 
     // Two thirds of the seeded plays match a synthetic track and a third never
     // do, so both the owned share and the shopping list have something in them
-    // - which is the state worth photographing.
-    const rows = panel("Heard, never owned").$$("li");
-    await browser.waitUntil(async () => (await rows.length) > 0, {
+    // - which is the state worth photographing. Re-queried each tick rather
+    // than held: the list is empty until the aggregate lands.
+    await browser.waitUntil(async () => (await panel("Heard, never owned").$$("li").length) > 0, {
       timeout: 30_000,
       timeoutMsg: "the residue never arrived",
     });
@@ -98,7 +104,9 @@ describe("the Statistics view", () => {
   });
 
   it("drills into an artist by clicking its bar", async () => {
-    const bar = panel("Top artists").$("button");
+    // The row, not the panel's own control: a top list has no header button,
+    // but the residue below it does, and naming the class says which is meant.
+    const bar = panel("Top artists").$("button.bar-list-row");
     await bar.waitForExist({ timeout: 30_000 });
     const artist = await bar.$(".bar-list-label").getText();
 
