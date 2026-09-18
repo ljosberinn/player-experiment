@@ -10,50 +10,53 @@ from.
 
 ## What 76 deferred to here
 
-Two things, both because they are worthless until this phase has run.
+Two things. One of them turned out not to exist.
 
-### The MBID tier
+### The MBID tier, measured and dropped
 
-```sql
-ALTER TABLE tracks ADD COLUMN recording_mbid TEXT;
-CREATE INDEX idx_tracks_recording_mbid ON tracks(recording_mbid)
-    WHERE recording_mbid IS NOT NULL;
-```
+76 deferred a `tracks.recording_mbid` column and a matching tier above the
+`match_key` one, on the reasoning that an id beats a string where last.fm has
+autocorrected a spelling. It was built, and then measured against the real
+history before the branch was merged. It does not work, and no work on this
+side can make it:
 
-`plays.track_mbid` is a *recording* id, which is why the column is not called
-`mbid`: `tracks` already carries `release_mbid` and `release_group_mbid` from
-migration 8, and they are three different things. It is read off the file the
-way those two are: a `Tags` field, `ItemKey::MusicBrainzRecordingId` in
-`tags::read`, the scan's insert and update, and `sync_row`.
+- **Coverage is fine.** 75.5% of 7,863 sampled scrobbles, spread over all 1,189
+  pages of the history, carry a recording id.
+- **Agreement is not.** Where the play's key named a file that also carries a
+  recording id, last.fm's id was the file's in 11 of 78 cases — 14%.
+- **Lift is zero.** Of 2,511 sampled plays the key could not link, 1,294 carry
+  an id, and not one of them matched any of the 5,465 ids in the library.
+- **Because most of them are not recording ids at all.** A third of the
+  disagreeing ids are UUIDv3, MusicBrainz's pre-NGS track ids. Probed against
+  MusicBrainz, every one tried came back 404 — as a recording, a release, a
+  release group and a work. Picard's ids resolve.
 
-**No entry in [write.rs](../../../src-tauri/src/tags/write.rs)'s TXXX list.**
-lofty 0.25 maps the key to and from the ID3v2 `UFID` frame owned by
-`http://musicbrainz.org`, which is where Picard writes it. A round-trip test
-asserts that a tag write keeps it.
+So there is no `tracks.recording_mbid`, no partial index, and no tier.
+`plays.artist_mbid` and `plays.track_mbid` are still written by the import,
+because 76 argues they are part of what a play was; nothing matches on them.
 
-**Backfilled, with migration 8's two.** Picard wrote all three before this
-app read any: about 9% of the measured library carries them (174 of a 2,000-file
-sample), and none of its release ids had reached the rows, because the scan
-never re-reads a file whose mtime and size are unchanged. Without a backfill the
-tier matches nothing, and the lookup pass searches, then overwrites, releases
-whose files already name them.
+A separate measurement, of whether this app's own lookup could supply the ids
+instead, is what makes the second half of that conclusion firm: over 100
+Picard-tagged releases, the ids the lookup would have written agreed with
+Picard's 97.6% of the time. The ids we could produce are good. The ids last.fm
+sends are the problem.
+
+### The release-id backfill, which stays
+
+The measurement turned up a defect that has nothing to do with statistics.
+Migration 8 assumed nothing had written `release_mbid` and
+`release_group_mbid`, so it did not backfill. Picard had: about 9% of the
+measured library carries both, and a scan never re-reads a file whose mtime and
+size are unchanged, so none of them had ever reached the rows. The lookup pass
+therefore searched those releases — two rate-limited requests each — and wrote
+its own verdict over Picard's.
 
 `scan::read_musicbrainz_ids` is a one-shot thread shaped like
-`covers.normalize`. It reads the recording, release and release-group ids,
-fills only empty columns, resumes after a quit, and sets a flag when it
-finishes. `release_type` stays out of it. Picard writes it lowercase and with
-secondary types, and it names the mover's folder; see
-[93](../upcoming/93-picard-release-types.md).
-
-`plays::record` snapshots `tracks.recording_mbid` into `plays.track_mbid`, so a
-local play of a tagged file carries the id too.
-
-`plays::resolve` gains a first tier above the `match_key` one 76 shipped: a play
-whose `track_mbid` matches a track's `recording_mbid` resolves to that track,
-using the same present-then-lowest-id tiebreak, and the key decides the rest.
-What the tier catches is last.fm's autocorrect. A file tagged `Motorhead`
-never key-matches an imported `Motörhead`, but both carry the same recording
-id. The index is partial for the reason migration 8 gives.
+`covers.normalize`. It reads both ids off every file, fills **only empty
+columns** so a lookup's verdict stays, holds the scan lock a chunk at a time,
+resumes after a quit, and sets a flag when it finishes. `release_type` stays
+out of it: Picard writes it lowercase and with secondary types, and it names
+the mover's folder — see [93](../upcoming/93-picard-release-types.md).
 
 ### The loved set
 
@@ -157,10 +160,8 @@ Against a mocked `Transport`, as every last.fm phase already is. Cases:
 
 For the additions:
 
-- a play whose `track_mbid` matches one track's `recording_mbid` resolves to it
-  over a competing key match
-- a recording id survives a tag write
-- the backfill fills the three columns, runs only once, and leaves an id the
-  row already has
+- an imported play carries the ids it was sent and is linked by its key
+- the backfill fills both columns, runs only once, and leaves an id the row
+  already has
 - a second loved import drops a track the first one had
 - a failed loved fetch keeps the old set

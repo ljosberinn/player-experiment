@@ -373,7 +373,7 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
         "UPDATE tracks SET title = ?2, artist = ?3, album = ?4, album_artist = ?5,
                            genre = ?6, comment = ?7, year = ?8, track_no = ?9, disc_no = ?10,
                            release_mbid = ?11, release_group_mbid = ?12, release_type = ?13,
-                           recording_mbid = ?14, cover_hash = ?15, mtime = ?16, size = ?17
+                           cover_hash = ?14, mtime = ?15, size = ?16
          WHERE id = ?1",
         rusqlite::params![
             track_id,
@@ -389,7 +389,6 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
             tags.release_mbid,
             tags.release_group_mbid,
             tags.release_type,
-            tags.recording_mbid,
             cover_hash,
             metadata
                 .modified()

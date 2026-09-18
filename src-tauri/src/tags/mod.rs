@@ -49,10 +49,6 @@ pub struct TrackTags {
     /// above are: a column only the writer fills is blank again the next time
     /// a rescan re-adds the row.
     pub release_type: Option<String>,
-    /// The MusicBrainz recording, which is what a last.fm scrobble names and
-    /// what `plays::resolve` matches on first. ID3v2 keeps it in `UFID`
-    /// rather than a TXXX frame, and lofty maps that both ways.
-    pub recording_mbid: Option<String>,
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
     pub cover: Option<Cover>,
@@ -94,7 +90,6 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     tags.release_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId));
     tags.release_group_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId));
     tags.release_type = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseType));
-    tags.recording_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzRecordingId));
 
     tags.cover = tag.pictures().first().map(|picture| {
         let bytes = picture.data().to_vec();
@@ -114,7 +109,6 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
 /// The MusicBrainz ids a file carries, for `scan::read_musicbrainz_ids`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MusicBrainzIds {
-    pub recording: Option<String>,
     pub release: Option<String>,
     pub release_group: Option<String>,
 }
@@ -137,7 +131,6 @@ pub fn musicbrainz_ids(path: &Path) -> AppResult<MusicBrainzIds> {
         return Ok(MusicBrainzIds::default());
     };
     Ok(MusicBrainzIds {
-        recording: non_empty(tag.get_string(ItemKey::MusicBrainzRecordingId)),
         release: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId)),
         release_group: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
     })

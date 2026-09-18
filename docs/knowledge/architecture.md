@@ -372,12 +372,11 @@ what actually returns the pages to the filesystem. Both are only safe because
 nothing reads artwork back out of `covers` at all — the bytes go to the window
 and nowhere else.
 
-The `musicbrainz-ids` thread beside it reads the recording, release and
-release-group ids off every file once, for the reason
-[the data model](data-model.md) gives. It takes the
-scan lock a chunk at a time, so a scan or a move cannot rewrite a row between
-the read and the write. It announces on `library://changed` only if it found an
-id, since the ids re-link plays.
+The `musicbrainz-ids` thread beside it reads the release and release-group
+ids off every file once, for the reason [the data model](data-model.md) gives.
+It takes the scan lock a chunk at a time, so a scan or a move cannot rewrite a
+row between the read and the write. Nothing announces: the columns it fills are
+read by the lookup pass rather than drawn anywhere.
 
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
 whichever way it was chosen, and both ways **stage**: `stage_dropped_cover`

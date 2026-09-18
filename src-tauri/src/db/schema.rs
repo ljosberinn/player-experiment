@@ -613,24 +613,20 @@ CREATE UNIQUE INDEX idx_plays_identity ON plays(started_at, match_key);
 CREATE INDEX idx_plays_started ON plays(started_at);
 CREATE INDEX idx_plays_track   ON plays(track_id, started_at);
 "#,
-    // 14 - what the last.fm import brings with it
+    // 14 - the loved set the last.fm import fetches
     //
-    // `recording_mbid` is the id `plays.track_mbid` carries, cached off the
-    // tags like migration 8's two. It is backfilled with them, by
-    // `scan::read_musicbrainz_ids` rather than here: Picard wrote all three
-    // before this app read any, and a scan never re-reads a file whose mtime
-    // and size are unchanged. Partial index for migration 8's reason.
+    // Replaced wholesale on each import: unloving happens, and a merged set
+    // could never forget one. Keyed by `match_key` alone because loved is a
+    // fact about a song rather than about a play, which is also why it is not
+    // a column on `plays` - see 13.
     //
-    // `lastfm_loved` is the current loved set, replaced wholesale on each
-    // import: unloving happens, and a merged set could never forget one. Keyed
-    // by `match_key` alone because loved is a fact about a song rather than a
-    // play, which is also why it is not a column on `plays` - see 13.
+    // No `tracks.recording_mbid`. 78 measured what last.fm's recording ids are
+    // worth against a real history: of 7,863 scrobbles, those naming a
+    // recording agreed with the file's id 14% of the time and linked nothing
+    // the key had missed, because most of them are pre-NGS ids MusicBrainz has
+    // since retired. `plays.track_mbid` is still recorded; nothing matches on
+    // it.
     r#"
-ALTER TABLE tracks ADD COLUMN recording_mbid TEXT;
-
-CREATE INDEX idx_tracks_recording_mbid ON tracks(recording_mbid)
-    WHERE recording_mbid IS NOT NULL;
-
 CREATE TABLE lastfm_loved (
     match_key TEXT PRIMARY KEY
 ) WITHOUT ROWID;

@@ -54,14 +54,13 @@ work because the path registers with `history.ts`. Leaving for the Songs table
 is a separate, explicit action — "Show these 412 songs" — so the first click
 cannot end the exploration.
 
-**The import takes MBIDs.** The plain `getRecentTracks` response already
-carries them. With a nullable `tracks.recording_mbid` filled from the `UFID`
-frame Picard writes, and backfilled once because a scan never re-reads an
-unchanged file, matching is exact where both sides have an id and falls back to
-the key otherwise. That is what gets past last.fm's autocorrect, where
-`Motorhead` and `Motörhead` are two keys and one recording. Both arrive in the
-import phase, not the log phase: before an import there is not one MBID in
-`plays` to match on.
+**The import records MBIDs and matches on none of them.** The plan assumed a
+recording id would match where a string could not. Measured against the real
+history in 78, it does not: over 7,863 scrobbles, last.fm's id agreed with the
+file's 14% of the time and linked nothing the key had missed, because most of
+what last.fm sends are pre-NGS ids MusicBrainz has retired. `plays.artist_mbid`
+and `plays.track_mbid` are kept as part of what the play was; `resolve` is the
+`match_key` alone.
 
 **Loved is not a column on `plays`.** It is the current state of a track rather
 than a fact about a moment, so an imported flag would freeze at whatever the

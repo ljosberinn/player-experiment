@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use lofty::config::WriteOptions;
-use lofty::id3::v2::{Frame, Id3v2Tag, UniqueFileIdentifierFrame};
+use lofty::id3::v2::Id3v2Tag;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::tag::{Tag, TagType};
@@ -43,8 +43,6 @@ pub struct Meta {
     pub comment: Option<&'static str>,
     pub release_mbid: Option<&'static str>,
     pub release_group_mbid: Option<&'static str>,
-    /// Written as the `UFID` frame Picard writes, not TXXX.
-    pub recording_mbid: Option<&'static str>,
     /// Cover art bytes. Identical bytes across files must dedupe to one row.
     pub cover: Option<&'static [u8]>,
 }
@@ -105,12 +103,6 @@ pub fn write_mp3(path: &Path, frames: usize, meta: &Meta) {
     if let Some(v) = meta.release_group_mbid {
         id3.insert_user_text("MusicBrainz Release Group Id".to_owned(), v.to_owned());
     }
-    if let Some(v) = meta.recording_mbid {
-        id3.insert(Frame::UniqueFileIdentifier(UniqueFileIdentifierFrame::new(
-            "http://musicbrainz.org",
-            v.as_bytes(),
-        )));
-    }
     id3.save_to_path(path, WriteOptions::default())
         .expect("write tags");
 }
@@ -146,8 +138,6 @@ pub const BULK_TITLE: &str = "Bulk";
 /// read what the files carry rather than only what a write put there.
 pub const SHIELDS_RELEASE: &str = "3c1a1cb0-2f1c-4c3e-9b6c-6b1e7b0f0001";
 pub const SHIELDS_RELEASE_GROUP: &str = "3c1a1cb0-2f1c-4c3e-9b6c-6b1e7b0f0002";
-/// The recording id on Sleeping Ute.
-pub const SLEEPING_UTE_RECORDING: &str = "3c1a1cb0-2f1c-4c3e-9b6c-6b1e7b0f0003";
 
 /// A small library: two artists, three albums, one untagged file.
 pub fn library(root: &Path) -> Vec<PathBuf> {
@@ -200,7 +190,6 @@ pub fn library(root: &Path) -> Vec<PathBuf> {
                 track_no: Some(1),
                 release_mbid: Some(SHIELDS_RELEASE),
                 release_group_mbid: Some(SHIELDS_RELEASE_GROUP),
-                recording_mbid: Some(SLEEPING_UTE_RECORDING),
                 cover: Some(COVER_B),
                 ..Default::default()
             },

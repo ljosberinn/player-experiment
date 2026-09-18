@@ -754,34 +754,34 @@ mod tests {
     fn imported_plays_are_linked_when_the_run_ends() {
         let (_dir, mut conn) = open();
         conn.execute(
-            "INSERT INTO tracks (id, path, mtime, size, duration_ms, artist, title, added_at,
-                                 recording_mbid)
-             VALUES (1, 'C:\\music\\1.mp3', 0, 0, 240000, 'Blue Room', 'Harbour', 0, NULL),
-                    (2, 'C:\\music\\2.mp3', 0, 0, 240000, 'Motorhead', 'Ace', 0, 'abc')",
+            "INSERT INTO tracks (id, path, mtime, size, duration_ms, artist, title, added_at)
+             VALUES (1, 'C:\\music\\1.mp3', 0, 0, 240000, 'Blue Room', 'Harbour', 0)",
             [],
         )
         .unwrap();
-        let with_id = r##"{"artist":{"mbid":"","#text":"Motörhead"},"name":"Ace","mbid":"ABC",
-            "album":{"mbid":"","#text":""},"date":{"uts":"200","#text":""}}"##;
+        // The ids ride along on the row and nothing matches on them; the key
+        // is what links a play.
+        let with_id = r##"{"artist":{"mbid":"A-1","#text":"Blue Room"},"name":"Harbour",
+            "mbid":"R-1","album":{"mbid":"","#text":""},"date":{"uts":"100","#text":""}}"##;
         let transport = FakeTransport::scripted(vec![
-            Ok(page(
-                2,
-                1,
-                &format!("[{with_id},{}]", entry(100, "Blue Room", "Harbour")),
-            )),
+            Ok(page(1, 1, &format!("[{with_id}]"))),
             Ok(NO_LOVED.to_owned()),
         ]);
 
         import(&mut conn, &transport, false).0.unwrap();
 
-        let links: Vec<Option<i64>> = conn
-            .prepare("SELECT track_id FROM plays ORDER BY started_at")
-            .unwrap()
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<rusqlite::Result<_>>()
+        let (link, artist_mbid, track_mbid): (Option<i64>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT track_id, artist_mbid, track_mbid FROM plays",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
             .unwrap();
-        assert_eq!(links, [Some(1), Some(2)]);
+        assert_eq!(link, Some(1));
+        assert_eq!(
+            (artist_mbid.as_deref(), track_mbid.as_deref()),
+            (Some("a-1"), Some("r-1"))
+        );
     }
 
     #[test]

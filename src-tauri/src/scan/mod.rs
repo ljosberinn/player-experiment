@@ -555,14 +555,13 @@ pub fn scan_roots(
 /// the scan lock. Small, because a scan the user asked for waits out one chunk.
 const MBID_CHUNK: i64 = 200;
 
-/// Reads the MusicBrainz ids off every file in the library, once.
+/// Reads the MusicBrainz release ids off every file in the library, once.
 ///
 /// **A backfill for ids Picard wrote before this app read them.** Migration 8
-/// assumed nothing had written the release ids and migration 14 adds the
-/// recording id, but a Picard-tagged file carries all three, and [`scan`]
-/// never re-reads a file whose mtime and size are unchanged. Without this the
-/// MBID tier of `plays::resolve` matches nothing, and the lookup pass searches
-/// - and overwrites - releases whose files already name them.
+/// assumed nothing had written them, but a Picard-tagged file carries both,
+/// and [`scan`] never re-reads a file whose mtime and size are unchanged - so
+/// the lookup pass searches, and overwrites, releases whose files already name
+/// them.
 ///
 /// **Only empty columns are filled**, so an id the lookup already wrote stays.
 /// `release_type` is left alone: Picard writes it lowercase and with secondary
@@ -614,14 +613,12 @@ pub fn read_musicbrainz_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult
             }
             found += tx.execute(
                 "UPDATE tracks
-                    SET recording_mbid     = coalesce(recording_mbid, ?2),
-                        release_mbid       = coalesce(release_mbid, ?3),
-                        release_group_mbid = coalesce(release_group_mbid, ?4)
+                    SET release_mbid       = coalesce(release_mbid, ?2),
+                        release_group_mbid = coalesce(release_group_mbid, ?3)
                   WHERE id = ?1
-                    AND (   (recording_mbid IS NULL AND ?2 IS NOT NULL)
-                         OR (release_mbid IS NULL AND ?3 IS NOT NULL)
-                         OR (release_group_mbid IS NULL AND ?4 IS NOT NULL))",
-                rusqlite::params![id, ids.recording, ids.release, ids.release_group],
+                    AND (   (release_mbid IS NULL AND ?2 IS NOT NULL)
+                         OR (release_group_mbid IS NULL AND ?3 IS NOT NULL))",
+                rusqlite::params![id, ids.release, ids.release_group],
             )? as u32;
         }
         // With the rows it describes, or a crash between the two skips them.
@@ -630,10 +627,7 @@ pub fn read_musicbrainz_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult
         cursor = last;
     }
 
-    let tx = conn.transaction()?;
-    crate::db::plays::resolve(&tx)?;
-    settings::set(&tx, settings::MBIDS_READ, "true")?;
-    tx.commit()?;
+    settings::set(conn, settings::MBIDS_READ, "true")?;
     Ok(Some(found))
 }
 
@@ -658,10 +652,9 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
     conn.execute(
         "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album, album_artist,
                              genre, year, track_no, disc_no, comment, bitrate, sample_rate,
-                             release_mbid, release_group_mbid, release_type, recording_mbid,
-                             cover_hash, added_at)
+                             release_mbid, release_group_mbid, release_type, cover_hash, added_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-                 ?19, ?20, ?21)
+                 ?19, ?20)
          ON CONFLICT(path) DO UPDATE SET
              mtime = excluded.mtime, size = excluded.size,
              duration_ms = excluded.duration_ms, title = excluded.title,
@@ -673,7 +666,6 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
              release_mbid = excluded.release_mbid,
              release_group_mbid = excluded.release_group_mbid,
              release_type = excluded.release_type,
-             recording_mbid = excluded.recording_mbid,
              cover_hash = excluded.cover_hash",
         rusqlite::params![
             path.to_string_lossy(),
@@ -694,7 +686,6 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
             tags.release_mbid,
             tags.release_group_mbid,
             tags.release_type,
-            tags.recording_mbid,
             cover_hash,
             now_secs(),
         ],
@@ -713,7 +704,7 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
                            album = ?7, album_artist = ?8, genre = ?9, year = ?10, track_no = ?11,
                            disc_no = ?12, comment = ?13, bitrate = ?14, sample_rate = ?15,
                            release_mbid = ?16, release_group_mbid = ?17, release_type = ?18,
-                           recording_mbid = ?19, cover_hash = ?20
+                           cover_hash = ?19
          WHERE path = ?1",
         rusqlite::params![
             path.to_string_lossy(),
@@ -734,7 +725,6 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
             tags.release_mbid,
             tags.release_group_mbid,
             tags.release_type,
-            tags.recording_mbid,
             cover_hash,
         ],
     )?;

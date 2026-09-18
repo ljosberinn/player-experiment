@@ -144,7 +144,7 @@ pub fn run() {
             // so the unattended pass can tell whether it would be racing a
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
-            read_musicbrainz_ids(app.handle().clone(), db.clone(), lock.clone(), log.clone());
+            read_musicbrainz_ids(db.clone(), lock.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -392,12 +392,13 @@ fn normalize_covers(db: Db, log: log::Log) {
         });
 }
 
-/// Reads the MusicBrainz ids off every file once, off the setup path, for the
-/// reason [`normalize_covers`] runs there. See `scan::read_musicbrainz_ids`.
+/// Reads the MusicBrainz release ids off every file once, off the setup path,
+/// for the reason [`normalize_covers`] runs there. See
+/// `scan::read_musicbrainz_ids`.
 ///
-/// Announced only when it found something: the ids re-link plays, which is
-/// what a statistics view reads, and a pass that found none changed nothing.
-fn read_musicbrainz_ids(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
+/// Nothing announces: the columns it fills are read by the lookup pass rather
+/// than drawn anywhere, so no view is out of date because of it.
+fn read_musicbrainz_ids(db: Db, lock: scan::ScanLock, log: log::Log) {
     let _ = std::thread::Builder::new()
         .name("musicbrainz-ids".to_owned())
         .spawn(move || {
@@ -406,13 +407,9 @@ fn read_musicbrainz_ids(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log
                 .conn()
                 .and_then(|mut conn| scan::read_musicbrainz_ids(&mut conn, &lock))
             {
+                // Every launch after the one that finished the pass.
                 Ok(None) => {}
-                Ok(Some(found)) => {
-                    op.succeeded(log::Fields::new().add("found", found));
-                    if found > 0 {
-                        crate::commands::announce_library_changed(&app);
-                    }
-                }
+                Ok(Some(found)) => op.succeeded(log::Fields::new().add("found", found)),
                 Err(error) => op.failed(&error),
             }
         });
