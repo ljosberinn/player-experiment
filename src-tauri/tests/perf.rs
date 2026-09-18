@@ -6,6 +6,7 @@
 //! (a dropped index, a `LIKE '%x%'` filter, sorting in Rust instead of SQL),
 //! which costs orders of magnitude rather than percent.
 
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use apex_lib::db::{genres, plays, query, stats, synthetic, tag_values, Db};
@@ -424,6 +425,19 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
 /// the round number just above it is the one worth being sure of.
 const PLAYS: u32 = 250_000;
 
+/// Held by every test that seeds `PLAYS`, so they run one at a time.
+///
+/// The cold resolve is a single sample - no second call does the same work -
+/// so unlike `assert_under` it cannot shrug off a neighbour. With the
+/// Listening budgets beside it on the runner it took 13.7s against 8s; alone
+/// locally it takes the same as ever.
+static PLAY_LOG: Mutex<()> = Mutex::new(());
+
+/// A panic in one log test must not fail the other through a poisoned lock.
+fn play_log() -> MutexGuard<'static, ()> {
+    PLAY_LOG.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// `plays::resolve` reads every play on every run, which is the one perf risk
 /// the play log takes on, and it is taken on purpose: the alternative is
 /// re-resolving only the keys a write touched, which is correct but owes an
@@ -443,6 +457,7 @@ const PLAYS: u32 = 250_000;
 /// whether the statement still has the shape of one pass over the log.
 #[test]
 fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
+    let _serial = play_log();
     let (_dir, db) = seeded_library();
     let mut conn = db.conn().unwrap();
     synthetic::seed_plays(&mut conn, PLAYS).unwrap();
@@ -480,6 +495,7 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
 /// runner the ninefold spread the budgets above record.
 #[test]
 fn every_listening_aggregate_is_one_pass_over_the_log() {
+    let _serial = play_log();
     let (_dir, db) = seeded_library();
     let mut conn = db.conn().unwrap();
     synthetic::seed_plays(&mut conn, PLAYS).unwrap();
