@@ -2,7 +2,8 @@ import { VIEW_TITLES, type ViewTab } from "../../features/library/store";
 import { Icon } from "../icons/Icon";
 
 /**
- * The LIBRARY section of the source list: Songs, Releases, Artists, Genres.
+ * The LIBRARY section of the source list: Songs, Releases, Artists, Genres and
+ * Statistics.
  *
  * These were a segmented tab bar above the table until phase 35. The design puts
  * them in the sidebar with the playlists, which is where they belong: switching
@@ -18,7 +19,7 @@ import { Icon } from "../icons/Icon";
 const ICON_SIZE = 15;
 
 /** Order only; the words are `VIEW_TITLES`, which the history arrows share. */
-const VIEWS: ViewTab[] = ["songs", "albums", "artists", "genres"];
+const VIEWS: ViewTab[] = ["songs", "albums", "artists", "genres", "stats"];
 
 export function LibraryNav({
   active,
@@ -45,17 +46,6 @@ export function LibraryNav({
             </button>
           </li>
         ))}
-
-        {/* Shown and unopenable, which is how the design draws it. Hiding it
-            until it works would move every playlist below it down the day it
-            arrives; leaving it out entirely would lose the placeholder the
-            design asks for. */}
-        <li>
-          <button type="button" className="sidebar-item" disabled title="Not available yet">
-            <Icon name="statistics" size={ICON_SIZE} className="sidebar-icon" />
-            <span className="sidebar-label">Statistics</span>
-          </button>
-        </li>
       </ul>
     </div>
   );

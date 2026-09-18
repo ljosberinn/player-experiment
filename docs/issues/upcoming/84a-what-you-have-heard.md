@@ -1,15 +1,17 @@
 # 84a — What you have heard
 
-The Listening tab's panels. Stacks on [78](../done/78-import-the-lastfm-history.md) and
-[80](80-the-statistics-view.md); independent of
+The Listening tab's panels. Stacks on
+[78](../done/78-import-the-lastfm-history.md) and
+[80](../done/80-the-statistics-view.md); independent of
 [84b](84b-what-you-own.md), which is the other tab and shares only the chart
 primitives.
 
 Split off from the plan's single phase 84 for that independence, and because one
 phase drawing both tabs is not workable as written.
 
-Tiles: plays, distinct artists / albums / tracks, listening days, time spent,
-share owned. Then recent plays; top artists, albums, tracks and genres as bar
+The tile row went to 80, which needed a caller for the shell it built.
+
+Recent plays; top artists, albums, tracks and genres as bar
 lists with share; plays over time, bucket chosen from the range; hour-of-day
 bars; a weekday-by-hour heatmap; a calendar year heatmap; new artists per month;
 current and longest streak; and **heard, never owned**, exportable.

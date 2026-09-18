@@ -1138,6 +1138,23 @@ pub fn save_sidebar_sections(db: State<'_, Db>, sections_json: String) -> AppRes
     settings::set(&conn, settings::SIDEBAR, &sections_json)
 }
 
+/// How the Statistics view was last filtered, as the frontend wrote it.
+///
+/// Opaque here, like the sidebar's collapsed sections: which filters exist is
+/// decided in `features/stats`, and mirroring that into Rust would be two
+/// definitions to keep in step for nothing.
+#[tauri::command]
+pub fn load_stats_filters(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::STATS_FILTERS)
+}
+
+#[tauri::command]
+pub fn save_stats_filters(db: State<'_, Db>, filters_json: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::STATS_FILTERS, &filters_json)
+}
+
 /// Whether the cover-coloured background is on.
 ///
 /// A bool rather than the opaque string the sidebar and column layouts use:

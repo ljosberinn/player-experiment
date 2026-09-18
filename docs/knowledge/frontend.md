@@ -107,7 +107,9 @@ require.
   first consumer rather than as tokens nothing reads.
 - **What has not landed**: `Bar`, `Line`, `Donut`, `Heatmap`, `Sparkline`. Each
   wants a real panel as its caller, and the panels are phases 84a and 84b; the
-  file list in the plan is a ceiling, not a checklist.
+  file list in the plan is a ceiling, not a checklist. `StatTile` is the one
+  that found its caller early - the two tile rows the Statistics shell draws,
+  which are the only panels needing no primitive above.
 - Charts hold no virtualizer, so unlike `SongTable` and `BrowseView` they
   compile clean under the React Compiler and want no `"use no memo"`.
 
@@ -253,6 +255,16 @@ absences are what nobody notices coming back — hence the guards in
   action, so the debounced reload always lands after them. `create` and
   `createFrom` also keep a direct `load()`, because the row they put into
   inline rename has to be on screen for the input to open.
+- **The Statistics view splits its state by what history owns.** The drill path
+  is library-store state (`statsPath`) because it travels in a `HistoryEntry`
+  and Back walks it; the filters are `features/stats/store.ts`, because a range
+  change must wake a panel and nothing above it. A second store holding a copy
+  of the path would be exactly the drift the `history` field's comment refuses.
+  `App` subscribes to neither: it branches on the `tab` it already reads.
+- **Navigating inside Statistics issues no library query.** `applyEntry` skips
+  its closing `refresh` for a stats entry and `refresh` returns early while the
+  view is open, so a donut click does not re-count 150k rows and an import
+  firing `library://changed` does not either. The move back out re-queries.
 - **A pending library removal lives in the library store**, not in `App`'s
   `useState` beside the missing-songs flag. Three routes ask the question - the
   row menu, the File menu and Delete - and the last is a window-level shortcut

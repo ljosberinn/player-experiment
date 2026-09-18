@@ -22,6 +22,7 @@ import {
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
 import { dismiss, notify, report } from "../shell/statusStore";
+import { type StatsPath, statsRoot } from "../stats/path";
 import {
   type ColumnConfig,
   DEFAULT_COLUMN_CONFIG,
@@ -66,12 +67,13 @@ import { applyClick, type ClickModifiers, emptySelection, type Selection } from 
 export const SEARCH_DEBOUNCE_MS = 200;
 
 /**
- * Which of the four views is open.
+ * Which of the five views is open.
  *
- * Songs is the table; the other three are [`BrowseKind`], so the tab id is the
- * grouping rather than something that has to be mapped onto one.
+ * Songs is the table; three are [`BrowseKind`], so the tab id is the grouping
+ * rather than something that has to be mapped onto one; and Statistics reads
+ * none of the library query the other four share.
  */
-export type ViewTab = "songs" | BrowseKind;
+export type ViewTab = "songs" | BrowseKind | "stats";
 
 /**
  * What each view is called, wherever one has to be named.
@@ -85,6 +87,7 @@ export const VIEW_TITLES: Record<ViewTab, string> = {
   albums: "Releases",
   artists: "Artists",
   genres: "Genres",
+  stats: "Statistics",
 };
 
 interface LibraryState {
@@ -115,6 +118,17 @@ interface LibraryState {
    * with a filter set is the songs table, scoped.
    */
   browse: BrowseFilter | null;
+  /**
+   * Where Statistics is pointed, or null outside it.
+   *
+   * Here rather than in `statsStore` for the reason `history` is here: the
+   * path is navigation, it travels in a `HistoryEntry`, and a second store
+   * holding a copy of it would be the drift that field's comment refuses.
+   * `statsStore` holds what history deliberately does not - the filters.
+   *
+   * `App` does not subscribe to it, so a drill-down costs the shell nothing.
+   */
+  statsPath: StatsPath | null;
   /** The albums, artists or genres of the open browse tab. */
   groups: BrowseGroup[];
   groupsLoading: boolean;
@@ -263,6 +277,8 @@ interface LibraryState {
    * the view.
    */
   showTab: (tab: ViewTab) => Promise<void>;
+  /** Drills, or walks a breadcrumb, inside Statistics. */
+  showStatsPath: (path: StatsPath) => Promise<void>;
   /** Drills into one album, artist or genre from the open browse tab. */
   openGroup: (group: BrowseGroup) => Promise<void>;
   /**
@@ -382,6 +398,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   playlistId: null,
   tab: "songs",
   browse: null,
+  statsPath: null,
   groups: [],
   groupsLoading: false,
   browseOffsets: NO_BROWSE_OFFSETS,
@@ -397,13 +414,19 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   queryToken: 0,
   // Seeded with the view the app opens in, so the first navigation has
   // somewhere to go back to.
-  history: historyAt({ tab: "songs", browse: null, playlistId: null }),
+  history: historyAt({ tab: "songs", browse: null, playlistId: null, stats: null }),
 
   rememberBrowseOffset: (kind, topGroup) => {
     set((state) => ({ browseOffsets: { ...state.browseOffsets, [kind]: topGroup } }));
   },
 
   refresh: async () => {
+    // Nothing on screen reads the library query while Statistics is open, and
+    // `library://changed` fires throughout an import and a resolve. Leaving
+    // re-queries, in `applyEntry`.
+    if (get().tab === "stats") {
+      return;
+    }
     const token = get().queryToken + 1;
     dismiss();
     // Pages are dropped before the count returns rather than after: they
@@ -456,6 +479,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         tab: state.tab,
         browse: state.browse,
         playlistId: state.playlistId,
+        stats: null,
       };
       // Not `pushEntry`: that would leave Back pointing right at the dead
       // group. Dropping its entry instead is what `forgetPlaylist` does for a
@@ -543,7 +567,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
    */
   loadGroups: async (token) => {
     const { tab } = get();
-    if (tab === "songs") {
+    if (tab === "songs" || tab === "stats") {
       // Not merely skipped - cleared, so returning to a browse tab cannot show
       // the previous tab's groups for the moment before the query lands.
       set({ groups: [], groupsLoading: false });
@@ -576,7 +600,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     // A playlist's albums are not the library's, and the album that was open
     // is unlikely to be in it, so the drill-in goes with the source.
-    await pushEntry({ tab: get().tab, browse: null, playlistId });
+    // Statistics is not a grouping a playlist can be shown in, so opening one
+    // from there lands on the table rather than on a tab that does not apply.
+    const tab = get().tab === "stats" ? "songs" : get().tab;
+    await pushEntry({ tab, browse: null, playlistId, stats: null });
   },
 
   loadColumns: async () => {
@@ -655,20 +682,33 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // The search survives a tab change, unlike a playlist change: "everything
     // matching «bear»" is a question you might want answered as songs and then
     // as albums, and re-typing it to switch view would be the annoying part.
-    await pushEntry({ tab, browse: null, playlistId: null });
+    await pushEntry({
+      tab,
+      browse: null,
+      playlistId: null,
+      // Listening rather than Library: the history is the half of this view
+      // that the rest of the app cannot already answer.
+      stats: tab === "stats" ? statsRoot("listening") : null,
+    });
+  },
+
+  showStatsPath: async (path) => {
+    await pushEntry({ tab: "stats", browse: null, playlistId: null, stats: path });
   },
 
   openGroup: async (group) => {
     const { tab, playlistId } = get();
-    // Songs has no groups to drill into. The guard is here rather than in
-    // `applyEntry`, which has to be able to set a tab and a filter at once.
-    if (tab === "songs") {
+    // Neither Songs nor Statistics has groups to drill into. The guard is here
+    // rather than in `applyEntry`, which has to be able to set a tab and a
+    // filter at once.
+    if (tab === "songs" || tab === "stats") {
       return;
     }
     await pushEntry({
       tab,
       browse: { kind: tab, key: group.key, secondary: group.secondary },
       playlistId,
+      stats: null,
     });
   },
 
@@ -681,14 +721,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (browse === null) {
       return;
     }
-    await pushEntry({ tab, browse: null, playlistId });
+    await pushEntry({ tab, browse: null, playlistId, stats: null });
   },
 
   applyEntry: async (entry, history) => {
     const state = get();
     // Every navigation lands here, including the ones that only look like a
     // no-op - clicking the open tab, or a back that would not move.
-    if (sameView({ tab: state.tab, browse: state.browse, playlistId: state.playlistId }, entry)) {
+    if (
+      sameView(
+        {
+          tab: state.tab,
+          browse: state.browse,
+          playlistId: state.playlistId,
+          stats: state.statsPath,
+        },
+        entry,
+      )
+    ) {
       return;
     }
 
@@ -711,6 +761,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       history,
       tab: entry.tab,
       browse: entry.browse,
+      statsPath: entry.stats,
       playlistId: entry.playlistId,
       selection: emptySelection,
       // Dropped rather than held until the new fit lands: the outgoing widths
@@ -743,7 +794,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // boundary, because columns are stored per playlist and nowhere else.
       await get().loadColumns();
     }
-    await get().refresh();
+    // Statistics reads none of this: a move into it, and every drill-down
+    // inside it, would otherwise re-count the library to draw numbers that
+    // come from `plays`. The move back out is what re-queries - the same call,
+    // one navigation later - which is also what `refresh`'s own guard leaves
+    // to this one.
+    if (entry.tab !== "stats") {
+      await get().refresh();
+    }
   },
 
   back: async () => {
@@ -915,6 +973,7 @@ function entryForTrack(track: Track): HistoryEntry {
       tab: "albums",
       browse: { kind: "albums", key: album, secondary: artist },
       playlistId: null,
+      stats: null,
     };
   }
   if (artist !== null) {
@@ -922,9 +981,10 @@ function entryForTrack(track: Track): HistoryEntry {
       tab: "artists",
       browse: { kind: "artists", key: artist, secondary: null },
       playlistId: null,
+      stats: null,
     };
   }
-  return { tab: "songs", browse: null, playlistId: null };
+  return { tab: "songs", browse: null, playlistId: null, stats: null };
 }
 
 function tagged(value: string | null): string | null {

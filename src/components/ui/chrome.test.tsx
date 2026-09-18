@@ -383,7 +383,7 @@ describe("LibraryNav", () => {
     // of what the content pane is showing.
     render(<LibraryNav active={null} onSelect={() => {}} />);
 
-    for (const name of ["Songs", "Releases", "Artists", "Genres"]) {
+    for (const name of ["Songs", "Releases", "Artists", "Genres", "Statistics"]) {
       expect(screen.getByRole("button", { name })).not.toHaveAttribute("aria-current");
     }
   });
@@ -396,7 +396,7 @@ describe("LibraryNav", () => {
     const onSelect = vi.fn();
     render(<LibraryNav active="songs" onSelect={onSelect} />);
 
-    for (const name of ["Songs", "Releases", "Artists", "Genres"]) {
+    for (const name of ["Songs", "Releases", "Artists", "Genres", "Statistics"]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();
     }
 
@@ -404,13 +404,13 @@ describe("LibraryNav", () => {
     expect(onSelect).toHaveBeenCalledWith("genres");
   });
 
-  it("shows Statistics as a placeholder that cannot be opened", () => {
-    // The design draws it, and it does nothing yet. Shown and unopenable rather
-    // than hidden: a sidebar that grows an entry later moves every playlist
-    // below it down the day it arrives.
-    render(<LibraryNav active="songs" onSelect={vi.fn()} />);
+  it("opens Statistics like any other view", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(<LibraryNav active="songs" onSelect={onSelect} />);
 
-    expect(screen.getByRole("button", { name: "Statistics" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Statistics" }));
+    expect(onSelect).toHaveBeenCalledWith("stats");
   });
 });
 

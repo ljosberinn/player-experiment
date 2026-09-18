@@ -3,8 +3,7 @@
 `src-tauri/src/db/stats.rs`, its commands and the IPC types over it. Every
 aggregate [84a](../upcoming/84a-what-you-have-heard.md) and
 [84b](../upcoming/84b-what-you-own.md) draw, with no frontend yet. Stacks on
-[76](76-the-play-log.md); [80](../upcoming/80-the-statistics-view.md) waits on
-it.
+[76](76-the-play-log.md); [80](80-the-statistics-view.md) waits on it.
 
 ## Two query types
 

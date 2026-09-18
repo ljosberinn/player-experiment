@@ -23,6 +23,9 @@ import type { LastfmImported } from "./bindings/LastfmImported";
 import type { LastfmStatus } from "./bindings/LastfmStatus";
 import type { LibraryFolder } from "./bindings/LibraryFolder";
 import type { LibraryStats } from "./bindings/LibraryStats";
+import type { LibraryTotals } from "./bindings/LibraryTotals";
+import type { ListenQuery } from "./bindings/ListenQuery";
+import type { ListenTotals } from "./bindings/ListenTotals";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
 import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
@@ -44,6 +47,7 @@ import type { SortField } from "./bindings/SortField";
 import type { TagEdit } from "./bindings/TagEdit";
 import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
+import type { TimeRange } from "./bindings/TimeRange";
 import type { Track } from "./bindings/Track";
 import type { TrackEdit } from "./bindings/TrackEdit";
 import type { TrackQuery } from "./bindings/TrackQuery";
@@ -73,6 +77,9 @@ export type {
   LastfmStatus,
   LibraryFolder,
   LibraryStats,
+  LibraryTotals,
+  ListenQuery,
+  ListenTotals,
   PlaybackStatus,
   PlayerPosition,
   PlayerSnapshot,
@@ -94,6 +101,7 @@ export type {
   TagEdit,
   TagValueField,
   TagWriteSummary,
+  TimeRange,
   Track,
   TrackEdit,
   TrackQuery,
@@ -261,6 +269,35 @@ export function loadSidebarSections(): Promise<string | null> {
 
 export function saveSidebarSections(sectionsJson: string): Promise<void> {
   return invoke<void>("save_sidebar_sections", { sectionsJson });
+}
+
+/**
+ * How the Statistics view was last filtered, or null before it has been used.
+ *
+ * Opaque like the two above: one key for every filter the view has, so a new
+ * facet is a change to `features/stats` and to nothing else.
+ */
+export function loadStatsFilters(): Promise<string | null> {
+  return invoke<string | null>("load_stats_filters");
+}
+
+export function saveStatsFilters(filtersJson: string): Promise<void> {
+  return invoke<void>("save_stats_filters", { filtersJson });
+}
+
+/** The Listening tab's tiles: one scan of `plays` under the open filters. */
+export function statsListenTotals(query: ListenQuery): Promise<ListenTotals> {
+  return invoke<ListenTotals>("stats_listen_totals", { query });
+}
+
+/**
+ * The Library tab's tiles.
+ *
+ * A `TrackQuery`, so the tab's scope selector reaches it the way it reaches
+ * every other library aggregate.
+ */
+export function statsLibraryTotals(query: TrackQuery): Promise<LibraryTotals> {
+  return invoke<LibraryTotals>("stats_library_totals", { query });
 }
 
 /**

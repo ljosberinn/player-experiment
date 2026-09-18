@@ -65,4 +65,10 @@ describe("what the footer says the view is showing", () => {
       `${(12_500).toLocaleString()} releases`,
     );
   });
+
+  it("says nothing under Statistics, which is all numbers already", () => {
+    // The browse arm would otherwise call its groups genres and report "No
+    // genres" under a view that has none to report.
+    expect(viewSummary({ ...base, tab: "stats" })).toBe("");
+  });
 });

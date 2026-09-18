@@ -117,7 +117,7 @@ beforeEach(() => {
     browseOffsets: { albums: 0, artists: 0, genres: 0 },
     queryToken: 0,
     pendingRemoval: null,
-    history: historyAt({ tab: "songs", browse: null, playlistId: null }),
+    history: historyAt({ tab: "songs", browse: null, playlistId: null, stats: null }),
   });
   useStatusStore.setState({ message: null, notice: null });
   statsMock.mockResolvedValue(stats(1000));
@@ -1225,5 +1225,73 @@ describe("where each browse tab was left", () => {
 
     expect(useLibraryStore.getState().browseOffsets).toEqual(scrolled);
     expect(useLibraryStore.getState().browseListToken).toBe(token);
+  });
+});
+
+describe("the Statistics view", () => {
+  it("costs no library query to open, or to drill inside", async () => {
+    await useLibraryStore.getState().showTab("stats");
+    statsMock.mockClear();
+    browseGroupsMock.mockClear();
+
+    expect(useLibraryStore.getState().statsPath).toEqual({ tab: "listening", crumbs: [] });
+
+    await useLibraryStore
+      .getState()
+      .showStatsPath({ tab: "listening", crumbs: [{ kind: "genre", key: "black metal" }] });
+
+    // The tiles read `plays`; the count under the songs table describes a
+    // query nothing on screen is showing.
+    expect(statsMock).not.toHaveBeenCalled();
+    expect(browseGroupsMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves the library query alone while it is open", async () => {
+    await useLibraryStore.getState().showTab("stats");
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().refresh();
+
+    expect(statsMock).not.toHaveBeenCalled();
+  });
+
+  it("re-queries the library on the way out", async () => {
+    await useLibraryStore.getState().showTab("stats");
+    statsMock.mockClear();
+
+    await useLibraryStore.getState().showTab("songs");
+
+    expect(statsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("walks back out of a drill-down", async () => {
+    await useLibraryStore.getState().showTab("stats");
+    const drilled = {
+      tab: "listening" as const,
+      crumbs: [{ kind: "artist" as const, key: "Sral" }],
+    };
+    await useLibraryStore.getState().showStatsPath(drilled);
+
+    await useLibraryStore.getState().back();
+
+    expect(useLibraryStore.getState().statsPath).toEqual({ tab: "listening", crumbs: [] });
+  });
+
+  it("does not record a second entry for the path already open", async () => {
+    await useLibraryStore.getState().showTab("stats");
+    const entries = useLibraryStore.getState().history.entries.length;
+
+    await useLibraryStore.getState().showStatsPath({ tab: "listening", crumbs: [] });
+
+    expect(useLibraryStore.getState().history.entries).toHaveLength(entries);
+  });
+
+  it("lands on the songs table when a playlist is opened from it", async () => {
+    await useLibraryStore.getState().showTab("stats");
+
+    await useLibraryStore.getState().showPlaylist(7);
+
+    expect(useLibraryStore.getState().tab).toBe("songs");
+    expect(useLibraryStore.getState().statsPath).toBeNull();
   });
 });

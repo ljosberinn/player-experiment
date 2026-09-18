@@ -96,6 +96,10 @@ export const config: WebdriverIO.Config = {
     // After `library` too: the artwork square is measured against a song that
     // has a cover and one that does not, and the fixture is what supplies both.
     "./specs/tag-editor.test.ts",
+    // After `library`, which seeds the songs its Library tab counts. Its own
+    // tab strip and filter bar are furniture the design has no mockup for, so
+    // the screenshots are the only record of what they look like.
+    "./specs/statistics.test.ts",
     // After `library` too: a grid with no albums in it has no column count,
     // and a list with no rows cannot alternate. Resizes the window and puts it
     // back, so it has to be somewhere the size it borrows is the default one.
