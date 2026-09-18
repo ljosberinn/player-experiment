@@ -165,6 +165,21 @@ pub fn suffixed(path: &Path, nth: u32) -> PathBuf {
     path.with_file_name(name)
 }
 
+/// The `nth` of the marker [`suffixed`] put on a name, if it wears one.
+///
+/// The inverse of `suffixed`, and here beside it so that what counts as a
+/// marker is one answer: `super::survey` asks whether a file wears one and
+/// `super::mover` asks which one, and a marker the two disagree about is a
+/// file that moves on every sweep.
+pub fn marker(path: &Path) -> Option<u32> {
+    let stem = path.file_stem()?.to_str()?;
+    let (before, nth) = stem.strip_suffix(')')?.rsplit_once(" (")?;
+    if before.is_empty() {
+        return None;
+    }
+    nth.parse().ok()
+}
+
 /// Whether two paths name one file.
 ///
 /// Byte-exact was
