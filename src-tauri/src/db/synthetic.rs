@@ -64,9 +64,11 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
 /// Returns how many were inserted. `seed` writes `tracks` and nothing has ever
 /// written a play, so the stats budgets need their own seeder.
 ///
-/// Timestamps are one second apart from a fixed epoch, which makes every row a
-/// distinct identity under `idx_plays_identity` and keeps a re-seed from
-/// silently inserting nothing.
+/// Timestamps are distinct per index from a fixed epoch, which makes every row
+/// a distinct identity under `idx_plays_identity` and keeps a re-seed from
+/// silently inserting nothing. **They are spread over years**, not packed a
+/// second apart: a quarter of a million plays inside three days would measure
+/// the day buckets and the streak walk at a cardinality no history has.
 ///
 /// **One play in three cannot match anything.** A seed that resolved
 /// completely would make 77's `coverage` untestable and would make [`resolve`]
@@ -83,6 +85,10 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
     /// 2023-11-14, far enough from zero that local-time bucketing has a real
     /// date to work with.
     const EPOCH: i64 = 1_700_000_000;
+    /// About ten minutes, and not a divisor of an hour or a day, so the plays
+    /// land on every hour and weekday rather than on a few of them. 250,000
+    /// plays span nearly five years.
+    const SPACING: i64 = 613;
 
     let tracks: u32 = conn.query_row(
         "SELECT count(*) FROM tracks WHERE path LIKE 'synthetic://%'",
@@ -116,7 +122,7 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
                 )
             };
             stmt.execute(rusqlite::params![
-                EPOCH + i64::from(index),
+                EPOCH + i64::from(index) * SPACING,
                 artist,
                 title,
                 album,

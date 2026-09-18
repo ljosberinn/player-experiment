@@ -6,11 +6,13 @@
 //! (a dropped index, a `LIKE '%x%'` filter, sorting in Rust instead of SQL),
 //! which costs orders of magnitude rather than percent.
 
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-use apex_lib::db::{genres, plays, query, synthetic, tag_values, Db};
+use apex_lib::db::{genres, plays, query, stats, synthetic, tag_values, Db};
 use apex_lib::model::{
-    BrowseFilter, BrowseKind, SortDirection, SortField, TagValueField, TrackQuery,
+    BrowseFilter, BrowseKind, HistogramField, ListenDimension, ListenQuery, SortDirection,
+    SortField, TagValueField, TimeBucket, TimeRange, TrackQuery,
 };
 use apex_lib::scan;
 
@@ -423,6 +425,18 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
 /// the round number just above it is the one worth being sure of.
 const PLAYS: u32 = 250_000;
 
+/// Held by every test that seeds `PLAYS`, so they run one at a time.
+///
+/// The cold resolve is a single sample - no second call does the same work -
+/// so unlike `assert_under` it cannot shrug off a neighbour, and on the runner
+/// it has no headroom to spare either way.
+static PLAY_LOG: Mutex<()> = Mutex::new(());
+
+/// A panic in one log test must not fail the other through a poisoned lock.
+fn play_log() -> MutexGuard<'static, ()> {
+    PLAY_LOG.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// `plays::resolve` reads every play on every run, which is the one perf risk
 /// the play log takes on, and it is taken on purpose: the alternative is
 /// re-resolving only the keys a write touched, which is correct but owes an
@@ -440,8 +454,18 @@ const PLAYS: u32 = 250_000;
 /// separated 163ms from 1031ms would have to sit inside the spread between
 /// this machine and the runner. The budgets below are the coarser question -
 /// whether the statement still has the shape of one pass over the log.
+///
+/// **And that spread is what the numbers are set against, because it is
+/// wider than this file assumed.** A probe on the runner measured the cold
+/// resolve at 7.6s to 7.8s three times over with nothing else running -
+/// against the 8000ms it first shipped with, which is a budget that passes on
+/// a good day and on no other. The same statement on a runner that was
+/// half as fast at everything took 33s. So: 60s cold and 10s warm, which a
+/// transaction per row - minutes over a quarter of a million of them - still
+/// fails, and a busy runner does not.
 #[test]
 fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
+    let _serial = play_log();
     let (_dir, db) = seeded_library();
     let mut conn = db.conn().unwrap();
     synthetic::seed_plays(&mut conn, PLAYS).unwrap();
@@ -458,13 +482,138 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
         "a cold resolve that moved nothing measured nothing"
     );
     assert!(
-        elapsed <= 8_000,
-        "a first resolve over {PLAYS} plays and {ROWS} tracks took {elapsed}ms,          budget is 8000ms - it writes every matched row once, and never again"
+        elapsed <= 60_000,
+        "a first resolve over {PLAYS} plays and {ROWS} tracks took {elapsed}ms, budget is \
+         60000ms - it writes every matched row once, and a runner takes some 8s over it"
     );
 
     // Warm: the shape of every tag edit and every removal. The statement still
     // reads the whole log; the guard is what keeps it from writing it.
-    assert_under("plays::resolve over an unchanged library", 2_000, || {
+    assert_under("plays::resolve over an unchanged library", 10_000, || {
         assert_eq!(plays::resolve(&conn).unwrap(), 0);
+    });
+}
+
+/// Every Listening aggregate reads the whole log unless a range narrows it,
+/// and that is the design rather than a lapse: there are no rollups to keep in
+/// step. So each is one pass, and the budget is what catches it becoming more
+/// than one - a correlated subquery per group, or grouping in Rust.
+///
+/// 30ms to 690ms unoptimised on a developer machine, `listen_totals` the
+/// dearest with three distinct counts over the same scan. 15s, for the reason
+/// the budgets above give: the runner is some eightfold slower on a quiet day
+/// and twice that on a busy one, and a budget that only clears the quiet day
+/// is a test that reports the weather.
+#[test]
+fn every_listening_aggregate_is_one_pass_over_the_log() {
+    let _serial = play_log();
+    let (_dir, db) = seeded_library();
+    let mut conn = db.conn().unwrap();
+    synthetic::seed_plays(&mut conn, PLAYS).unwrap();
+    plays::resolve(&conn).unwrap();
+
+    let everything = ListenQuery::default();
+    let a_year = ListenQuery {
+        range: Some(TimeRange {
+            from: 1_750_000_000,
+            to: 1_750_000_000 + 365 * 86_400,
+        }),
+        ..ListenQuery::default()
+    };
+    let a_genre = ListenQuery {
+        genre: Some("Genre03".to_owned()),
+        ..ListenQuery::default()
+    };
+    const BUDGET: u128 = 15_000;
+
+    for (label, query) in [
+        ("everything", &everything),
+        ("a year", &a_year),
+        ("a genre", &a_genre),
+    ] {
+        assert_under(&format!("listen totals over {label}"), BUDGET, || {
+            assert!(stats::listen_totals(&conn, query).unwrap().plays > 0);
+        });
+    }
+    for dimension in [
+        ListenDimension::Artist,
+        ListenDimension::Album,
+        ListenDimension::Track,
+        ListenDimension::Genre,
+    ] {
+        assert_under(&format!("top {dimension:?}"), BUDGET, || {
+            assert!(!stats::top(&conn, &everything, dimension, 50)
+                .unwrap()
+                .is_empty());
+        });
+    }
+    for bucket in [TimeBucket::Day, TimeBucket::Month] {
+        assert_under(&format!("plays per {bucket:?}"), BUDGET, || {
+            assert!(!stats::plays_over_time(&conn, &everything, bucket)
+                .unwrap()
+                .is_empty());
+        });
+    }
+    assert_under("the week clock", BUDGET, || {
+        stats::week_clock(&conn, &everything).unwrap();
+    });
+    assert_under("new artists in a year", BUDGET, || {
+        stats::firsts(&conn, &a_year, TimeBucket::Month).unwrap();
+    });
+    assert_under("streaks", BUDGET, || {
+        assert!(stats::streaks(&conn, &everything, 0).unwrap().longest > 0);
+    });
+
+    // The plays table's page, which is on the scroll path rather than the
+    // panel one. Newest first reads `idx_plays_started` backwards, so even a
+    // page near the far end is a walk along an index and not a sort.
+    assert_under("a deep page of plays", 1_000, || {
+        let page = stats::recent_plays(&conn, &everything, PLAYS - 100, 100).unwrap();
+        assert_eq!(page.len(), 100);
+    });
+}
+
+/// The Library tab reads `tracks` through `scope`, so these cost what a
+/// browse grouping costs. 20ms and under unoptimised on a developer machine,
+/// and 2s here for the runner's sake - this catches a scan per group, not a
+/// percentage.
+#[test]
+fn every_library_aggregate_costs_what_a_browse_grouping_does() {
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+    let q = TrackQuery::default();
+    const BUDGET: u128 = 2_000;
+
+    assert_under("library totals", BUDGET, || {
+        assert_eq!(
+            stats::library_totals(&conn, &q).unwrap().tracks,
+            ROWS as u32
+        );
+    });
+    for field in [
+        HistogramField::Bitrate,
+        HistogramField::SampleRate,
+        HistogramField::Year,
+        HistogramField::Duration,
+    ] {
+        assert_under(&format!("histogram of {field:?}"), BUDGET, || {
+            stats::histogram(&conn, &q, field).unwrap();
+        });
+    }
+    assert_under("worst albums by bitrate", BUDGET, || {
+        stats::worst_by_bitrate(&conn, &q, 100).unwrap();
+    });
+    // Includes loading the genre tree, which is the larger half.
+    assert_under("the genre breakdown", BUDGET, || {
+        assert!(!stats::genre_breakdown(&conn, &q, None)
+            .unwrap()
+            .slices
+            .is_empty());
+    });
+    assert_under("additions per month", BUDGET, || {
+        stats::added_over_time(&conn, &q, TimeBucket::Month).unwrap();
+    });
+    assert_under("tag health", BUDGET, || {
+        assert_eq!(stats::tag_health(&conn, &q).unwrap().tracks, ROWS as u32);
     });
 }

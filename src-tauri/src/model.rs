@@ -996,3 +996,238 @@ pub struct LastfmConnection {
     /// Opened by the frontend, which is where the opener capability lives.
     pub authorize_url: String,
 }
+
+/// A span of time, in unix seconds: `from` inclusive, `to` exclusive.
+///
+/// Half-open so adjacent ranges - this month, last month - never count the
+/// play on the boundary twice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TimeRange {
+    #[ts(type = "number")]
+    pub from: i64,
+    #[ts(type = "number")]
+    pub to: i64,
+}
+
+/// Which plays a Listening aggregate reads.
+///
+/// Every field narrows and they compose; the default is every play there is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ListenQuery {
+    pub range: Option<TimeRange>,
+    pub artist: Option<String>,
+    /// The genre and everything under it, through the same tree the genre
+    /// donut draws. Only a play matched to a file has a genre at all.
+    pub genre: Option<String>,
+    pub album: Option<String>,
+    /// Whether the play is matched to a file in the library.
+    pub owned: Option<bool>,
+}
+
+/// How a time series is cut up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum TimeBucket {
+    Day,
+    /// Monday to Sunday.
+    Week,
+    Month,
+    Year,
+}
+
+/// One slice of a time series, named by the first local day it covers.
+///
+/// Series are sparse: a bucket with nothing in it is absent rather than zero,
+/// and the chart that owns the axis fills the gaps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TimeCount {
+    /// `YYYY-MM-DD`.
+    pub start: String,
+    pub count: u32,
+}
+
+/// What a top list ranks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ListenDimension {
+    Artist,
+    Album,
+    Track,
+    Genre,
+}
+
+/// One row of a top list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TopEntry {
+    /// The artist, album or title as heard, or the resolved genre label.
+    pub key: String,
+    /// The artist, for an album or a track. `None` for the other two.
+    pub secondary: Option<String>,
+    pub plays: u32,
+}
+
+/// The Listening tab's tiles, and the denominators its panels are honest with.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ListenTotals {
+    pub plays: u32,
+    pub artists: u32,
+    pub albums: u32,
+    pub tracks: u32,
+    /// Distinct local days with a play.
+    pub days: u32,
+    /// Summed over the plays whose duration is known - see `timed`.
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    /// Plays matched to a file in the library: the share-owned tile.
+    pub owned: u32,
+    /// Plays whose file carries a genre. A genre panel covers these and says
+    /// so, rather than reporting a subset as the whole.
+    pub with_genre: u32,
+    /// Plays with a known duration. An imported scrobble carries none, so
+    /// only a matched one gets it, from the file.
+    pub timed: u32,
+    #[ts(type = "number | null")]
+    pub first_at: Option<i64>,
+    #[ts(type = "number | null")]
+    pub last_at: Option<i64>,
+}
+
+/// One play, as heard.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Play {
+    #[ts(type = "number")]
+    pub id: i64,
+    #[ts(type = "number")]
+    pub started_at: i64,
+    pub artist: String,
+    pub title: String,
+    pub album: Option<String>,
+    /// The file it resolved to, or `None` for one not in the library.
+    #[ts(type = "number | null")]
+    pub track_id: Option<i64>,
+}
+
+/// Runs of consecutive local days with a play.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Streaks {
+    /// The run ending today, or yesterday while today has no play yet.
+    pub current: u32,
+    pub longest: u32,
+    /// `YYYY-MM-DD` bounds of the longest run, the latest one on a tie.
+    pub longest_from: Option<String>,
+    pub longest_to: Option<String>,
+}
+
+/// The Library tab's tiles.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LibraryTotals {
+    pub tracks: u32,
+    pub artists: u32,
+    pub albums: u32,
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    #[ts(type = "number")]
+    pub bytes: i64,
+    pub missing: u32,
+}
+
+/// A track column a histogram can be drawn over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum HistogramField {
+    /// Binned by 32 kbps, which keeps every common CBR rate its own bin.
+    Bitrate,
+    SampleRate,
+    /// One bin per year; decades are the chart's to sum.
+    Year,
+    /// Binned by the minute.
+    Duration,
+}
+
+/// One bin of a histogram: the tracks whose value is at least `value` and
+/// below the next bin's. Tracks with no value are in no bin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct HistogramBin {
+    #[ts(type = "number")]
+    pub value: i64,
+    pub count: u32,
+}
+
+/// An album's mean bitrate, for the re-download list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AlbumBitrate {
+    pub album: String,
+    pub artist: Option<String>,
+    pub tracks: u32,
+    /// kbps, rounded, over the tracks that report one.
+    #[ts(type = "number")]
+    pub mean_bitrate: i64,
+    pub cover_hash: Option<String>,
+}
+
+/// One level of the genre donut.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GenreBreakdown {
+    pub slices: Vec<GenreSlice>,
+    /// Tracks tagged with the drilled genre itself rather than a child of it.
+    pub own: u32,
+    /// Tracks with no genre tag. At the top level only - below it, an
+    /// untagged track is under nothing.
+    pub untagged: u32,
+}
+
+/// A child of the drilled genre, counting every track at or below it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GenreSlice {
+    pub label: String,
+    pub tracks: u32,
+    /// How this slice came to be under the drilled genre - `derived` is the
+    /// guess 84b labels as a guess.
+    pub parent_source: crate::db::genres::ParentSource,
+    /// Whether any track sits below this slice, so drilling in shows
+    /// something.
+    pub has_children: bool,
+}
+
+/// Per-field counts of tracks with the tag missing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TagHealth {
+    pub tracks: u32,
+    pub title: u32,
+    pub artist: u32,
+    pub album: u32,
+    pub album_artist: u32,
+    pub genre: u32,
+    pub year: u32,
+    pub track_no: u32,
+    pub cover: u32,
+}

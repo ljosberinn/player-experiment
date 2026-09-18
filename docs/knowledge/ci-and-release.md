@@ -9,7 +9,7 @@ are required before merge:
 | --- | --- |
 | `changes` | path filter that decides which jobs are needed |
 | `frontend` (ubuntu) | `npm run tauri:parity`, `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build` |
-| `rust` (windows) | `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`, and a check that committed bindings match the Rust types |
+| `rust` (windows) | `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test` under `TZ=EST5EDT`, and a check that committed bindings match the Rust types |
 | `cargo-deny` (ubuntu) | advisories, licences, sources, bans |
 | `notices` | the third-party notices can still be generated |
 | `e2e` (windows) | instrumented debug build plus the WebdriverIO suite |

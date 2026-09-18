@@ -124,6 +124,11 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Tests
         if: needs.changes.outputs.code == 'true'
+        # The runner is on UTC, where local-time bucketing and UTC bucketing
+        # agree and `db::stats`' 23:00 test cannot tell them apart. West of
+        # UTC so that play moves day as well as hour.
+        env:
+          TZ: EST5EDT
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Generated bindings are up to date
         if: needs.changes.outputs.code == 'true'

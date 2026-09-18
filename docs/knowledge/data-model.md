@@ -249,6 +249,22 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   case is `started_at` alone, and it belongs to the import: within a second
   this app played exactly one thing.
 
+## Statistics
+
+`db::stats` reads, never writes. Listening aggregates take a `ListenQuery` over
+`plays`; library ones take the `TrackQuery` every view uses, through `scope`.
+
+- **No rollups.** Every aggregate is one pass, budgeted in `tests/perf.rs` at
+  250k plays. A materialized total would owe an invalidation path.
+- **Buckets are local time**, named by their first local day, weeks from
+  Monday. CI pins `TZ` to a zone west of UTC, because on the UTC runner local
+  and UTC bucketing agree and the test cannot tell them apart.
+- **A play with no file counts everywhere but genre.** `listen_totals` carries
+  how many plays have a genre and a duration, so a panel can say what share it
+  covers.
+- **The genre filter and `genre_breakdown` walk `Tree::lineage`** — the primary
+  parent and the overrides, the tree the donut draws — never `genre_edges`.
+
 ## Smart playlists
 
 A persisted filter **tree**, never SQL. `smart/compile.rs` turns it into a
