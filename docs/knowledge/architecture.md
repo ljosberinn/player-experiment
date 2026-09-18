@@ -6,9 +6,9 @@ in-memory array of tracks), queries are paged, rows are virtualized, and audio
 decoding happens off the webview thread.
 
 Tauri v2 — Rust core plus a WebView2 frontend. The network at runtime is the
-updater; last.fm, once an account is connected; and the release lookup, when
-somebody opens it. All three are opt-in and none runs on launch, on scan or on
-play. Each of the latter two is behind a trait of its own
+updater; last.fm, once an account is connected or a history import is asked
+for; and the release lookup, when somebody opens it. All three are opt-in and
+none runs on launch, on scan or on play. Each of the latter two is behind a trait of its own
 (`lastfm::transport::Transport`, `tagsource::transport::Transport`) so nothing
 above them knows HTTP exists.
 
@@ -61,6 +61,14 @@ One dedicated **scrobbler thread** owns the last.fm transport and drains an
 `mpsc` channel of jobs, the same shape as the player: the player thread produces
 `Played` and `NowPlaying` and must never wait on a socket, so it hands over a
 track id and moves on. In a build with no last.fm key the thread does not exist.
+
+**A history import is not the scrobbler's.** `lastfm_import` runs
+`lastfm::import` through `commands::blocking` on the shared transport, one run
+at a time, and reports on `lastfm://import`. It needs the build's API key and no
+session, sleeps a quarter-second between pages, and stops after three failed
+attempts at one page with its cursor committed, so the next Import resumes. It
+announces on `library://changed` whether it finished or stopped: every page it
+got through is committed and linked.
 
 One dedicated audio thread owns the `rodio` sink and receives an `mpsc` command
 enum. It emits `player://position` (throttled ~4/s), `player://state`,
@@ -224,10 +232,10 @@ back to the first release.
 **Every write long enough to notice runs on a worker thread**, through
 `commands::blocking`, and reports on a channel of its own: a scan on
 `scan://progress`, a tag edit on `tags://progress`, an export on
-`export://progress`. The domain functions take an `on_progress` closure rather
+`export://progress`, a last.fm import on `lastfm://import`. The domain functions take an `on_progress` closure rather
 than a Tauri handle, so each stays testable with no running app.
 
-`task://progress` is not one of those three. Those report on writes that finish
+`task://progress` is not one of those four. Those report on writes that finish
 in a minute, from the content header; that one reports on a task measured in
 days, from the foot of the sidebar, and carries its own label because it has
 more than one producer.
@@ -285,8 +293,8 @@ What gets a line:
 - **Every mutation and every long job** — roughly what already goes through
   `commands::announcing` and `commands::blocking`, plus the background work
   that goes through neither: the watch-folder pass (`scan.watch`, including the
-  passes that found nothing), the cover-normalize pass, and each scrobble and
-  now-playing submission.
+  passes that found nothing), the cover-normalize and MusicBrainz-id passes, and
+  each scrobble and now-playing submission.
 - **One line per release the pass resolves or queues** (`lookup.release`, with
   the score), one per release it moves (`library.place`, with the counts), and
   one per sweep (`pass.sweep`). **Silence for a release
@@ -363,6 +371,12 @@ finishes by pruning covers no track references and running `VACUUM`, which is
 what actually returns the pages to the filesystem. Both are only safe because
 nothing reads artwork back out of `covers` at all — the bytes go to the window
 and nowhere else.
+
+The `musicbrainz-ids` thread beside it reads the release and release-group
+ids off every file once, for the reason [the data model](data-model.md) gives.
+It takes the scan lock a chunk at a time, so a scan or a move cannot rewrite a
+row between the read and the write. Nothing announces: the columns it fills are
+read by the lookup pass rather than drawn anywhere.
 
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
 whichever way it was chosen, and both ways **stage**: `stage_dropped_cover`

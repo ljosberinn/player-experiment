@@ -99,12 +99,13 @@ vi.mock("./ipc", () => ({
   saveColumnConfig: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
-  lastfmStatus: vi.fn(async () => ({ configured: false, username: null, queued: 0 })),
+  lastfmStatus: vi.fn(async () => ({ configured: false, username: null, queued: 0, import: null })),
   lastfmBeginConnect: vi.fn(),
   lastfmCompleteConnect: vi.fn(),
   lastfmDisconnect: vi.fn(async () => undefined),
   onLastfmDisconnected: vi.fn(async () => () => {}),
   onLastfmQueued: vi.fn(async () => () => {}),
+  onLastfmImport: vi.fn(async () => () => {}),
 }));
 // Hoisted so a test can assert on it: the factory below builds a fresh window
 // object per call, and a `vi.fn()` created in there is unreachable from here.

@@ -144,6 +144,7 @@ pub fn run() {
             // so the unattended pass can tell whether it would be racing a
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
+            read_musicbrainz_ids(db.clone(), lock.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -280,6 +281,7 @@ pub fn run() {
             commands::lastfm_begin_connect,
             commands::lastfm_complete_connect,
             commands::lastfm_disconnect,
+            commands::lastfm_import,
             commands::last_crash,
             commands::acknowledge_crash,
             commands::reveal_crash_log,
@@ -385,6 +387,29 @@ fn normalize_covers(db: Db, log: log::Log) {
                 // file the next investigation has to read.
                 Ok(false) => {}
                 Ok(true) => op.succeeded(log::Fields::new()),
+                Err(error) => op.failed(&error),
+            }
+        });
+}
+
+/// Reads the MusicBrainz release ids off every file once, off the setup path,
+/// for the reason [`normalize_covers`] runs there. See
+/// `scan::read_musicbrainz_ids`.
+///
+/// Nothing announces: the columns it fills are read by the lookup pass rather
+/// than drawn anywhere, so no view is out of date because of it.
+fn read_musicbrainz_ids(db: Db, lock: scan::ScanLock, log: log::Log) {
+    let _ = std::thread::Builder::new()
+        .name("musicbrainz-ids".to_owned())
+        .spawn(move || {
+            let op = log.op("tracks.mbids");
+            match db
+                .conn()
+                .and_then(|mut conn| scan::read_musicbrainz_ids(&mut conn, &lock))
+            {
+                // Every launch after the one that finished the pass.
+                Ok(None) => {}
+                Ok(Some(found)) => op.succeeded(log::Fields::new().add("found", found)),
                 Err(error) => op.failed(&error),
             }
         });

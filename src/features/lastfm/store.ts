@@ -2,13 +2,18 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { create } from "zustand";
 import {
+  type LastfmImport,
   lastfmBeginConnect,
   lastfmCompleteConnect,
   lastfmDisconnect,
+  lastfmImport,
   lastfmStatus,
   onLastfmDisconnected,
+  onLastfmImport,
   onLastfmQueued,
+  type WriteProgress,
 } from "../../ipc";
+import { notify, report } from "../shell/statusStore";
 
 /** How often the browser trip is checked on. */
 export const POLL_INTERVAL_MS = 2_000;
@@ -33,6 +38,12 @@ interface LastfmState {
   /** Plays recorded but not yet accepted by last.fm. Normally zero. */
   queued: number;
   error: string | null;
+  /** Where the history import stands, or null if none has run. */
+  imported: LastfmImport | null;
+  /** Whether an import is running. */
+  importing: boolean;
+  /** How far the running import has got, or null before its first page. */
+  importProgress: WriteProgress | null;
 
   /** Reads the stored status. Called once, at startup. */
   load: () => Promise<void>;
@@ -47,6 +58,12 @@ interface LastfmState {
   cancelConnect: () => void;
   disconnect: () => Promise<void>;
   dismissError: () => void;
+  /**
+   * Imports `username`'s history. `fresh` drops what earlier imports brought
+   * in and starts from the top. A failure goes to the status popover, like any
+   * other operation the user started.
+   */
+  importHistory: (username: string, fresh: boolean) => Promise<void>;
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -69,12 +86,15 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 let generation = 0;
 
-export const useLastfmStore = create<LastfmState>((set) => ({
+export const useLastfmStore = create<LastfmState>((set, get) => ({
   configured: false,
   username: null,
   connecting: false,
   queued: 0,
   error: null,
+  imported: null,
+  importing: false,
+  importProgress: null,
 
   load: async () => {
     try {
@@ -83,6 +103,7 @@ export const useLastfmStore = create<LastfmState>((set) => ({
         configured: status.configured,
         username: status.username,
         queued: status.queued,
+        imported: status.import,
       });
     } catch {
       // Left as "no key, no account", which is what an app that cannot read
@@ -103,9 +124,11 @@ export const useLastfmStore = create<LastfmState>((set) => ({
       });
     });
     const stopQueued = await onLastfmQueued((queued) => set({ queued }));
+    const stopImport = await onLastfmImport((importProgress) => set({ importProgress }));
     return () => {
       stopDisconnected();
       stopQueued();
+      stopImport();
     };
   },
 
@@ -168,4 +191,31 @@ export const useLastfmStore = create<LastfmState>((set) => ({
   },
 
   dismissError: () => set({ error: null }),
+
+  importHistory: async (username, fresh) => {
+    if (get().importing) {
+      return;
+    }
+    set({ importing: true, importProgress: null });
+    try {
+      const { imported, state } = await lastfmImport(username, fresh);
+      set({ imported: state });
+      notify(
+        imported === 1
+          ? "Imported 1 play from last.fm."
+          : `Imported ${imported.toLocaleString()} plays from last.fm.`,
+      );
+    } catch (error) {
+      report(error);
+      // A run that stopped part-way still recorded where it got to, and the
+      // pane offers to resume from there.
+      try {
+        set({ imported: (await lastfmStatus()).import });
+      } catch {
+        // Left as it was: the popover already says something went wrong.
+      }
+    } finally {
+      set({ importing: false, importProgress: null });
+    }
+  },
 }));

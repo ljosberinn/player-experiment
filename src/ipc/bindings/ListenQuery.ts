@@ -15,4 +15,8 @@ genre: string | null, album: string | null,
 /**
  * Whether the play is matched to a file in the library.
  */
-owned: boolean | null, };
+owned: boolean | null, 
+/**
+ * Whether the song is in the loved set the last import fetched.
+ */
+loved: boolean | null, };

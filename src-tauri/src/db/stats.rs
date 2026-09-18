@@ -76,6 +76,13 @@ impl Plays {
             Some(false) => conditions.push("plays.track_id IS NULL".to_owned()),
             None => {}
         }
+        match query.loved {
+            Some(true) => conditions
+                .push("plays.match_key IN (SELECT match_key FROM lastfm_loved)".to_owned()),
+            Some(false) => conditions
+                .push("plays.match_key NOT IN (SELECT match_key FROM lastfm_loved)".to_owned()),
+            None => {}
+        }
 
         Ok(Self { conditions, params })
     }
@@ -1072,6 +1079,25 @@ mod tests {
                 ..all()
             }),
             1
+        );
+        conn.execute(
+            "INSERT INTO lastfm_loved (match_key) VALUES (?1)",
+            [match_key("Nobody", "Nothing")],
+        )
+        .unwrap();
+        assert_eq!(
+            count(ListenQuery {
+                loved: Some(true),
+                ..all()
+            }),
+            1
+        );
+        assert_eq!(
+            count(ListenQuery {
+                loved: Some(false),
+                ..all()
+            }),
+            2
         );
         assert_eq!(
             count(ListenQuery {

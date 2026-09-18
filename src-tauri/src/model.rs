@@ -981,6 +981,31 @@ pub struct LastfmStatus {
     /// something is wrong is the least the user is owed for a feature that
     /// works in the background.
     pub queued: u32,
+    /// Where the history import stands, or null if none has run.
+    pub import: Option<LastfmImport>,
+}
+
+/// Where the history import stands, as the Settings pane draws it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LastfmImport {
+    /// The account the imported history is of.
+    pub username: String,
+    /// The newest scrobble a finished import brought in, in unix seconds.
+    #[ts(type = "number | null")]
+    pub through: Option<i64>,
+    /// Whether a run stopped part-way, so Import picks up where it stopped.
+    pub resumable: bool,
+}
+
+/// How an import went: what it added, and where that leaves the import.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LastfmImported {
+    pub imported: u32,
+    pub state: LastfmImport,
 }
 
 /// The start of the browser trip.
@@ -1026,6 +1051,8 @@ pub struct ListenQuery {
     pub album: Option<String>,
     /// Whether the play is matched to a file in the library.
     pub owned: Option<bool>,
+    /// Whether the song is in the loved set the last import fetched.
+    pub loved: Option<bool>,
 }
 
 /// How a time series is cut up.

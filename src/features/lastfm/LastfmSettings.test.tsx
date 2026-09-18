@@ -5,12 +5,13 @@ import { LastfmSettings } from "./LastfmSettings";
 import { useLastfmStore } from "./store";
 
 vi.mock("../../ipc", () => ({
-  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0 })),
+  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0, import: null })),
   lastfmBeginConnect: vi.fn(),
   lastfmCompleteConnect: vi.fn(),
   lastfmDisconnect: vi.fn(async () => undefined),
   onLastfmDisconnected: vi.fn(async () => () => {}),
   onLastfmQueued: vi.fn(async () => () => {}),
+  onLastfmImport: vi.fn(async () => () => {}),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
@@ -22,6 +23,9 @@ function set(state: Partial<ReturnType<typeof useLastfmStore.getState>>) {
     connecting: false,
     queued: 0,
     error: null,
+    imported: null,
+    importing: false,
+    importProgress: null,
     ...state,
   });
 }
@@ -105,5 +109,78 @@ describe("the last.fm settings pane", () => {
     render(<LastfmSettings />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("could not reach last.fm");
+  });
+
+  describe("importing a history", () => {
+    it("imports the connected account's history, and says no connection is needed", async () => {
+      const user = userEvent.setup();
+      const importHistory = vi.fn(async () => {});
+      set({ username: "listener" });
+      useLastfmStore.setState({ importHistory });
+      render(<LastfmSettings />);
+
+      expect(screen.getByLabelText("Import History")).toHaveValue("listener");
+      expect(screen.getByText(/not a connection/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Import" }));
+
+      expect(importHistory).toHaveBeenCalledWith("listener", false);
+    });
+
+    it("takes any username, connected or not", async () => {
+      const user = userEvent.setup();
+      const importHistory = vi.fn(async () => {});
+      useLastfmStore.setState({ importHistory });
+      render(<LastfmSettings />);
+
+      expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+      await user.type(screen.getByLabelText("Import History"), " someone ");
+      await user.click(screen.getByRole("button", { name: "Import" }));
+
+      expect(importHistory).toHaveBeenCalledWith("someone", false);
+    });
+
+    it("offers to resume a run that stopped part-way", () => {
+      set({ imported: { username: "listener", through: null, resumable: true } });
+      render(<LastfmSettings />);
+
+      expect(screen.getByRole("button", { name: "Resume" })).toBeEnabled();
+      expect(screen.getByText(/stopped part-way/)).toBeInTheDocument();
+    });
+
+    it("says how far a finished import reached, and offers to start over", async () => {
+      const user = userEvent.setup();
+      const importHistory = vi.fn(async () => {});
+      set({ imported: { username: "listener", through: 1_700_000_000, resumable: false } });
+      useLastfmStore.setState({ importHistory });
+      render(<LastfmSettings />);
+
+      expect(screen.getByText(/Imported through/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Re-import from Scratch" }));
+
+      expect(importHistory).toHaveBeenCalledWith("listener", true);
+    });
+
+    it("counts while it runs, and cannot be started twice", () => {
+      set({
+        username: "listener",
+        imported: { username: "listener", through: 1_700_000_000, resumable: false },
+        importing: true,
+        importProgress: { done: 400, total: 237_572 },
+      });
+      render(<LastfmSettings />);
+
+      expect(
+        screen.getByText(`Importing 400 of ${(237_572).toLocaleString()} scrobbles…`),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Re-import from Scratch" })).toBeNull();
+    });
+
+    it("cannot import in a build with no key", () => {
+      set({ configured: false, username: "listener" });
+      render(<LastfmSettings />);
+
+      expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+    });
   });
 });

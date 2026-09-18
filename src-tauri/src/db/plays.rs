@@ -133,6 +133,17 @@ pub fn record(conn: &Connection, track_id: i64, started_at: i64) -> AppResult<()
     Ok(())
 }
 
+/// A MusicBrainz id as `plays` stores it, or none for a blank.
+///
+/// Recorded, not matched on: 78 measured last.fm's own recording ids against
+/// the ones in the files and found 14% agreement and no link the `match_key`
+/// had not already made. Lowercased so the column reads the same whoever
+/// wrote it.
+pub fn mbid(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_ascii_lowercase())
+}
+
 /// Recomputes `plays.track_id` for the whole log, returning how many links
 /// moved.
 ///

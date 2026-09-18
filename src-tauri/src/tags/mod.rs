@@ -9,6 +9,7 @@ pub mod write;
 
 use std::path::Path;
 
+use lofty::config::ParseOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::prelude::ItemKey;
 use lofty::probe::Probe;
@@ -103,6 +104,36 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     });
 
     Ok(tags)
+}
+
+/// The MusicBrainz ids a file carries, for `scan::read_musicbrainz_ids`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MusicBrainzIds {
+    pub release: Option<String>,
+    pub release_group: Option<String>,
+}
+
+/// The MusicBrainz ids alone.
+///
+/// Skips the audio properties and the artwork, which are most of what [`read`]
+/// costs and none of what a pass over the whole library needs here.
+pub fn musicbrainz_ids(path: &Path) -> AppResult<MusicBrainzIds> {
+    let options = ParseOptions::new()
+        .read_properties(false)
+        .read_cover_art(false);
+    let tagged = Probe::open(path)
+        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?
+        .options(options)
+        .read()
+        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
+
+    let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
+        return Ok(MusicBrainzIds::default());
+    };
+    Ok(MusicBrainzIds {
+        release: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId)),
+        release_group: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
+    })
 }
 
 /// Pulls a year out of a date tag.

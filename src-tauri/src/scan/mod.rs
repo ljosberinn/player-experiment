@@ -551,6 +551,86 @@ pub fn scan_roots(
     Ok(summary)
 }
 
+/// How many files the MusicBrainz-id pass reads per commit, and per hold of
+/// the scan lock. Small, because a scan the user asked for waits out one chunk.
+const MBID_CHUNK: i64 = 200;
+
+/// Reads the MusicBrainz release ids off every file in the library, once.
+///
+/// **A backfill for ids Picard wrote before this app read them.** Migration 8
+/// assumed nothing had written them, but a Picard-tagged file carries both,
+/// and [`scan`] never re-reads a file whose mtime and size are unchanged - so
+/// the lookup pass searches, and overwrites, releases whose files already name
+/// them.
+///
+/// **Only empty columns are filled**, so an id the lookup already wrote stays.
+/// `release_type` is left alone: Picard writes it lowercase and with secondary
+/// types (`album`, `ep`, `album; compilation`), and it names the folder the
+/// mover files a release into.
+///
+/// A background thread in the shape of `covers::normalize_stored`: resumable
+/// through a cursor committed with each chunk, and a flag once done. Each chunk
+/// holds [`ScanLock`], so a scan or a move cannot rewrite a row between its file
+/// being read here and the ids being written. Missing and unreadable files are
+/// skipped; a scan reads them if they come back.
+///
+/// Answers how many files it filled something in for, or `None` on every
+/// launch after the one that finished.
+pub fn read_musicbrainz_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult<Option<u32>> {
+    use crate::db::settings;
+
+    if settings::get(conn, settings::MBIDS_READ)?.is_some() {
+        return Ok(None);
+    }
+    let mut cursor: i64 = settings::get(conn, settings::MBIDS_READ_THROUGH)?
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let mut found = 0;
+
+    loop {
+        let _guard = lock.acquire();
+        let rows: Vec<(i64, String)> = conn
+            .prepare(
+                "SELECT id, path FROM tracks
+                  WHERE id > ?1 AND missing_since IS NULL
+                  ORDER BY id LIMIT ?2",
+            )?
+            .query_map(rusqlite::params![cursor, MBID_CHUNK], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let Some(&(last, _)) = rows.last() else {
+            break;
+        };
+
+        let tx = conn.transaction()?;
+        for (id, path) in &rows {
+            let Ok(ids) = tags::musicbrainz_ids(Path::new(path)) else {
+                continue;
+            };
+            if ids == tags::MusicBrainzIds::default() {
+                continue;
+            }
+            found += tx.execute(
+                "UPDATE tracks
+                    SET release_mbid       = coalesce(release_mbid, ?2),
+                        release_group_mbid = coalesce(release_group_mbid, ?3)
+                  WHERE id = ?1
+                    AND (   (release_mbid IS NULL AND ?2 IS NOT NULL)
+                         OR (release_group_mbid IS NULL AND ?3 IS NOT NULL))",
+                rusqlite::params![id, ids.release, ids.release_group],
+            )? as u32;
+        }
+        // With the rows it describes, or a crash between the two skips them.
+        settings::set(&tx, settings::MBIDS_READ_THROUGH, &last.to_string())?;
+        tx.commit()?;
+        cursor = last;
+    }
+
+    settings::set(conn, settings::MBIDS_READ, "true")?;
+    Ok(Some(found))
+}
+
 /// Stores cover art if it is not already present, returning its hash.
 fn store_cover(conn: &Connection, tags: &TrackTags) -> AppResult<Option<String>> {
     let Some(cover) = &tags.cover else {

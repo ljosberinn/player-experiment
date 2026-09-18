@@ -435,6 +435,68 @@ fn an_edit_that_does_not_mention_the_mbids_leaves_the_ones_the_file_has() {
     );
 }
 
+/// What a library scanned before this app read the ids looks like: the files
+/// carry them and the rows do not, and no scan will re-read an unchanged file
+/// to find out.
+#[test]
+fn the_musicbrainz_id_backfill_reads_what_the_files_carry_once() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Sleeping Ute");
+    conn.execute(
+        "UPDATE tracks SET release_mbid = NULL, release_group_mbid = NULL",
+        [],
+    )
+    .unwrap();
+    let lock = scan::ScanLock::default();
+
+    assert_eq!(
+        scan::read_musicbrainz_ids(&mut conn, &lock).unwrap(),
+        Some(1)
+    );
+    assert_eq!(
+        mbids(&h.db, track),
+        (
+            Some(fixture::SHIELDS_RELEASE.to_owned()),
+            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
+        )
+    );
+
+    conn.execute("UPDATE tracks SET release_mbid = NULL", [])
+        .unwrap();
+    assert_eq!(
+        scan::read_musicbrainz_ids(&mut conn, &lock).unwrap(),
+        None,
+        "a finished pass does not run again"
+    );
+    assert_eq!(mbids(&h.db, track).0, None);
+}
+
+/// A release id the lookup already wrote is its verdict, and the pass only
+/// fills what is empty.
+#[test]
+fn the_musicbrainz_id_backfill_leaves_an_id_the_row_already_has() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Sleeping Ute");
+    conn.execute(
+        "UPDATE tracks SET release_mbid = ?1, release_group_mbid = NULL WHERE id = ?2",
+        rusqlite::params![RELEASE, track],
+    )
+    .unwrap();
+
+    scan::read_musicbrainz_ids(&mut conn, &scan::ScanLock::default()).unwrap();
+
+    assert_eq!(
+        mbids(&h.db, track),
+        (
+            Some(RELEASE.to_owned()),
+            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
+        ),
+        "the row's own id stays, the empty column beside it is filled"
+    );
+}
+
 /// An empty value clears them, the same as any other text field - the lookup
 /// needs a way to take back an identity it got wrong.
 #[test]
