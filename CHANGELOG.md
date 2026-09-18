@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/ljosberinn/player-experiment/compare/v0.11.0...v0.11.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* fold paths the way the filesystem does ([#188](https://github.com/ljosberinn/player-experiment/issues/188)) ([2747077](https://github.com/ljosberinn/player-experiment/commit/27470771c1120e6858f8b9621d4b32fb375a9aa0))
+* take the year off the tracklist order and let a marker travel ([#189](https://github.com/ljosberinn/player-experiment/issues/189)) ([3efe4ba](https://github.com/ljosberinn/player-experiment/commit/3efe4ba99c8a3c960f32431254b454334809335d))
+
 ## [0.11.0](https://github.com/ljosberinn/player-experiment/compare/v0.10.1...v0.11.0) (2026-09-18)
 
 
