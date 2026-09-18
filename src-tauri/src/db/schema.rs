@@ -613,6 +613,28 @@ CREATE UNIQUE INDEX idx_plays_identity ON plays(started_at, match_key);
 CREATE INDEX idx_plays_started ON plays(started_at);
 CREATE INDEX idx_plays_track   ON plays(track_id, started_at);
 "#,
+    // 14 - what the last.fm import brings with it
+    //
+    // `recording_mbid` is the id `plays.track_mbid` carries, cached off the
+    // tags like migration 8's two. Unlike those it is backfilled, by
+    // `scan::read_recording_ids` rather than here: Picard wrote it, not this
+    // app, so the files already hold it and a scan never re-reads a file whose
+    // mtime and size are unchanged. Partial index for migration 8's reason.
+    //
+    // `lastfm_loved` is the current loved set, replaced wholesale on each
+    // import: unloving happens, and a merged set could never forget one. Keyed
+    // by `match_key` alone because loved is a fact about a song rather than a
+    // play, which is also why it is not a column on `plays` - see 13.
+    r#"
+ALTER TABLE tracks ADD COLUMN recording_mbid TEXT;
+
+CREATE INDEX idx_tracks_recording_mbid ON tracks(recording_mbid)
+    WHERE recording_mbid IS NOT NULL;
+
+CREATE TABLE lastfm_loved (
+    match_key TEXT PRIMARY KEY
+) WITHOUT ROWID;
+"#,
 ];
 
 #[cfg(test)]

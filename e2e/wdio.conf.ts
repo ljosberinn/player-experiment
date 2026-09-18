@@ -82,6 +82,9 @@ export const config: WebdriverIO.Config = {
     // what a scan finds must not be given an extra root half way through. It
     // hands the list back as it found it.
     "./specs/library-folder.test.ts",
+    // Also before the library: it only opens Settings, and a table behind the
+    // dialog would add nothing to the photograph.
+    "./specs/lastfm-import.test.ts",
     "./specs/library.test.ts",
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.

@@ -2,14 +2,16 @@ import { useEffect } from "react";
 import type { WriteProgress } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { useExportStore } from "../export/store";
+import { useLastfmStore } from "../lastfm/store";
 
 /**
  * What a long write in progress looks like, for the ones with no dialog.
  *
- * Beside `ScanBar` and shaped like it: a scan and an export are what can hold
- * the app for a minute without a dialog of their own, and a readout that
+ * Beside `ScanBar` and shaped like it: a scan, an export and a last.fm import
+ * are what can hold the app for minutes without a dialog of their own - the
+ * import's pane is in Settings, which may well be closed - and a readout that
  * appears somewhere different each time is two things to find rather than one
- * place to look.
+ * place to look. The import's subscription is the last.fm store's own.
  *
  * It also subscribes to `tags://progress` without drawing it. Every sender on
  * that channel reports in a dialog that is already on screen - a tag save in
@@ -24,6 +26,9 @@ export function TaskProgress() {
   const watchExport = useExportStore((s) => s.watch);
 
   const watchTags = useEditorStore((s) => s.watch);
+
+  const importing = useLastfmStore((s) => s.importing);
+  const importProgress = useLastfmStore((s) => s.importProgress);
 
   useEffect(() => {
     // Each `watch` resolves to its own teardown, which may land after unmount.
@@ -48,6 +53,9 @@ export function TaskProgress() {
 
   if (exporting) {
     return <TaskLine verb="Exporting" progress={exportProgress} />;
+  }
+  if (importing) {
+    return <TaskLine verb="Importing scrobbles" progress={importProgress} />;
   }
   return null;
 }

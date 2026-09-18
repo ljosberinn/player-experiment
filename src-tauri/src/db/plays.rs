@@ -101,7 +101,7 @@ fn without_featuring(value: &str) -> &str {
 pub fn record(conn: &Connection, track_id: i64, started_at: i64) -> AppResult<()> {
     let snapshot = conn
         .query_row(
-            "SELECT artist, title, album, duration_ms FROM tracks WHERE id = ?1",
+            "SELECT artist, title, album, duration_ms, recording_mbid FROM tracks WHERE id = ?1",
             [track_id],
             |row| {
                 Ok((
@@ -109,28 +109,49 @@ pub fn record(conn: &Connection, track_id: i64, started_at: i64) -> AppResult<()
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             },
         )
         .optional()?;
     // A track removed between the play threshold and this write. Nothing to
     // record, and nothing worth failing playback over.
-    let Some((artist, title, album, duration_ms)) = snapshot else {
+    let Some((artist, title, album, duration_ms, recording)) = snapshot else {
         return Ok(());
     };
 
     let artist = artist.unwrap_or_default().trim().to_owned();
     let title = title.unwrap_or_default().trim().to_owned();
     let key = match_key(&artist, &title);
-    let link = (!key.is_empty()).then_some(track_id);
+    let recording = recording.as_deref().and_then(mbid);
+    let link = (!key.is_empty() || recording.is_some()).then_some(track_id);
 
     conn.execute(
         "INSERT OR IGNORE INTO plays
-            (started_at, source, artist, title, album, duration_ms, match_key, track_id)
-         VALUES (?1, 'local', ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![started_at, artist, title, album, duration_ms, key, link],
+            (started_at, source, artist, title, album, duration_ms, track_mbid, match_key,
+             track_id)
+         VALUES (?1, 'local', ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            started_at,
+            artist,
+            title,
+            album,
+            duration_ms,
+            recording,
+            key,
+            link
+        ],
     )?;
     Ok(())
+}
+
+/// A MusicBrainz id as `plays` and [`resolve`] compare it, or none for a blank.
+///
+/// Lowercased because the comparison is plain `=`: last.fm sends lowercase and
+/// a tagger is free not to.
+pub fn mbid(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_ascii_lowercase())
 }
 
 /// Recomputes `plays.track_id` for the whole log, returning how many links
@@ -146,6 +167,11 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
          CREATE TEMP TABLE play_keys (
              key      TEXT PRIMARY KEY,
              track_id INTEGER NOT NULL
+         ) WITHOUT ROWID;
+         DROP TABLE IF EXISTS temp.play_mbids;
+         CREATE TEMP TABLE play_mbids (
+             mbid     TEXT PRIMARY KEY,
+             track_id INTEGER NOT NULL
          ) WITHOUT ROWID;",
     )?;
 
@@ -158,27 +184,37 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
         // order, this function stops being idempotent, and the guarded UPDATE
         // below rewrites the whole table on every run.
         let mut tracks = conn.prepare(
-            "SELECT id, artist, title FROM tracks ORDER BY missing_since IS NOT NULL, id",
+            "SELECT id, artist, title, recording_mbid FROM tracks
+              ORDER BY missing_since IS NOT NULL, id",
         )?;
-        let mut insert =
+        let mut insert_key =
             conn.prepare("INSERT OR IGNORE INTO temp.play_keys (key, track_id) VALUES (?1, ?2)")?;
+        let mut insert_mbid =
+            conn.prepare("INSERT OR IGNORE INTO temp.play_mbids (mbid, track_id) VALUES (?1, ?2)")?;
 
         let mut rows = tracks.query([])?;
         while let Some(row) = rows.next()? {
             let id: i64 = row.get(0)?;
             let artist: Option<String> = row.get(1)?;
             let title: Option<String> = row.get(2)?;
+            let recording: Option<String> = row.get(3)?;
             let key = match_key(
                 artist.as_deref().unwrap_or_default(),
                 title.as_deref().unwrap_or_default(),
             );
-            if key.is_empty() {
-                continue;
+            if !key.is_empty() {
+                insert_key.execute(rusqlite::params![key, id])?;
             }
-            insert.execute(rusqlite::params![key, id])?;
+            if let Some(recording) = recording.as_deref().and_then(mbid) {
+                insert_mbid.execute(rusqlite::params![recording, id])?;
+            }
         }
     }
 
+    // **The recording id outranks the key.** last.fm autocorrects a spelling on
+    // the way in - `Motorhead` comes back `Motörhead` - and the key cannot see
+    // past that where the id does not have to.
+    //
     // **The guard is what makes the full scan affordable.** After a three-track
     // tag edit the statement still reads every play, but it writes only the
     // handful whose link actually moved, instead of rewriting a quarter of a
@@ -188,14 +224,17 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
     // sides, and `<>` is NULL there rather than false.
     let moved = conn.execute(
         "UPDATE plays
-            SET track_id = (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key)
-          WHERE match_key <> ''
-            AND track_id IS NOT
-                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key)",
+            SET track_id = coalesce(
+                    (SELECT m.track_id FROM temp.play_mbids m WHERE m.mbid = plays.track_mbid),
+                    (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key))
+          WHERE (match_key <> '' OR track_mbid IS NOT NULL)
+            AND track_id IS NOT coalesce(
+                    (SELECT m.track_id FROM temp.play_mbids m WHERE m.mbid = plays.track_mbid),
+                    (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key))",
         [],
     )?;
 
-    conn.execute_batch("DROP TABLE temp.play_keys;")?;
+    conn.execute_batch("DROP TABLE temp.play_keys; DROP TABLE temp.play_mbids;")?;
     Ok(moved as u32)
 }
 
@@ -457,6 +496,57 @@ mod tests {
             Some(9),
             "a present file beats an unplugged one"
         );
+    }
+
+    /// The case the tier exists for: last.fm's corrected spelling keys to one
+    /// file while the recording id names another.
+    #[test]
+    fn a_recording_id_outranks_a_competing_key() {
+        let (_dir, conn) = open();
+        add_track(&conn, 1, Some("Motörhead"), Some("Ace of Spades"));
+        add_track(&conn, 2, Some("Motorhead"), Some("Ace of Spades"));
+        conn.execute(
+            "UPDATE tracks SET recording_mbid = 'ABC-123' WHERE id = 2",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, track_mbid, match_key)
+             VALUES (1, 'lastfm', 'Motörhead', 'Ace of Spades', 'abc-123', ?1)",
+            [match_key("Motörhead", "Ace of Spades")],
+        )
+        .unwrap();
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 1), Some(2));
+        assert_eq!(resolve(&conn).unwrap(), 0, "and it stays put");
+
+        // With the id gone from the file, the key decides again.
+        conn.execute("UPDATE tracks SET recording_mbid = NULL", [])
+            .unwrap();
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 1), Some(1));
+    }
+
+    #[test]
+    fn a_local_play_carries_the_recording_id_of_its_file() {
+        let (_dir, conn) = open();
+        add_track(&conn, 1, None, None);
+        conn.execute(
+            "UPDATE tracks SET recording_mbid = ' ABC-123 ' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+
+        record(&conn, 1, 1_700_000_000).unwrap();
+        resolve(&conn).unwrap();
+
+        let recording: Option<String> = conn
+            .query_row("SELECT track_mbid FROM plays", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(recording.as_deref(), Some("abc-123"));
+        // Untagged, so no key - and linked all the same, through the id.
+        assert_eq!(linked(&conn, 1_700_000_000), Some(1));
     }
 
     #[test]

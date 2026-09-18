@@ -2108,6 +2108,21 @@ th.status {
   color: var(--muted);
 }
 
+/* The username takes what the button leaves, like the library root above. */
+.settings-lastfm-import {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-lastfm-import input {
+  flex: 1;
+  min-width: 0;
+  max-width: 180px;
+}
+
 /* Prose, so it wraps rather than stretching a row, and quieter than the status
    line above it - it is there to be read once, not on every visit. */
 .settings-lastfm-note {

@@ -4,18 +4,28 @@ import {
   lastfmBeginConnect,
   lastfmCompleteConnect,
   lastfmDisconnect,
+  lastfmImport,
   lastfmStatus,
+  type WriteProgress,
 } from "../../ipc";
+import { useStatusStore } from "../shell/statusStore";
 import { POLL_INTERVAL_MS, POLL_TIMEOUT_MS, useLastfmStore } from "./store";
 
 vi.mock("../../ipc", () => ({
-  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0 })),
+  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0, import: null })),
   lastfmBeginConnect: vi.fn(async () => ({
     token: "tok",
     authorizeUrl: "https://www.last.fm/api/auth/?api_key=KEY&token=tok",
   })),
   lastfmCompleteConnect: vi.fn(async () => null),
   lastfmDisconnect: vi.fn(async () => undefined),
+  lastfmImport: vi.fn(),
+  onLastfmImport: vi.fn(async (handler: (progress: WriteProgress) => void) => {
+    importHandler = handler;
+    return () => {
+      importHandler = null;
+    };
+  }),
   onLastfmDisconnected: vi.fn(async (handler: () => void) => {
     disconnectedHandler = handler;
     return () => {
@@ -33,6 +43,7 @@ vi.mock("../../ipc", () => ({
 /** The handler the mocked `onLastfmDisconnected` last registered. */
 let disconnectedHandler: (() => void) | null = null;
 let queuedHandler: ((depth: number) => void) | null = null;
+let importHandler: ((progress: WriteProgress) => void) | null = null;
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
 
@@ -47,8 +58,17 @@ beforeEach(() => {
     connecting: false,
     queued: 0,
     error: null,
+    imported: null,
+    importing: false,
+    importProgress: null,
   });
-  asMock(lastfmStatus).mockResolvedValue({ configured: true, username: null, queued: 0 });
+  useStatusStore.setState({ message: null, notice: null });
+  asMock(lastfmStatus).mockResolvedValue({
+    configured: true,
+    username: null,
+    queued: 0,
+    import: null,
+  });
   asMock(lastfmBeginConnect).mockResolvedValue({
     token: "tok",
     authorizeUrl: "https://www.last.fm/api/auth/?api_key=KEY&token=tok",
@@ -69,7 +89,12 @@ describe("the last.fm store", () => {
   });
 
   it("loads the stored status", async () => {
-    asMock(lastfmStatus).mockResolvedValue({ configured: true, username: "listener", queued: 3 });
+    asMock(lastfmStatus).mockResolvedValue({
+      configured: true,
+      username: "listener",
+      queued: 3,
+      import: null,
+    });
 
     await useLastfmStore.getState().load();
 
@@ -78,7 +103,12 @@ describe("the last.fm store", () => {
   });
 
   it("carries the backlog the status reported", async () => {
-    asMock(lastfmStatus).mockResolvedValue({ configured: true, username: "listener", queued: 3 });
+    asMock(lastfmStatus).mockResolvedValue({
+      configured: true,
+      username: "listener",
+      queued: 3,
+      import: null,
+    });
 
     await useLastfmStore.getState().load();
 
@@ -249,5 +279,60 @@ describe("the last.fm store", () => {
 
     expect(useLastfmStore.getState().username).toBe("listener");
     expect(useLastfmStore.getState().error).toMatch(/database is locked/);
+  });
+
+  describe("importing a history", () => {
+    const DONE = { username: "listener", through: 1_700_000_000, resumable: false };
+
+    it("records where the import got to and says how many plays it added", async () => {
+      asMock(lastfmImport).mockResolvedValue({ imported: 1234, state: DONE });
+
+      await useLastfmStore.getState().importHistory("listener", false);
+
+      expect(lastfmImport).toHaveBeenCalledWith("listener", false);
+      expect(useLastfmStore.getState().imported).toEqual(DONE);
+      expect(useLastfmStore.getState().importing).toBe(false);
+      expect(useStatusStore.getState().notice).toContain(`${(1234).toLocaleString()} plays`);
+    });
+
+    it("follows the progress while it runs and forgets it after", async () => {
+      await useLastfmStore.getState().watch();
+      let finish: (value: { imported: number; state: typeof DONE }) => void = () => {};
+      asMock(lastfmImport).mockReturnValue(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+
+      const running = useLastfmStore.getState().importHistory("listener", false);
+      importHandler?.({ done: 200, total: 1000 });
+      expect(useLastfmStore.getState().importing).toBe(true);
+      expect(useLastfmStore.getState().importProgress).toEqual({ done: 200, total: 1000 });
+
+      // A second press while one runs is not a second import.
+      await useLastfmStore.getState().importHistory("listener", true);
+      expect(lastfmImport).toHaveBeenCalledTimes(1);
+
+      finish({ imported: 0, state: DONE });
+      await running;
+      expect(useLastfmStore.getState().importProgress).toBe(null);
+    });
+
+    it("reports a failure and picks up the resume point it left behind", async () => {
+      asMock(lastfmImport).mockRejectedValue("last.fm stopped answering. Import again to resume.");
+      const stopped = { username: "listener", through: null, resumable: true };
+      asMock(lastfmStatus).mockResolvedValue({
+        configured: true,
+        username: null,
+        queued: 0,
+        import: stopped,
+      });
+
+      await useLastfmStore.getState().importHistory("listener", false);
+
+      expect(useStatusStore.getState().message).toMatch(/Import again to resume/);
+      expect(useLastfmStore.getState().imported).toEqual(stopped);
+      expect(useLastfmStore.getState().importing).toBe(false);
+    });
   });
 });

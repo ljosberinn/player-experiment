@@ -13,6 +13,7 @@
 //! value or one of those errors.
 
 pub mod auth;
+pub mod import;
 pub mod queue;
 pub mod rules;
 pub mod sign;

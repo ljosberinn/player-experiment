@@ -54,12 +54,14 @@ work because the path registers with `history.ts`. Leaving for the Songs table
 is a separate, explicit action — "Show these 412 songs" — so the first click
 cannot end the exploration.
 
-**The import takes MBIDs.** `extended=1` costs no extra requests. With a
-nullable `tracks.recording_mbid` filled from the MusicBrainz frames many rips
-carry, matching is exact where both sides have an id and falls back to string
-matching otherwise — which is the difference between telling two bands of the
-same name apart and not. Both arrive in the import phase, not the log phase:
-before an import there is not one MBID in `plays` to match on.
+**The import takes MBIDs.** The plain `getRecentTracks` response already
+carries them. With a nullable `tracks.recording_mbid` filled from the `UFID`
+frame Picard writes, and backfilled once because a scan never re-reads an
+unchanged file, matching is exact where both sides have an id and falls back to
+the key otherwise. That is what gets past last.fm's autocorrect, where
+`Motorhead` and `Motörhead` are two keys and one recording. Both arrive in the
+import phase, not the log phase: before an import there is not one MBID in
+`plays` to match on.
 
 **Loved is not a column on `plays`.** It is the current state of a track rather
 than a fact about a moment, so an imported flag would freeze at whatever the
@@ -205,26 +207,24 @@ is — which is what `genre_overrides` exists to correct.
 ## API facts that shape the import
 
 - **`user.getRecentTracks` needs the `api_key` only**, no session key, and takes
-  any username. History import therefore works before an account is connected,
-  and for accounts that are not the user's.
+  any username. History import therefore works before an account is connected.
 - **`limit` caps at 200.** 237,572 scrobbles is **1,188 requests**. Throttled to
-  4/s, inside last.fm's 5-per-second average, that is five to six minutes.
+  4/s, inside last.fm's 5-per-second average, that is at least five minutes.
 - **Page backwards by `to=`, never by `page=`.** Page numbers reorder under a
   long import the moment a new scrobble lands. A descending timestamp cursor is
-  stable, and persisted in `settings` it makes the import resumable: killed at
-  page 900, it restarts at page 900.
-- **`to = oldest_in_page`, inclusive.** The overlap re-fetches a few rows and
-  `idx_plays_identity` eats them; the exclusive form silently loses scrobbles
-  that share a second.
+  stable, and persisted in `settings` it makes the import resumable.
+- **`to = oldest_in_page + 1`.** last.fm does not say whether `to` is inclusive;
+  the `+ 1` overlaps either way, `idx_plays_identity` eats the re-fetched rows,
+  and scrobbles sharing the boundary second are not lost.
 - **The `nowplaying` entry has no `date`** and is not a play. Skipped.
-- `@attr total` and `totalPages` from the first response drive progress.
-- **`extended=1`** adds the MBIDs at no extra request cost. Its loved flag is
-  ignored; the loved set comes from `user.getLovedTracks`, because the flag
-  describes the track now rather than the play then.
+- **A finished run leaves a floor** that the next asks from (`from=`), so a
+  later import fetches only what is new.
+- **No `extended=1`.** It adds only a loved flag, which describes the track now
+  rather than the play then; the loved set comes from `user.getLovedTracks`.
 
-Mechanically it is the shape the codebase already has: a dedicated worker thread
-behind `lastfm::transport::Transport`, one transaction per page, progress on
-`stats://import` the way a scan reports on `scan://progress`, and bounded,
+Mechanically it is the shape the codebase already has: a worker thread behind
+`lastfm::transport::Transport`, one transaction per page, progress on
+`lastfm://import` the way a scan reports on `scan://progress`, and bounded,
 resumable failure like the scrobble queue's attempt cap. Nothing blocks a
 command handler or the scrobbler thread. A new progress channel is consistent
 with phase 61 rather than a breach of it: that phase collapsed the *frontend's*

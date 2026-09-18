@@ -9,6 +9,7 @@ pub mod write;
 
 use std::path::Path;
 
+use lofty::config::ParseOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::prelude::ItemKey;
 use lofty::probe::Probe;
@@ -48,6 +49,10 @@ pub struct TrackTags {
     /// above are: a column only the writer fills is blank again the next time
     /// a rescan re-adds the row.
     pub release_type: Option<String>,
+    /// The MusicBrainz recording, which is what a last.fm scrobble names and
+    /// what `plays::resolve` matches on first. ID3v2 keeps it in `UFID`
+    /// rather than a TXXX frame, and lofty maps that both ways.
+    pub recording_mbid: Option<String>,
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
     pub cover: Option<Cover>,
@@ -89,6 +94,7 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     tags.release_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId));
     tags.release_group_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId));
     tags.release_type = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseType));
+    tags.recording_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzRecordingId));
 
     tags.cover = tag.pictures().first().map(|picture| {
         let bytes = picture.data().to_vec();
@@ -103,6 +109,26 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     });
 
     Ok(tags)
+}
+
+/// The recording id alone, for `scan::read_recording_ids`.
+///
+/// Skips the audio properties and the artwork, which are most of what [`read`]
+/// costs and none of what a pass over the whole library needs here.
+pub fn recording_id(path: &Path) -> AppResult<Option<String>> {
+    let options = ParseOptions::new()
+        .read_properties(false)
+        .read_cover_art(false);
+    let tagged = Probe::open(path)
+        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?
+        .options(options)
+        .read()
+        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
+
+    Ok(tagged
+        .primary_tag()
+        .or_else(|| tagged.first_tag())
+        .and_then(|tag| non_empty(tag.get_string(ItemKey::MusicBrainzRecordingId))))
 }
 
 /// Pulls a year out of a date tag.

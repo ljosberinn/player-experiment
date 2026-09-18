@@ -67,6 +67,18 @@ pub const COVERS_NORMALIZED: &str = "covers.normalized";
 /// instead of re-encoding a generation onto what it already did.
 pub const COVERS_NORMALIZED_THROUGH: &str = "covers.normalizedThrough";
 
+/// Set once every track has had its recording id read, for
+/// `scan::read_recording_ids`. A flag for [`COVERS_NORMALIZED`]'s reason: a
+/// read of every file in the library is not work for a migration.
+pub const RECORDING_IDS_READ: &str = "tracks.recordingIdsRead";
+/// The last track id that pass finished, so a quit resumes it.
+pub const RECORDING_IDS_READ_THROUGH: &str = "tracks.recordingIdsReadThrough";
+/// Where the last.fm import stands, as `lastfm::import::State` JSON.
+///
+/// Not exportable: it names an account and describes this library's copy of
+/// its history.
+pub const LASTFM_IMPORT: &str = "lastfm.import";
+
 /// The last.fm session key. **Stored unencrypted, on purpose.**
 ///
 /// Not an oversight and not a shortcut - see `docs/plans/lastfm.md`. The short

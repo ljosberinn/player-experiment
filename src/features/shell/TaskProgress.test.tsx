@@ -4,6 +4,7 @@ import type { WriteProgress } from "../../ipc";
 import { onExportProgress, onTagWriteProgress } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { useExportStore } from "../export/store";
+import { useLastfmStore } from "../lastfm/store";
 import { TaskProgress } from "./TaskProgress";
 
 vi.mock("../../ipc", () => ({
@@ -43,6 +44,7 @@ beforeEach(() => {
   // otherwise still be on screen at the start of the next.
   useExportStore.setState({ progress: null, busy: false });
   useEditorStore.setState({ progress: null, tracks: null });
+  useLastfmStore.setState({ importing: false, importProgress: null });
 });
 
 async function mounted() {
@@ -80,6 +82,18 @@ describe("TaskProgress", () => {
     });
 
     expect(screen.getByRole("status")).toHaveTextContent("Exporting…");
+  });
+
+  it("reports a last.fm import, which may be running with Settings closed", async () => {
+    await mounted();
+
+    act(() => {
+      useLastfmStore.setState({ importing: true, importProgress: { done: 400, total: 2000 } });
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      `Importing scrobbles ${(400).toLocaleString()} of ${(2000).toLocaleString()}`,
+    );
   });
 
   it("feeds tag progress to the editor store without drawing a line of its own", async () => {

@@ -18,6 +18,8 @@ import type { FilterOp } from "./bindings/FilterOp";
 import type { FilterRule } from "./bindings/FilterRule";
 import type { FilterValue } from "./bindings/FilterValue";
 import type { LastfmConnection } from "./bindings/LastfmConnection";
+import type { LastfmImport } from "./bindings/LastfmImport";
+import type { LastfmImported } from "./bindings/LastfmImported";
 import type { LastfmStatus } from "./bindings/LastfmStatus";
 import type { LibraryFolder } from "./bindings/LibraryFolder";
 import type { LibraryStats } from "./bindings/LibraryStats";
@@ -66,6 +68,8 @@ export type {
   FilterRule,
   FilterValue,
   LastfmConnection,
+  LastfmImport,
+  LastfmImported,
   LastfmStatus,
   LibraryFolder,
   LibraryStats,
@@ -380,6 +384,20 @@ export function lastfmDisconnect(): Promise<void> {
  */
 export function onLastfmDisconnected(handler: () => void): Promise<UnlistenFn> {
   return listen("lastfm://disconnected", () => handler());
+}
+
+/**
+ * Imports a last.fm history into the play log. Minutes long for a real one;
+ * follow it with {@link onLastfmImport}. `fresh` drops what earlier imports
+ * brought in and starts from the top.
+ */
+export function lastfmImport(username: string, fresh: boolean): Promise<LastfmImported> {
+  return invoke<LastfmImported>("lastfm_import", { username, fresh });
+}
+
+/** How far an import has got: scrobbles read, of about how many. */
+export function onLastfmImport(handler: (progress: WriteProgress) => void): Promise<UnlistenFn> {
+  return listen<WriteProgress>("lastfm://import", (event) => handler(event.payload));
 }
 
 /**

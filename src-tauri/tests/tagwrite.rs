@@ -435,6 +435,82 @@ fn an_edit_that_does_not_mention_the_mbids_leaves_the_ones_the_file_has() {
     );
 }
 
+fn recording(db: &Db, track_id: i64) -> Option<String> {
+    db.conn()
+        .unwrap()
+        .query_row(
+            "SELECT recording_mbid FROM tracks WHERE id = ?1",
+            [track_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// No editor field sets it and no entry in `save_tag`'s TXXX list carries it:
+/// lofty maps it to and from `UFID` on its own, and this is what says so.
+#[test]
+fn a_tag_write_keeps_the_recording_id_the_file_carries() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Sleeping Ute");
+    assert_eq!(
+        recording(&h.db, track).as_deref(),
+        Some(fixture::SLEEPING_UTE_RECORDING),
+        "the scan should have read what the file carries"
+    );
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            title: set("Sleeping Ute (Edit)"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(
+        tags::read(&path_of(&h.db, track))
+            .unwrap()
+            .recording_mbid
+            .as_deref(),
+        Some(fixture::SLEEPING_UTE_RECORDING)
+    );
+    assert_eq!(
+        recording(&h.db, track).as_deref(),
+        Some(fixture::SLEEPING_UTE_RECORDING)
+    );
+}
+
+/// What a library scanned before the column existed looks like: the files
+/// carry the id and the rows do not, and no scan will re-read an unchanged
+/// file to find out.
+#[test]
+fn the_recording_id_backfill_reads_what_the_files_carry_once() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Sleeping Ute");
+    conn.execute("UPDATE tracks SET recording_mbid = NULL", [])
+        .unwrap();
+    let lock = scan::ScanLock::default();
+
+    assert_eq!(scan::read_recording_ids(&mut conn, &lock).unwrap(), Some(1));
+    assert_eq!(
+        recording(&h.db, track).as_deref(),
+        Some(fixture::SLEEPING_UTE_RECORDING)
+    );
+
+    conn.execute("UPDATE tracks SET recording_mbid = NULL", [])
+        .unwrap();
+    assert_eq!(
+        scan::read_recording_ids(&mut conn, &lock).unwrap(),
+        None,
+        "a finished pass does not run again"
+    );
+    assert_eq!(recording(&h.db, track), None);
+}
+
 /// An empty value clears them, the same as any other text field - the lookup
 /// needs a way to take back an identity it got wrong.
 #[test]

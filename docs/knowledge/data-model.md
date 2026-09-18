@@ -19,6 +19,7 @@ edit a shipped one.
 | 11 | `genres`, `genre_edges`, `genre_aliases`, `genre_overrides` — the genre hierarchy, seeded from a generated data file `concat!`ed into the migration |
 | 12 | `tracks.path` collates `NOCASE` — one file is one row whatever it is spelled like. A whole-table rebuild, because the constraint is on the column, and a merge in the same migration for the rows that collide under the fold |
 | 13 | `plays` — one row per play, with the artist and title as they were heard. `track_id` is the one derived column and the one foreign key; `idx_plays_identity` over `(started_at, match_key)` is the dedupe rule within a source |
+| 14 | `tracks.recording_mbid` + a **partial** index — the MusicBrainz recording a file is, which is what a scrobble names — and `lastfm_loved`, the loved set the last import fetched |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -91,6 +92,13 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   the shape of `playlists.seeded`, and `covers.normalizedThrough` holds the
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
+
+**`tracks.recording_mbid` is backfilled the same way.** Migration 8's ids came
+from this app's own writer; recording ids came from Picard, as the `UFID` frame
+lofty maps both ways, so the files already carry them and a scan never re-reads
+an unchanged file. `scan::read_recording_ids` reads that one id off every file
+once, holding the scan lock a chunk at a time. `tracks.recordingIdsRead` marks
+it done and `tracks.recordingIdsReadThrough` holds the last track id finished.
 
 ## The Library folder
 
@@ -248,6 +256,27 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   back from the import under a spelling that computes a different key. That
   case is `started_at` alone, and it belongs to the import: within a second
   this app played exactly one thing.
+- **The recording id outranks the key.** `resolve` links a play whose
+  `track_mbid` names a file's `recording_mbid` to that file first, with the same
+  tiebreak, and the key decides the rest. It is what gets past last.fm's
+  autocorrect: `Motorhead` and `Motörhead` are two keys and one recording. A
+  local play snapshots the file's id too.
+
+## The last.fm import
+
+`lastfm::import` pages `user.getRecentTracks` backwards by a `to=` cursor, never
+by page number, with one transaction per page. Where it stands is one JSON value
+in `settings` under `lastfm.import`: the username, the cursor while a run is
+under way, the newest scrobble that run has seen, and the floor a finished run
+leaves for the next one's `from=`. It is not exportable.
+
+- **Rows land `source = 'lastfm'` with `OR IGNORE`**, so a re-fetched page is
+  free, and a row is skipped when its second already holds a `local` play.
+- **Re-import from scratch deletes the `lastfm` rows** in the same transaction
+  that resets the state. That is how a scrobble deleted on last.fm leaves.
+- **`lastfm_loved` is replaced, never merged.** It is fetched in full only after
+  the history finishes, then swapped in one transaction, so a failed fetch keeps
+  the old set. `ListenQuery.loved` filters on `plays.match_key` against it.
 
 ## Statistics
 

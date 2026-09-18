@@ -19,9 +19,9 @@ use crate::export::{self, ExportScope};
 use crate::log::{Fields, Log, Op};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, FilterGroup, LastfmConnection,
-    LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot, Playlist, ReleaseCandidate,
-    ReleaseDetail, ReleaseIdentity, ReleaseSelection, ReviewCounts, ReviewEntry, ScanSummary,
-    SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track, TrackEdit, TrackQuery,
+    LastfmImported, LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot, Playlist,
+    ReleaseCandidate, ReleaseDetail, ReleaseIdentity, ReleaseSelection, ReviewCounts, ReviewEntry,
+    ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track, TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags, tagsource};
@@ -29,6 +29,7 @@ use crate::{crash, lastfm, scan, tags, tagsource};
 /// Progress channels for the writes long enough to watch.
 const TAG_PROGRESS: &str = "tags://progress";
 const EXPORT_PROGRESS: &str = "export://progress";
+const IMPORT_PROGRESS: &str = "lastfm://import";
 /// The channel a task measured in hours reports on, read by the readout at the
 /// foot of the sidebar. `None` clears it.
 ///
@@ -1392,8 +1393,79 @@ pub fn lastfm_status(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Lastfm
             configured: lastfm::credentials().is_some(),
             username: lastfm::auth::stored_session(&conn)?.map(|session| session.username),
             queued: lastfm::queue::depth(&conn)?,
+            import: lastfm::import::status(&conn)?,
         })
     })
+}
+
+/// Whether an import is running. A second one would page the same history
+/// against the same cursor.
+static IMPORTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Clears [`IMPORTING`] however the run ends, a panic included.
+struct Importing;
+
+impl Importing {
+    fn claim() -> AppResult<Self> {
+        use std::sync::atomic::Ordering;
+        IMPORTING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self)
+            .map_err(|_| AppError::Internal("An import is already running.".to_owned()))
+    }
+}
+
+impl Drop for Importing {
+    fn drop(&mut self) {
+        IMPORTING.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// Imports a last.fm history into the play log, streaming `lastfm://import`.
+///
+/// Minutes long for a real history, so off the IPC thread like a scan. Needs
+/// the build's API key and nothing else: no session, so it works before an
+/// account is connected.
+///
+/// Announced whether or not it finished: every page it got through is
+/// committed and linked, and a statistics view should show them.
+#[tauri::command]
+pub async fn lastfm_import(
+    app: tauri::AppHandle,
+    username: String,
+    fresh: bool,
+) -> AppResult<LastfmImported> {
+    blocking("last.fm import", move || {
+        let _running = Importing::claim()?;
+        let (transport, credentials) = lastfm_ready()?;
+        let mut conn = app.state::<Db>().conn()?;
+        let pause = |wait| std::thread::sleep(wait);
+        let import = lastfm::import::Import {
+            transport,
+            api_key: credentials.api_key,
+            pause: &pause,
+        };
+
+        let outcome = op(&app, "lastfm.import")
+            .add("user", &username)
+            .add("fresh", fresh)
+            .run_with(
+                || {
+                    import.run(&mut conn, &username, fresh, &mut |progress| {
+                        let _ = app.emit(IMPORT_PROGRESS, progress);
+                    })
+                },
+                |imported| Fields::new().add("imported", imported),
+            );
+        invalidate::announce(&app);
+
+        let imported = outcome?;
+        let state = lastfm::import::status(&conn)?.ok_or_else(|| {
+            AppError::Internal("The import finished without recording where it got to.".to_owned())
+        })?;
+        Ok(LastfmImported { imported, state })
+    })
+    .await
 }
 
 /// The transport and credentials, or a message saying which is missing.

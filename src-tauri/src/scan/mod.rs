@@ -551,6 +551,76 @@ pub fn scan_roots(
     Ok(summary)
 }
 
+/// How many files the recording-id pass reads per commit, and per hold of the
+/// scan lock. Small, because a scan the user asked for waits out one chunk.
+const RECORDING_CHUNK: i64 = 200;
+
+/// Reads the recording id off every file in the library, once.
+///
+/// **A backfill, where migration 8's ids had none.** Those came from this
+/// app's own writer; recording ids came from Picard, so the files already carry
+/// them, and [`scan`] never re-reads a file whose mtime and size are unchanged.
+/// Without this the MBID tier of `plays::resolve` would match nothing until
+/// every file had been edited.
+///
+/// A background thread in the shape of `covers::normalize_stored`: resumable
+/// through a cursor committed with each chunk, and a flag once done. Each chunk
+/// holds [`ScanLock`], so a scan or a move cannot rewrite a row between its file
+/// being read here and the id being written. Missing and unreadable files are
+/// skipped; a scan reads them if they come back.
+///
+/// Answers how many ids it found, or `None` on every launch after the one that
+/// finished.
+pub fn read_recording_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult<Option<u32>> {
+    use crate::db::settings;
+
+    if settings::get(conn, settings::RECORDING_IDS_READ)?.is_some() {
+        return Ok(None);
+    }
+    let mut cursor: i64 = settings::get(conn, settings::RECORDING_IDS_READ_THROUGH)?
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let mut found = 0;
+
+    loop {
+        let _guard = lock.acquire();
+        let rows: Vec<(i64, String)> = conn
+            .prepare(
+                "SELECT id, path FROM tracks
+                  WHERE id > ?1 AND missing_since IS NULL
+                  ORDER BY id LIMIT ?2",
+            )?
+            .query_map(rusqlite::params![cursor, RECORDING_CHUNK], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let Some(&(last, _)) = rows.last() else {
+            break;
+        };
+
+        let tx = conn.transaction()?;
+        for (id, path) in &rows {
+            if let Ok(Some(recording)) = tags::recording_id(Path::new(path)) {
+                tx.execute(
+                    "UPDATE tracks SET recording_mbid = ?2 WHERE id = ?1",
+                    rusqlite::params![id, recording],
+                )?;
+                found += 1;
+            }
+        }
+        // With the rows it describes, or a crash between the two skips them.
+        settings::set(&tx, settings::RECORDING_IDS_READ_THROUGH, &last.to_string())?;
+        tx.commit()?;
+        cursor = last;
+    }
+
+    let tx = conn.transaction()?;
+    crate::db::plays::resolve(&tx)?;
+    settings::set(&tx, settings::RECORDING_IDS_READ, "true")?;
+    tx.commit()?;
+    Ok(Some(found))
+}
+
 /// Stores cover art if it is not already present, returning its hash.
 fn store_cover(conn: &Connection, tags: &TrackTags) -> AppResult<Option<String>> {
     let Some(cover) = &tags.cover else {
@@ -572,9 +642,10 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
     conn.execute(
         "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album, album_artist,
                              genre, year, track_no, disc_no, comment, bitrate, sample_rate,
-                             release_mbid, release_group_mbid, release_type, cover_hash, added_at)
+                             release_mbid, release_group_mbid, release_type, recording_mbid,
+                             cover_hash, added_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-                 ?19, ?20)
+                 ?19, ?20, ?21)
          ON CONFLICT(path) DO UPDATE SET
              mtime = excluded.mtime, size = excluded.size,
              duration_ms = excluded.duration_ms, title = excluded.title,
@@ -586,6 +657,7 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
              release_mbid = excluded.release_mbid,
              release_group_mbid = excluded.release_group_mbid,
              release_type = excluded.release_type,
+             recording_mbid = excluded.recording_mbid,
              cover_hash = excluded.cover_hash",
         rusqlite::params![
             path.to_string_lossy(),
@@ -606,6 +678,7 @@ fn insert_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
             tags.release_mbid,
             tags.release_group_mbid,
             tags.release_type,
+            tags.recording_mbid,
             cover_hash,
             now_secs(),
         ],
@@ -624,7 +697,7 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
                            album = ?7, album_artist = ?8, genre = ?9, year = ?10, track_no = ?11,
                            disc_no = ?12, comment = ?13, bitrate = ?14, sample_rate = ?15,
                            release_mbid = ?16, release_group_mbid = ?17, release_type = ?18,
-                           cover_hash = ?19
+                           recording_mbid = ?19, cover_hash = ?20
          WHERE path = ?1",
         rusqlite::params![
             path.to_string_lossy(),
@@ -645,6 +718,7 @@ fn update_track(conn: &Connection, path: &Path, tags: &TrackTags) -> AppResult<(
             tags.release_mbid,
             tags.release_group_mbid,
             tags.release_type,
+            tags.recording_mbid,
             cover_hash,
         ],
     )?;
