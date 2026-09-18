@@ -44,9 +44,10 @@ Known, decided, and not scheduled. Anything with work attached lives in
   The gate is process-wide, so **an open lookup dialog waits behind the pass** —
   up to twenty seconds before its request even goes out. A library already
   tagged with release MBIDs pays none of it.
-- **A release a 503 declined three times waits for the tail, and then for the
-  next sweep.** The retry is once at the end of the sweep, hours later on a real
-  pass; the release keeps no row either way, so nothing is lost but time. No
+- **A release a 503 declined three times is asked once more and then waits for
+  the next sweep.** The retry comes at the end of the batch that declined it, a
+  few hundred releases later; the release keeps no row either way, so nothing is
+  lost but time. No
   number of declines in a row parks the lookup — a 503 is the service answering,
   and the pass spends about a third of itself on them. What parks it is three
   releases in a row the service did not answer at all, and then only the lookup:
