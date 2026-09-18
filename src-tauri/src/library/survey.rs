@@ -389,6 +389,50 @@ mod tests {
         assert_eq!(found(&conn, &organizing(&root)), Found::default());
     }
 
+    /// 94: the same rule past ASCII. NTFS folds `Ü` the way it folds `U`, so
+    /// the release the tags spell `Lügenkabinett` is in the folder disk spells
+    /// `LÜGENKABINETT` - and an ASCII-only compare offered it to the mover on
+    /// every sweep, forever.
+    #[test]
+    fn a_directory_cased_differently_past_ascii_is_placed_too() {
+        let (dir, db) = open();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let folder = root.join("Akrea\\LÜGENKABINETT - 1991 - Album");
+        for nth in 1..=2 {
+            let at = folder.join(format!("{nth:02} - Track {nth}.mp3"));
+            track(&conn, &at.to_string_lossy(), "Lügenkabinett", "Akrea", nth);
+        }
+
+        assert_eq!(found(&conn, &organizing(&root)), Found::default());
+    }
+
+    /// And in the artist folder, which is the half of 94 that re-placed six
+    /// releases of one artist rather than one.
+    #[test]
+    fn an_artist_folder_cased_differently_past_ascii_is_placed_too() {
+        let (dir, db) = open();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let at = root.join("Fjørt\\Couleur - 1991 - Album\\01 - Track 1.mp3");
+        track(&conn, &at.to_string_lossy(), "Couleur", "FJØRT", 1);
+
+        assert_eq!(found(&conn, &organizing(&root)), Found::default());
+    }
+
+    /// The fold is case and nothing else: a folder differing by a character is
+    /// a folder the release is not in.
+    #[test]
+    fn a_directory_differing_by_a_character_is_not_placed() {
+        let (dir, db) = open();
+        let conn = db.conn().unwrap();
+        let root = dir.path().join("Library");
+        let at = root.join("Akrea\\Lugenkabinett - 1991 - Album\\01 - Track 1.mp3");
+        track(&conn, &at.to_string_lossy(), "Lügenkabinett", "Akrea", 1);
+
+        assert_eq!(found(&conn, &organizing(&root)).total, 1);
+    }
+
     /// And the row that makes a marker earned is matched on the same terms: it
     /// is the file that holds the name, whatever casing it is spelled in.
     #[test]

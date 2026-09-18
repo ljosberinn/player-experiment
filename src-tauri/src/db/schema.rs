@@ -431,8 +431,10 @@ CREATE INDEX idx_genre_edges_parent ON genre_edges(parent);
     // file into two rows and offered the release to the mover on every sweep,
     // forever. See 82i.
     //
-    // NOCASE is ASCII-only, the limit 81 records, and `library::layout::same`
-    // folds the same way on the Rust side so the two answers cannot diverge.
+    // NOCASE is ASCII-only, the limit 81 records. `library::layout::same`
+    // folds past ASCII since 94 - the filesystem does - so a pair differing by
+    // `Ü`/`ü` is one path there and two here. This half only has to agree with
+    // itself: it decides which row owns a path, not where a file goes.
     //
     // **The fold and the merge are one migration**: rows that were distinct
     // byte-exact collide under it - in the library this was written against,
