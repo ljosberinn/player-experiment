@@ -31,6 +31,12 @@ export function viewSummary({
   durationMs: number;
   bytes: number;
 }): string {
+  // Statistics counts nothing here that it does not already say in letters
+  // twice the size, and the browse arm below would call its groups genres.
+  if (tab === "stats") {
+    return "";
+  }
+
   if (tab === "songs" || drilledIn) {
     return formatLibrarySummary(trackCount, durationMs, bytes);
   }

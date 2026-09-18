@@ -75,7 +75,7 @@
      to reach for the wrong one. */
   --dim: oklch(0.62 0.01 55);
   /* Quieter again, and only for two things the design draws this way: the
-     version string on the title bar and the Statistics placeholder. 3.94:1 on
+     version string on the title bar and a disabled sidebar item. 3.94:1 on
      surface - below AA for body text, which neither of these is. A disabled
      control is exempt by WCAG 1.4.3, and the version is incidental. */
   --faint: oklch(0.55 0.008 55);
@@ -1039,7 +1039,6 @@ input[type="radio"] {
   color: var(--text);
 }
 
-/* Statistics, which the design draws and which does nothing yet. */
 .sidebar-item:disabled {
   color: var(--faint);
   cursor: default;
@@ -2683,4 +2682,109 @@ body:not(:focus-within) .sidebar-row.current {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 11px;
+}
+
+/* ---------- statistics ---------- */
+
+/* The one view that scrolls as a page rather than as a virtualized list: it is
+   a column of panels of different heights, and nothing here is long enough to
+   need a window over it. */
+.stats-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.stats-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 30px;
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+.stats-tab {
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  /* Overlaps the list's own rule, so the active tab's underline replaces it
+     rather than sitting above it. */
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font: inherit;
+}
+
+.stats-tab[data-selected] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.stats-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 30px;
+}
+
+.stats-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label);
+  font-size: 11px;
+}
+
+.stats-filter select,
+.stats-filter input {
+  height: var(--control-height);
+  padding: 0 4px 0 5px;
+  border: 1px solid var(--field-border);
+  border-radius: 3px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.stats-filter select:focus,
+.stats-filter input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: -1px;
+}
+
+/* The way out of a drill-down, and the same shape as the browse views’ one. */
+.stats-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0 30px 4px;
+}
+
+.stats-breadcrumb button {
+  background: none;
+  border: none;
+  padding: 3px 4px;
+  color: var(--muted);
+  font: inherit;
+}
+
+.stats-breadcrumb button:disabled {
+  color: var(--text);
+}
+
+.stats-panels {
+  padding: 8px 30px 20px;
+}
+
+/* Tracks wide enough for a six-digit count and a caption under it; the row
+   wraps rather than shrinking below that, so a narrow window stacks. */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
 }

@@ -16,7 +16,7 @@ import {
 } from "./history";
 
 function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
-  return { tab: "songs", browse: null, playlistId: null, ...over };
+  return { tab: "songs", browse: null, playlistId: null, stats: null, ...over };
 }
 
 /** A history that has visited each of `entries` in turn. */
@@ -181,5 +181,58 @@ describe("forgetGroup", () => {
     // Back must land on the list the drill-in came from, not on the drill-in.
     expect(currentEntry(forgotten)).toEqual(entry({ tab: "albums" }));
     expect(forwardEntry(forgotten)).toBeNull();
+  });
+});
+
+describe("a statistics drill-down", () => {
+  const listening = entry({ tab: "stats", stats: { tab: "listening", crumbs: [] } });
+  const genre = entry({
+    tab: "stats",
+    stats: { tab: "listening", crumbs: [{ kind: "genre", key: "black metal" }] },
+  });
+
+  it("is a different view from the tab it started in", () => {
+    expect(sameView(listening, genre)).toBe(false);
+  });
+
+  it("compares the crumbs element-wise", () => {
+    const same = entry({
+      tab: "stats",
+      stats: { tab: "listening", crumbs: [{ kind: "genre", key: "black metal" }] },
+    });
+    const deeper = entry({
+      tab: "stats",
+      stats: {
+        tab: "listening",
+        crumbs: [
+          { kind: "genre", key: "black metal" },
+          { kind: "genre", key: "raw black metal" },
+        ],
+      },
+    });
+
+    expect(sameView(genre, same)).toBe(true);
+    expect(sameView(genre, deeper)).toBe(false);
+  });
+
+  it("tells the two tabs apart under the same crumbs", () => {
+    const library = entry({
+      tab: "stats",
+      stats: { tab: "library", crumbs: [{ kind: "genre", key: "black metal" }] },
+    });
+
+    expect(sameView(genre, library)).toBe(false);
+  });
+
+  it("is not recorded twice when the same slice is clicked again", () => {
+    const history = visited([listening, genre]);
+
+    expect(record(history, genre)).toBe(history);
+  });
+
+  it("is walked by back", () => {
+    const history = visited([listening, genre]);
+
+    expect(backEntry(history)).toEqual(listening);
   });
 });

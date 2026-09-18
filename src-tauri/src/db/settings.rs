@@ -25,6 +25,12 @@ pub const WATCH_INTERVAL: &str = "library.watchInterval";
 /// layout: which sections exist is the frontend's business, and mirroring that
 /// here would be two definitions to keep in step for nothing.
 pub const SIDEBAR: &str = "sidebar.sections";
+/// How the Statistics view was last filtered. Opaque JSON, like [`SIDEBAR`]:
+/// which filters exist is the frontend's business, and a constant with a
+/// command pair per filter would be three things to add every time a panel
+/// grows a facet. Not exportable, for that pair's reason - it describes a view
+/// of a library rather than the library.
+pub const STATS_FILTERS: &str = "stats.filters";
 /// Unix seconds of the most recent crash the user has dismissed. Deliberately
 /// not exportable: it describes this machine's history, not the library.
 pub const CRASH_SEEN: &str = "crash.seen";
@@ -308,6 +314,7 @@ mod tests {
         // folding its sidebar or resizing its columns.
         assert!(!is_exportable(SIDEBAR));
         assert!(!is_exportable(COLUMNS));
+        assert!(!is_exportable(STATS_FILTERS));
         // Taste rather than geometry, and so on the other side of that line -
         // it travels with the library the way the volume and the zoom do.
         assert!(is_exportable(DYNAMIC_BACKGROUND));

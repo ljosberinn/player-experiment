@@ -241,6 +241,8 @@ pub fn run() {
             commands::save_watch_interval,
             commands::load_sidebar_sections,
             commands::save_sidebar_sections,
+            commands::load_stats_filters,
+            commands::save_stats_filters,
             commands::load_dynamic_background,
             commands::save_dynamic_background,
             commands::load_unattended_lookup,

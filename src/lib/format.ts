@@ -27,7 +27,7 @@ const YEAR = 365 * DAY;
  *
  * No months: a month has no fixed length, so weeks step straight to years.
  */
-function formatSpan(totalMs: number): string {
+export function formatSpan(totalMs: number): string {
   if (totalMs < HOUR) {
     return `${Math.round(totalMs / MINUTE)} minutes`;
   }

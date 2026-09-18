@@ -1,10 +1,11 @@
 import type { BrowseFilter } from "../../ipc";
+import { type StatsPath, sameStatsPath } from "../stats/path";
 import type { ViewTab } from "./store";
 
 /**
  * Where the user is, as one value.
  *
- * The three fields the library store writes when the view changes, and nothing
+ * The four fields the library store writes when the view changes, and nothing
  * else. Selection is deliberately out: going back to an album and finding a
  * different row highlighted is worse than going back and finding the album.
  * So is `search` - it changes per keystroke, and a hundred entries per typed
@@ -14,6 +15,8 @@ export interface HistoryEntry {
   readonly tab: ViewTab;
   readonly browse: BrowseFilter | null;
   readonly playlistId: number | null;
+  /** Where Statistics is pointed, or null outside it. */
+  readonly stats: StatsPath | null;
 }
 
 /** A list and an index into it. Everything behind the index is back. */
@@ -36,7 +39,8 @@ export function sameView(a: HistoryEntry, b: HistoryEntry): boolean {
     a.playlistId === b.playlistId &&
     a.browse?.kind === b.browse?.kind &&
     (a.browse?.key ?? null) === (b.browse?.key ?? null) &&
-    (a.browse?.secondary ?? null) === (b.browse?.secondary ?? null)
+    (a.browse?.secondary ?? null) === (b.browse?.secondary ?? null) &&
+    sameStatsPath(a.stats, b.stats)
   );
 }
 

@@ -19,7 +19,7 @@ vi.mock("../../ipc", () => ({
 }));
 
 function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
-  return { tab: "songs", browse: null, playlistId: null, ...over };
+  return { tab: "songs", browse: null, playlistId: null, stats: null, ...over };
 }
 
 const initial = useLibraryStore.getState();

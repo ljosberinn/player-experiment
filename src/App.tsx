@@ -48,6 +48,7 @@ import { viewSummary } from "./features/shell/viewSummary";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
 import { useZoomStore } from "./features/shell/zoomStore";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
+import { StatisticsView } from "./features/stats/StatisticsView";
 import { ReleaseLookup } from "./features/tagsource/ReleaseLookup";
 import { ReviewQueue } from "./features/tagsource/ReviewQueue";
 import { useUpdaterStore } from "./features/updater/store";
@@ -367,7 +368,11 @@ export function App() {
             </button>
           ) : null}
 
-          {tab !== "songs" && browse === null ? (
+          {tab === "stats" ? (
+            // Subscribes to the stats store itself and takes nothing from
+            // here, so a range change wakes a panel rather than the app.
+            <StatisticsView />
+          ) : tab !== "songs" && browse === null ? (
             // Keyed on the tab, so each of the three is its own instance
             // with its own scroll container: unkeyed they shared one, and
             // Artists opened wherever the album grid had been left.

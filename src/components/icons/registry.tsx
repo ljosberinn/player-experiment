@@ -51,7 +51,7 @@ export type IconName =
   | "albums"
   | "artists"
   | "genres"
-  | "statistics"
+  | "stats"
   | "review";
 
 /**
@@ -79,6 +79,6 @@ export const ICONS: Record<IconName, Glyph> = {
   albums: (props) => <SquaresFourIcon {...props} />,
   artists: (props) => <UserSoundIcon {...props} />,
   genres: (props) => <TagIcon {...props} />,
-  statistics: (props) => <ChartBarIcon {...props} />,
+  stats: (props) => <ChartBarIcon {...props} />,
   review: (props) => <ListChecksIcon {...props} />,
 };

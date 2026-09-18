@@ -298,6 +298,9 @@ leaves for the next one's `from=`. It is not exportable.
 - **A play with no file counts everywhere but genre.** `listen_totals` carries
   how many plays have a genre and a duration, so a panel can say what share it
   covers.
+- **How the view was last filtered is one `settings` key**, `stats.filters`,
+  opaque JSON like `sidebar.sections`: which filters exist is the frontend's
+  business, and it is not exportable for that key's reason.
 - **The genre filter and `genre_breakdown` walk `Tree::lineage`** — the primary
   parent and the overrides, the tree the donut draws — never `genre_edges`.
 
