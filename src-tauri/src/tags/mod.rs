@@ -111,11 +111,19 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     Ok(tags)
 }
 
-/// The recording id alone, for `scan::read_recording_ids`.
+/// The MusicBrainz ids a file carries, for `scan::read_musicbrainz_ids`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MusicBrainzIds {
+    pub recording: Option<String>,
+    pub release: Option<String>,
+    pub release_group: Option<String>,
+}
+
+/// The MusicBrainz ids alone.
 ///
 /// Skips the audio properties and the artwork, which are most of what [`read`]
 /// costs and none of what a pass over the whole library needs here.
-pub fn recording_id(path: &Path) -> AppResult<Option<String>> {
+pub fn musicbrainz_ids(path: &Path) -> AppResult<MusicBrainzIds> {
     let options = ParseOptions::new()
         .read_properties(false)
         .read_cover_art(false);
@@ -125,10 +133,14 @@ pub fn recording_id(path: &Path) -> AppResult<Option<String>> {
         .read()
         .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
 
-    Ok(tagged
-        .primary_tag()
-        .or_else(|| tagged.first_tag())
-        .and_then(|tag| non_empty(tag.get_string(ItemKey::MusicBrainzRecordingId))))
+    let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
+        return Ok(MusicBrainzIds::default());
+    };
+    Ok(MusicBrainzIds {
+        recording: non_empty(tag.get_string(ItemKey::MusicBrainzRecordingId)),
+        release: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId)),
+        release_group: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
+    })
 }
 
 /// Pulls a year out of a date tag.

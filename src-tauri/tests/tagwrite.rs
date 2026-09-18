@@ -483,32 +483,72 @@ fn a_tag_write_keeps_the_recording_id_the_file_carries() {
     );
 }
 
-/// What a library scanned before the column existed looks like: the files
-/// carry the id and the rows do not, and no scan will re-read an unchanged
-/// file to find out.
+/// What a library scanned before the columns existed, or before this app read
+/// them, looks like: the files carry the ids and the rows do not, and no scan
+/// will re-read an unchanged file to find out.
 #[test]
-fn the_recording_id_backfill_reads_what_the_files_carry_once() {
+fn the_musicbrainz_id_backfill_reads_what_the_files_carry_once() {
     let h = harness();
     let mut conn = h.db.conn().unwrap();
     let track = id_of(&h.db, "Sleeping Ute");
-    conn.execute("UPDATE tracks SET recording_mbid = NULL", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE tracks SET recording_mbid = NULL, release_mbid = NULL, release_group_mbid = NULL",
+        [],
+    )
+    .unwrap();
     let lock = scan::ScanLock::default();
 
-    assert_eq!(scan::read_recording_ids(&mut conn, &lock).unwrap(), Some(1));
+    assert_eq!(
+        scan::read_musicbrainz_ids(&mut conn, &lock).unwrap(),
+        Some(1)
+    );
     assert_eq!(
         recording(&h.db, track).as_deref(),
         Some(fixture::SLEEPING_UTE_RECORDING)
     );
+    assert_eq!(
+        mbids(&h.db, track),
+        (
+            Some(fixture::SHIELDS_RELEASE.to_owned()),
+            Some(fixture::SHIELDS_RELEASE_GROUP.to_owned())
+        )
+    );
 
     conn.execute("UPDATE tracks SET recording_mbid = NULL", [])
         .unwrap();
     assert_eq!(
-        scan::read_recording_ids(&mut conn, &lock).unwrap(),
+        scan::read_musicbrainz_ids(&mut conn, &lock).unwrap(),
         None,
         "a finished pass does not run again"
     );
     assert_eq!(recording(&h.db, track), None);
+}
+
+/// A release id the lookup already wrote is its verdict, and the pass only
+/// fills what is empty.
+#[test]
+fn the_musicbrainz_id_backfill_leaves_an_id_the_row_already_has() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let track = id_of(&h.db, "Sleeping Ute");
+    conn.execute(
+        "UPDATE tracks SET recording_mbid = NULL, release_mbid = ?1 WHERE id = ?2",
+        rusqlite::params![RELEASE, track],
+    )
+    .unwrap();
+
+    scan::read_musicbrainz_ids(&mut conn, &scan::ScanLock::default()).unwrap();
+
+    assert_eq!(
+        mbids(&h.db, track).0.as_deref(),
+        Some(RELEASE),
+        "the row's release id stays"
+    );
+    assert_eq!(
+        recording(&h.db, track).as_deref(),
+        Some(fixture::SLEEPING_UTE_RECORDING),
+        "and the empty column beside it is filled"
+    );
 }
 
 /// An empty value clears them, the same as any other text field - the lookup

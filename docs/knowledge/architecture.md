@@ -293,7 +293,7 @@ What gets a line:
 - **Every mutation and every long job** — roughly what already goes through
   `commands::announcing` and `commands::blocking`, plus the background work
   that goes through neither: the watch-folder pass (`scan.watch`, including the
-  passes that found nothing), the cover-normalize and recording-id passes, and
+  passes that found nothing), the cover-normalize and MusicBrainz-id passes, and
   each scrobble and now-playing submission.
 - **One line per release the pass resolves or queues** (`lookup.release`, with
   the score), one per release it moves (`library.place`, with the counts), and
@@ -372,8 +372,9 @@ what actually returns the pages to the filesystem. Both are only safe because
 nothing reads artwork back out of `covers` at all — the bytes go to the window
 and nowhere else.
 
-The `recording-ids` thread beside it reads `tracks.recording_mbid` off every
-file once, for the reason [the data model](data-model.md) gives. It takes the
+The `musicbrainz-ids` thread beside it reads the recording, release and
+release-group ids off every file once, for the reason
+[the data model](data-model.md) gives. It takes the
 scan lock a chunk at a time, so a scan or a move cannot rewrite a row between
 the read and the write. It announces on `library://changed` only if it found an
 id, since the ids re-link plays.

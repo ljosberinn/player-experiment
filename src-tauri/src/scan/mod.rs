@@ -551,33 +551,39 @@ pub fn scan_roots(
     Ok(summary)
 }
 
-/// How many files the recording-id pass reads per commit, and per hold of the
-/// scan lock. Small, because a scan the user asked for waits out one chunk.
-const RECORDING_CHUNK: i64 = 200;
+/// How many files the MusicBrainz-id pass reads per commit, and per hold of
+/// the scan lock. Small, because a scan the user asked for waits out one chunk.
+const MBID_CHUNK: i64 = 200;
 
-/// Reads the recording id off every file in the library, once.
+/// Reads the MusicBrainz ids off every file in the library, once.
 ///
-/// **A backfill, where migration 8's ids had none.** Those came from this
-/// app's own writer; recording ids came from Picard, so the files already carry
-/// them, and [`scan`] never re-reads a file whose mtime and size are unchanged.
-/// Without this the MBID tier of `plays::resolve` would match nothing until
-/// every file had been edited.
+/// **A backfill for ids Picard wrote before this app read them.** Migration 8
+/// assumed nothing had written the release ids and migration 14 adds the
+/// recording id, but a Picard-tagged file carries all three, and [`scan`]
+/// never re-reads a file whose mtime and size are unchanged. Without this the
+/// MBID tier of `plays::resolve` matches nothing, and the lookup pass searches
+/// - and overwrites - releases whose files already name them.
+///
+/// **Only empty columns are filled**, so an id the lookup already wrote stays.
+/// `release_type` is left alone: Picard writes it lowercase and with secondary
+/// types (`album`, `ep`, `album; compilation`), and it names the folder the
+/// mover files a release into.
 ///
 /// A background thread in the shape of `covers::normalize_stored`: resumable
 /// through a cursor committed with each chunk, and a flag once done. Each chunk
 /// holds [`ScanLock`], so a scan or a move cannot rewrite a row between its file
-/// being read here and the id being written. Missing and unreadable files are
+/// being read here and the ids being written. Missing and unreadable files are
 /// skipped; a scan reads them if they come back.
 ///
-/// Answers how many ids it found, or `None` on every launch after the one that
-/// finished.
-pub fn read_recording_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult<Option<u32>> {
+/// Answers how many files it filled something in for, or `None` on every
+/// launch after the one that finished.
+pub fn read_musicbrainz_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult<Option<u32>> {
     use crate::db::settings;
 
-    if settings::get(conn, settings::RECORDING_IDS_READ)?.is_some() {
+    if settings::get(conn, settings::MBIDS_READ)?.is_some() {
         return Ok(None);
     }
-    let mut cursor: i64 = settings::get(conn, settings::RECORDING_IDS_READ_THROUGH)?
+    let mut cursor: i64 = settings::get(conn, settings::MBIDS_READ_THROUGH)?
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
     let mut found = 0;
@@ -590,7 +596,7 @@ pub fn read_recording_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult<O
                   WHERE id > ?1 AND missing_since IS NULL
                   ORDER BY id LIMIT ?2",
             )?
-            .query_map(rusqlite::params![cursor, RECORDING_CHUNK], |row| {
+            .query_map(rusqlite::params![cursor, MBID_CHUNK], |row| {
                 Ok((row.get(0)?, row.get(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -600,23 +606,33 @@ pub fn read_recording_ids(conn: &mut Connection, lock: &ScanLock) -> AppResult<O
 
         let tx = conn.transaction()?;
         for (id, path) in &rows {
-            if let Ok(Some(recording)) = tags::recording_id(Path::new(path)) {
-                tx.execute(
-                    "UPDATE tracks SET recording_mbid = ?2 WHERE id = ?1",
-                    rusqlite::params![id, recording],
-                )?;
-                found += 1;
+            let Ok(ids) = tags::musicbrainz_ids(Path::new(path)) else {
+                continue;
+            };
+            if ids == tags::MusicBrainzIds::default() {
+                continue;
             }
+            found += tx.execute(
+                "UPDATE tracks
+                    SET recording_mbid     = coalesce(recording_mbid, ?2),
+                        release_mbid       = coalesce(release_mbid, ?3),
+                        release_group_mbid = coalesce(release_group_mbid, ?4)
+                  WHERE id = ?1
+                    AND (   (recording_mbid IS NULL AND ?2 IS NOT NULL)
+                         OR (release_mbid IS NULL AND ?3 IS NOT NULL)
+                         OR (release_group_mbid IS NULL AND ?4 IS NOT NULL))",
+                rusqlite::params![id, ids.recording, ids.release, ids.release_group],
+            )? as u32;
         }
         // With the rows it describes, or a crash between the two skips them.
-        settings::set(&tx, settings::RECORDING_IDS_READ_THROUGH, &last.to_string())?;
+        settings::set(&tx, settings::MBIDS_READ_THROUGH, &last.to_string())?;
         tx.commit()?;
         cursor = last;
     }
 
     let tx = conn.transaction()?;
     crate::db::plays::resolve(&tx)?;
-    settings::set(&tx, settings::RECORDING_IDS_READ, "true")?;
+    settings::set(&tx, settings::MBIDS_READ, "true")?;
     tx.commit()?;
     Ok(Some(found))
 }

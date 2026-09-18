@@ -144,7 +144,7 @@ pub fn run() {
             // so the unattended pass can tell whether it would be racing a
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
-            read_recording_ids(app.handle().clone(), db.clone(), lock.clone(), log.clone());
+            read_musicbrainz_ids(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -392,19 +392,19 @@ fn normalize_covers(db: Db, log: log::Log) {
         });
 }
 
-/// Reads the recording id off every file once, off the setup path, for the
-/// reason [`normalize_covers`] runs there. See `scan::read_recording_ids`.
+/// Reads the MusicBrainz ids off every file once, off the setup path, for the
+/// reason [`normalize_covers`] runs there. See `scan::read_musicbrainz_ids`.
 ///
 /// Announced only when it found something: the ids re-link plays, which is
 /// what a statistics view reads, and a pass that found none changed nothing.
-fn read_recording_ids(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
+fn read_musicbrainz_ids(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::Log) {
     let _ = std::thread::Builder::new()
-        .name("recording-ids".to_owned())
+        .name("musicbrainz-ids".to_owned())
         .spawn(move || {
-            let op = log.op("tracks.recording_ids");
+            let op = log.op("tracks.mbids");
             match db
                 .conn()
-                .and_then(|mut conn| scan::read_recording_ids(&mut conn, &lock))
+                .and_then(|mut conn| scan::read_musicbrainz_ids(&mut conn, &lock))
             {
                 Ok(None) => {}
                 Ok(Some(found)) => {

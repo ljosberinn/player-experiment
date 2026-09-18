@@ -616,10 +616,10 @@ CREATE INDEX idx_plays_track   ON plays(track_id, started_at);
     // 14 - what the last.fm import brings with it
     //
     // `recording_mbid` is the id `plays.track_mbid` carries, cached off the
-    // tags like migration 8's two. Unlike those it is backfilled, by
-    // `scan::read_recording_ids` rather than here: Picard wrote it, not this
-    // app, so the files already hold it and a scan never re-reads a file whose
-    // mtime and size are unchanged. Partial index for migration 8's reason.
+    // tags like migration 8's two. It is backfilled with them, by
+    // `scan::read_musicbrainz_ids` rather than here: Picard wrote all three
+    // before this app read any, and a scan never re-reads a file whose mtime
+    // and size are unchanged. Partial index for migration 8's reason.
     //
     // `lastfm_loved` is the current loved set, replaced wholesale on each
     // import: unloving happens, and a merged set could never forget one. Keyed

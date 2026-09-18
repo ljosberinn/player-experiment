@@ -31,13 +31,19 @@ lofty 0.25 maps the key to and from the ID3v2 `UFID` frame owned by
 `http://musicbrainz.org`, which is where Picard writes it. A round-trip test
 asserts that a tag write keeps it.
 
-**Backfilled, unlike migration 8's ids.** Those two came from this app's own
-writer. Recording ids came from Picard: 12% of a 300-file sample of the
-measured library carries one, and the scan never re-reads a file whose mtime and
-size are unchanged, so without a backfill the tier would match nothing. The
-backfill is a one-shot thread shaped like `covers.normalize`. It reads the id
-only, never touches covers or other columns, resumes after a quit, and sets a
-settings flag when it finishes.
+**Backfilled, with migration 8's two.** Picard wrote all three before this
+app read any: about 9% of the measured library carries them (174 of a 2,000-file
+sample), and none of its release ids had reached the rows, because the scan
+never re-reads a file whose mtime and size are unchanged. Without a backfill the
+tier matches nothing, and the lookup pass searches, then overwrites, releases
+whose files already name them.
+
+`scan::read_musicbrainz_ids` is a one-shot thread shaped like
+`covers.normalize`. It reads the recording, release and release-group ids,
+fills only empty columns, resumes after a quit, and sets a flag when it
+finishes. `release_type` stays out of it. Picard writes it lowercase and with
+secondary types, and it names the mover's folder; see
+[93](../upcoming/93-picard-release-types.md).
 
 `plays::record` snapshots `tracks.recording_mbid` into `plays.track_mbid`, so a
 local play of a tagged file carries the id too.
@@ -154,6 +160,7 @@ For the additions:
 - a play whose `track_mbid` matches one track's `recording_mbid` resolves to it
   over a competing key match
 - a recording id survives a tag write
-- the backfill fills the column and runs only once
+- the backfill fills the three columns, runs only once, and leaves an id the
+  row already has
 - a second loved import drops a track the first one had
 - a failed loved fetch keeps the old set

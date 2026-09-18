@@ -93,12 +93,16 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
 
-**`tracks.recording_mbid` is backfilled the same way.** Migration 8's ids came
-from this app's own writer; recording ids came from Picard, as the `UFID` frame
-lofty maps both ways, so the files already carry them and a scan never re-reads
-an unchanged file. `scan::read_recording_ids` reads that one id off every file
-once, holding the scan lock a chunk at a time. `tracks.recordingIdsRead` marks
-it done and `tracks.recordingIdsReadThrough` holds the last track id finished.
+**The MusicBrainz ids are backfilled the same way.** Migration 8 assumed
+nothing had written the release ids, but Picard had: about 9% of the measured
+library carries a release, release group and recording id (the last as the
+`UFID` frame lofty maps both ways), and a scan never re-reads an unchanged file,
+so none of them had reached the rows. `scan::read_musicbrainz_ids` reads the
+three off every file once, holding the scan lock a chunk at a time, and fills
+**only empty columns** so an id the lookup wrote stays. `release_type` is left
+out: Picard writes it lowercase and with secondary types, and it names the
+folder the mover files into. `tracks.mbidsRead` marks the pass done and
+`tracks.mbidsReadThrough` holds the last track id finished.
 
 ## The Library folder
 
