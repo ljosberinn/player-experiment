@@ -244,12 +244,12 @@ into SQL.
 
 ```rust
 pub struct ListenQuery {
-    pub range: Option<(i64, i64)>,
+    pub range: Option<TimeRange>, // unix seconds, [from, to)
     pub artist: Option<String>,
-    pub genre: Option<String>,   // the genre and its descendants
+    pub genre: Option<String>,    // the genre and its descendants
     pub album: Option<String>,
     pub owned: Option<bool>,
-    pub loved: Option<bool>,   // with the import; nothing to filter before it
+    pub loved: Option<bool>,      // with the import; nothing to filter before it
 }
 ```
 
@@ -257,11 +257,16 @@ Library panels take the existing `TrackQuery` instead, so every aggregate goes
 through `scope()` and can be scoped to a view or a playlist rather than only to
 the whole library.
 
+**`genre` walks the tree the donut draws**, not `genre_edges`: a tag reaches a
+label only through `genres::Tree`, and the edges are the DAG an override does
+not move. The matching raw tag strings are bound as one JSON array.
+
 Aggregates are small independent functions returning small `Vec`s:
-`recent_plays`, `top(dimension)`, `plays_over_time(bucket)`, `clock`,
-`week_clock`, `streaks`, `firsts`, `coverage`; `quality_histogram`,
-`worst_by_bitrate`, `genre_breakdown(parent)`, `added_over_time`,
-`untagged_report`.
+`listen_totals`, `recent_plays`, `top(dimension)`, `plays_over_time(bucket)`,
+`week_clock`, `firsts(bucket)`, `streaks`; `library_totals`,
+`histogram(field)`, `worst_by_bitrate`, `genre_breakdown(parent)`,
+`added_over_time(bucket)`, `tag_health`. `listen_totals` carries the coverage
+counts, and hour-of-day is `week_clock` summed.
 
 **No rollup tables.** 237k rows is one indexed `GROUP BY`; a materialized
 aggregate would buy nothing and would owe an invalidation path.

@@ -26,7 +26,7 @@ bad one costs a panel nobody reads.
   shopping list, and it is why plays with no matching file are kept rather than
   discarded at import.
 - **A genre panel says what it covers** — "genre known for 84% of plays", from
-  `coverage` — because genre is only knowable for matched plays and reporting a
+  `listen_totals` — because genre is only knowable for matched plays and reporting a
   subset as the whole is the failure mode.
 - Every panel subscribes to `statsStore` itself. `App` must not re-render
   because a range changed.

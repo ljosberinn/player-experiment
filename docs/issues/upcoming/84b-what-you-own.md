@@ -22,7 +22,9 @@ to lose entries.
   its children through [75](75-the-genre-tree.md)'s `genres.parent`; a
   suffix-derived parent is **labelled as derived**, so a wrong guess is visible
   and fixable rather than trusted. The primary-parent rule is arbitrary by
-  construction and the override is what corrects it.
+  construction and the override is what corrects it. **An override that makes
+  a genre its own ancestor is refused** — `Tree::lineage` survives one, but the
+  donut would draw a loop.
 - Tag health rows leave Statistics deliberately — that is the Songs table, and
   it is the one link out that is a link out.
 

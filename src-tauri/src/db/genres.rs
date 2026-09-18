@@ -41,7 +41,9 @@ use rusqlite::Connection;
 use crate::error::AppResult;
 
 /// Where a resolved genre's parent came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
 pub enum ParentSource {
     /// A Wikidata `subclass of` edge. With no parent, the genre is a root of
     /// the tree rather than one nothing was found for - which is the whole
@@ -179,6 +181,24 @@ impl Tree {
                 parent_source: ParentSource::Unknown,
             },
         }
+    }
+
+    /// `raw`'s resolved label followed by each parent above it, up to a root.
+    ///
+    /// Stops at a label it has already passed: `genres.parent` is a forest,
+    /// but an override can point a genre at its own descendant, and a walk
+    /// that followed it would never end.
+    pub fn lineage(&self, raw: &str) -> Vec<String> {
+        let mut resolved = self.resolve(raw);
+        let mut lineage = vec![resolved.label];
+        while let Some(parent) = resolved.parent {
+            if lineage.contains(&parent) {
+                break;
+            }
+            resolved = self.resolve(&parent);
+            lineage.push(parent);
+        }
+        lineage
     }
 
     /// The longest known genre `label` ends with, at a word boundary.
@@ -416,6 +436,36 @@ mod tests {
         assert!(
             error.to_string().to_lowercase().contains("foreign key"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn a_lineage_runs_from_the_tag_up_to_a_root() {
+        let (_dir, conn) = open();
+        let tree = Tree::load(&conn).unwrap();
+
+        let lineage = tree.lineage("Trve Kvlt Raw Black Metal");
+        assert_eq!(
+            lineage[..3],
+            [
+                "trve kvlt raw black metal",
+                "raw black metal",
+                "black metal"
+            ]
+        );
+        let root = lineage.last().unwrap();
+        assert_eq!(tree.resolve(root).parent, None, "{lineage:?}");
+    }
+
+    #[test]
+    fn a_lineage_through_a_cycle_of_overrides_ends() {
+        let (_dir, conn) = open();
+        set_override(&conn, "black metal", Some("atmospheric black metal")).unwrap();
+        let tree = Tree::load(&conn).unwrap();
+
+        assert_eq!(
+            tree.lineage("Atmospheric Black Metal"),
+            ["atmospheric black metal", "black metal"]
         );
     }
 

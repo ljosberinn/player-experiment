@@ -7,6 +7,7 @@ pub mod plays;
 pub mod query;
 pub mod schema;
 pub mod settings;
+pub mod stats;
 pub mod synthetic;
 pub mod tag_values;
 

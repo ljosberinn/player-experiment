@@ -4,6 +4,7 @@
 //! domain module, so the domain stays unit-testable without a Tauri runtime.
 
 mod invalidate;
+pub mod stats;
 
 use std::path::PathBuf;
 

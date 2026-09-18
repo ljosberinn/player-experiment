@@ -16,7 +16,8 @@ use crate::model::{
 /// into one per track, falling back to `artist`. `nullif` folds empty strings
 /// into NULL: a tag written as `""` is untagged, and without this it would be
 /// its own group sorting above everything.
-const GROUP_ARTIST: &str = "coalesce(nullif(tracks.album_artist, ''), nullif(tracks.artist, ''))";
+pub(crate) const GROUP_ARTIST: &str =
+    "coalesce(nullif(tracks.album_artist, ''), nullif(tracks.artist, ''))";
 const GROUP_ALBUM: &str = "nullif(tracks.album, '')";
 const GROUP_GENRE: &str = "nullif(tracks.genre, '')";
 
@@ -93,9 +94,9 @@ fn to_fts_query(search: &str) -> Option<String> {
 
 /// What restricts a query: the FROM/WHERE the count and the page must agree
 /// on, its bind values, and which optional clauses ended up in it.
-struct Scope {
-    from_where: String,
-    params: Vec<Box<dyn rusqlite::ToSql>>,
+pub(crate) struct Scope {
+    pub(crate) from_where: String,
+    pub(crate) params: Vec<Box<dyn rusqlite::ToSql>>,
     searching: bool,
     in_playlist: bool,
 }
@@ -109,7 +110,7 @@ struct Scope {
 /// a static playlist is a join on its membership, a smart one is its compiled
 /// filter. Resolving it here rather than in the caller keeps every query - page,
 /// count and id list - agreeing about what the view contains.
-fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
+pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
     let fts = query.search.as_deref().and_then(to_fts_query);
     let mut from_where = String::from("FROM tracks");
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
