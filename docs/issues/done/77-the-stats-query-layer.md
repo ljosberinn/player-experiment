@@ -24,7 +24,7 @@ pub struct ListenQuery {
 **No `loved` filter yet.** [76](76-the-play-log.md) keeps loved off `plays` —
 it is the current state of a track, not a fact about a moment — and nothing has
 imported the loved set, so the field would filter data no phase has written.
-[78](../upcoming/78-import-the-lastfm-history.md) adds both.
+[78](78-import-the-lastfm-history.md) adds both.
 
 **Library panels take the existing `TrackQuery` instead**, so every library
 aggregate goes through `scope()` and can be scoped to a view or a playlist

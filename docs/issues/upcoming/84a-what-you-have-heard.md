@@ -1,6 +1,6 @@
 # 84a — What you have heard
 
-The Listening tab's panels. Stacks on [78](78-import-the-lastfm-history.md) and
+The Listening tab's panels. Stacks on [78](../done/78-import-the-lastfm-history.md) and
 [80](80-the-statistics-view.md); independent of
 [84b](84b-what-you-own.md), which is the other tab and shares only the chart
 primitives.
