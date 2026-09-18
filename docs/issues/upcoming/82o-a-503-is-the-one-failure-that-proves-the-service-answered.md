@@ -35,7 +35,7 @@ a burst, because the thing being counted is the rate limiter working.
 (The sub-threshold run lengths cannot be read off the log to go with this: a
 `NotFound` resets the run and writes no line, so runs counted off
 `lookup.release` are longer than the ones the sweep saw — the same censoring
-[82n](82n-the-sweep-line-only-arrives-when-the-step-parks.md) is about. The five
+[82n](../done/82n-a-ninety-hour-sweep-writes-one-line.md) is about. The five
 parks are the sweep's own count and are not affected.)
 
 82l raised 82g's number because the number was the wrong instrument; 7 is the
