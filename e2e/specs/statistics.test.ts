@@ -9,9 +9,11 @@ import { capture } from "../screenshot";
  * tab strip, a filter bar and a row of tiles look like together is exactly the
  * thing no unit test can answer.
  *
- * After `library`, which seeds the songs the Library tab counts. The Listening
- * tab is empty by design here: the e2e build carries no last.fm key, nothing
- * has been played, and its empty state is worth a photograph of its own.
+ * After `library`, which seeds the songs the Library tab counts and also fills
+ * the Listening tab: it plays Anchor, a second long against the silent sink,
+ * so the run crosses `PLAYED_FRACTION` and a play is logged. The missing
+ * last.fm key stops scrobbling, not the local play log, so this view never
+ * sees its empty state in the suite.
  */
 
 /** A library view in the sidebar, by its visible name. */
@@ -38,9 +40,18 @@ describe("the Statistics view", () => {
 
     await expect(view("Statistics")).toHaveAttribute("aria-current", "page");
     await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Listening");
-    // Nothing has been played in this build, and a row of zeros would say the
-    // same thing less usefully.
-    await expect(browser.$(".empty-state")).toBeExisting();
+
+    // The tiles render before the totals arrive, with an em dash where each
+    // number goes, so existing proves nothing - the value does.
+    const plays = browser.$(
+      "//dl[@class='stat-tile'][dt[text()='Plays']]/dd[@class='stat-tile-value']",
+    );
+    await plays.waitForExist({ timeout: 10_000 });
+    await browser.waitUntil(async () => (await plays.getText()) !== "—", {
+      timeout: 10_000,
+      timeoutMsg: "the listening totals never arrived",
+    });
+    expect(Number(await plays.getText())).toBeGreaterThan(0);
 
     await capture("statistics-listening");
   });
