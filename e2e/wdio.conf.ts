@@ -96,10 +96,6 @@ export const config: WebdriverIO.Config = {
     // After `library` too: the artwork square is measured against a song that
     // has a cover and one that does not, and the fixture is what supplies both.
     "./specs/tag-editor.test.ts",
-    // After `library`, which seeds the songs its Library tab counts. Its own
-    // tab strip and filter bar are furniture the design has no mockup for, so
-    // the screenshots are the only record of what they look like.
-    "./specs/statistics.test.ts",
     // After `library` too: a grid with no albums in it has no column count,
     // and a list with no rows cannot alternate. Resizes the window and puts it
     // back, so it has to be somewhere the size it borrows is the default one.
@@ -123,6 +119,13 @@ export const config: WebdriverIO.Config = {
     // taller than the window before it has a scroll position to remember, and
     // the seeded library's three albums fit on one row.
     "./specs/browse-scroll.test.ts",
+    // After `virtualization` too, and that is the point: it seeds plays over
+    // the synthetic tracks, so two thirds of them match a file and the tab is
+    // photographed with every panel full rather than with one bar in each. It
+    // adds plays and no songs, so nothing after it sees a library it does not
+    // recognise. Its tab strip, filter bar and panels are furniture the design
+    // has no mockup for, so the screenshots are the only record of them.
+    "./specs/statistics.test.ts",
     // Truly last. It crashes the app on purpose, and the notice that reports
     // the crash sits above the table until something dismisses it - which this
     // spec does, but only if it gets that far.

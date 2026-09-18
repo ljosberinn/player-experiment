@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
 import { StatTile } from "../../components/charts/StatTile";
-import { type ListenTotals, statsListenTotals } from "../../ipc";
 import { formatSpan } from "../../lib/format";
 import { useLibraryStore } from "../library/store";
-import { report } from "../shell/statusStore";
 import { listenQuery } from "./filters";
+import { listenTotalsOnce } from "./listenTotals";
 import { useStatsStore } from "./store";
+import { usePanelQuery } from "./usePanelQuery";
 
 /**
  * What you have heard, as six numbers.
@@ -16,25 +15,10 @@ import { useStatsStore } from "./store";
 export function ListeningTiles() {
   const filters = useStatsStore((s) => s.filters);
   const path = useLibraryStore((s) => s.statsPath);
-  const [totals, setTotals] = useState<ListenTotals | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    statsListenTotals(listenQuery(filters, path, new Date()))
-      .then((loaded) => {
-        if (!cancelled) {
-          setTotals(loaded);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          report(cause);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [filters, path]);
+  const { data: totals } = usePanelQuery(
+    () => listenTotalsOnce(listenQuery(filters, path, new Date())),
+    [filters, path],
+  );
 
   if (totals !== null && totals.plays === 0) {
     return (

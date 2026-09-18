@@ -176,6 +176,12 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 - Music gets in through `add_watch_folder` invoked directly from the test — the
   one command the suite drives itself, because WebDriver cannot answer an OS
   folder picker. Everything after is the app's own path.
+- **Two seeds are inserted rather than produced**, behind `e2e_only`:
+  `seed_synthetic_tracks` for a library size no fixture folder can reach, and
+  `seed_synthetic_plays` for a listening history the suite would otherwise have
+  one play of. The plays seed resolves afterwards, because the seeder leaves
+  `track_id` null and an unresolved log reads as nothing owned. It runs after
+  `virtualization`, so two thirds of the plays match a synthetic track.
 - **The driver delivers neither `contextmenu` nor `dblclick`** through the
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;

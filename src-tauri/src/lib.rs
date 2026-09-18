@@ -50,7 +50,8 @@ mod e2e {
 /// Refuses unless this is an e2e build that the harness launched.
 ///
 /// The gate on `commands::seed_synthetic_tracks`, which writes a hundred and
-/// fifty thousand rows into the library. In a shipped binary this function is
+/// fifty thousand rows into the library, and on `seed_synthetic_plays` beside
+/// it. In a shipped binary this function is
 /// the whole of it - the code that could say yes is not compiled in - so the
 /// command exists there only to answer that it will not.
 pub(crate) fn e2e_only(what: &str) -> crate::error::AppResult<()> {
@@ -232,6 +233,7 @@ pub fn run() {
             commands::stats::stats_added_over_time,
             commands::stats::stats_tag_health,
             commands::export_library,
+            commands::save_text_file,
             commands::reveal_track,
             commands::load_column_config,
             commands::save_column_config,
@@ -278,6 +280,7 @@ pub fn run() {
             commands::player_set_repeat_one,
             commands::player_snapshot,
             commands::seed_synthetic_tracks,
+            commands::seed_synthetic_plays,
             commands::e2e_provoke_panic,
             commands::lastfm_status,
             commands::lastfm_begin_connect,

@@ -54,6 +54,12 @@ e2e/          WebdriverIO specs plus the harness (fixtures, contrast, screenshot
   function.
 - **Every Tauri API needs an ACL entry** in `src-tauri/capabilities/default.json`.
   See [gotchas](gotchas.md) — this class of bug has shipped four times.
+- **A file write the user named goes through a command**, not
+  `@tauri-apps/plugin-fs`. `export_library` walks the library behind
+  `export://progress`; `save_text_file` takes a string a panel already built.
+  The plugin would arrive with a capability and an fs scope over whatever path
+  the save dialog returned, which is a permission surface the app does not
+  otherwise have.
 
 ## Threading and events
 

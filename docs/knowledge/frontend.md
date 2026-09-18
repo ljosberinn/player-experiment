@@ -105,11 +105,18 @@ require.
   for the donut and for multi-series. Neither ramp is in the sheet yet;
   `--chart-grid` is, because the frame draws gridlines. Each lands with its
   first consumer rather than as tokens nothing reads.
+- **`BarList` is HTML, and deliberately not a `ChartFrame`.** A ranked list is
+  already the table `ChartFrame`'s toggle would offer, and wrapping it in one
+  `role="img"` would take away the reading it has: names that truncate, rows
+  that take focus, an ordered list a screen reader can walk. So it owns its own
+  empty and loading states, and it draws each fill as a share of the largest
+  value rather than of the total - a top list is read as rows against each
+  other, and a long tail measured against the total is ten slivers.
 - **What has not landed**: `Bar`, `Line`, `Donut`, `Heatmap`, `Sparkline`. Each
-  wants a real panel as its caller, and the panels are phases 84a and 84b; the
-  file list in the plan is a ceiling, not a checklist. `StatTile` is the one
-  that found its caller early - the two tile rows the Statistics shell draws,
-  which are the only panels needing no primitive above.
+  wants a real panel as its caller; `Bar` and `Heatmap` are phase 84c and the
+  donut is 84b. The file list in the plan is a ceiling, not a checklist.
+  `d3-shape` is still not a dependency, because nothing draws an arc or an
+  area.
 - Charts hold no virtualizer, so unlike `SongTable` and `BrowseView` they
   compile clean under the React Compiler and want no `"use no memo"`.
 
@@ -265,6 +272,23 @@ absences are what nobody notices coming back — hence the guards in
   its closing `refresh` for a stats entry and `refresh` returns early while the
   view is open, so a donut click does not re-count 150k rows and an import
   firing `library://changed` does not either. The move back out re-queries.
+- **A Statistics panel loads through `usePanelQuery`**, which fetches on a
+  filter or path change, ignores an answer to the question before last, and
+  keeps what is drawn while the next one is in flight - blanking every panel to
+  a skeleton on each range change makes the whole view flash. Nine panels would
+  otherwise repeat the effect, and the one that forgot the cancel would draw
+  the range the filter bar is not showing.
+- **`listenTotalsOnce` holds exactly one answer.** The tile row and the genre
+  panel's coverage caption want the same `listen_totals`, which is the dearest
+  aggregate in the set; the promise is held rather than its result, so the
+  second panel joins the first's scan. One entry and not a cache: every panel
+  moves to the new filters together, so the entry before last has no reader.
+- **Drilling into an artist narrows the Listening tab rather than opening a
+  page.** The crumb already reaches `ListenQuery` through `listenQuery`, so
+  every panel re-queries narrowed without knowing a drill-down happened;
+  `ListeningPanels` only changes which panels render. An artist page would have
+  been a second component tree drawing the same aggregates under one more
+  filter.
 - **A pending library removal lives in the library store**, not in `App`'s
   `useState` beside the missing-songs flag. Three routes ask the question - the
   row menu, the File menu and Delete - and the last is a window-level shortcut

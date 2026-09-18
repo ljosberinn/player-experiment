@@ -1,10 +1,10 @@
 # 84b — What you own
 
 The Library tab's panels — static data over `tracks`, which this build has all
-of. Stacks on [75](../done/75-the-genre-tree.md) and
-[80](../done/80-the-statistics-view.md). Independent of
-[84a](84a-what-you-have-heard.md), and needs neither the play log nor the
-import.
+of. Stacks on [75](../done/75-the-genre-tree.md),
+[80](../done/80-the-statistics-view.md) and
+[84a](../done/84a-what-you-have-heard.md) — for the CSV path alone, not for the play log
+or the import, which this tab needs neither of.
 
 The tile row went to 80, which needed a caller for the shell it built.
 
@@ -27,10 +27,11 @@ to lose entries.
   construction and the override is what corrects it. **An override that makes
   a genre its own ancestor is refused** — `Tree::lineage` survives one, but the
   donut would draw a loop.
-- **The CSV path is 80's decision and this phase's code**: rows the panel has
-  already fetched to a string, and the shell's save dialog. `export/`'s
-  generator walks the library a page at a time behind `export://progress`, which
-  is the opposite problem.
+- **The CSV path is 80's decision and 84a's code**: rows the panel has already
+  fetched to a string, and the shell's save dialog over a `save_text_file`
+  command. Heard, never owned exports too and is the lower number, so it landed
+  there; this phase calls it. `export/`'s generator walks the library a page at
+  a time behind `export://progress`, which is the opposite problem.
 - Tag health rows leave Statistics deliberately — that is the Songs table, and
   it is the one link out that is a link out.
 

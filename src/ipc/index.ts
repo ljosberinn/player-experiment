@@ -24,8 +24,10 @@ import type { LastfmStatus } from "./bindings/LastfmStatus";
 import type { LibraryFolder } from "./bindings/LibraryFolder";
 import type { LibraryStats } from "./bindings/LibraryStats";
 import type { LibraryTotals } from "./bindings/LibraryTotals";
+import type { ListenDimension } from "./bindings/ListenDimension";
 import type { ListenQuery } from "./bindings/ListenQuery";
 import type { ListenTotals } from "./bindings/ListenTotals";
+import type { Play } from "./bindings/Play";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
 import type { PlayerSnapshot } from "./bindings/PlayerSnapshot";
@@ -44,10 +46,12 @@ import type { SmartOrder } from "./bindings/SmartOrder";
 import type { SmartSort } from "./bindings/SmartSort";
 import type { SortDirection } from "./bindings/SortDirection";
 import type { SortField } from "./bindings/SortField";
+import type { Streaks } from "./bindings/Streaks";
 import type { TagEdit } from "./bindings/TagEdit";
 import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
 import type { TimeRange } from "./bindings/TimeRange";
+import type { TopEntry } from "./bindings/TopEntry";
 import type { Track } from "./bindings/Track";
 import type { TrackEdit } from "./bindings/TrackEdit";
 import type { TrackQuery } from "./bindings/TrackQuery";
@@ -78,8 +82,10 @@ export type {
   LibraryFolder,
   LibraryStats,
   LibraryTotals,
+  ListenDimension,
   ListenQuery,
   ListenTotals,
+  Play,
   PlaybackStatus,
   PlayerPosition,
   PlayerSnapshot,
@@ -98,10 +104,12 @@ export type {
   SmartSort,
   SortDirection,
   SortField,
+  Streaks,
   TagEdit,
   TagValueField,
   TagWriteSummary,
   TimeRange,
+  TopEntry,
   Track,
   TrackEdit,
   TrackQuery,
@@ -291,6 +299,34 @@ export function statsListenTotals(query: ListenQuery): Promise<ListenTotals> {
 }
 
 /**
+ * The most played artists, albums, tracks or genres.
+ *
+ * One command for all four, because the shape of the answer is the same one:
+ * a label, the artist behind it where there is one, and a count.
+ */
+export function statsTop(
+  query: ListenQuery,
+  dimension: ListenDimension,
+  limit: number,
+): Promise<TopEntry[]> {
+  return invoke<TopEntry[]>("stats_top", { query, dimension, limit });
+}
+
+/** A page of plays, newest first. `statsListenTotals` holds the count. */
+export function statsRecentPlays(
+  query: ListenQuery,
+  offset: number,
+  limit: number,
+): Promise<Play[]> {
+  return invoke<Play[]>("stats_recent_plays", { query, offset, limit });
+}
+
+/** Runs of consecutive days with a play. `now` is the backend's, not ours. */
+export function statsStreaks(query: ListenQuery): Promise<Streaks> {
+  return invoke<Streaks>("stats_streaks", { query });
+}
+
+/**
  * The Library tab's tiles.
  *
  * A `TrackQuery`, so the tab's scope selector reaches it the way it reaches
@@ -370,6 +406,16 @@ export function setLibraryRoot(path: string): Promise<void> {
  */
 export function exportLibrary(path: string, scope: ExportScope): Promise<number> {
   return invoke<number>("export_library", { path, scope });
+}
+
+/**
+ * Writes `contents` to `path`, for a panel exporting rows it already holds.
+ *
+ * A command rather than `@tauri-apps/plugin-fs`, which would arrive with a
+ * capability and an fs scope over whatever path the save dialog returned.
+ */
+export function saveTextFile(path: string, contents: string): Promise<void> {
+  return invoke<void>("save_text_file", { path, contents });
 }
 
 /**
