@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.11.0](https://github.com/ljosberinn/player-experiment/compare/v0.10.1...v0.11.0) (2026-09-18)
+
+
+### Features
+
+* counters that leave the sweep before the sweep does ([#182](https://github.com/ljosberinn/player-experiment/issues/182)) ([e39643d](https://github.com/ljosberinn/player-experiment/commit/e39643d6470704f8a122dc05f526d37f28b65f64))
+* every aggregate the statistics view draws ([#178](https://github.com/ljosberinn/player-experiment/issues/178)) ([abb465d](https://github.com/ljosberinn/player-experiment/commit/abb465d278a4c68cc1323d95a8aebc3a6e082827))
+* import the last.fm history ([#180](https://github.com/ljosberinn/player-experiment/issues/180)) ([3931198](https://github.com/ljosberinn/player-experiment/commit/393119812e039fa555fea59c5a6f743821e0e7bb))
+* one row per play ([#177](https://github.com/ljosberinn/player-experiment/issues/177)) ([752940c](https://github.com/ljosberinn/player-experiment/commit/752940c75373ca26ea7b13eb67eff51bf2a55c6e))
+* the statistics view ([#181](https://github.com/ljosberinn/player-experiment/issues/181)) ([5cbbcfd](https://github.com/ljosberinn/player-experiment/commit/5cbbcfdc0af32552879ce610b4e4ec1886bfe52a))
+* what you have heard ([#187](https://github.com/ljosberinn/player-experiment/issues/187)) ([6546dc6](https://github.com/ljosberinn/player-experiment/commit/6546dc607fc8a182c40e47d1b769429f50dbc725))
+
+
+### Bug Fixes
+
+* a 503 is not an outage ([#185](https://github.com/ljosberinn/player-experiment/issues/185)) ([1c4df6a](https://github.com/ljosberinn/player-experiment/commit/1c4df6a63e3721083d713a0dca059351f1703db8))
+* drain the deferred releases at the end of every batch ([#186](https://github.com/ljosberinn/player-experiment/issues/186)) ([2bee1b9](https://github.com/ljosberinn/player-experiment/commit/2bee1b9960305735b899a5670a570c29e2d933a9))
+
+
+### Documentation
+
+* drop the superseded 82n draft ([#184](https://github.com/ljosberinn/player-experiment/issues/184)) ([bf9a219](https://github.com/ljosberinn/player-experiment/commit/bf9a2196a4c73bfd5f236bf050a11031a2a87232))
+
 ## [0.10.1](https://github.com/ljosberinn/player-experiment/compare/v0.10.0...v0.10.1) (2026-09-16)
 
 
