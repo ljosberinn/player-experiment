@@ -428,9 +428,8 @@ const PLAYS: u32 = 250_000;
 /// Held by every test that seeds `PLAYS`, so they run one at a time.
 ///
 /// The cold resolve is a single sample - no second call does the same work -
-/// so unlike `assert_under` it cannot shrug off a neighbour. With the
-/// Listening budgets beside it on the runner it took 13.7s against 8s; alone
-/// locally it takes the same as ever.
+/// so unlike `assert_under` it cannot shrug off a neighbour, and on the runner
+/// it has no headroom to spare either way.
 static PLAY_LOG: Mutex<()> = Mutex::new(());
 
 /// A panic in one log test must not fail the other through a poisoned lock.
@@ -455,6 +454,15 @@ fn play_log() -> MutexGuard<'static, ()> {
 /// separated 163ms from 1031ms would have to sit inside the spread between
 /// this machine and the runner. The budgets below are the coarser question -
 /// whether the statement still has the shape of one pass over the log.
+///
+/// **And that spread is what the numbers are set against, because it is
+/// wider than this file assumed.** A probe on the runner measured the cold
+/// resolve at 7.6s to 7.8s three times over with nothing else running -
+/// against the 8000ms it first shipped with, which is a budget that passes on
+/// a good day and on no other. The same statement on a runner that was
+/// half as fast at everything took 33s. So: 60s cold and 10s warm, which a
+/// transaction per row - minutes over a quarter of a million of them - still
+/// fails, and a busy runner does not.
 #[test]
 fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
     let _serial = play_log();
@@ -474,13 +482,14 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
         "a cold resolve that moved nothing measured nothing"
     );
     assert!(
-        elapsed <= 8_000,
-        "a first resolve over {PLAYS} plays and {ROWS} tracks took {elapsed}ms,          budget is 8000ms - it writes every matched row once, and never again"
+        elapsed <= 60_000,
+        "a first resolve over {PLAYS} plays and {ROWS} tracks took {elapsed}ms, budget is \
+         60000ms - it writes every matched row once, and a runner takes some 8s over it"
     );
 
     // Warm: the shape of every tag edit and every removal. The statement still
     // reads the whole log; the guard is what keeps it from writing it.
-    assert_under("plays::resolve over an unchanged library", 2_000, || {
+    assert_under("plays::resolve over an unchanged library", 10_000, || {
         assert_eq!(plays::resolve(&conn).unwrap(), 0);
     });
 }
@@ -491,8 +500,10 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
 /// than one - a correlated subquery per group, or grouping in Rust.
 ///
 /// 30ms to 690ms unoptimised on a developer machine, `listen_totals` the
-/// dearest with three distinct counts over the same scan. 4000ms leaves the
-/// runner the ninefold spread the budgets above record.
+/// dearest with three distinct counts over the same scan. 15s, for the reason
+/// the budgets above give: the runner is some eightfold slower on a quiet day
+/// and twice that on a busy one, and a budget that only clears the quiet day
+/// is a test that reports the weather.
 #[test]
 fn every_listening_aggregate_is_one_pass_over_the_log() {
     let _serial = play_log();
@@ -513,7 +524,7 @@ fn every_listening_aggregate_is_one_pass_over_the_log() {
         genre: Some("Genre03".to_owned()),
         ..ListenQuery::default()
     };
-    const BUDGET: u128 = 4_000;
+    const BUDGET: u128 = 15_000;
 
     for (label, query) in [
         ("everything", &everything),
@@ -556,20 +567,22 @@ fn every_listening_aggregate_is_one_pass_over_the_log() {
     // The plays table's page, which is on the scroll path rather than the
     // panel one. Newest first reads `idx_plays_started` backwards, so even a
     // page near the far end is a walk along an index and not a sort.
-    assert_under("a deep page of plays", 150, || {
+    assert_under("a deep page of plays", 1_000, || {
         let page = stats::recent_plays(&conn, &everything, PLAYS - 100, 100).unwrap();
         assert_eq!(page.len(), 100);
     });
 }
 
 /// The Library tab reads `tracks` through `scope`, so these cost what a
-/// browse grouping costs. 20ms and under unoptimised on a developer machine.
+/// browse grouping costs. 20ms and under unoptimised on a developer machine,
+/// and 2s here for the runner's sake - this catches a scan per group, not a
+/// percentage.
 #[test]
 fn every_library_aggregate_costs_what_a_browse_grouping_does() {
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery::default();
-    const BUDGET: u128 = 300;
+    const BUDGET: u128 = 2_000;
 
     assert_under("library totals", BUDGET, || {
         assert_eq!(

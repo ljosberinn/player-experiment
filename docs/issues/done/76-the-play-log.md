@@ -156,13 +156,18 @@ over 250k plays and 10k tracks. **Two budgets, because there are two paths and
 calls after a warm-up, and every call after the first writes nothing, so a
 single budget would silently measure the scan and never the rebuild.
 
-- **Cold, every row moving: under 8000ms**, measured once rather than through
+- **Cold, every row moving: under 60000ms**, measured once rather than through
   `assert_under`, because the second call is by construction not the same work.
   This is what runs after 78's import and after a first scan. 1031ms
   unoptimised on a developer machine.
-- **Warm, nothing moving: under 2000ms** through `assert_under`, which is the
+- **Warm, nothing moving: under 10000ms** through `assert_under`, which is the
   shape of every tag edit and removal. 163ms on the same machine, and that
   sixfold gap is the guard earning its place.
+
+**Both numbers shipped an order of magnitude tighter and were wrong.** 8000ms
+for the cold path passed on the runner and had no room in it: a probe there
+measured the same statement at 7.6s to 7.8s idle, and 33s on a runner that was
+half as fast at everything. 77 found that out by failing.
 
 Loose on purpose, and against the CI runner rather than a developer machine —
 the spread [perf.rs](../../../src-tauri/tests/perf.rs) already records runs
