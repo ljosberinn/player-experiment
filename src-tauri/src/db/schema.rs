@@ -559,6 +559,60 @@ CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
     VALUES (new.id, new.title, new.artist, new.album, new.album_artist, new.genre, new.comment);
 END;
 "#,
+    // 13 - one row per play
+    //
+    // `tracks.play_count` and `tracks.last_played_at` are an aggregate and one
+    // timestamp, and every drill-down in the statistics plan - the last fifty
+    // songs, an hour-of-day heatmap, which artist you played on a Tuesday -
+    // needs the rows themselves. `scrobble_queue` is the right shape and the
+    // wrong thing: it is a drain queue, emptied on success.
+    //
+    // The text columns are the play, for the reason migration 6 gives about
+    // the queue: a play is a fact about a moment, and the row it came from can
+    // be retagged or deleted afterwards. `track_id` is the one derived field,
+    // which is why it is the one thing carrying a foreign key - deleting a
+    // file forgets the link and keeps the play.
+    //
+    // `source` is which writer got there first, not where you were listening:
+    // the import in 78 writes `lastfm` for history this app never saw, and a
+    // play it already holds keeps the `local` row it was written with.
+    //
+    // `idx_plays_identity` is the dedupe rule within one source, and it is
+    // exact rather than fuzzy: `started_at` is recorded when the track loads,
+    // and the import pages backwards with an inclusive cursor that re-fetches
+    // a few rows for the index to eat. It is deliberately *not* the whole
+    // cross-source rule - last.fm autocorrects artist and title, so a play
+    // this app wrote comes back under a spelling that computes a different
+    // `match_key`. That case is `started_at` alone, and it belongs to the
+    // import, because within a second this app played exactly one thing.
+    //
+    // No `loved` column and no MBID column on `tracks`. Loved is the current
+    // state of a track rather than a fact about a moment, and a recording id
+    // matches nothing until the import lands rows carrying one; both arrive
+    // with the data that makes them worth anything.
+    //
+    // `play_count` and `last_played_at` stay and are not backfilled. Only the
+    // most recent play is recoverable from them, and manufacturing timestamps
+    // for the rest would put invented data in the table the feature reads.
+    r#"
+CREATE TABLE plays (
+    id           INTEGER PRIMARY KEY,
+    started_at   INTEGER NOT NULL,
+    source       TEXT NOT NULL CHECK (source IN ('local', 'lastfm')),
+    artist       TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    album        TEXT,
+    duration_ms  INTEGER,
+    artist_mbid  TEXT,
+    track_mbid   TEXT,
+    match_key    TEXT NOT NULL,
+    track_id     INTEGER REFERENCES tracks(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX idx_plays_identity ON plays(started_at, match_key);
+CREATE INDEX idx_plays_started ON plays(started_at);
+CREATE INDEX idx_plays_track   ON plays(track_id, started_at);
+"#,
 ];
 
 #[cfg(test)]

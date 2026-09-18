@@ -18,6 +18,7 @@ edit a shipped one.
 | 10 | a fourth `release_lookup.status`, `aside` — a queued release the user has said to leave alone. A whole-table rebuild, because the vocabulary is a CHECK constraint and SQLite cannot widen one in place |
 | 11 | `genres`, `genre_edges`, `genre_aliases`, `genre_overrides` — the genre hierarchy, seeded from a generated data file `concat!`ed into the migration |
 | 12 | `tracks.path` collates `NOCASE` — one file is one row whatever it is spelled like. A whole-table rebuild, because the constraint is on the column, and a merge in the same migration for the rows that collide under the fold |
+| 13 | `plays` — one row per play, with the artist and title as they were heard. `track_id` is the one derived column and the one foreign key; `idx_plays_identity` over `(started_at, match_key)` is the dedupe rule within a source |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -215,6 +216,38 @@ something that never happened. So there is no foreign key either.
   regardless. No size cap is needed.
 - **Only ignore code 5, the daily cap, is deferred.** Codes 1–4 are permanent,
   so those rows are dropped exactly like accepted ones.
+
+## The play log
+
+`plays` is one row per play, and the same argument the scrobble queue makes
+about what a play is: the artist, title, album and duration are stored as they
+were heard, and the row they were read off can be retagged or deleted
+afterwards. `track_id` is the one derived column, which is why it is the one
+foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
+
+- **A local play is written whether or not an account is connected**, in the
+  same transaction as `playback::mark_played`, so the count and the log cannot
+  disagree about what was played. Not about when: the count records the moment
+  the play counted, the log the moment the track started.
+- **The log does not inherit the scrobbler's rules.** No artist and shorter
+  than thirty seconds are last.fm's conditions for accepting a scrobble, not
+  this app's for remembering a play.
+- **`match_key` is normalized in Rust** — lowercase, collapsed whitespace, a
+  trailing `(feat. …)` dropped, nothing else. `lower()` and `COLLATE NOCASE`
+  are ASCII-only and would leave Motörhead unfolded, and folding `(Live)` into
+  the studio cut would destroy a distinction worth keeping. A key with an empty
+  side is empty, because one built from nothing matches every untagged file.
+- **`plays::resolve` rebuilds `track_id` for the whole log**, wherever
+  `tag_values::rebuild` runs, for the reason that module gives at length. One
+  key names several tracks routinely — the album copy and the compilation copy
+  — so the winner is fixed rather than incidental: present before unplugged,
+  then the lower id, which is migration 12's tiebreak. Without it the function
+  is not idempotent and its guarded `UPDATE` rewrites the log on every run.
+- **`idx_plays_identity` is the dedupe rule within one source, not across
+  them.** last.fm autocorrects artist and title, so a play this app wrote comes
+  back from the import under a spelling that computes a different key. That
+  case is `started_at` alone, and it belongs to the import: within a second
+  this app played exactly one thing.
 
 ## Smart playlists
 

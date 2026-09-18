@@ -480,6 +480,9 @@ pub fn apply(
     // In the same transaction as the rows it is derived from, so a suggestion
     // list can never describe a library state that was rolled back.
     crate::db::tag_values::rebuild(&tx)?;
+    // Same transaction for the same reason: a play must not point at a tag
+    // edit that was rolled back.
+    crate::db::plays::resolve(&tx)?;
     tx.commit()?;
 
     Ok(TagWriteSummary {

@@ -10,7 +10,7 @@ drain queue, emptied on success.
 Depends on nothing. [77](77-the-stats-query-layer.md) and
 [78](78-import-the-lastfm-history.md) both stack on it.
 
-## Migration 12
+## Migration 13
 
 ```sql
 CREATE TABLE plays (
@@ -37,16 +37,6 @@ afterwards. `track_id` is the one derived field, which is why it is the one
 thing carrying a foreign key — deleting a file forgets the link and keeps the
 play.
 
-**`idx_plays_identity` is the dedupe rule, and it is exact rather than fuzzy.**
-`Event::Played` carries the second the track started, recorded at load rather
-than derived from `now - position_ms`, which
-[engine.rs](../../../src-tauri/src/audio/engine.rs) explains is wrong for any
-track that was paused or seeked. The scrobbler sends that integer to last.fm and
-last.fm hands it back. 78 is therefore `INSERT OR IGNORE`, and a play made in
-this app cannot be counted twice. It follows that `source` means *which writer
-got there first*, not where you were listening — a comment at the column,
-because it reads like the other thing.
-
 `artist_mbid` and `track_mbid` are written by 78 and read by nothing in this
 phase. They are here rather than in 78's migration because they are part of what
 a play is, not part of importing one.
@@ -71,12 +61,44 @@ worth anything, in 78.
 recent play is recoverable from them, and manufacturing timestamps for the rest
 would put invented data in the table the whole feature reads.
 
+## Identity
+
+`idx_plays_identity` is the dedupe rule and it is exact rather than fuzzy.
+`Event::Played` carries the second the track started, recorded at load rather
+than derived from `now - position_ms`, which
+[engine.rs](../../../src-tauri/src/audio/engine.rs) explains is wrong for any
+track that was paused or seeked. `source` therefore means *which writer got
+there first*, not where you were listening — a comment at the column, because it
+reads like the other thing.
+
+**The composite key is the within-source rule, and it is not enough across
+sources.** last.fm autocorrects artist and title on `track.scrobble`, and
+`user.getRecentTracks` hands back the corrected spelling — so a play this app
+wrote as `Motorhead` comes back as `Motörhead`, computes a different
+`match_key`, and `INSERT OR IGNORE` on this index inserts it a second time. The
+index still has to be composite: 78 pages backwards with an inclusive `to=`
+cursor and would otherwise lose two last.fm rows that share a second.
+
+So the cross-source rule is `started_at` alone, and it is sound for the reason
+the composite one is not: within a second, this app played exactly one thing.
+**78 skips an imported row whose second already carries a `source = 'local'`
+row.** Stated here because it is what makes the identity claim true; implemented
+there, because nothing imports yet.
+
+**A local insert is `INSERT OR IGNORE` too**, and that is about the transaction
+below rather than about duplicates. A constraint violation inside a shared
+transaction would roll back the `play_count` increment with it, which trades a
+missing log row for a wrong play count.
+
 ## Writing a play
 
 **Local writes happen whether or not a last.fm account is connected**, on the
 same `Event::Played` the scrobbler already listens to — and in the same
 transaction as `playback::mark_played`, so the count and the log cannot disagree
-about what was played.
+about *what* was played. Not about when: `mark_played` stamps `last_played_at`
+with the moment the play counted, and the log row carries the moment the track
+started, which is what a scrobble has to carry and what makes the play
+identifiable. They are a track length apart on purpose.
 
 The event carries `track_id` and `started_at` only, so the row is snapshotted
 from `tracks` at that moment. **The log does not inherit the scrobbler's rules.**
@@ -100,9 +122,9 @@ leave Motörhead and Sigur Rós unfolded, and `COLLATE NOCASE` has the same limi
 
 **Resolution is a rebuild, not bookkeeping.** `plays::resolve` recomputes
 `track_id` for every row and runs wherever `tag_values::rebuild` already runs —
-after a scan, a tag write, an undo, a removal. The argument is the one
-[tag_values.rs](../../../src-tauri/src/db/tag_values.rs) makes at length: no
-drift to detect, no repair path to write.
+the end of a scan, a tag write, `remove_missing` and `remove_tracks`. The
+argument is the one [tag_values.rs](../../../src-tauri/src/db/tag_values.rs)
+makes at length: no drift to detect, no repair path to write.
 
 **The key is not stored on `tracks`.** It cannot be: normalization is Rust-side,
 so a `tracks.match_key` column has to be filled at every site that writes a
@@ -112,19 +134,45 @@ thing it was meant to make cheap. Instead `resolve` reads `id, artist, title`,
 normalizes in Rust, materializes a temporary `keys(key PRIMARY KEY, track_id)`,
 and runs one `UPDATE` over `plays` against it.
 
+**One key names several tracks, and which one wins is fixed rather than
+incidental.** The same song on its album and on a compilation is two rows and
+one key, and a library has hundreds of those. The rows are read
+`ORDER BY missing_since IS NOT NULL, id` and inserted `OR IGNORE`, so the
+present copy beats the unplugged one and the older id beats the newer — which is
+[migration 12](../../../src-tauri/src/db/schema.rs)'s tiebreak, for the same
+reason it was chosen there. Without it the winner follows scan order, `resolve`
+stops being idempotent, and the guarded `UPDATE` below rewrites the table on
+every run.
+
 **The `UPDATE` is guarded by `WHERE track_id IS NOT (SELECT …)`.** This is what
 makes the plan's one perf risk affordable: after a three-track tag edit the
 statement still scans `plays`, but writes only the handful of rows whose link
 actually moved, instead of rewriting 237k rows to the values they already held.
 `IS NOT` rather than `<>` because most of those values are NULL on both sides.
 
-It still gets a budget in `tests/perf.rs` here, before any panel depends on it:
-**one full `resolve` over 250k plays and 10k tracks, under 3000ms.** Loose on
-purpose, and against the CI runner rather than a developer machine — the spread
-[perf.rs](../../../src-tauri/tests/perf.rs) already records is roughly tenfold,
-and the budget is there to catch a change of shape. If it misses anyway, the fallback is
-to re-resolve only the keys a write touched — correct, but with an ordering
-dependency on every caller, which is why it is the fallback and not the design.
+It still gets a budget in `tests/perf.rs` here, before any panel depends on it,
+over 250k plays and 10k tracks. **Two budgets, because there are two paths and
+`assert_under` only ever reports one of them**: it takes the minimum of five
+calls after a warm-up, and every call after the first writes nothing, so a
+single budget would silently measure the scan and never the rebuild.
+
+- **Cold, every row moving: under 8000ms**, measured once rather than through
+  `assert_under`, because the second call is by construction not the same work.
+  This is what runs after 78's import and after a first scan. 1031ms
+  unoptimised on a developer machine.
+- **Warm, nothing moving: under 2000ms** through `assert_under`, which is the
+  shape of every tag edit and removal. 163ms on the same machine, and that
+  sixfold gap is the guard earning its place.
+
+Loose on purpose, and against the CI runner rather than a developer machine —
+the spread [perf.rs](../../../src-tauri/tests/perf.rs) already records runs
+from under twofold to ninefold, and the budgets are there to catch a change of
+shape. **What catches the guard specifically is the count, not the clock**: a
+warm run asserted to move zero rows says the same thing on every machine, where
+a time separating 163ms from 1031ms would have to fit inside that spread. If
+the budgets miss anyway, the fallback is to re-resolve only the keys a write
+touched — correct, but with an ordering dependency on every caller, which is
+why it is the fallback and not the design.
 
 `db::synthetic` gains `seed_plays`, which `tests/perf.rs` and 77's budgets both
 need: `seed` writes `tracks` and nothing has ever written a play. Keys are
@@ -140,16 +188,19 @@ to produce a key `resolve` skips.
 
 Resolution over a seeded database: a play with no matching file asserted
 `track_id IS NULL`, a deleted track asserted to leave its plays standing, a
-retag asserted to re-point them, and a second `resolve` over an unchanged
-library asserted to write nothing.
+retag asserted to re-point them, two tracks sharing a key asserted to resolve to
+the present one and then to the lower id, and a second `resolve` over an
+unchanged library asserted to write nothing.
 
 The write path: a played track asserted to land one row with the count it was
-snapshotted from, an untagged track asserted logged and unmatched, and a play
-asserted written with no last.fm account connected.
+snapshotted from, an untagged track asserted logged and unmatched, a play
+asserted written with no last.fm account connected, and a duplicate play
+asserted to leave the count incremented rather than rolled back.
 
 ## Documentation
 
-`docs/plans/statistics.md` numbers the play log migration 10 and the genre tree
-9; both are wrong now, and its schema block carries the `loved` and
-`tracks.mbid` columns this phase drops. The migration table in
-[data-model.md](../../knowledge/data-model.md) gains row 12.
+`docs/plans/statistics.md` numbers the play log migration 12, which the path
+fold took, and states the identity rule as if the index settled it across
+sources; both are corrected there.
+[data-model.md](../../knowledge/data-model.md) gains row 13 and a play log
+section beside the scrobble queue it argues from.

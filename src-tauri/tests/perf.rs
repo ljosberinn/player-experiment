@@ -8,7 +8,7 @@
 
 use std::time::Instant;
 
-use apex_lib::db::{genres, query, synthetic, tag_values, Db};
+use apex_lib::db::{genres, plays, query, synthetic, tag_values, Db};
 use apex_lib::model::{
     BrowseFilter, BrowseKind, SortDirection, SortField, TagValueField, TrackQuery,
 };
@@ -415,4 +415,56 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
         tree.resolve("atmospheric black metal").parent.as_deref(),
         Some("black metal")
     );
+}
+
+/// How many plays the log budgets are measured over.
+///
+/// The library this feature was written against holds 237,572 scrobbles, so
+/// the round number just above it is the one worth being sure of.
+const PLAYS: u32 = 250_000;
+
+/// `plays::resolve` reads every play on every run, which is the one perf risk
+/// the play log takes on, and it is taken on purpose: the alternative is
+/// re-resolving only the keys a write touched, which is correct but owes an
+/// ordering dependency to every caller.
+///
+/// **Two budgets, because there are two paths and `assert_under` only ever
+/// reports one of them.** It takes the minimum of five calls after a warm-up,
+/// and every call after the first writes nothing, so a single budget would
+/// silently measure the scan and never the rebuild. Unoptimised on a developer
+/// machine the two are 1031ms and 163ms, and that sixfold gap is the guard in
+/// the `UPDATE` earning its place.
+///
+/// **What catches the guard being lost is the count, not the clock.** A warm
+/// run that writes nothing writes zero rows on any machine, where a time that
+/// separated 163ms from 1031ms would have to sit inside the spread between
+/// this machine and the runner. The budgets below are the coarser question -
+/// whether the statement still has the shape of one pass over the log.
+#[test]
+fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
+    let (_dir, db) = seeded_library();
+    let mut conn = db.conn().unwrap();
+    synthetic::seed_plays(&mut conn, PLAYS).unwrap();
+
+    // Cold: every matched row moves off NULL. This is what runs once after an
+    // import and once after a first scan, and it is measured directly rather
+    // than through `assert_under`, because by construction no second call does
+    // the same work.
+    let start = Instant::now();
+    let moved = plays::resolve(&conn).unwrap();
+    let elapsed = start.elapsed().as_millis();
+    assert!(
+        moved > 0,
+        "a cold resolve that moved nothing measured nothing"
+    );
+    assert!(
+        elapsed <= 8_000,
+        "a first resolve over {PLAYS} plays and {ROWS} tracks took {elapsed}ms,          budget is 8000ms - it writes every matched row once, and never again"
+    );
+
+    // Warm: the shape of every tag edit and every removal. The statement still
+    // reads the whole log; the guard is what keeps it from writing it.
+    assert_under("plays::resolve over an unchanged library", 2_000, || {
+        assert_eq!(plays::resolve(&conn).unwrap(), 0);
+    });
 }

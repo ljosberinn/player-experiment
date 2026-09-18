@@ -77,7 +77,16 @@ Keyed by `match_key` and nothing else: loved is a fact about a song, and
   the set comes from `user.getLovedTracks` instead.
 
 An import is `INSERT OR IGNORE` on [76](76-the-play-log.md)'s identity index, so
-a re-run is free and a play this app made cannot be counted twice.
+a re-run is free.
+
+**That index is not what keeps a local play from being counted twice**, and 76
+says why: last.fm autocorrects artist and title on the way in, `getRecentTracks`
+returns the corrected spelling, and the corrected spelling computes a different
+`match_key`. So the import also skips a row whose second already carries a
+`source = 'local'` play — sound because within a second this app played exactly
+one thing, and narrow enough to leave two last.fm rows sharing a second alone,
+which the inclusive cursor above depends on. A test asserts a locally written
+play is not re-imported under a name last.fm corrected.
 
 ## Mechanically, the shape the codebase has
 
