@@ -1,14 +1,15 @@
 # 84a — What you have heard
 
 The Listening tab's lists and numbers. Stacks on
-[78](../done/78-import-the-lastfm-history.md) and
-[80](../done/80-the-statistics-view.md); the tab's charts are
-[84c](84c-the-shape-of-a-week.md), which stacks on this. Independent of
-[84b](84b-what-you-own.md), which is the other tab and now takes the CSV path
-from here.
+[78](78-import-the-lastfm-history.md) and
+[80](80-the-statistics-view.md). The tab's charts are
+[84c](../upcoming/84c-the-shape-of-a-week.md) and the other tab is
+[84b](../upcoming/84b-what-you-own.md); **both stack on this**, 84c for the
+panel plumbing and 84b for the CSV path alone.
 
-Split off from the plan's single phase 84 for that independence, and because one
-phase drawing both tabs is not workable as written.
+Split off from the plan's single phase 84 because one phase drawing both tabs is
+not workable as written, and split again from the charts along the primitive
+seam - see below.
 
 The tile row went to 80, which needed a caller for the shell it built.
 
@@ -24,7 +25,7 @@ because an artist's top artist is themselves.
 
 ## The primitives do not exist
 
-[70](../done/70-chart-primitives.md) landed `scales.ts`, `ChartFrame`, `Tooltip`
+[70](70-chart-primitives.md) landed `scales.ts`, `ChartFrame`, `Tooltip`
 and `StatTile`, and declined `Bar`, `Line`, `Donut`, `Heatmap` and `Sparkline`
 under its own rule: each primitive lands with a caller or it does not land. So a
 panel here is not "a `ListenQuery` and a primitive that both already exist", and
@@ -78,7 +79,7 @@ Nothing here touches d3 or draws an element: a share is a percentage.
 
 ## The CSV path lands here, and needs ten lines of Rust
 
-[80](../done/80-the-statistics-view.md) decided the mechanics and gave them to
+[80](80-the-statistics-view.md) decided the mechanics and gave them to
 84b's first exporting panel. **Heard, never owned exports too, and the two
 phases were meant to run in parallel**, so one of them has to own it; this one
 is the lower number and lands first. 84b stacks on it.
@@ -109,3 +110,15 @@ while Statistics is open. Two thirds of seeded plays match a synthetic track and
 one third never do, which is what fills the shopping list for the photograph.
 The seeded history ends in 2023, so the current streak reads 0 — true, and not
 worth faking.
+
+**Landed as written, plus one thing the design did not foresee.** The tile row
+and the genre panel's coverage caption both want `listen_totals`, which is the
+dearest aggregate in the set, so `listenTotalsOnce` holds the last promise and
+the second panel joins the first's scan rather than starting a second. One
+entry and not a cache: every panel moves to the new filters together.
+
+**The e2e spec moved to after `virtualization`**, which is what makes the
+photograph worth taking: the seeded plays match a synthetic track two times in
+three, so the owned share and the shopping list both have something in them. It
+adds plays and no songs, so nothing after it sees a library it does not
+recognise.

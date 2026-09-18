@@ -10,6 +10,7 @@ import {
 import { historyAt } from "../library/history";
 import { useLibraryStore } from "../library/store";
 import { DEFAULT_FILTERS } from "./filters";
+import { forgetListenTotals } from "./listenTotals";
 import { statsRoot } from "./path";
 import { StatisticsView } from "./StatisticsView";
 import { useStatsStore } from "./store";
@@ -43,6 +44,14 @@ vi.mock("../../ipc", () => ({
     firstAt: 1_400_000_000,
     lastAt: 1_700_000_000,
   })),
+  statsTop: vi.fn(async () => []),
+  statsRecentPlays: vi.fn(async () => []),
+  statsStreaks: vi.fn(async () => ({
+    current: 0,
+    longest: 0,
+    longestFrom: null,
+    longestTo: null,
+  })),
   statsLibraryTotals: vi.fn(async () => ({
     tracks: 150_000,
     artists: 8_000,
@@ -63,6 +72,7 @@ const saveMock = vi.mocked(saveStatsFilters);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  forgetListenTotals();
   loadMock.mockResolvedValue(null);
   useStatsStore.setState({ filters: DEFAULT_FILTERS });
   useLibraryStore.setState({

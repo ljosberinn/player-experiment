@@ -1034,6 +1034,31 @@ pub async fn export_library(
     .await
 }
 
+/// Writes `contents` to `path`, for a panel exporting the rows it already has.
+///
+/// A Statistics panel's export is forty rows the frontend has fetched and
+/// drawn, which is the opposite of `export_library`: no scope to walk, no
+/// progress to report, and nothing to read back out of the database. So the
+/// frontend builds the text and this writes it.
+///
+/// It is a command rather than `@tauri-apps/plugin-fs` because that plugin
+/// would arrive with a capability and an fs scope covering whatever path the
+/// save dialog returned - a permission surface the app does not otherwise have,
+/// for a write it already has a command shape for.
+#[tauri::command]
+pub async fn save_text_file(
+    app: tauri::AppHandle,
+    path: String,
+    contents: String,
+) -> AppResult<()> {
+    let op = op(&app, "export.text").add("path", &path);
+
+    blocking("export.text", move || {
+        op.run(|| std::fs::write(&path, contents).map_err(|e| crate::error::AppError::io(&path, e)))
+    })
+    .await
+}
+
 /// Opens the OS file manager with one track selected.
 ///
 /// Takes a track id rather than a path so the frontend never has to hold a
@@ -1388,6 +1413,33 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
         let seeded = crate::db::synthetic::seed(&mut conn, count)?;
         // What tells the open view to re-count and re-fetch. Without it the
         // table would keep the row count it had before the insert.
+        invalidate::announce(&app);
+        Ok(seeded)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::Internal(format!("seed task failed: {e}")))?;
+
+    seeded
+}
+
+/// Writes `count` synthetic plays into the log and resolves them. **Test-only.**
+///
+/// The e2e suite's only real play is the second of Anchor the library spec
+/// plays, which is one bar on every panel the Listening tab draws - so the
+/// screenshots would photograph an empty tab rather than a populated one.
+///
+/// `seed_plays` leaves `track_id` null, so the resolve is not optional:
+/// without it every play reads as unowned, which is both the owned share and
+/// the heard-never-owned list wrong in opposite directions.
+#[tauri::command]
+pub async fn seed_synthetic_plays(app: tauri::AppHandle, count: u32) -> AppResult<u32> {
+    crate::e2e_only("seed_synthetic_plays")?;
+
+    let seeded = tauri::async_runtime::spawn_blocking(move || -> AppResult<u32> {
+        let db = app.state::<Db>();
+        let mut conn = db.conn()?;
+        let seeded = crate::db::synthetic::seed_plays(&mut conn, count)?;
+        crate::db::plays::resolve(&conn)?;
         invalidate::announce(&app);
         Ok(seeded)
     })

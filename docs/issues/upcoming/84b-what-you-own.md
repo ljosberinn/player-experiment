@@ -3,7 +3,7 @@
 The Library tab's panels — static data over `tracks`, which this build has all
 of. Stacks on [75](../done/75-the-genre-tree.md),
 [80](../done/80-the-statistics-view.md) and
-[84a](84a-what-you-have-heard.md) — for the CSV path alone, not for the play log
+[84a](../done/84a-what-you-have-heard.md) — for the CSV path alone, not for the play log
 or the import, which this tab needs neither of.
 
 The tile row went to 80, which needed a caller for the shell it built.

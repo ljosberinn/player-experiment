@@ -2788,3 +2788,176 @@ body:not(:focus-within) .sidebar-row.current {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
 }
+
+/* A column of panels rather than a grid: the widths differ by panel - a top
+   list wants a name's worth, the plays table wants more - and a grid would
+   size them all to the widest. */
+.stats-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.stats-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.stats-panel h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats-action {
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--field-border);
+  border-radius: 3px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.stats-action:disabled {
+  color: var(--faint);
+}
+
+/* ---------- bar lists ---------- */
+
+.bar-list ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The row is the positioning context for its own fill, which sits behind the
+   text rather than beside it: a separate track column would waste the width a
+   long artist name needs. */
+.bar-list-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.bar-list-fill {
+  position: absolute;
+  inset: 1px auto 1px 0;
+  border-radius: 2px;
+  background: var(--accent-fade);
+}
+
+/* Above the fill, and the ellipsis is what keeps a long name from pushing the
+   count off the row. */
+.bar-list-label {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bar-list-secondary {
+  margin-left: 8px;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+/* Tabular figures so the counts line up down the column; they are read as a
+   ranking, and proportional digits make a longer number look shorter. */
+.bar-list-value {
+  position: relative;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-list-caption {
+  margin: 6px 0 0;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+/* No shimmer, for `ChartFrame`'s reason: the table's skeleton rows animate and
+   nothing in this view does. */
+.bar-list-skeleton {
+  height: 21px;
+  margin: 4px 0;
+  border-radius: 3px;
+  background: var(--chrome-border);
+}
+
+/* ---------- the plays table ---------- */
+
+/* The one thing in this view long enough to need a window over it, so it
+   scrolls inside its panel rather than with the page. */
+.plays-scroll {
+  height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--chrome-border);
+  border-radius: 3px;
+}
+
+.plays-body {
+  position: relative;
+  width: 100%;
+}
+
+.plays-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.plays-when {
+  flex: none;
+  width: 140px;
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plays-title,
+.plays-artist {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plays-title {
+  flex: 3;
+}
+
+.plays-artist {
+  flex: 2;
+  color: var(--muted);
+}
+
+.plays-unowned {
+  flex: none;
+  color: var(--dim);
+  font-size: 11px;
+}

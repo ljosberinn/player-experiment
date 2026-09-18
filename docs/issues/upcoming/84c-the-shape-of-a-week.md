@@ -1,7 +1,7 @@
 # 84c — The shape of a week
 
 The Listening tab's charts, and the two primitives that draw them. Stacks on
-[84a](84a-what-you-have-heard.md), which built the tab's lists and the panel
+[84a](../done/84a-what-you-have-heard.md), which built the tab's lists and the panel
 plumbing under them.
 
 Split from 84a along the primitive seam rather than the tab: `BarList` is HTML

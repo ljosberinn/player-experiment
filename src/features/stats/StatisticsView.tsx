@@ -2,7 +2,7 @@ import { Tabs } from "@base-ui/react/tabs";
 import { useEffect } from "react";
 import { useLibraryStore } from "../library/store";
 import { LibraryTiles } from "./LibraryTiles";
-import { ListeningTiles } from "./ListeningTiles";
+import { ListeningPanels } from "./ListeningPanels";
 import { STATS_TAB_TITLES, type StatsTab, statsRoot, walkBack } from "./path";
 import { StatsFilterBar } from "./StatsFilterBar";
 import { useStatsStore } from "./store";
@@ -74,7 +74,7 @@ export function StatisticsView() {
       {/* Unmounted rather than hidden while inactive, which is Base UI's
           default and what keeps the tab you are not looking at from querying. */}
       <Tabs.Panel className="stats-panels" value="listening">
-        <ListeningTiles />
+        <ListeningPanels />
       </Tabs.Panel>
       <Tabs.Panel className="stats-panels" value="library">
         <LibraryTiles />
