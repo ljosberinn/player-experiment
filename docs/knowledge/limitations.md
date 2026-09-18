@@ -46,10 +46,11 @@ Known, decided, and not scheduled. Anything with work attached lives in
   tagged with release MBIDs pays none of it.
 - **A release a 503 declined three times waits for the tail, and then for the
   next sweep.** The retry is once at the end of the sweep, hours later on a real
-  pass; the release keeps no row either way, so nothing is lost but time. Three
-  such failures in a row are read as an outage and park the lookup for the rest
-  of that sweep — the filing carries on, and the count is `failed` on the sweep
-  line.
+  pass; the release keeps no row either way, so nothing is lost but time. No
+  number of declines in a row parks the lookup — a 503 is the service answering,
+  and the pass spends about a third of itself on them. What parks it is three
+  releases in a row the service did not answer at all, and then only the lookup:
+  the filing carries on. The counts are `failed` and `run` on the sweep line.
 - **A release MusicBrainz has nothing for is never looked up again.**
   Deliberate: MusicBrainz grows, so today's miss is next year's match, but
   re-searching every miss on every launch would be the best part of a day

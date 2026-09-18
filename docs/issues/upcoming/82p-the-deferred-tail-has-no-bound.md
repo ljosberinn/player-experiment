@@ -35,7 +35,7 @@ The tail also carries every declined lookup. It has not grown, because every
 sweep parks on 503s within forty to ninety minutes — the largest `deferred` in
 the day is 2.
 
-[82o](82o-a-503-is-the-one-failure-that-proves-the-service-answered.md) takes
+[82o](../done/82o-a-503-is-the-one-failure-that-proves-the-service-answered.md) takes
 that park away, correctly: a 503 is not an outage. A sweep then runs until the
 library is exhausted, roughly 90 sweep-hours, and the tail becomes both the
 only release path and unbounded — at 26% declines over the ~7,500 releases left,

@@ -158,15 +158,27 @@ kinds, and refuses to place a release whose lookup never reached it: filing it
 under the tags the lookup was about to replace is a release the next sweep moves
 again. A second failure in the tail drops the release, which keeps no row, so
 the next sweep has it back. The backstop against a network that really is down
-is a run rather than the first failure — seven consecutive failures park the
+is a run rather than the first failure — three consecutive failures park the
 lookup for the rest of the sweep, and any lookup that reaches a verdict resets
-the count. **The run outlives the sweep it parked.** A count that opened at zero
-every sweep could not detect an outage at all: the next sweep comes fifteen
-seconds later while there is placement work, and would spend another seven
-lookups learning the same thing. Parking does not carry, so each sweep probes
-with one lookup — a verdict clears the run, a failure parks it again. `run` on
-the sweep line is what the threshold is read back against; `failed` beside it
-says what the declines cost, which is not the same question.
+the count.
+
+**The run counts only failures the service did not answer.** A 503 is
+MusicBrainz replying, and it replies that way from three separate buckets, so
+nothing about the next request can be read off one: a decline defers its release
+and counts in `failed`, and never touches the run in either direction. That is
+the whole of the exception — every other status is a gateway or a proxy
+answering rather than the service, and will go on answering the same way, as
+will a database that is locked. Counting declines made the threshold trip six
+times in six hours on a service that answered every time.
+
+**The run outlives the sweep it parked.** A count that opened at zero every
+sweep could not detect an outage at all: the next sweep comes fifteen seconds
+later while there is placement work, and would spend another three lookups
+learning the same thing. Parking does not carry, so each sweep probes with one
+lookup — a verdict clears the run, a failure parks it again. `run` on the sweep
+line is what the threshold is read back against, and sits at zero on a network
+that is up; `failed` beside it says what the declines cost, which is not the
+same question.
 
 **Each release it touches announces itself on `library://changed`** — written,
 queued or moved, once per release rather than once per step, and per release

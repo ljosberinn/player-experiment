@@ -32,14 +32,14 @@ use std::time::{Duration, Instant};
 use rusqlite::Connection;
 
 use crate::db::{lookup, query, settings, Db};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::library::mover;
 use crate::library::survey::{self, Pending, Steps};
 use crate::log::{Fields, Log};
 use crate::model::BackgroundTask;
 use crate::scan::ScanLock;
 use crate::tagsource::pass::{self, Outcome, Verdict};
-use crate::tagsource::transport::Transport;
+use crate::tagsource::transport::{Transport, TransportError};
 
 /// How often the thread wakes to ask whether either switch is on.
 ///
@@ -56,17 +56,15 @@ const TICK: Duration = Duration::from_secs(15);
 /// beside a pass measured in hours.
 const IDLE_MAX: Duration = Duration::from_secs(600);
 
-/// How many lookups may fail in a row before the step is parked for the sweep.
+/// How many lookups the service did not answer may fail in a row before the
+/// step is parked for the sweep.
 ///
-/// A backstop against a network that is down, not a response to a burst. The
-/// run it takes to be an outage still cannot be read off the log - parking
-/// caps every run at this number - so it is drawn from what the two mistakes
-/// cost instead. A park that comes late costs `OUTAGE` * 3 throttled requests,
-/// seven minutes at seven; a park that comes early costs the rest of one
-/// sweep's lookups. Both are cheap, so this is set above the ordinary rate:
-/// three in ten lookups are declined outright, which puts a run of three every
-/// 53 lookups and a run of seven every 6,600.
-const OUTAGE: usize = 7;
+/// Three releases exhausting three attempts each is nine consecutive requests
+/// nothing replied to, over three minutes at the limiter's pace. The number
+/// does not have to clear a distribution, because [`declined`] keeps the one
+/// failure that has one out of the run - what is counted here is unambiguous,
+/// so a run of three is already an outage rather than a tail.
+const OUTAGE: usize = 3;
 
 /// How many releases are taken from one survey.
 ///
@@ -105,7 +103,9 @@ pub struct Plan {
     pub rehearsed: HashSet<lookup::Key>,
     /// What the readout is told, and what it takes to say it.
     pub pace: Pace,
-    /// Lookups that have failed since the last one to reach a verdict.
+    /// Lookups the service did not answer, since the last one to reach a
+    /// verdict. Declines are neither counted nor cleared here - see
+    /// [`declined`].
     ///
     /// Here rather than in the sweep, for the reason the pace is: a run that
     /// dies with the sweep it parked cannot tell an outage from a burst. Every
@@ -255,14 +255,14 @@ pub struct Summary {
     pub deferred: usize,
     /// Releases a move failed on - a locked file, a full disk.
     pub unmovable: usize,
-    /// Releases whose lookup exhausted its three attempts.
+    /// Releases whose lookup exhausted its three attempts, declined or not.
     ///
     /// How much a pass is paying for a service that is declining, which the
-    /// `run` beside it does not say: scattered failures never reach the
-    /// threshold however many there are, and the tail asks a deferred release
-    /// a second time. A release that failed returns an error rather than an
-    /// outcome, so its `retries` are lost and it is not counted in `visited`
-    /// either.
+    /// `run` beside it no longer says at all: a decline never reaches the run.
+    /// The two read together - `failed` high against `run` at zero is a busy
+    /// MusicBrainz and nothing else. A release that failed returns an error
+    /// rather than an outcome, so its `retries` are lost and it is not counted
+    /// in `visited` either.
     pub failed: usize,
     /// How many requests this sweep had to ask again before one was answered.
     ///
@@ -270,13 +270,14 @@ pub struct Summary {
     /// that works leaves no other trace: the release resolves, and the five
     /// seconds it cost read as a slow request.
     pub retries: usize,
-    /// The longest the failure run reached, which is what [`OUTAGE`] is read
+    /// The longest run of unanswered lookups, which is what [`OUTAGE`] is read
     /// back against.
     ///
     /// `failed` cannot stand in for it, and neither can the log: the run is
     /// what the threshold is, and a `NotFound` verdict resets it without
     /// writing a line, so runs counted off `lookup.release` are longer than
-    /// the ones the sweep parked on.
+    /// the ones the sweep parked on. Expected to sit at zero - every failure
+    /// this library has ever recorded was a decline.
     pub run: usize,
 }
 
@@ -318,14 +319,39 @@ enum Visit {
     /// sweep rather than dropped: a user who leaves one album on must not find
     /// it the only one left behind.
     Deferred,
-    /// The lookup exhausted its three attempts. The release goes to the same
-    /// tail the mover's deferrals go to, because one 503 says nothing about
-    /// the next request: something near a third of requests to MusicBrainz are
-    /// declined, so three in a row is ordinary, and the sweep carries on
-    /// through the batch. A run of [`OUTAGE`] of them is the other thing, and
-    /// parks the step - the *step*, not the sweep, because a network that is
-    /// down says nothing about moving files.
+    /// The lookup exhausted its three attempts against a MusicBrainz that
+    /// declined every one. The release goes to the same tail the mover's
+    /// deferrals go to, and the sweep carries on through the batch: a 503 says
+    /// nothing about the next request in either direction, so it neither
+    /// counts towards the run nor clears it. See [`declined`].
+    Declined,
+    /// The lookup exhausted its three attempts on something that was not an
+    /// answer. Deferred the same way, but counted: a run of [`OUTAGE`] parks
+    /// the step - the *step*, not the sweep, because a network that is down
+    /// says nothing about moving files.
     LookupFailed,
+}
+
+/// Whether a failed lookup is MusicBrainz declining rather than a failure to
+/// reach it.
+///
+/// **Only a 503.** It is the documented code for a full bucket, and
+/// `tagsource::rate` records why the client cannot tell whose bucket it was:
+/// the limit is enforced from three of them at once, so a client well inside
+/// its own allowance still meets 503s. Nothing can be read off one, so it is
+/// kept out of the run entirely.
+///
+/// Every other status stays in. [`TransportError::Server`] also covers a
+/// gateway, a captive portal and a 5xx page, none of which is MusicBrainz
+/// answering and all of which would go on answering the same way - a proxy
+/// stuck on 502 is exactly the outage [`OUTAGE`] exists to stop. So does every
+/// error that is not the transport's: a locked database says as much about the
+/// next release as an unreachable host does.
+fn declined(error: &AppError) -> bool {
+    matches!(
+        error,
+        AppError::Network(TransportError::Server { status: 503, .. })
+    )
 }
 
 /// Works through every release with either step left to do, until there are
@@ -437,6 +463,10 @@ pub fn sweep(
                         ..pending
                     });
                 }
+                // The service answered, so there is nothing here to learn
+                // about the next release - the run is left exactly where it
+                // stood rather than advanced or cleared.
+                Visit::Declined => deferred.push(pending),
                 Visit::LookupFailed => {
                     plan.failures += 1;
                     summary.run = summary.run.max(plan.failures);
@@ -479,8 +509,8 @@ pub fn sweep(
 ///
 /// **The counters have to leave the sweep before the sweep does.** They live on
 /// a [`Summary`] built per sweep and on a [`Plan`] owned by the pass thread, so
-/// a process that dies mid-sweep takes all of them - and once a sweep runs the
-/// library to exhaustion rather than parking on a 503, that is ninety hours
+/// a process that dies mid-sweep takes all of them - and now that a sweep runs
+/// the library to exhaustion rather than parking on a 503, that is ninety hours
 /// against a process restarted about daily. `pass.sweep` would be a line that
 /// never arrives.
 ///
@@ -600,9 +630,13 @@ fn visit(
             // for one that was not. Not counted in `visited`: it wrote
             // nothing, so counting it would put the readout ahead of the
             // library the next sweep reads.
-            Err(_) => {
+            Err(error) => {
                 summary.failed += 1;
-                visit = Visit::LookupFailed;
+                visit = if declined(&error) {
+                    Visit::Declined
+                } else {
+                    Visit::LookupFailed
+                };
             }
         }
     }
@@ -837,7 +871,7 @@ pub fn spawn(
                         open: &open,
                     },
                 );
-                // Whatever ended it - a finished library, a switch, a 503 -
+                // Whatever ended it - a finished library, a switch, an outage -
                 // there is no longer a task to report on.
                 on_progress(None);
 
@@ -971,11 +1005,27 @@ mod tests {
     /// A MusicBrainz that declines everything, which is what a release
     /// exhausts its three attempts against.
     fn declining() -> FakeTransport {
+        answering_with(503)
+    }
+
+    /// A MusicBrainz that cannot be reached at all - the only shape of failure
+    /// the run counts.
+    fn unanswered() -> FakeTransport {
+        FakeTransport::new().failing(
+            "/ws/2/release",
+            TransportError::Unreachable {
+                host: "musicbrainz.org".to_owned(),
+                message: "no route to host".to_owned(),
+            },
+        )
+    }
+
+    fn answering_with(status: u16) -> FakeTransport {
         FakeTransport::new().failing(
             "/ws/2/release",
             TransportError::Server {
                 host: "musicbrainz.org".to_owned(),
-                status: 503,
+                status,
             },
         )
     }
@@ -1177,9 +1227,9 @@ mod tests {
         assert_eq!(paths(&db), settled);
     }
 
-    /// A pass cut short - a quit, a switch, a 503 - leaves the library as its
-    /// own cursor. The second sweep does what the first did not and does not
-    /// redo what it did.
+    /// A pass cut short - a quit, a switch, an outage - leaves the library as
+    /// its own cursor. The second sweep does what the first did not and does
+    /// not redo what it did.
     #[test]
     fn a_cancelled_sweep_resumes_where_it_stopped() {
         let (dir, db) = two_releases();
@@ -1596,7 +1646,7 @@ mod tests {
     #[test]
     fn a_run_of_failures_parks_the_lookup_for_the_rest_of_the_sweep() {
         let (dir, db) = releases(OUTAGE + 1);
-        let transport = declining();
+        let transport = unanswered();
 
         let summary = sweep(
             &db,
@@ -1617,12 +1667,12 @@ mod tests {
         );
     }
 
-    /// The threshold is the run, not the rate: a library of ordinary declines
+    /// The threshold is the run, not the rate: a library of ordinary failures
     /// has to keep being asked right up to it.
     #[test]
     fn a_run_one_short_of_the_threshold_leaves_the_step_on() {
         let (dir, db) = releases(OUTAGE - 1);
-        let transport = declining();
+        let transport = unanswered();
 
         let summary = sweep(
             &db,
@@ -1653,7 +1703,7 @@ mod tests {
     #[test]
     fn the_run_outlives_the_sweep_it_ended() {
         let (dir, db) = releases(OUTAGE - 1);
-        let transport = declining();
+        let transport = unanswered();
         let mut plan = live();
         let steps = held(looking_up());
         let signals = unwatched(&steps);
@@ -1718,8 +1768,113 @@ mod tests {
         assert_eq!(summary.run, 0, "and the line says nothing happened");
     }
 
-    /// A 503 must not file a release under the tags the lookup was about to
-    /// replace, or the next sweep would move it a second time.
+    /// The one that parked six sweeps in six hours on a service that was
+    /// answering every time: a 503 is MusicBrainz replying, so no number of
+    /// them in a row is an outage and the step has to stay on through all of
+    /// them.
+    #[test]
+    fn a_run_of_declines_never_parks_the_step() {
+        let (dir, db) = releases(OUTAGE + 3);
+        let transport = declining();
+        let mut plan = live();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.run, 0, "no run of declines is a run at all");
+        assert_eq!(plan.failures, 0, "and nothing is carried to the next sweep");
+        assert_eq!(
+            transport.call_count(),
+            (OUTAGE + 3) * 2 * 3,
+            "every release asked, and asked again by the tail"
+        );
+    }
+
+    /// A pass paying a third of itself to a busy service still has to say so -
+    /// that is `failed`, and it is the counter the run cannot double as.
+    #[test]
+    fn a_decline_counts_as_a_failure_and_not_as_a_run() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut plan = live();
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &declining(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.failed, 2, "the batch's attempt and the tail's");
+        assert_eq!(summary.run, 0);
+        assert_eq!(plan.failures, 0);
+    }
+
+    /// Neither up nor down. A 503 is evidence the path is up, but `Server` is
+    /// wider than MusicBrainz and a flapping network would alternate, so
+    /// clearing on one would make an outage undetectable.
+    #[test]
+    fn a_decline_does_not_clear_a_carried_run() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut plan = Plan {
+            failures: OUTAGE - 1,
+            ..live()
+        };
+
+        sweep(
+            &db,
+            &ScanLock::default(),
+            &declining(),
+            &log_to(dir.path()),
+            dir.path(),
+            &mut plan,
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(plan.failures, OUTAGE - 1, "left exactly where it stood");
+    }
+
+    /// Only a 503 is the service declining. A gateway stuck on 502 is the
+    /// outage the backstop exists for, and it arrives as the same variant.
+    #[test]
+    fn a_server_error_that_is_not_a_decline_parks_the_step() {
+        let (dir, db) = releases(OUTAGE + 1);
+        let transport = answering_with(502);
+
+        let summary = sweep(
+            &db,
+            &ScanLock::default(),
+            &transport,
+            &log_to(dir.path()),
+            dir.path(),
+            &mut live(),
+            &unwatched(&held(looking_up())),
+        )
+        .unwrap();
+
+        assert_eq!(summary.run, OUTAGE);
+        assert_eq!(
+            transport.call_count(),
+            OUTAGE * 3,
+            "the release after the run was never asked"
+        );
+    }
+
+    /// A lookup that never reached the service must not file a release under
+    /// the tags it was about to replace, or the next sweep would move it a
+    /// second time.
     #[test]
     fn the_tail_does_not_place_a_release_whose_lookup_never_reached_it() {
         let (dir, db) = releases(OUTAGE);
@@ -1730,7 +1885,7 @@ mod tests {
         let summary = sweep(
             &db,
             &ScanLock::default(),
-            &declining(),
+            &unanswered(),
             &log_to(dir.path()),
             dir.path(),
             &mut live(),
@@ -1786,7 +1941,7 @@ mod tests {
         let summary = sweep(
             &db,
             &ScanLock::default(),
-            &declining(),
+            &unanswered(),
             &log_to(dir.path()),
             dir.path(),
             &mut plan,
