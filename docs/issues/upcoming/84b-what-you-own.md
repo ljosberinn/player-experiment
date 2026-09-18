@@ -1,12 +1,14 @@
 # 84b — What you own
 
 The Library tab's panels — static data over `tracks`, which this build has all
-of. Stacks on [75](75-the-genre-tree.md) and [80](80-the-statistics-view.md).
-Independent of [84a](84a-what-you-have-heard.md), and needs neither the play log
-nor the import.
+of. Stacks on [75](../done/75-the-genre-tree.md) and
+[80](../done/80-the-statistics-view.md). Independent of
+[84a](84a-what-you-have-heard.md), and needs neither the play log nor the
+import.
 
-Tiles: tracks, artists, albums, bytes, duration, missing. Then a bitrate
-histogram; a sample-rate breakdown; **albums by mean bitrate ascending,
+The tile row went to 80, which needed a caller for the shell it built.
+
+A bitrate histogram; a sample-rate breakdown; **albums by mean bitrate ascending,
 exportable to CSV**, which is the re-download list; the genre donut with
 drill-down and override editing; release years and decades; library growth over
 time; a duration distribution; and tag health as per-field missing counts, each
@@ -19,12 +21,16 @@ to lose entries.
   scope selector — whole library, current view, a playlist — works on all of
   them rather than on the ones that remembered.
 - **The genre donut is the only writer of `genre_overrides`.** A slice drills to
-  its children through [75](75-the-genre-tree.md)'s `genres.parent`; a
+  its children through [75](../done/75-the-genre-tree.md)'s `genres.parent`; a
   suffix-derived parent is **labelled as derived**, so a wrong guess is visible
   and fixable rather than trusted. The primary-parent rule is arbitrary by
   construction and the override is what corrects it. **An override that makes
   a genre its own ancestor is refused** — `Tree::lineage` survives one, but the
   donut would draw a loop.
+- **The CSV path is 80's decision and this phase's code**: rows the panel has
+  already fetched to a string, and the shell's save dialog. `export/`'s
+  generator walks the library a page at a time behind `export://progress`, which
+  is the opposite problem.
 - Tag health rows leave Statistics deliberately — that is the Songs table, and
   it is the one link out that is a link out.
 
