@@ -338,7 +338,8 @@ leaves for the next one's `from=`. It is not exportable.
   that resets the state. That is how a scrobble deleted on last.fm leaves.
 - **`lastfm_loved` is replaced, never merged.** It is fetched in full only after
   the history finishes, then swapped in one transaction, so a failed fetch keeps
-  the old set. `ListenQuery.loved` filters on `plays.match_key` against it.
+  the old set. `ListenQuery.loved` and the smart-playlist field `Loved` both
+  filter on `plays.match_key` against it.
 
 ## Statistics
 
@@ -411,6 +412,16 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
   `tracks.id IN (SELECT id … ORDER BY … LIMIT ?)`. Appended to the page query
   instead, sorting the open playlist would change which songs it holds and a
   search inside it would search the whole library.
+- **Not every field is a column.** A `FilterFieldKind::Boolean` field is a
+  fact about the row that `compile_rule` answers with a subquery, above
+  everything that assumes a column - `Loved` reaches `lastfm_loved` through
+  `plays.track_id`, and reads "Loved is" with no value at all. `IS NOT NULL`
+  sits inside that subquery so `NOT IN` never meets a NULL.
+- **The editor disables `Loved` without a connected account**, because the
+  loved set arrives with a history import and a rule over an empty one is
+  unanswerable rather than wrong.
+- **A new `FilterField` is forward-incompatible for exports** - see
+  [export-schema.md](export-schema.md).
 - The backend validates every filter by compiling it before storing.
 
 ## The genre tree

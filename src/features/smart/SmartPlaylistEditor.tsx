@@ -12,6 +12,7 @@ import type {
   SortField,
   TagValueField,
 } from "../../ipc";
+import { useLastfmStore } from "../lastfm/store";
 import {
   addNode,
   countRules,
@@ -31,6 +32,31 @@ import {
   withLimit,
 } from "./filterTree";
 import { isUninformative, suggestedName } from "./nameFromRule";
+
+/**
+ * Why Loved cannot be filtered on, or null when it can.
+ *
+ * The loved set arrives with a history import and is empty without one, so a
+ * Loved rule on a build with no key - or on an account that was never
+ * connected - is not wrong, it is unanswerable. A smart playlist that is
+ * silently empty is the failure this field is most likely to produce, so the
+ * editor says which of the two it is rather than offering the field and
+ * returning nothing.
+ *
+ * Read from the store in both places that need it rather than drilled through
+ * `GroupEditor`, which recurses and has no business carrying it.
+ */
+function useLovedUnavailable(): string | null {
+  const configured = useLastfmStore((s) => s.configured);
+  const username = useLastfmStore((s) => s.username);
+  if (!configured) {
+    return "This build carries no last.fm key, so Loved has nothing to read.";
+  }
+  if (username === null) {
+    return "Connect a last.fm account and import your history to filter on Loved.";
+  }
+  return null;
+}
 
 /**
  * The filter-tree editor.
@@ -61,6 +87,7 @@ export function SmartPlaylistEditor({
   const [draftOrder, setDraftOrder] = useState(order);
   const nameId = useId();
   const canSave = draftName.trim() !== "";
+  const lovedUnavailable = useLovedUnavailable();
 
   // A new playlist's name follows its single rule until the user types
   // something into the field themselves - a ref rather than state because
@@ -127,6 +154,11 @@ export function SmartPlaylistEditor({
           </label>
 
           <GroupEditor group={draft} path={[]} root onChange={changeDraft} />
+
+          {/* Once, under the rules, rather than beside every field dropdown:
+              the reason is the same for all of them and a disabled option
+              cannot carry its own explanation. */}
+          {lovedUnavailable === null ? null : <p className="filter-note">{lovedUnavailable}</p>}
 
           <OrderEditor order={draftOrder} onChange={setDraftOrder} />
 
@@ -396,6 +428,7 @@ function RuleEditor({
   // Numbered so the controls have distinguishable names: several rules on the
   // same screen otherwise all announce as "Field".
   const position = index + 1;
+  const lovedUnavailable = useLovedUnavailable();
 
   const changeField = (field: FilterField) => {
     // The operator may not survive the new field - "contains" means nothing on
@@ -412,7 +445,14 @@ function RuleEditor({
         onChange={(event) => changeField(event.currentTarget.value as FilterField)}
       >
         {FIELDS.map((field) => (
-          <option key={field.id} value={field.id}>
+          <option
+            key={field.id}
+            value={field.id}
+            // A filter saved while an account was connected still selects it
+            // after a disconnect, which a disabled option displays fine - it
+            // only stops it being picked afresh.
+            disabled={field.id === "loved" && lovedUnavailable !== null}
+          >
             {field.label}
           </option>
         ))}

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type FilterGroup, type SmartOrder, suggestTagValues } from "../../ipc";
+import { useLastfmStore } from "../lastfm/store";
 import { emptyFilter, noOrder } from "./filterTree";
 import { SmartPlaylistEditor } from "./SmartPlaylistEditor";
 
@@ -44,6 +45,70 @@ function savedOrder(onSave: ReturnType<typeof vi.fn>): SmartOrder {
 const artistIs = (text: string): FilterGroup => ({
   combinator: "all",
   children: [{ type: "rule", field: "artist", op: "is", value: { kind: "text", text } }],
+});
+
+const lovedIs: FilterGroup = {
+  combinator: "all",
+  children: [{ type: "rule", field: "loved", op: "is", value: { kind: "none" } }],
+};
+
+/** A build with a key and an account, which is what Loved needs. */
+function connected() {
+  useLastfmStore.setState({ configured: true, username: "listener" });
+}
+
+describe("the Loved field", () => {
+  beforeEach(() => {
+    useLastfmStore.setState({ configured: false, username: null });
+  });
+
+  it("renders no value input, because the rule is the whole question", async () => {
+    connected();
+    open(lovedIs);
+
+    expect(screen.getByRole("combobox", { name: "Condition 1 on Loved" })).toHaveValue("is");
+    expect(screen.queryByLabelText("Value for condition 1")).not.toBeInTheDocument();
+  });
+
+  it("saves without a value", async () => {
+    connected();
+    const { onSave, user } = open(lovedIs);
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledWith("Recent", lovedIs, noOrder);
+  });
+
+  it("cannot be picked on a build with no key, and says so", async () => {
+    open(artistIs("Rome"));
+
+    expect(screen.getByRole("option", { name: "Loved" })).toBeDisabled();
+    expect(screen.getByText(/carries no last.fm key/)).toBeInTheDocument();
+  });
+
+  it("cannot be picked until an account is connected, and says which", async () => {
+    useLastfmStore.setState({ configured: true, username: null });
+    open(artistIs("Rome"));
+
+    expect(screen.getByRole("option", { name: "Loved" })).toBeDisabled();
+    expect(screen.getByText(/Connect a last.fm account/)).toBeInTheDocument();
+  });
+
+  it("is offered without comment once an account is connected", async () => {
+    connected();
+    open(artistIs("Rome"));
+
+    expect(screen.getByRole("option", { name: "Loved" })).toBeEnabled();
+    expect(screen.queryByText(/last.fm/)).not.toBeInTheDocument();
+  });
+
+  it("still shows the field a saved filter selected after a disconnect", async () => {
+    // Disabling the option stops it being picked afresh; it must not erase a
+    // rule the user built while they were connected.
+    open(lovedIs);
+
+    expect(screen.getByRole("combobox", { name: "Field for condition 1" })).toHaveValue("loved");
+  });
 });
 
 describe("SmartPlaylistEditor", () => {
