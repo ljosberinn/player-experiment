@@ -44,6 +44,13 @@ is why paging, sorting, search-within, "select all", the play queue, export and
 
 - **Placeholders are anonymous `?` bound in order**, so a clause can be added or
   dropped without renumbering its neighbours.
+- **`browse` is a tag; `genre` is a branch.** `TrackQuery.browse` matches one
+  exact `tracks.genre` string, which is what a genre tile holds. `TrackQuery.genre`
+  is `db::genres::members` — every tag at or below a resolved label — which is
+  what a drill-down means and what `ListenQuery.genre` has always meant. The two
+  compose. It is the one clause whose cost is a table scan plus a tree walk
+  rather than an index seek, so it is built only when the slot is filled, and
+  `tests/perf.rs` pins it.
 - **Relevance and position are `SortField`s**, not flags: valid only when a
   search or a playlist is joined in, and falling back to a real column
   otherwise, so a stored sort is harmless in a view that cannot honour it.
@@ -303,6 +310,13 @@ leaves for the next one's `from=`. It is not exportable.
   business, and it is not exportable for that key's reason.
 - **The genre filter and `genre_breakdown` walk `Tree::lineage`** — the primary
   parent and the overrides, the tree the donut draws — never `genre_edges`.
+  One function, `db::genres::members`, answers it for `ListenQuery` and
+  `TrackQuery` alike, so the donut and the panels beside it cannot disagree
+  about what is under a genre.
+- **The donut takes its level as `parent`, not as `query.genre`.** The
+  aggregate drops every tag not under `parent` on its own, so narrowing the
+  query as well would resolve the tree twice for one answer. Every other panel
+  on the tab does carry it — that is what makes a drill narrow the tab.
 
 ## Smart playlists
 

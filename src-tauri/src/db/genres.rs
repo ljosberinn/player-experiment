@@ -16,7 +16,7 @@
 //! Suffix derivation covers what Wikidata lacks, by treating a genre as a child
 //! of any shorter genre its name ends with at a word boundary, longest match
 //! winning. It is guesswork, so it says so - [`ParentSource::Derived`] is what
-//! 84b's panel labels as derived, which turns a wrong guess into something to
+//! 84d's donut labels as derived, which turns a wrong guess into something to
 //! see and fix rather than something to trust.
 //!
 //! The override is the user's, wins over both, and is the only one of the four
@@ -28,11 +28,11 @@
 //! # Why the whole tree is loaded at once
 //!
 //! [`Tree::load`] reads all four tables into memory and [`Tree::resolve`] is
-//! then pure. 84b resolves every distinct genre in the library at once, and the
-//! suffix derivation needs the entire label set to answer even one string, so
-//! the alternative is thousands of round trips to answer questions against a
-//! table that never changes while they run. The whole tree is a couple of
-//! megabytes of short strings.
+//! then pure. [`members`] resolves every distinct genre in the library at
+//! once, and the suffix derivation needs the entire label set to answer even
+//! one string, so the alternative is thousands of round trips to answer
+//! questions against a table that never changes while they run. The whole tree
+//! is a couple of megabytes of short strings.
 
 use std::collections::HashMap;
 
@@ -219,6 +219,42 @@ impl Tree {
             .find(|candidate| self.parents.contains_key(*candidate))
             .map(str::to_owned)
     }
+}
+
+/// Every raw `tracks.genre` at or below `genre`, as a JSON array.
+///
+/// Resolved through [`Tree`] rather than a recursive walk of `genre_edges`: a
+/// tag reaches a label only through Rust-side normalization, aliases, the
+/// suffix derivation and overrides, none of which the edge table holds, and
+/// the edges are the whole DAG where the donut draws one parent. Filtering on
+/// them would keep blackened death metal under black metal after an override
+/// moved it, and the filter and the donut would disagree.
+///
+/// Over the whole library rather than a scope. For `ListenQuery` that is
+/// because a play is matched to any file, not to the ones some view happens to
+/// show; for `TrackQuery` it is because the caller is `query::scope`, and a
+/// scope that narrowed itself before deciding what it contains is circular.
+///
+/// Here rather than in [`crate::db::stats`], which is where it was written:
+/// `db::stats` imports `db::query`, so `scope` calling back into it would be a
+/// back-edge, and the question is about the tree either way.
+pub fn members(conn: &Connection, genre: &str) -> AppResult<String> {
+    let tree = Tree::load(conn)?;
+    let target = tree.resolve(genre).label;
+
+    let mut statement =
+        conn.prepare("SELECT DISTINCT genre FROM tracks WHERE genre IS NOT NULL AND genre <> ''")?;
+    let members = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|raw| match raw {
+            Ok(raw) if tree.lineage(&raw).contains(&target) => Some(Ok(raw)),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    serde_json::to_string(&members)
+        .map_err(|e| crate::error::AppError::Internal(format!("encoding genres: {e}")))
 }
 
 /// Records that `label`'s parent is `parent`, replacing any earlier override.

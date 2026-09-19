@@ -3096,3 +3096,55 @@ body:not(:focus-within) .sidebar-row.current {
 .chart-cell[data-step="4"] {
   fill: var(--chart-ramp-4);
 }
+
+/* The donut shares the heatmap's ramp, for the reason `rampStep` gives: the
+   slices arrive ordered by size, so a sequential ramp reads as the magnitude
+   it already is and the sheet needs no categorical palette. */
+.chart-slice[data-step="0"] {
+  fill: var(--chart-ramp-0);
+}
+
+.chart-slice[data-step="1"] {
+  fill: var(--chart-ramp-1);
+}
+
+.chart-slice[data-step="2"] {
+  fill: var(--chart-ramp-2);
+}
+
+.chart-slice[data-step="3"] {
+  fill: var(--chart-ramp-3);
+}
+
+.chart-slice[data-step="4"] {
+  fill: var(--chart-ramp-4);
+}
+
+/* The panel's own ground, not a border colour: it is a gap between slices
+   rather than an outline around one, which is what keeps two neighbours of
+   the same ramp step apart. */
+.chart-slice {
+  stroke: var(--surface);
+  stroke-width: 1.5px;
+}
+
+/* The drill inside a chart's table, shaped like the breadcrumb's buttons and
+   coloured like them: `--muted` is what this sheet uses for a level you can
+   move to, against the `--text` a cell that goes nowhere keeps. No cursor and
+   no hover, per phase 27 - the arrow and the absence of a highlight are what
+   make a window read as native rather than as a page. */
+.chart-table-drill {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* "derived" beside a genre whose parent was guessed from its suffix. */
+.chart-note {
+  margin-left: 6px;
+  color: var(--label);
+  font-size: 11px;
+}

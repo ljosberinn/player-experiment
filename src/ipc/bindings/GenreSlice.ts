@@ -7,7 +7,7 @@ import type { ParentSource } from "./ParentSource";
 export type GenreSlice = { label: string, tracks: number, 
 /**
  * How this slice came to be under the drilled genre - `derived` is the
- * guess 84b labels as a guess.
+ * guess 84d labels as a guess.
  */
 parentSource: ParentSource, 
 /**

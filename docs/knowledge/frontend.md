@@ -69,10 +69,11 @@ classes that already exist.
 
 ## Charts
 
-`src/components/charts/`. **`scales.ts` is the only file importing `d3-scale`**
-— what is borrowed is the maths and nothing else, so every element and every
-colour on screen is ours, which is what the design and `e2e/contrast.ts` both
-require.
+`src/components/charts/`. **`scales.ts` is the only file importing d3** —
+`d3-scale` for the domain-to-pixel mapping, `d3-shape` for the arithmetic of a
+ring segment. What is borrowed is the maths and nothing else, so every element
+and every colour on screen is ours, which is what the design and
+`e2e/contrast.ts` both require.
 
 - **Ticks come back as data**, `{ value, offset, label }`, not as an axis
   generator wanting a DOM node. A chart lays them out and a test asserts on
@@ -102,11 +103,18 @@ require.
   it: single-series marks and every sequential magnitude draw from an
   accent-derived ramp, so the app stays monochrome where it can, and a separate
   five-to-six hue categorical set — validated against `--surface` — exists only
-  for the donut and for multi-series. The sequential ramp is in the sheet as
-  `--chart-ramp-0` to `-4`, an empty step and four opaque steps up to the
-  accent, landed with `Heatmap`; a cell takes a step by its share of the
-  largest, rounded up so one play never reads as none. The categorical set
-  lands with the donut.
+  for multi-series. The sequential ramp is in the sheet as `--chart-ramp-0` to
+  `-4`, an empty step and four opaque steps up to the accent, landed with
+  `Heatmap`; a mark takes a step through `rampStep` by its share of the
+  largest, rounded up so one play never reads as none.
+- **The categorical set did not land with the donut, and the donut is why.**
+  `genre_breakdown` returns its slices ordered by size, so a genre ring is a
+  magnitude series wearing a different shape — the sequential ramp reads as
+  what it already is, and a hairline of `--surface` between neighbours is what
+  separates two slices that share a step. Five new hues are a decision for the
+  design source rather than for the first chart that could have used them. The
+  set earns its place when something draws categories that are genuinely
+  unordered.
 - **`BarList` is HTML, and deliberately not a `ChartFrame`.** A ranked list is
   already the table `ChartFrame`'s toggle would offer, and wrapping it in one
   `role="img"` would take away the reading it has: names that truncate, rows
@@ -128,6 +136,19 @@ require.
 - **`Heatmap` is categorical on both axes**, so `ChartFrame` draws it with
   `grid={false}`: a gridline through a row of weekday cells shows through every
   gap and measures nothing.
+- **`Donut` divides by the total, and takes `RADIAL_MARGIN`.** Every other
+  chart here divides by a domain or by the largest value; a ring's whole is its
+  sum, which is what lets a slice mean the same on two panels that agree about
+  no maximum. The margin is the other side of the one-constant rule rather than
+  an exception to it — what the constant buys is plots that line up, and a
+  radial chart has none, so an axis gutter under it is a ring drawn off-centre.
+  `arcPath` is d3's generator rather than trigonometry for one case: a slice of
+  a whole turn is a full circle, and a single SVG `A` command cannot draw one.
+- **A slice click is a shortcut, and the table holds the real control.**
+  `role="img"` makes a frame's whole subtree presentational, so nothing inside
+  an svg is reachable by anything but a pointer. A drill therefore has a button
+  in the table, and the path carries `data-drills` and no `role` — claiming one
+  that no assistive technology can reach would be worse than claiming none.
 - **A time series is cut by its span, not by the range filter.** `bucketFor`
   in `features/stats/series.ts` picks days, weeks, months or years from how
   long the span is; under all time the span is `listen_totals`' first and last

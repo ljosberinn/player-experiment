@@ -1,5 +1,6 @@
 import { formatDuration } from "../../lib/format";
 import { LibraryTiles } from "./LibraryTiles";
+import { GenreDonut } from "./panels/GenreDonut";
 import { HistogramPanel } from "./panels/HistogramPanel";
 import { ReleaseYears } from "./panels/ReleaseYears";
 import { SampleRates } from "./panels/SampleRates";
@@ -14,9 +15,8 @@ import { WorstByBitrate } from "./panels/WorstByBitrate";
  * knows it exists. Each subscribes for itself through `useLibraryQuery`, so a
  * scope change wakes the panels and not this.
  *
- * The genre donut is [84d](../../../docs/issues/upcoming/84d-a-genre-is-a-guess.md):
- * it is the only thing in the view that writes, and its drill-down needs a
- * filter `TrackQuery` does not have yet.
+ * The genre donut is the one that drills, and a crumb it pushes narrows every
+ * panel above it through the same hook.
  */
 export function LibraryPanels() {
   return (
@@ -40,6 +40,7 @@ export function LibraryPanels() {
         empty="Nothing here has a length."
       />
       <ReleaseYears />
+      <GenreDonut />
       <WorstByBitrate />
       <TagHealthPanel />
     </>

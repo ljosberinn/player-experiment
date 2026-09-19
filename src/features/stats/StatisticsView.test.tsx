@@ -76,6 +76,7 @@ vi.mock("../../ipc", () => ({
     trackNo: 0,
     cover: 0,
   })),
+  statsGenreBreakdown: vi.fn(async () => ({ slices: [], own: 0, untagged: 0 })),
 }));
 
 /** Formatted the way the tiles format it, so the assertion holds in any locale. */

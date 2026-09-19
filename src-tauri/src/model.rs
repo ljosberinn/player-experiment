@@ -250,6 +250,17 @@ pub struct TrackQuery {
     /// Composes with everything else rather than replacing it: an album opened
     /// while a search is running shows that album's matching tracks.
     pub browse: Option<BrowseFilter>,
+    /// Restricts the query to one genre and everything below it.
+    ///
+    /// Means what [`ListenQuery::genre`] means, resolved the same way: a tag
+    /// reaches a label through normalization, aliases, the suffix derivation
+    /// and the overrides, so this matches `Atmospheric Black Metal` under
+    /// `black metal` where `browse` would not.
+    ///
+    /// Separate from `browse` because the two are different questions. A
+    /// genre tile is a tag and holds that tag's files; this is a branch of the
+    /// tree, and it composes with `browse` rather than replacing it.
+    pub genre: Option<String>,
     pub sort_by: SortField,
     pub direction: SortDirection,
     pub offset: u32,
@@ -262,6 +273,7 @@ impl Default for TrackQuery {
             search: None,
             playlist_id: None,
             browse: None,
+            genre: None,
             sort_by: SortField::Artist,
             direction: SortDirection::Asc,
             offset: 0,
@@ -1236,7 +1248,7 @@ pub struct GenreSlice {
     pub label: String,
     pub tracks: u32,
     /// How this slice came to be under the drilled genre - `derived` is the
-    /// guess 84b labels as a guess.
+    /// guess 84d labels as a guess.
     pub parent_source: crate::db::genres::ParentSource,
     /// Whether any track sits below this slice, so drilling in shows
     /// something.

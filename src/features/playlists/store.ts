@@ -335,6 +335,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
         playlistId,
         // The whole playlist, not whatever album the browse tab had open.
         browse: null,
+        genre: null,
         sortBy: "position",
         direction: "asc",
         offset: 0,

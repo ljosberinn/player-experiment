@@ -21,7 +21,7 @@ use std::collections::HashMap;
 
 use rusqlite::{types::ToSql, Connection};
 
-use crate::db::genres::Tree;
+use crate::db::genres::{self, Tree};
 use crate::db::query::{self, GROUP_ARTIST, MAX_LIMIT};
 use crate::error::AppResult;
 use crate::model::{
@@ -69,7 +69,7 @@ impl Plays {
         }
         if let Some(genre) = &query.genre {
             conditions.push("tracks.genre IN (SELECT value FROM json_each(?))".to_owned());
-            params.push(Box::new(genre_members(conn, genre)?));
+            params.push(Box::new(genres::members(conn, genre)?));
         }
         match query.owned {
             Some(true) => conditions.push("plays.track_id IS NOT NULL".to_owned()),
@@ -109,36 +109,6 @@ impl Plays {
             .chain(extra.iter().copied())
             .collect()
     }
-}
-
-/// Every raw `tracks.genre` at or below `genre`, as a JSON array.
-///
-/// Resolved through [`Tree`] rather than a recursive walk of `genre_edges`: a
-/// tag reaches a label only through Rust-side normalization, aliases, the
-/// suffix derivation and overrides, none of which the edge table holds, and
-/// the edges are the whole DAG where the donut draws one parent. Filtering on
-/// them would keep blackened death metal under black metal after an override
-/// moved it, and the filter and the donut would disagree.
-///
-/// Over the whole library rather than a scope: a play is matched to any file,
-/// not to the ones some view happens to show.
-fn genre_members(conn: &Connection, genre: &str) -> AppResult<String> {
-    let tree = Tree::load(conn)?;
-    let target = tree.resolve(genre).label;
-
-    let mut statement =
-        conn.prepare("SELECT DISTINCT genre FROM tracks WHERE genre IS NOT NULL AND genre <> ''")?;
-    let members = statement
-        .query_map([], |row| row.get::<_, String>(0))?
-        .filter_map(|raw| match raw {
-            Ok(raw) if tree.lineage(&raw).contains(&target) => Some(Ok(raw)),
-            Ok(_) => None,
-            Err(error) => Some(Err(error)),
-        })
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-
-    serde_json::to_string(&members)
-        .map_err(|e| crate::error::AppError::Internal(format!("encoding genres: {e}")))
 }
 
 /// The expression naming the bucket `column` falls in, as its first local day.

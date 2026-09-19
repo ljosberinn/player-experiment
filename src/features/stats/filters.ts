@@ -1,5 +1,5 @@
 import type { ListenQuery, TimeRange, TrackQuery } from "../../ipc";
-import type { StatsPath } from "./path";
+import type { StatsCrumb, StatsPath } from "./path";
 
 /**
  * What the filter bar can be set to, for both tabs at once.
@@ -175,22 +175,11 @@ export function dateInputSeconds(value: string): number | null {
  * replaces the first rather than contradicting it.
  */
 export function listenQuery(filters: StatsFilters, path: StatsPath | null, now: Date): ListenQuery {
-  const crumb = (kind: "artist" | "genre" | "album") => {
-    const steps = path?.crumbs ?? [];
-    for (let index = steps.length - 1; index >= 0; index -= 1) {
-      const step = steps[index];
-      if (step !== undefined && step.kind === kind) {
-        return step.key;
-      }
-    }
-    return null;
-  };
-
   return {
     range: rangeFor(filters, now),
-    artist: crumb("artist"),
-    genre: crumb("genre"),
-    album: crumb("album"),
+    artist: deepestCrumb(path, "artist"),
+    genre: deepestCrumb(path, "genre"),
+    album: deepestCrumb(path, "album"),
     owned: filters.owned,
     loved: filters.loved,
   };
@@ -202,10 +191,16 @@ export function listenQuery(filters: StatsFilters, path: StatsPath | null, now: 
  * `view` takes the library's query as it stands, which is why this is given
  * one rather than reading the store: the caller subscribes, and a pure
  * function of both is what the tests can drive.
+ *
+ * The drill path narrows it the way it narrows the Listening tab. Genre is the
+ * only kind the Library tab drills today, and the deepest one wins - a crumb
+ * three levels down is where the view is, and the two above it are how it got
+ * there.
  */
 export function libraryQuery(
   filters: StatsFilters,
   view: Pick<TrackQuery, "search" | "playlistId" | "browse">,
+  path: StatsPath | null = null,
 ): TrackQuery {
   const scoped: Pick<TrackQuery, "search" | "playlistId" | "browse"> =
     filters.scope.kind === "view"
@@ -218,13 +213,16 @@ export function libraryQuery(
 
   return {
     ...scoped,
-    // One `browse` slot, so the facet replaces the view's drill-in rather than
-    // narrowing it: asking for one genre of an album that is not in it would
-    // have no answer to give.
-    browse:
-      filters.genre === null
-        ? scoped.browse
-        : { kind: "genres", key: filters.genre, secondary: null },
+    // The facet and the crumb are one slot and one meaning: a branch of the
+    // genre tree, matching what a genre crumb means on the Listening tab.
+    // Through `genre` rather than `browse` because the two are different
+    // questions - `browse` is an exact tag, so a resolved label like `popular
+    // music`, which no file is tagged with, would match nothing there.
+    //
+    // It composes with the view's drill-in rather than replacing it. One genre
+    // of an album that is not in it returns nothing, which is the state a
+    // search that matched nothing already puts every panel in.
+    genre: deepestCrumb(path, "genre") ?? filters.genre,
     // Totals read neither, and the type carries both because one query type
     // serves the table as well.
     sortBy: "artist",
@@ -232,4 +230,22 @@ export function libraryQuery(
     offset: 0,
     limit: 0,
   };
+}
+
+/**
+ * The last crumb of `kind` on the path, which is where the view is pointed.
+ *
+ * Deepest rather than first: drilling into a genre and then one of its
+ * children is two crumbs of the same kind and one filter, and the second is
+ * the answer. Both tabs narrow this way, so both read it from here.
+ */
+export function deepestCrumb(path: StatsPath | null, kind: StatsCrumb["kind"]): string | null {
+  const crumbs = path?.crumbs ?? [];
+  for (let index = crumbs.length - 1; index >= 0; index -= 1) {
+    const crumb = crumbs[index];
+    if (crumb !== undefined && crumb.kind === kind) {
+      return crumb.key;
+    }
+  }
+  return null;
 }

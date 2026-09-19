@@ -167,6 +167,7 @@ function GenreFilter() {
         search: null,
         playlistId: null,
         browse: null,
+        genre: null,
         sortBy: "artist",
         direction: "asc",
         offset: 0,

@@ -22,4 +22,17 @@ playlistId: number | null,
  * Composes with everything else rather than replacing it: an album opened
  * while a search is running shows that album's matching tracks.
  */
-browse: BrowseFilter | null, sortBy: SortField, direction: SortDirection, offset: number, limit: number, };
+browse: BrowseFilter | null, 
+/**
+ * Restricts the query to one genre and everything below it.
+ *
+ * Means what [`ListenQuery::genre`] means, resolved the same way: a tag
+ * reaches a label through normalization, aliases, the suffix derivation
+ * and the overrides, so this matches `Atmospheric Black Metal` under
+ * `black metal` where `browse` would not.
+ *
+ * Separate from `browse` because the two are different questions. A
+ * genre tile is a tag and holds that tag's files; this is a branch of the
+ * tree, and it composes with `browse` rather than replacing it.
+ */
+genre: string | null, sortBy: SortField, direction: SortDirection, offset: number, limit: number, };

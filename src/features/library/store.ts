@@ -324,6 +324,9 @@ function queryFor(
     search: state.search.trim() === "" ? null : state.search,
     playlistId: state.playlistId,
     browse: state.browse,
+    // The Statistics view's slot, not the table's: nothing in the library
+    // drills into a genre subtree, and the Genres tab is `browse`.
+    genre: null,
     sortBy: state.sortBy,
     direction: state.direction,
     offset: 0,

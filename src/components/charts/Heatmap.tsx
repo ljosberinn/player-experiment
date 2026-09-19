@@ -1,7 +1,5 @@
 import { type AxisTick, ChartFrame, type PlotRect } from "./ChartFrame";
-
-/** How many non-empty steps the ramp has: `--chart-ramp-1` to `--chart-ramp-4`. */
-const HEATMAP_STEPS = 4;
+import { rampStep } from "./scales";
 
 export interface HeatmapProps {
   /** What the chart shows, for a reader who cannot see it. */
@@ -89,7 +87,7 @@ export function Heatmap({
               <rect
                 key={`${row}|${column}`}
                 className="chart-cell"
-                data-step={step(value, largest)}
+                data-step={rampStep(value, largest)}
                 x={c * (plot.width / columns.length)}
                 y={r * (plot.height / rows.length)}
                 width={width}
@@ -104,21 +102,6 @@ export function Heatmap({
       }}
     </ChartFrame>
   );
-}
-
-/**
- * Which ramp step `value` takes: 0 for nothing, then 1 up to `HEATMAP_STEPS`
- * by its share of the largest.
- *
- * Rounded up, so any count at all is at least step 1 - a cell that was
- * listened in once and one that never was are the distinction a reader looks
- * for first.
- */
-function step(value: number, largest: number): number {
-  if (value <= 0 || largest <= 0) {
-    return 0;
-  }
-  return Math.min(HEATMAP_STEPS, Math.ceil((value / largest) * HEATMAP_STEPS));
 }
 
 /**

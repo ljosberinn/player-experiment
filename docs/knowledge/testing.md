@@ -195,6 +195,14 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;
   `e2e/specs/smart-playlists.test.ts` has the helper.
+- **`elementClick` aims at the bounding-box centre, which a ring segment does
+  not occupy.** Clicking a donut slice dispatches into the hole: the driver
+  reports success, no `click` reaches the path, and the assertion after it
+  fails with nothing in the log to say why — there is no "click intercepted"
+  for a point that is merely outside the shape. Any concave mark has the same
+  problem. Drive the real control instead, which for a chart is the button in
+  its `Show as table` view — the same one `role="img"` already makes the only
+  route for anything but a pointer.
 - **Screenshots are taken, never compared** (`e2e/screenshot.ts`), pushed to the
   `ci/screenshots` branch and spliced into the PR body by
   `scripts/screenshots.mjs`. Nothing flakes, nothing is committed. `capture()`
