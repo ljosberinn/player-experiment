@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/ljosberinn/player-experiment/compare/v0.11.1...v0.12.0) (2026-09-19)
+
+
+### Features
+
+* the shape of a week ([#192](https://github.com/ljosberinn/player-experiment/issues/192)) ([04ceecf](https://github.com/ljosberinn/player-experiment/commit/04ceecf8fff11a928ebf13da75ff9c983e47c469))
+* what you own ([#191](https://github.com/ljosberinn/player-experiment/issues/191)) ([05be072](https://github.com/ljosberinn/player-experiment/commit/05be07281a620d0b2d26ac23e7bf8466d32d0085))
+
 ## [0.11.1](https://github.com/ljosberinn/player-experiment/compare/v0.11.0...v0.11.1) (2026-09-18)
 
 
