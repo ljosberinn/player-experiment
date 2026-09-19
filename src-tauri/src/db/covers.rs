@@ -167,8 +167,7 @@ fn encode_jpeg(image: &image::DynamicImage) -> Option<Vec<u8>> {
 /// a scan or a tag write can be behind the writer.
 const CHUNK: usize = 50;
 
-/// Puts every cover stored by an earlier build through [`normalize`], then
-/// prunes what nothing points at and reclaims the pages.
+/// Puts every cover stored by an earlier build through [`normalize`].
 ///
 /// **A background thread, not a migration** - see [`settings::COVERS_NORMALIZED`].
 /// Silent throughout: the picture the user sees does not change, so there is
@@ -177,11 +176,8 @@ const CHUNK: usize = 50;
 /// Palettes are left alone. q85 does not move three dominant colours, and a
 /// row that has none is a row that would not decode.
 ///
-/// The prune is only safe because nothing reads artwork back out of here at
-/// all - the bytes go to the window and nowhere else. It is worth little today
-/// and is about what comes next: a removal orphans a row, and a release lookup
-/// fetches thousands of covers. VACUUM is what actually shrinks the file; the
-/// 885 MB the re-encode frees is merely free pages until it runs.
+/// The bytes this frees are free pages and nothing more until something
+/// rewrites the file, which is [`vacuum_if_worthwhile`] on the same thread.
 ///
 /// Answers whether there was anything to do, which is false on every launch
 /// after the one that finished the pass: a caller that logged it either way
@@ -233,16 +229,63 @@ pub fn normalize_stored(conn: &mut Connection) -> AppResult<bool> {
         cursor = last;
     }
 
-    conn.execute(
+    settings::set(conn, settings::COVERS_NORMALIZED, "true")?;
+
+    Ok(true)
+}
+
+/// Deletes every cover no track points at, and answers how many went.
+///
+/// **Every launch, unflagged.** Three paths orphan a row - a track removal, a
+/// tag write that replaces or drops artwork, and a rescan of a file retagged
+/// outside the app - and until 97 the only `DELETE` here was the one inside
+/// [`normalize_stored`], which runs once per database. An orphan is 37 KB
+/// after 72 and nothing was collecting it.
+///
+/// Safe only because nothing reads artwork back out of here at all: the bytes
+/// go to the window and nowhere else.
+///
+/// **Under `ScanLock`**, which the caller holds. [`store`] returns a hash it
+/// found without writing anything, so it holds no write lock, and a sweep
+/// committing between that read and the caller's `UPDATE tracks … cover_hash`
+/// would abort the write on the foreign key.
+pub fn collect_orphans(conn: &Connection) -> AppResult<u32> {
+    let collected = conn.execute(
         "DELETE FROM covers
          WHERE hash NOT IN (SELECT cover_hash FROM tracks WHERE cover_hash IS NOT NULL)",
         [],
     )?;
-    // Cannot run inside a transaction, and rewrites the whole file - which is
-    // the point.
-    conn.execute_batch("VACUUM")?;
-    settings::set(conn, settings::COVERS_NORMALIZED, "true")?;
+    Ok(collected as u32)
+}
 
+/// Free pages worth rewriting the file for.
+///
+/// Roughly 870 orphans at 37 KB, which a library reaches over years rather
+/// than over a session. The launch that finishes [`normalize_stored`] clears
+/// it twenty-five times over.
+const VACUUM_THRESHOLD: i64 = 32 * 1024 * 1024;
+
+/// Rewrites the file if the free pages are worth it, and answers whether it
+/// did.
+///
+/// **Conditional, unlike the VACUUM 72 shipped.** It cannot run in a
+/// transaction and rewrites the whole file, so a gigabyte on every launch to
+/// reclaim one 37 KB row is the trade that only made sense the once.
+///
+/// Wants no `ScanLock`: it moves no row and reads nothing anything else
+/// writes.
+pub fn vacuum_if_worthwhile(conn: &Connection) -> AppResult<bool> {
+    vacuum_over(conn, VACUUM_THRESHOLD)
+}
+
+fn vacuum_over(conn: &Connection, threshold: i64) -> AppResult<bool> {
+    let pages: i64 = conn.pragma_query_value(None, "freelist_count", |row| row.get(0))?;
+    let page_size: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
+    if pages.saturating_mul(page_size) < threshold {
+        return Ok(false);
+    }
+
+    conn.execute_batch("VACUUM")?;
     Ok(true)
 }
 
@@ -296,14 +339,30 @@ mod tests {
         .unwrap();
     }
 
-    /// A track pointing at a cover, so the prune has a reason to keep it.
-    fn referenced_by_a_track(conn: &Connection, hash: &str) {
+    /// A track pointing at a cover, which is the one thing that keeps a row
+    /// out of the sweep.
+    fn referenced_by_a_track(conn: &Connection, path: &str, hash: &str) {
         conn.execute(
             "INSERT INTO tracks (path, mtime, size, added_at, cover_hash)
              VALUES (?1, 1, 2, 3, ?2)",
-            rusqlite::params![format!("/m/{hash}.mp3"), hash],
+            rusqlite::params![path, hash],
         )
         .unwrap();
+    }
+
+    fn hashes(conn: &Connection) -> Vec<String> {
+        conn.prepare("SELECT hash FROM covers ORDER BY hash")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    }
+
+    /// A database that has been through the backfill, which every launch but
+    /// one is.
+    fn already_normalized(conn: &Connection) {
+        settings::set(conn, settings::COVERS_NORMALIZED, "true").unwrap();
     }
 
     /// A one-row PNG of `colours`, which is what a real cover reduces to.
@@ -528,7 +587,6 @@ mod tests {
         let (_dir, mut conn) = conn();
         let source = photo_png(1200, 600);
         stored_as_it_was(&conn, "a", &source);
-        referenced_by_a_track(&conn, "a");
 
         normalize_stored(&mut conn).unwrap();
 
@@ -547,7 +605,6 @@ mod tests {
         let source = photo_png(1200, 600);
         for hash in ["a", "b"] {
             stored_as_it_was(&conn, hash, &source);
-            referenced_by_a_track(&conn, hash);
         }
         // Where a run cut short by a quit left off.
         crate::db::settings::set(&conn, crate::db::settings::COVERS_NORMALIZED_THROUGH, "a")
@@ -567,14 +624,12 @@ mod tests {
     fn the_backfill_leaves_palettes_and_undecodable_rows_alone() {
         let (_dir, mut conn) = conn();
         stored_as_it_was(&conn, "a", &photo_png(1200, 600));
-        referenced_by_a_track(&conn, "a");
         conn.execute(
             "UPDATE covers SET palette = ?1 WHERE hash = 'a'",
             [r#"[{"r":1,"g":2,"b":3}]"#],
         )
         .unwrap();
         stored_as_it_was(&conn, "b", b"not an image");
-        referenced_by_a_track(&conn, "b");
 
         normalize_stored(&mut conn).unwrap();
 
@@ -592,7 +647,6 @@ mod tests {
         crate::db::settings::set(&conn, crate::db::settings::COVERS_NORMALIZED, "true").unwrap();
         let source = photo_png(1200, 600);
         stored_as_it_was(&conn, "a", &source);
-        referenced_by_a_track(&conn, "a");
 
         normalize_stored(&mut conn).unwrap();
 
@@ -600,21 +654,110 @@ mod tests {
     }
 
     #[test]
-    fn the_backfill_drops_a_cover_no_track_references() {
-        let (_dir, mut conn) = conn();
+    fn the_sweep_drops_a_cover_no_track_references_and_keeps_one_a_track_does() {
+        let (_dir, conn) = conn();
+        already_normalized(&conn);
         stored_as_it_was(&conn, "kept", &photo_png(60, 60));
-        referenced_by_a_track(&conn, "kept");
+        referenced_by_a_track(&conn, "/m/kept.mp3", "kept");
         stored_as_it_was(&conn, "orphan", &photo_png(60, 60));
 
-        normalize_stored(&mut conn).unwrap();
+        assert_eq!(collect_orphans(&conn).unwrap(), 1);
 
-        let remaining: Vec<String> = conn
-            .prepare("SELECT hash FROM covers ORDER BY hash")
-            .unwrap()
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<rusqlite::Result<Vec<_>>>()
+        assert_eq!(hashes(&conn), ["kept"]);
+    }
+
+    #[test]
+    fn removing_the_last_track_that_carried_a_cover_collects_it() {
+        let (_dir, conn) = conn();
+        already_normalized(&conn);
+        stored_as_it_was(&conn, "a", &photo_png(60, 60));
+        // What `scan::remove_missing` and `scan::remove_tracks` both leave
+        // behind: the track row gone and the cover row not.
+        referenced_by_a_track(&conn, "/m/one.mp3", "a");
+        conn.execute("DELETE FROM tracks WHERE path = '/m/one.mp3'", [])
             .unwrap();
-        assert_eq!(remaining, ["kept"]);
+
+        collect_orphans(&conn).unwrap();
+
+        assert!(hashes(&conn).is_empty());
+    }
+
+    #[test]
+    fn a_cover_two_tracks_share_survives_one_of_them_going() {
+        let (_dir, conn) = conn();
+        already_normalized(&conn);
+        stored_as_it_was(&conn, "a", &photo_png(60, 60));
+        referenced_by_a_track(&conn, "/m/one.mp3", "a");
+        referenced_by_a_track(&conn, "/m/two.mp3", "a");
+        conn.execute("DELETE FROM tracks WHERE path = '/m/one.mp3'", [])
+            .unwrap();
+
+        assert_eq!(collect_orphans(&conn).unwrap(), 0);
+
+        assert_eq!(hashes(&conn), ["a"]);
+    }
+
+    #[test]
+    fn artwork_a_tag_write_replaced_is_collected() {
+        let (_dir, conn) = conn();
+        already_normalized(&conn);
+        let track = "/m/one.mp3";
+        store(&conn, &cover("old", photo_png(60, 60))).unwrap();
+        referenced_by_a_track(&conn, track, "old");
+
+        // The shape `tags::write::sync_row` leaves: the replacement stored and
+        // the row repointed, in one transaction, with nothing said about what
+        // the row pointed at before.
+        let new = store(&conn, &cover("new", photo_png(80, 80))).unwrap();
+        conn.execute(
+            "UPDATE tracks SET cover_hash = ?2 WHERE path = ?1",
+            rusqlite::params![track, new],
+        )
+        .unwrap();
+
+        collect_orphans(&conn).unwrap();
+
+        assert_eq!(hashes(&conn), ["new"]);
+    }
+
+    /// Free pages, by deleting a row big enough to be worth counting.
+    fn with_free_pages(conn: &Connection) -> i64 {
+        stored_as_it_was(conn, "big", &vec![0_u8; 2 * 1024 * 1024]);
+        conn.execute("DELETE FROM covers WHERE hash = 'big'", [])
+            .unwrap();
+        let pages: i64 = conn
+            .pragma_query_value(None, "freelist_count", |row| row.get(0))
+            .unwrap();
+        assert!(pages > 0, "nothing was freed to gate on");
+        pages
+    }
+
+    #[test]
+    fn the_vacuum_gate_holds_below_the_threshold() {
+        let (_dir, conn) = conn();
+        let pages = with_free_pages(&conn);
+
+        assert!(!vacuum_over(&conn, i64::MAX).unwrap());
+
+        assert_eq!(
+            conn.pragma_query_value(None, "freelist_count", |row| row.get(0)),
+            Ok(pages),
+            "the file was rewritten anyway"
+        );
+        // And the real threshold is above what two megabytes of orphans reach.
+        assert!(!vacuum_if_worthwhile(&conn).unwrap());
+    }
+
+    #[test]
+    fn the_vacuum_gate_fires_above_the_threshold() {
+        let (_dir, conn) = conn();
+        with_free_pages(&conn);
+
+        assert!(vacuum_over(&conn, 1).unwrap());
+
+        assert_eq!(
+            conn.pragma_query_value(None, "freelist_count", |row| row.get(0)),
+            Ok(0_i64)
+        );
     }
 }

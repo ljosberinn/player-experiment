@@ -402,11 +402,21 @@ not decode, and anything the re-encode would grow, is stored verbatim.
 
 Covers stored by an earlier build are converted by the `cover-normalize`
 thread `lib.rs` spawns beside the player — chunked, resumable through two
-`settings` keys, and silent, since the picture on screen does not change. It
-finishes by pruning covers no track references and running `VACUUM`, which is
-what actually returns the pages to the filesystem. Both are only safe because
-nothing reads artwork back out of `covers` at all — the bytes go to the window
-and nowhere else.
+`settings` keys, and silent, since the picture on screen does not change.
+
+The same thread then sweeps, every launch and behind no flag: a track removal,
+a tag write that replaces or drops artwork, and a rescan of a file retagged
+outside the app each leave a row nothing points at, and an orphan is 37 KB.
+The sweep takes the scan lock, because `covers::store` returns a hash it found
+without writing anything and so holds no write lock of its own. It is only
+safe because nothing reads artwork back out of `covers` at all — the bytes go
+to the window and nowhere else.
+
+`VACUUM` is what actually returns the pages to the filesystem, and it is
+gated on `freelist_count × page_size` passing 32 MB: it cannot run in a
+transaction and rewrites the whole file, so a gigabyte of rewriting to reclaim
+one orphan is not a trade worth making on every launch. The lock is dropped
+before it, since it moves no row.
 
 The `musicbrainz-ids` thread beside it reads the release and release-group
 ids off every file once, for the reason [the data model](data-model.md) gives.

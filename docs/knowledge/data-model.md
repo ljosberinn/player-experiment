@@ -99,6 +99,12 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   the shape of `playlists.seeded`, and `covers.normalizedThrough` holds the
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
+- **`tracks.cover_hash` carries no `ON DELETE`, so a sweep collects instead.**
+  SQLite cannot drop a parent when its last child goes, and a trigger per
+  removal would want an index on `tracks(cover_hash)` that nothing else reads.
+  The sweep is one `DELETE … WHERE hash NOT IN (SELECT cover_hash FROM
+  tracks …)` on the `cover-normalize` thread, behind no flag. See
+  [the architecture](architecture.md).
 
 **The MusicBrainz release ids are backfilled the same way.** Migration 8
 assumed nothing had written them, but Picard had: about 9% of the measured

@@ -140,11 +140,11 @@ pub fn run() {
                 muted,
                 log.clone(),
             ));
-            normalize_covers(db.clone(), log.clone());
             // One lock for everything that rewrites rows from files on disk,
             // so the unattended pass can tell whether it would be racing a
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
+            normalize_covers(db.clone(), lock.clone(), log.clone());
             read_musicbrainz_ids(db.clone(), lock.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
@@ -369,7 +369,8 @@ fn library_pass(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::L
     );
 }
 
-/// Re-encodes artwork a previous build stored whole, off the setup path.
+/// Re-encodes artwork a previous build stored whole and collects what no
+/// track points at, off the setup path.
 ///
 /// A thread rather than a migration: a library's covers are half a minute of
 /// CPU to decode, and a migration runs in one transaction before the window is
@@ -377,7 +378,11 @@ fn library_pass(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::L
 /// tag write meeting it mid-pass waits at most one chunk for the write lock -
 /// so the handle is dropped and nothing joins it. A quit part-way through
 /// resumes on the next launch.
-fn normalize_covers(db: Db, log: log::Log) {
+///
+/// The backfill runs once per database and the sweep every launch, in that
+/// order: the launch that finishes the backfill is also the one whose free
+/// pages are worth a VACUUM.
+fn normalize_covers(db: Db, lock: scan::ScanLock, log: log::Log) {
     // Nothing here was asked for, so nothing here reports to the window. A
     // pass that fails leaves the flag unset, and the next launch picks up
     // where it stopped - which is exactly the kind of thing that is invisible
@@ -397,7 +402,32 @@ fn normalize_covers(db: Db, log: log::Log) {
                 Ok(true) => op.succeeded(log::Fields::new()),
                 Err(error) => op.failed(&error),
             }
+
+            let op = log.op("covers.sweep");
+            match sweep_covers(&db, &lock) {
+                // For the reason above: most launches collect nothing.
+                Ok((0, false)) => {}
+                Ok((collected, vacuumed)) => op.succeeded(
+                    log::Fields::new()
+                        .add("collected", collected)
+                        .add("vacuumed", vacuumed),
+                ),
+                Err(error) => op.failed(&error),
+            }
         });
+}
+
+/// Answers how many covers went and whether the file was rewritten.
+///
+/// The lock is dropped before the VACUUM, which moves no row: holding it there
+/// would put a Rescan the user clicked behind a rewrite of the whole file.
+fn sweep_covers(db: &Db, lock: &scan::ScanLock) -> crate::error::AppResult<(u32, bool)> {
+    let conn = db.conn()?;
+    let collected = {
+        let _guard = lock.acquire();
+        db::covers::collect_orphans(&conn)?
+    };
+    Ok((collected, db::covers::vacuum_if_worthwhile(&conn)?))
 }
 
 /// Reads the MusicBrainz release ids off every file once, off the setup path,
