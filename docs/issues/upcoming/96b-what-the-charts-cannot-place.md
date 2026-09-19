@@ -11,6 +11,9 @@ coverage rather than reporting a subset as the whole.
 A caption on Plays over time, New artists and When you listen, shown only
 where `dated < plays`, saying what share of the plays could be placed in time.
 
+New artists leaves out artists, not plays — those first heard undated — so a
+play share misstates it. Its caption needs its own count.
+
 ## `Bar` and `Heatmap` have no caption
 
 `BarList` does, and the genre panel uses it. The primitive seam

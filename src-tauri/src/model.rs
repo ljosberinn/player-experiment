@@ -1176,6 +1176,11 @@ pub struct ListenTotals {
     /// Plays with a known duration. An imported scrobble carries none, so
     /// only a matched one gets it, from the file.
     pub timed: u32,
+    /// Plays with a time to place. last.fm serves the ones imported before it
+    /// kept dates without one, and the panels that cut by the clock cover
+    /// these.
+    pub dated: u32,
+    /// The first and last dated play.
     #[ts(type = "number | null")]
     pub first_at: Option<i64>,
     #[ts(type = "number | null")]
@@ -1189,8 +1194,9 @@ pub struct ListenTotals {
 pub struct Play {
     #[ts(type = "number")]
     pub id: i64,
-    #[ts(type = "number")]
-    pub started_at: i64,
+    /// `None` for a play last.fm imported without a date.
+    #[ts(type = "number | null")]
+    pub started_at: Option<i64>,
     pub artist: String,
     pub title: String,
     pub album: Option<String>,

@@ -39,6 +39,7 @@ vi.mock("../../ipc", () => ({
     owned: 600,
     withGenre: 840,
     timed: 600,
+    dated: 1000,
     firstAt: 1_400_000_000,
     lastAt: 1_700_000_000,
   })),

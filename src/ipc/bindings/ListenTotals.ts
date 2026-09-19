@@ -25,4 +25,14 @@ withGenre: number,
  * Plays with a known duration. An imported scrobble carries none, so
  * only a matched one gets it, from the file.
  */
-timed: number, firstAt: number | null, lastAt: number | null, };
+timed: number, 
+/**
+ * Plays with a time to place. last.fm serves the ones imported before it
+ * kept dates without one, and the panels that cut by the clock cover
+ * these.
+ */
+dated: number, 
+/**
+ * The first and last dated play.
+ */
+firstAt: number | null, lastAt: number | null, };
