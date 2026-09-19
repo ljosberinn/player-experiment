@@ -1136,12 +1136,20 @@ mod tests {
         assert_eq!(under("death metal"), 1);
     }
 
-    /// An override can point a genre at its own descendant, and the walk has
-    /// to end anyway.
+    /// A cycle in the overrides, and the walk has to end anyway.
+    ///
+    /// Written straight into the table: `set_override` refuses to build one
+    /// since 84e. A database from before that refusal, or edited by hand, can
+    /// still hold one, and this filter is what walks it.
     #[test]
     fn a_cycle_of_overrides_does_not_hang_the_genre_filter() {
         let (_dir, conn) = open();
-        genres::set_override(&conn, "black metal", Some("atmospheric black metal")).unwrap();
+        conn.execute(
+            "INSERT INTO genre_overrides (label, parent)
+             VALUES ('black metal', 'atmospheric black metal')",
+            [],
+        )
+        .unwrap();
         let file = add_file(
             &conn,
             File {

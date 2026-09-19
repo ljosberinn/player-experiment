@@ -16,7 +16,7 @@ hour-of-day bars under it. Their three `src/ipc/index.ts` wrappers —
 them.
 
 `d3-shape` is still not a dependency: nothing draws an arc or an area, and the
-donut is [84d](../upcoming/84d-a-genre-is-a-guess.md)'s.
+donut is [84d](84d-a-genre-is-a-guess.md)'s.
 
 ## The bucket follows the span, not the range id
 

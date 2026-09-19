@@ -271,6 +271,20 @@ describe("LibraryPanels", () => {
     expect(healthMock.mock.calls.at(-1)?.[0].genre).toBe("metal");
   });
 
+  it("opens the override editor on the level it is looking at", async () => {
+    // The drilled genre, not the first slice: what a reader is looking at
+    // when a parent reads wrong is the level they drilled to.
+    const user = userEvent.setup();
+    useLibraryStore.setState({
+      statsPath: { tab: "library", crumbs: [{ kind: "genre", key: "metal" }] },
+    });
+    render(<LibraryPanels />);
+
+    await user.click(within(panel("Genres")).getByRole("button", { name: "Fix a parent…" }));
+
+    expect(await screen.findByLabelText("Genre")).toHaveProperty("value", "metal");
+  });
+
   it("leaves a genre with nothing below it out of the drill", async () => {
     render(<LibraryPanels />);
     await tableOf("Genres");
