@@ -171,10 +171,17 @@ pub fn seed_from_tags(conn: &Connection, now: i64) -> AppResult<usize> {
 }
 
 /// A queued release, as the review dialog needs it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// No `Eq`: `score` is a float.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Queued {
     pub album: Option<String>,
     pub artist: Option<String>,
+    /// What the pass scored the best candidate at, once it had the tracklist.
+    ///
+    /// Nullable because the column is, not because a queued release has no
+    /// score - [`record`] always writes one for a review row.
+    pub score: Option<f32>,
     /// Every file of the release, in the order the dialog maps them onto a
     /// tracklist - the same order `query::release_selections` produces.
     pub track_ids: Vec<i64>,
@@ -196,7 +203,7 @@ pub fn fold(album: &Option<String>, artist: &Option<String>) -> Key {
     )
 }
 
-/// The review queue, and a prune of what is no longer in it.
+/// The review queue, best match first, and a prune of what is no longer in it.
 ///
 /// One ordered pass over `tracks`, matched in memory against the handful of
 /// rows awaiting a decision, rather than a join or a query per queued release.
@@ -213,7 +220,7 @@ pub fn fold(album: &Option<String>, artist: &Option<String>) -> Key {
 pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
     let mut awaiting = conn
         .prepare(
-            "SELECT id, album, artist, status, candidates_json
+            "SELECT id, album, artist, status, candidates_json, score
                FROM release_lookup
               WHERE status IN ('review', 'aside')",
         )?
@@ -224,6 +231,7 @@ pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<f32>>(5)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -235,7 +243,7 @@ pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
     // claimed it yet. Keyed on the folded pair, which is what the unique index
     // is over.
     let mut by_key = std::collections::HashMap::with_capacity(awaiting.len());
-    for (index, (_, album, artist, _, _)) in awaiting.iter().enumerate() {
+    for (index, (_, album, artist, _, _, _)) in awaiting.iter().enumerate() {
         by_key.insert(fold(album, artist), index);
     }
     let mut live = vec![false; awaiting.len()];
@@ -275,6 +283,7 @@ pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
                     queued.push(Queued {
                         album: album.clone(),
                         artist: artist.clone(),
+                        score: awaiting[index].5,
                         track_ids: Vec::new(),
                         candidates_json: awaiting[index].4.take(),
                     });
@@ -298,6 +307,16 @@ pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
             )?;
         }
     }
+
+    // The likeliest matches first, which is the order there is any point
+    // working through four hundred of these in. `sort_by` is stable, so the
+    // scan's artist-then-album order is what settles a tie.
+    queued.sort_by(|left, right| match (left.score, right.score) {
+        (Some(left), Some(right)) => right.total_cmp(&left),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
 
     Ok(queued)
 }
@@ -757,6 +776,86 @@ mod tests {
                 .get::<_, i64>(0))
                 .unwrap(),
             1
+        );
+    }
+
+    /// Queues `album`/`artist` with the score the pass decided on, which is
+    /// what the review table sorts by.
+    fn queue_scored(conn: &Connection, album: &str, artist: &str, score: Option<f32>) {
+        record(
+            conn,
+            &Release {
+                album: Some(album.to_owned()),
+                artist: Some(artist.to_owned()),
+            },
+            Status::Review,
+            None,
+            score,
+            Some("[]"),
+            100,
+        )
+        .unwrap();
+    }
+
+    /// The point of 92: the queue is worked through from the likeliest match
+    /// down, not in the scan's artist order.
+    #[test]
+    fn the_queue_leads_with_the_best_match() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Aquemini", "OutKast", None);
+        track(&conn, "b.mp3", "Loveless", "My Bloody Valentine", None);
+        track(&conn, "c.mp3", "Spiderland", "Slint", None);
+        queue_scored(&conn, "Aquemini", "OutKast", Some(0.4));
+        queue_scored(&conn, "Loveless", "My Bloody Valentine", Some(0.97));
+        queue_scored(&conn, "Spiderland", "Slint", Some(0.7));
+
+        let queued = queue(&conn).unwrap();
+
+        assert_eq!(
+            queued
+                .iter()
+                .map(|entry| entry.album.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("Loveless"), Some("Spiderland"), Some("Aquemini")]
+        );
+    }
+
+    /// The column is nullable even though `record` always writes a score for a
+    /// review row, and a missing number must not read as the best one.
+    #[test]
+    fn a_queued_release_with_no_score_sorts_last() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Aquemini", "OutKast", None);
+        track(&conn, "b.mp3", "Loveless", "My Bloody Valentine", None);
+        queue_scored(&conn, "Aquemini", "OutKast", None);
+        queue_scored(&conn, "Loveless", "My Bloody Valentine", Some(0.2));
+
+        let queued = queue(&conn).unwrap();
+
+        assert_eq!(queued[0].album.as_deref(), Some("Loveless"));
+        assert_eq!(queued[1].score, None);
+    }
+
+    /// A stable sort, so the scan's artist-then-album order is what decides a
+    /// tie rather than whichever row SQLite handed back first.
+    #[test]
+    fn releases_of_one_score_keep_the_scan_order() {
+        let (_dir, conn) = open();
+        track(&conn, "a.mp3", "Spiderland", "Slint", None);
+        track(&conn, "b.mp3", "Aquemini", "OutKast", None);
+        track(&conn, "c.mp3", "Loveless", "My Bloody Valentine", None);
+        queue_scored(&conn, "Spiderland", "Slint", Some(0.5));
+        queue_scored(&conn, "Aquemini", "OutKast", Some(0.5));
+        queue_scored(&conn, "Loveless", "My Bloody Valentine", Some(0.5));
+
+        let queued = queue(&conn).unwrap();
+
+        assert_eq!(
+            queued
+                .iter()
+                .map(|entry| entry.artist.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("My Bloody Valentine"), Some("OutKast"), Some("Slint")]
         );
     }
 

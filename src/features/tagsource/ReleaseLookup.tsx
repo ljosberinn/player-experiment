@@ -4,6 +4,7 @@ import {
   coverUrl,
   type ReleaseCandidate,
   type ReleaseDetail,
+  type ReviewEntry,
   stagedCoverUrl,
   type Track,
   type WriteProgress,
@@ -46,6 +47,7 @@ export function ReleaseLookup() {
   const progress = useTagsourceStore((s) => s.progress);
   const error = useTagsourceStore((s) => s.error);
   const close = useTagsourceStore((s) => s.close);
+  const choose = useTagsourceStore((s) => s.choose);
   const skip = useTagsourceStore((s) => s.skip);
   const setAside = useTagsourceStore((s) => s.setAside);
   const search = useTagsourceStore((s) => s.search);
@@ -73,8 +75,13 @@ export function ReleaseLookup() {
     };
   }, [watch]);
 
-  const release = queue?.[index];
-  if (queue === undefined || queue === null || release === undefined) {
+  if (queue === undefined || queue === null) {
+    return null;
+  }
+  // Null is the review queue's table; undefined is a queue that has run past
+  // its end, which is a frame before `close` lands.
+  const release = index === null ? null : queue[index];
+  if (release === undefined) {
     return null;
   }
 
@@ -94,39 +101,45 @@ export function ReleaseLookup() {
         <Dialog.Backdrop className="modal-backdrop" />
         <Dialog.Popup className="modal paned lookup">
           {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>
-            {queue.length === 1
-              ? "Get Tags from MusicBrainz"
-              : `Get Tags from MusicBrainz — release ${index + 1} of ${queue.length}`}
-          </Dialog.Title>
-          <p className="lookup-subject">
-            <strong>{release.album ?? "No album"}</strong>
-            {" — "}
-            {release.artist ?? "No artist"}
-            {` (${tracks.length} selected)`}
-          </p>
+          <Dialog.Title render={<h2 />}>{title(queue.length, index, fromReview)}</Dialog.Title>
 
-          {detail === null ? (
-            <Results
-              stage={stage}
-              candidates={candidates}
-              onPick={(mbid) => void pick(mbid)}
-              onSearchAgain={() => void search()}
-            />
+          {release === null ? (
+            <QueueTable queue={queue} onChoose={(at) => void choose(at)} />
           ) : (
-            <Confirm
-              // Keyed on the release, so picking a different candidate starts
-              // from its own mapping rather than inheriting the last one's.
-              key={detail.candidate.mbid}
-              tracks={tracks}
-              detail={detail}
-              fields={fields}
-              progress={progress}
-              busy={busy}
-              onFields={setFields}
-              onApply={(assignment) => void apply(buildEdits(tracks, detail, assignment, fields))}
-              onBack={back}
-            />
+            <>
+              <p className="lookup-subject">
+                <strong>{release.album ?? "No album"}</strong>
+                {" — "}
+                {release.artist ?? "No artist"}
+                {` (${tracks.length} selected)`}
+              </p>
+
+              {detail === null ? (
+                <Results
+                  stage={stage}
+                  candidates={candidates}
+                  onPick={(mbid) => void pick(mbid)}
+                  onSearchAgain={() => void search()}
+                />
+              ) : (
+                <Confirm
+                  // Keyed on the release, so picking a different candidate
+                  // starts from its own mapping rather than inheriting the
+                  // last one's.
+                  key={detail.candidate.mbid}
+                  tracks={tracks}
+                  detail={detail}
+                  fields={fields}
+                  progress={progress}
+                  busy={busy}
+                  onFields={setFields}
+                  onApply={(assignment) =>
+                    void apply(buildEdits(tracks, detail, assignment, fields))
+                  }
+                  onBack={back}
+                />
+              )}
+            </>
           )}
 
           {error === null ? null : (
@@ -135,27 +148,38 @@ export function ReleaseLookup() {
             </p>
           )}
 
+          {/* Cancel alone on the table: the other two act on a release, and
+              on the table there is not one open. */}
           <div className="modal-actions">
             <Dialog.Close render={<button type="button" disabled={busy} />}>Cancel</Dialog.Close>
-            {/* Only on the review queue, which is the only queue an entry
-                persists in. On a selection there is nothing to set aside: the
-                queue dies with the dialog. */}
-            {fromReview ? (
-              <button
-                type="button"
-                disabled={busy}
-                title="Take this release out of the review queue"
-                onClick={() => void setAside()}
-              >
-                Set Aside
-              </button>
-            ) : null}
-            {/* Skip means "not now". On the review queue the release is
-                offered again next time it is opened, which is what makes Set
-                Aside beside it a different decision rather than a louder one. */}
-            <button type="button" disabled={busy} onClick={() => void skip()}>
-              {index + 1 < queue.length ? "Skip Release" : "Skip"}
-            </button>
+            {release === null ? null : (
+              <>
+                {/* Only on the review queue, which is the only queue an entry
+                    persists in. On a selection there is nothing to set aside:
+                    the queue dies with the dialog. */}
+                {fromReview ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title="Take this release out of the review queue"
+                    onClick={() => void setAside()}
+                  >
+                    Set Aside
+                  </button>
+                ) : null}
+                {/* "Not now": the release keeps its place in the table, which
+                    is what makes Set Aside beside it a different decision
+                    rather than a louder one. A selection has no table behind
+                    it, so there it is still a step forward. */}
+                <button type="button" disabled={busy} onClick={() => void skip()}>
+                  {fromReview
+                    ? "Back to Queue"
+                    : (index ?? 0) + 1 < queue.length
+                      ? "Skip Release"
+                      : "Skip"}
+                </button>
+              </>
+            )}
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
@@ -163,9 +187,110 @@ export function ReleaseLookup() {
   );
 }
 
+/**
+ * What the dialog is about, which is a release except on the review table.
+ *
+ * The review queue's own length is in the table under this, one row per
+ * release - so a position within it would be a number about a queue nothing
+ * is working through in order any more.
+ */
+function title(length: number, index: number | null, fromReview: boolean): string {
+  const heading = "Get Tags from MusicBrainz";
+  if (index === null) {
+    return `${heading} — ${length} release${length === 1 ? "" : "s"} to review`;
+  }
+  if (fromReview || length === 1) {
+    return heading;
+  }
+  return `${heading} — release ${index + 1} of ${length}`;
+}
+
 /** A score as the two digits that fit beside a result. */
 function percent(score: number): string {
   return `${Math.round(score * 100)}%`;
+}
+
+/**
+ * The review queue, to pick out of.
+ *
+ * The pass leaves four hundred releases behind and they are not equally worth
+ * looking at, so the queue is a table sorted by what the pass scored each one
+ * at rather than a stack the dialog hands you the top of. `lookup::queue`
+ * does the sorting; this renders the order it arrived in.
+ *
+ * About four hundred rows and no virtualisation: the list is bounded by what
+ * one library's pass could not write, and it is behind a click.
+ */
+function QueueTable({
+  queue,
+  onChoose,
+}: {
+  queue: ReviewEntry[];
+  onChoose: (index: number) => void;
+}) {
+  return (
+    <div className="modal-body">
+      <table className="lookup-queue">
+        <thead>
+          <tr>
+            <th scope="col" className="lookup-queue-number">
+              Match
+            </th>
+            <th scope="col">Album</th>
+            <th scope="col">Artist</th>
+            <th scope="col" className="lookup-queue-number">
+              Tracks
+            </th>
+            <th scope="col">Best Match</th>
+          </tr>
+        </thead>
+        <tbody>
+          {queue.map((entry, at) => (
+            <QueueRow
+              key={`${entry.album ?? ""} ${entry.artist ?? ""}`}
+              entry={entry}
+              onChoose={() => onChoose(at)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function QueueRow({ entry, onChoose }: { entry: ReviewEntry; onChoose: () => void }) {
+  // The candidate the score was measured on: `pass.rs` fetches the first
+  // result and queues what it decided about that one.
+  const best = entry.candidates?.[0] ?? null;
+  const local = entry.trackIds.length;
+
+  return (
+    // A row rather than a control per cell, as `SongRow` does it: the whole
+    // row is the target, and Enter is what a focused row answers to. No hover
+    // fill - the focus ring is the affordance a desktop list gives.
+    <tr
+      tabIndex={0}
+      onClick={onChoose}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          onChoose();
+        }
+      }}
+    >
+      <td className="lookup-queue-number">{entry.score === null ? "—" : percent(entry.score)}</td>
+      <td>{entry.album ?? "No album"}</td>
+      <td>{entry.artist ?? "No artist"}</td>
+      {/* What says why a release above the bar is in the queue at all: the
+          pass queues a high score whose track count disagrees. */}
+      <td
+        className={`lookup-queue-number${best !== null && best.trackCount !== local ? " disagrees" : ""}`}
+      >
+        {local} / {best === null ? "—" : best.trackCount}
+      </td>
+      <td className="lookup-queue-detail">{best === null ? "" : describe(best)}</td>
+    </tr>
+  );
 }
 
 /** The year, the country and the format - what tells two pressings apart. */

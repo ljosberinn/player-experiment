@@ -684,8 +684,7 @@ pub fn tagsource_groups(
         })
 }
 
-/// The releases the unattended pass would not write, in the order to work
-/// through them.
+/// The releases the unattended pass would not write, best match first.
 ///
 /// Each carries the candidates the pass had in hand when it queued it, so the
 /// dialog opens on the results step: searching again at review time is a
@@ -710,6 +709,7 @@ pub fn tagsource_review_queue(
                         .candidates_json
                         .as_deref()
                         .and_then(|json| serde_json::from_str(json).ok()),
+                    score: queued.score,
                     release: ReleaseSelection {
                         album: queued.album,
                         artist: queued.artist,

@@ -229,26 +229,104 @@ describe("the confirm step", () => {
   });
 });
 
-describe("a release out of the review queue", () => {
-  /** Opens the dialog on the queue the unattended pass filled. */
-  async function openReview() {
+/** The two rows the review queue opens on, best match first. */
+const reviewQueue = [
+  { ...group, candidates: [candidate()], score: 0.97 },
+  { album: "Spiderland", artist: "Slint", trackIds: [3], candidates: [], score: 0.42 },
+];
+
+/** Renders the dialog on the review queue's table. */
+async function openTable() {
+  vi.mocked(tagsourceReviewQueue).mockResolvedValue(reviewQueue);
+  render(<ReleaseLookup />);
+  await useTagsourceStore.getState().openReview();
+  await screen.findByRole("table");
+  return userEvent.setup();
+}
+
+describe("the review table", () => {
+  it("lists every queued release in the order it arrived", async () => {
+    await openTable();
+
+    const rows = screen.getAllByRole("row");
+    // The header row, then one per queued release.
+    expect(rows).toHaveLength(3);
+    expect(within(rows[1] as HTMLElement).getByText("97%")).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText("loveless")).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText("42%")).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText("Spiderland")).toBeInTheDocument();
+  });
+
+  /**
+   * What says why a release above the bar is in the queue at all: the pass
+   * also queues one whose track count disagrees.
+   */
+  it("counts the files against the candidate the score was measured on", async () => {
+    await openTable();
+
+    const rows = screen.getAllByRole("row");
+    expect(within(rows[1] as HTMLElement).getByText("2 / 2")).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText(/1991 · GB · CD/)).toBeInTheDocument();
+    // The second release's cache is gone, so there is nothing to count against.
+    expect(within(rows[2] as HTMLElement).getByText("1 / —")).toBeInTheDocument();
+  });
+
+  it("marks a release whose track count disagrees", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      { ...group, candidates: [candidate()] },
-      { album: "Spiderland", artist: "Slint", trackIds: [3], candidates: [] },
+      { ...group, candidates: [candidate({ trackCount: 12 })], score: 0.97 },
     ]);
     render(<ReleaseLookup />);
     await useTagsourceStore.getState().openReview();
+
+    const cell = await screen.findByText("2 / 12");
+    expect(cell).toHaveClass("disagrees");
+  });
+
+  it("opens the release a row is clicked on", async () => {
+    const user = await openTable();
+
+    await user.click(within(screen.getAllByRole("row")[2] as HTMLElement).getByText("Spiderland"));
+
+    await waitFor(() => expect(useTagsourceStore.getState().index).toBe(1));
+    expect(tracksByIds).toHaveBeenCalledWith([3]);
+  });
+
+  it("opens the release a row is entered on", async () => {
+    const user = await openTable();
+
+    (screen.getAllByRole("row")[1] as HTMLElement).focus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(useTagsourceStore.getState().index).toBe(0));
+  });
+
+  /** Both act on a release, and on the table there is not one open. */
+  it("offers neither Set Aside nor a skip", async () => {
+    await openTable();
+
+    expect(screen.queryByRole("button", { name: "Set Aside" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Skip|Back to Queue/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+});
+
+describe("a release out of the review queue", () => {
+  /** Opens the dialog on the queue the unattended pass filled, on its first release. */
+  async function openReview() {
+    const user = await openTable();
+    await user.click(within(screen.getAllByRole("row")[1] as HTMLElement).getByText("loveless"));
     await screen.findByRole("button", { name: /Loveless/ });
-    return userEvent.setup();
+    return user;
   }
 
-  it("takes the release out of the queue and moves on", async () => {
+  it("takes the release out of the table and returns there", async () => {
     const user = await openReview();
 
     await user.click(screen.getByRole("button", { name: "Set Aside" }));
 
     expect(tagsourceSetAside).toHaveBeenCalledWith("loveless", "MBV");
-    await waitFor(() => expect(useTagsourceStore.getState().index).toBe(1));
+    await waitFor(() => expect(useTagsourceStore.getState().index).toBeNull());
+    expect(screen.getAllByRole("row")).toHaveLength(2);
   });
 
   /** A cache with no way to refresh it is a worse answer than a slow one. */
@@ -262,17 +340,25 @@ describe("a release out of the review queue", () => {
   });
 
   /**
-   * Skip means "not now" here - the entry stays queued and is offered again -
-   * which is what makes Set Aside beside it a different decision rather than a
-   * louder one.
+   * Back to Queue means "not now" - the entry stays queued and is still in
+   * the table - which is what makes Set Aside beside it a different decision
+   * rather than a louder one.
    */
-  it("does not set a release aside merely for being skipped", async () => {
+  it("does not set a release aside merely for being left", async () => {
     const user = await openReview();
 
-    await user.click(screen.getByRole("button", { name: "Skip Release" }));
+    await user.click(screen.getByRole("button", { name: "Back to Queue" }));
 
     expect(tagsourceSetAside).not.toHaveBeenCalled();
-    await waitFor(() => expect(useTagsourceStore.getState().index).toBe(1));
+    await waitFor(() => expect(useTagsourceStore.getState().index).toBeNull());
+    expect(screen.getAllByRole("row")).toHaveLength(3);
+  });
+
+  /** The table is where the queue's length is read, not the title. */
+  it("does not number a release out of a queue that is picked from", async () => {
+    await openReview();
+
+    expect(screen.getByRole("heading", { level: 2 })).not.toHaveTextContent(/release 1 of 2/);
   });
 
   /** On a selection the queue dies with the dialog, so there is nothing to set aside. */
@@ -318,6 +404,15 @@ describe("the fixed box", () => {
     expect(body()).not.toContainElement(screen.getByRole("button", { name: "Apply" }));
     expect(body()).not.toContainElement(screen.getByRole("button", { name: "Back to Results" }));
     expect(body()).not.toContainElement(screen.getByRole("button", { name: "Skip" }));
+  });
+
+  /** Four hundred rows, so the table is the state that needs this most. */
+  it("scrolls the review table without the heading or Cancel", async () => {
+    await openTable();
+
+    expect(body()).toContainElement(screen.getByRole("table"));
+    expect(body()).not.toContainElement(screen.getByRole("heading", { level: 2 }));
+    expect(body()).not.toContainElement(screen.getByRole("button", { name: "Cancel" }));
   });
 
   /** An error that can scroll out of sight is no error message. */

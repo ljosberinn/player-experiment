@@ -56,7 +56,13 @@ describe("ReviewQueue", () => {
 
   it("opens the lookup dialog on the queue", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1], candidates: [] },
+      {
+        album: "Loveless",
+        artist: "My Bloody Valentine",
+        trackIds: [1],
+        candidates: [],
+        score: 0.4,
+      },
     ]);
     await mounted({ review: 1, aside: 0 });
 

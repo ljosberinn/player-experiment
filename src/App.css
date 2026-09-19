@@ -1763,6 +1763,60 @@ th.status {
   padding: 0;
 }
 
+/* The review queue, sorted by what the unattended pass scored each release
+   at. Four hundred rows of it, so the header stays put against `.modal-body`
+   the way the mapping table's does. */
+.lookup-queue {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lookup-queue th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 3px 7px;
+  background: var(--chrome);
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+}
+
+.lookup-queue td {
+  padding: 4px 7px;
+  border-top: 1px solid var(--chrome-border);
+}
+
+/* The two number columns take what they need and the album and artist take
+   the rest, wrapping rather than widening the table: the dialog's width is
+   fixed, and a sideways scroller inside its body is the thing 89 removed. */
+.lookup-queue-number,
+.lookup-queue-detail {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.lookup-queue-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Beats `.lookup-queue th`'s left, so the heading sits over its own numbers. */
+.lookup-queue th.lookup-queue-number {
+  text-align: right;
+}
+
+/* A track count that disagrees with the candidate the score was measured on,
+   which is why a release above the bar is in this queue at all. */
+.lookup-queue-number.disagrees {
+  color: var(--danger);
+}
+
+/* The pressing the pass settled on, secondary to the album it is under. */
+.lookup-queue-detail {
+  color: var(--muted);
+}
+
 .lookup-map {
   width: 100%;
   border-collapse: collapse;

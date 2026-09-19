@@ -428,8 +428,9 @@ pub struct ReleaseSelection {
 /// the search results the pass already paid for.
 ///
 /// The queue the unattended pass fills is the same dialog as a selection the
-/// user made, one release at a time with Skip moving on - the difference is
-/// where the releases came from and that these arrive with their candidates.
+/// user made - the difference is where the releases came from, that these
+/// arrive with their candidates and a score, and that they are picked out of a
+/// table rather than walked in order.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -444,6 +445,14 @@ pub struct ReviewEntry {
     /// stale list is a worse answer than a slow one only where there is no way
     /// to refresh it.
     pub candidates: Option<Vec<ReleaseCandidate>>,
+    /// What the pass scored this release at, which is what the review table
+    /// sorts by.
+    ///
+    /// Not the top score in `candidates`: this one was measured against the
+    /// fetched tracklist, with per-track durations, and those are the search's
+    /// scores without them. A release listed at 88% here can open on a result
+    /// list whose first entry reads 91%.
+    pub score: Option<f32>,
 }
 
 /// What the sidebar's review row draws itself from.

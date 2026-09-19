@@ -42,8 +42,15 @@ export type Stage = "opening" | "searching" | "results" | "fetching" | "confirm"
 interface TagsourceState {
   /** The releases still to work through, or null when the dialog is closed. */
   queue: ReviewEntry[] | null;
-  /** Which of them is on screen. */
-  index: number;
+  /**
+   * Which of them is on screen, or null for the table of all of them.
+   *
+   * Only the review queue has a table: it is four hundred releases with a
+   * score each, and being handed the top of that stack is not the same as
+   * being able to pick out of it. A selection is a handful of releases the
+   * user just chose, in the order they chose them, so it opens on the first.
+   */
+  index: number | null;
   /**
    * Whether this queue came from the review queue rather than a selection.
    *
@@ -69,12 +76,17 @@ interface TagsourceState {
 
   /** Groups a selection into releases and opens the dialog on the first. */
   open: (trackIds: number[]) => Promise<void>;
-  /** Opens the dialog on what the unattended pass could not write. */
+  /** Opens the dialog on the table of what the unattended pass could not write. */
   openReview: () => Promise<void>;
+  /** Opens the release at `index` of the review queue's table. */
+  choose: (index: number) => Promise<void>;
   close: () => void;
-  /** Leaves this release alone for now and moves to the next, or closes. */
+  /**
+   * Leaves this release alone for now: back to the table, or on to the next
+   * release of a selection, which has no table to go back to.
+   */
   skip: () => Promise<void>;
-  /** Takes this release out of the queue for good, then moves on. */
+  /** Takes this release out of the queue for good, then back to the table. */
   setAside: () => Promise<void>;
   /** Puts every set-aside release back in the queue. */
   restoreAside: () => Promise<void>;
@@ -89,20 +101,29 @@ interface TagsourceState {
   /** Returns from the confirm step to the results without refetching. */
   back: () => void;
   setFields: (fields: Fields) => void;
-  /** Writes the confirmed mapping, then moves to the next release. */
+  /**
+   * Writes the confirmed mapping, then leaves the release behind: back to the
+   * table, or on to the next release of a selection.
+   */
   apply: (edits: TrackEdit[]) => Promise<void>;
   /** Subscribes to `tags://progress`; returns its own teardown. */
   watch: () => Promise<() => void>;
 }
 
-/** The release the dialog is on, or null when it is closed or past the end. */
+/**
+ * The release the dialog is on, or null when it is closed, on the table, or
+ * past the end.
+ */
 function current(state: TagsourceState): ReviewEntry | null {
-  return state.queue?.[state.index] ?? null;
+  return state.index === null ? null : (state.queue?.[state.index] ?? null);
 }
 
-/** A release the user picked out themselves, which arrives with no candidates. */
+/**
+ * A release the user picked out themselves, which arrives with no candidates
+ * and no score - both of those are something the unattended pass paid for.
+ */
 function unsearched(release: ReleaseSelection): ReviewEntry {
-  return { ...release, candidates: null };
+  return { ...release, candidates: null, score: null };
 }
 
 export const useTagsourceStore = create<TagsourceState>((set, get) => {
@@ -151,9 +172,34 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
     await enter();
   };
 
+  /** Back to the review queue's table, with the release's state cleared. */
+  const toTable = () => set({ index: null, tracks: [], candidates: [], detail: null, error: null });
+
+  /**
+   * What a decision about the release on screen leaves behind.
+   *
+   * Applied and set aside are both "done with this one", so the row goes -
+   * the table is what is left to decide, and a release that has left the queue
+   * on the database's side must not still be offered on this one. Emptying it
+   * closes the dialog rather than showing a table of nothing.
+   */
+  const decided = () => {
+    const { queue, index } = get();
+    if (queue === null || index === null) {
+      return;
+    }
+    const rest = queue.filter((_, at) => at !== index);
+    if (rest.length === 0) {
+      get().close();
+      return;
+    }
+    set({ queue: rest });
+    toTable();
+  };
+
   return {
     queue: null,
-    index: 0,
+    index: null,
     fromReview: false,
     tracks: [],
     stage: "opening",
@@ -193,17 +239,28 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         if (queue.length === 0) {
           return;
         }
-        set({ queue, index: 0, fromReview: true, fields: allFields() });
-        await enter();
+        set({ queue, index: null, fromReview: true, fields: allFields() });
       } catch (cause) {
         report(cause);
       }
     },
 
-    close: () =>
-      set({ queue: null, tracks: [], candidates: [], detail: null, error: null, index: 0 }),
+    choose: async (index) => {
+      set({ index });
+      await enter();
+    },
 
-    skip: () => advance(get().index + 1),
+    close: () =>
+      set({ queue: null, tracks: [], candidates: [], detail: null, error: null, index: null }),
+
+    skip: async () => {
+      const { fromReview, index } = get();
+      if (fromReview) {
+        toTable();
+        return;
+      }
+      await advance((index ?? 0) + 1);
+    },
 
     setAside: async () => {
       const entry = current(get());
@@ -218,7 +275,9 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         set({ error: String(cause) });
         return;
       }
-      await advance(get().index + 1);
+      // Only ever offered on the review queue, which is the only queue an
+      // entry persists in - so the table is always where this lands.
+      decided();
     },
 
     restoreAside: async () => {
@@ -299,7 +358,11 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         // The apply is also what takes the release out of the review queue: it
         // records the identity it wrote, so the count comes down over
         // `library://changed` rather than being adjusted here.
-        await advance(get().index + 1);
+        if (get().fromReview) {
+          decided();
+          return;
+        }
+        await advance((get().index ?? 0) + 1);
       } catch (cause) {
         // The dialog stays on this release so the mapping can be corrected
         // rather than searched for again.
