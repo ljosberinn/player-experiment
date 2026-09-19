@@ -10,7 +10,9 @@
 //! conventions calls the file the source of truth. Both still hold for
 //! uncertain matches; a release whose track count, track order and per-track
 //! durations all agree with MusicBrainz is not a guess, and confirming eight
-//! thousand of those by hand is not review, it is clicking.
+//! thousand of those by hand is not review, it is clicking. Nor is a release
+//! whose title and track count match the *only* thing MusicBrainz has under
+//! that name - a queue entry offering a choice of one is the same clicking.
 
 use std::path::{Path, PathBuf};
 
@@ -82,6 +84,14 @@ pub enum Verdict {
         mbid: String,
         score: f32,
         tracks: u32,
+        /// Written because MusicBrainz had only one candidate, rather than
+        /// because the score cleared the bar.
+        ///
+        /// Carried so the log says why: `score` is the fetched score, which
+        /// on this path is below the threshold, and a tuning pass reading a
+        /// column of sub-threshold writes would conclude the threshold was
+        /// broken.
+        sole: bool,
     },
     Queued {
         score: f32,
@@ -150,7 +160,19 @@ pub fn look_up(
     // match with eleven of twelve tracks reaches 0.954, and the write maps
     // remote tracks onto files by position - so a length that disagrees would
     // put every title on the wrong file at a score above the bar.
-    let confident = score >= UNATTENDED_THRESHOLD && detail.tracks.len() == members.len();
+    let counts_agree = detail.tracks.len() == members.len();
+
+    // Above the bar on either score, because the two measure different halves.
+    // The fetched score takes the text for granted and spends its weight on
+    // the durations; the search score is the text MusicBrainz actually matched
+    // and knows nothing of the lengths. A release they answered with exactly
+    // one candidate has no second pressing it could be confused for, which is
+    // the doubt the durations exist to settle - so a lone near-perfect title
+    // match with the right number of tracks is written rather than queued for
+    // a person to pick from a list of one.
+    let scored_well = score >= UNATTENDED_THRESHOLD;
+    let sole = !scored_well && candidates.len() == 1 && best.score >= UNATTENDED_THRESHOLD;
+    let confident = counts_agree && (scored_well || sole);
     if !confident {
         let candidates_json = serde_json::to_string(&candidates).ok();
         if !dry_run {
@@ -180,6 +202,7 @@ pub fn look_up(
                 mbid: detail.candidate.mbid,
                 score,
                 tracks,
+                sole,
             },
             retries,
         });
@@ -222,6 +245,7 @@ pub fn look_up(
             mbid: detail.candidate.mbid,
             score,
             tracks,
+            sole,
         },
         retries,
     })
@@ -328,6 +352,7 @@ pub(crate) mod tests {
     }
 
     const SEARCH_JSON: &str = include_str!("fixtures/search-loveless.json");
+    const SOLE_SEARCH_JSON: &str = include_str!("fixtures/search-loveless-sole.json");
     const RELEASE_JSON: &str = include_str!("fixtures/release-loveless.json");
 
     /// The eleven lengths `release-loveless.json` carries. A library built
@@ -356,6 +381,14 @@ pub(crate) mod tests {
         FakeTransport::new()
             .answering("/ws/2/release/", RELEASE_JSON)
             .answering("/ws/2/release", SEARCH_JSON)
+            .missing("coverartarchive.org")
+    }
+
+    /// The same, with a search that comes back holding exactly one release.
+    fn one_candidate(search: &str) -> FakeTransport {
+        FakeTransport::new()
+            .answering("/ws/2/release/", RELEASE_JSON)
+            .answering("/ws/2/release", search)
             .missing("coverartarchive.org")
     }
 
@@ -481,6 +514,8 @@ pub(crate) mod tests {
         );
     }
 
+    /// Three candidates, so the lone-candidate rule has nothing to say and the
+    /// durations decide - and here they disagree with all three.
     #[test]
     fn a_doubtful_match_is_queued_with_its_candidates_and_writes_nothing() {
         let (dir, db) = library("Loveless", "My Bloody Valentine", &[600_000; 11]);
@@ -514,6 +549,121 @@ pub(crate) mod tests {
         assert!(
             candidates.contains("bb5a3a25-1a76-3e6f-9dbd-eaeb0e0a94a9"),
             "a review opens on these rather than paying for the search again"
+        );
+    }
+
+    /// The lengths here disagree with every track of the fixture, which is
+    /// what puts the fetched score at 0.70 - well under the bar. The release
+    /// is still written, because MusicBrainz has nothing else it could be and
+    /// queueing it would offer a person a list of one to pick from.
+    #[test]
+    fn a_lone_candidate_of_the_right_length_is_written_though_the_durations_do_not_agree() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &[600_000; 11]);
+        let mut conn = db.conn().unwrap();
+
+        let outcome = look_up(
+            &mut conn,
+            &one_candidate(SOLE_SEARCH_JSON),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Written { sole: true, .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
+        assert_eq!(
+            conn.query_row("SELECT status FROM release_lookup", [], |row| row
+                .get::<_, String>(0))
+                .unwrap(),
+            "resolved"
+        );
+    }
+
+    /// One candidate is not on its own a reason to write: the title still has
+    /// to be the one MusicBrainz matched. A score of 40 is a release that
+    /// shares a word with the query.
+    #[test]
+    fn a_lone_candidate_the_text_barely_matches_is_queued() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &[600_000; 11]);
+        let mut conn = db.conn().unwrap();
+        let barely = SOLE_SEARCH_JSON.replace("\"score\": 100", "\"score\": 40");
+
+        let outcome = look_up(
+            &mut conn,
+            &one_candidate(&barely),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Queued { .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(untitled(&conn), 0);
+    }
+
+    /// The track count guards the new path as it guards the old one, and it
+    /// has to: ten files against an eleven-track lone candidate still scores
+    /// 0.96 on the search, and mapping by position would misfile all ten.
+    #[test]
+    fn a_lone_candidate_of_a_different_length_is_queued() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &[600_000; 10]);
+        let mut conn = db.conn().unwrap();
+
+        let outcome = look_up(
+            &mut conn,
+            &one_candidate(SOLE_SEARCH_JSON),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Queued { .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(untitled(&conn), 0);
+    }
+
+    /// And a write that cleared the bar on its own score is not marked as one
+    /// that did not, or the flag would say nothing about why the score reads
+    /// the way it does.
+    #[test]
+    fn a_write_that_scored_its_way_over_the_bar_is_not_flagged_as_a_lone_candidate() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+
+        let outcome = look_up(
+            &mut conn,
+            &one_candidate(SOLE_SEARCH_JSON),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Written { sole: false, .. }),
+            "{:?}",
+            outcome.verdict
         );
     }
 
