@@ -37,3 +37,6 @@ e2e/.tmp
 THIRD-PARTY-NOTICES.md
 
 CLAUDE.md
+
+# Vitest 5's default output directory for attachments and report files.
+.vitest
