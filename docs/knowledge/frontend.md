@@ -277,6 +277,12 @@ absences are what nobody notices coming back — hence the guards in
   shrink below its content. Everything else is `flex: none` and stays put. A
   second `max-height` scroller inside a paned dialog is the regression;
   `App.css.test.ts` guards it.
+  - **Settings lays the same parts out as a grid**, with its rail of categories
+    beside the body. The popup renders as Base UI's `Tabs.Root`, so the
+    `Tabs.List` and the one mounted `Tabs.Panel` — which is the `.modal-body` —
+    are both its children, and switching category mounts a fresh pane at the
+    top. `SettingsDialog` takes the category to open on: Account ▸ Connect to
+    last.fm… opens it on Online.
 - No hover backgrounds, except window caption buttons and menu items.
 - No transitions or animations, except the playing-row speaker, which **is** the
   state — and it stands down under `prefers-reduced-motion`.

@@ -83,15 +83,19 @@ describe("the menu bar", () => {
 
     const dialog = browser.$("[role='dialog']");
     await dialog.waitForExist({ timeout: 10_000 });
-    await expect(dialog).toHaveText(/Interface Zoom/);
-    // The section issue 71 added, and the only place in the app that shows
-    // which folders are watched at all. The existing screenshot below now
-    // carries it.
-    await expect(dialog).toHaveText(/Music Folders/);
-    // Issue 86's row, and the only route to `main.log` there is.
-    await expect(dialog).toHaveText(/Activity Log/);
 
-    await capture("settings");
+    // One shot per category, walked through the rail: the dialog keeps its
+    // size across all four, which only a picture of each can show.
+    for (const [category, text] of [
+      ["Appearance", /Interface Zoom/],
+      ["Library", /Music Folders/],
+      ["Online", /last\.fm/],
+      ["About", /Activity Log/],
+    ] as const) {
+      await browser.$(`//*[@role='tab'][normalize-space()='${category}']`).click();
+      await expect(browser.$(".modal-body")).toHaveText(text);
+      await capture(`settings-${category.toLowerCase()}`);
+    }
 
     await browser.$("//button[normalize-space()='Done']").click();
     await dialog.waitForExist({ timeout: 10_000, reverse: true });

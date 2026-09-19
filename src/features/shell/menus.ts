@@ -1,4 +1,5 @@
 import type { MenuItem } from "../../components/ui/ContextMenu";
+import type { SettingsCategory } from "./SettingsDialog";
 
 /** One top-level menu on the bar. */
 export interface Menu {
@@ -70,7 +71,7 @@ export function menus({
   onRemoveFromLibrary: () => void;
   onRemoveMissing: () => void;
   onForgetRemoved: () => void;
-  onSettings: () => void;
+  onSettings: (category?: SettingsCategory) => void;
   onExportAll: () => void;
   onExportSelection: () => void;
   onLastfmDisconnect: () => void;
@@ -125,7 +126,7 @@ export function menus({
         // to sit under.
         ...rowItems,
         ...(rowItems.length > 0 ? [{ kind: "separator" as const }] : []),
-        { label: "Settings…", onSelect: onSettings },
+        { label: "Settings…", onSelect: () => onSettings() },
       ],
     },
     {
@@ -152,7 +153,7 @@ export function menus({
       label: "Account",
       items: lastfmConfigured
         ? lastfmUsername === null
-          ? [{ label: "Connect to last.fm…", onSelect: onSettings }]
+          ? [{ label: "Connect to last.fm…", onSelect: () => onSettings("online") }]
           : [
               // Informational, so disabled rather than actionable: there is
               // nothing to do to the name itself.

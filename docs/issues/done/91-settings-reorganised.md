@@ -27,10 +27,12 @@ Four groups is what there is to hold:
 - **Online** — Look Up Releases Online, last.fm
 - **About** — Activity Log
 
-The dialog takes a fixed size the way [89](../done/89-the-lookup-window-stops-resizing.md)
-gives the lookup one, with the rail and the action row fixed and the pane the
-only thing that scrolls. Do that phase first, or after it, but share the
-mechanism rather than writing a second one.
+The dialog takes a fixed size through [89](89-the-lookup-window-stops-resizing.md)'s
+`.modal.paned`, with the rail and the action row fixed and the pane the only
+thing that scrolls. `Tabs.List` has to sit inside `Tabs.Root`, so the popup
+renders as the root: rail and panel are then both its children, and the panel
+is the `.modal-body`. `.settings-folders` loses its 132px cap: inside a paned dialog it is the second
+scroller 89 removed from the lookup.
 
 **About is one row today**, and the two things next to it in the app are the
 version in the status bar and `Source Code on GitHub` in the Help menu. Moving
@@ -42,7 +44,9 @@ which opens this dialog, and `Disconnect from last.fm`, which acts. A dialog
 with a category for it makes that duplication a decision rather than an
 accident: recommendation is that the menu keeps the connected username and
 Disconnect and routes Connect here, as it already does, and that the
-reorganisation says so out loud rather than leaving two answers.
+reorganisation says so out loud rather than leaving two answers. **Connect opens
+on Online**, not on Appearance — the dialog is remounted per open and would
+otherwise land a category away from the one thing it was opened for.
 
 ## The design source is the gate
 
@@ -50,17 +54,20 @@ reorganisation says so out loud rather than leaving two answers.
 something *looks*, the design wins — and the Claude Design project holds a
 settings dialog. A reorganisation here is an amendment there.
 
-**Re-fetch it before building and amend it after.** `DesignSync` could not be
-reached while this was written; it needs `/design-login` from an interactive
-session first. The Discord screenshot is where the ask starts, not where the
-design ends.
+**Re-fetch it before merging and amend it after.** `DesignSync` could not be
+reached when this was written nor when it was built; it needs `/design-login`
+from an interactive session, and writing to the project needs `/design-sync`,
+which only the user starts. Built on the app's tokens meanwhile — rail items
+wear `.sidebar-item`'s look — so the check against the design is a pre-merge
+item, not a build step. The Discord screenshot is where the ask starts, not
+where the design ends.
 
 `design.md` takes the new layout when it lands, and `SettingsDialog`'s doc
 comment stops being a list of arrivals.
 
 Testing: `SettingsDialog.test.tsx` — each category renders its own controls and
-none of the others, and the rail moves the selection. Four e2e specs reach this
-dialog through `Edit ▸ Settings…` and will need their routes updated:
-`library-folder`, `dynamic-background`, `menus`, `row-menu`. Worth a `capture`
-per category — it is the second most-looked-at dialog in the app and there is
-no shot of it today.
+none of the others, and the rail moves the selection. Four e2e specs open this
+dialog through `Edit ▸ Settings…`: `library-folder`, `dynamic-background`,
+`lastfm-import` and `menus` (`row-menu` only reads the menu);
+`library-folder` and `lastfm-import` reach past Appearance and need a rail
+click. `menus`' one `settings` shot becomes a `capture` per category.

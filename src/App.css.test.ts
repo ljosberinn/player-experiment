@@ -477,6 +477,27 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("gives Settings one size and one scroller too", () => {
+    // A category with eight watch folders is taller than one with two rows,
+    // and the rail and Done should not move between them. `overflow: hidden`
+    // stays allowed - it is how a long path truncates, not a scroll area.
+    const settings = all.find((one) => /(^|\s)\.modal\.settings$/.test(one.selector));
+
+    expect(settings?.body, ".modal.settings should state a height").toMatch(/[^-]height:\s*min\(/);
+
+    const inside = all.filter((one) => /\.settings-[\w-]+/.test(one.selector));
+
+    expect(inside.length).toBeGreaterThan(8);
+    for (const rule of inside) {
+      expect(rule.body, `${rule.selector} would be a second scroller`).not.toMatch(
+        /overflow(-y)?:\s*(auto|scroll)/,
+      );
+      expect(rule.body, `${rule.selector} caps a height the pane scrolls`).not.toMatch(
+        /max-height/,
+      );
+    }
+  });
+
   it("keeps the title bar and the footer the heights the design draws", () => {
     // Both are stated rather than left to their contents, and both are what
     // the transport strip and the content pane are measured against. A bar

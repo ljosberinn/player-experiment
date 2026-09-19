@@ -1,4 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
+import { Tabs } from "@base-ui/react/tabs";
 import { useCallback, useEffect, useState } from "react";
 import { revealMainLog } from "../../ipc";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
@@ -10,43 +11,51 @@ import { report } from "./statusStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
 
+export type SettingsCategory = "appearance" | "library" | "online" | "about";
+
+const CATEGORIES: { value: SettingsCategory; label: string }[] = [
+  { value: "appearance", label: "Appearance" },
+  { value: "library", label: "Library" },
+  { value: "online", label: "Online" },
+  { value: "about", label: "About" },
+];
+
 /**
- * Settings, reachable from Edit ▸ Settings…
+ * Settings, reachable from Edit ▸ Settings… and, opened on Online, from
+ * Account ▸ Connect to last.fm…
  *
  * `Dialog` rather than `AlertDialog`: nothing here is a decision that cannot be
  * taken back, so clicking the backdrop to leave is the right way out. The
  * opposite choice - and the reason it is worth stating - is the crash notice,
  * which is an `AlertDialog` precisely because it must be acknowledged.
  *
- * Interface zoom was its only contents, and it is the same control the status
- * bar carries. That is deliberate rather than an oversight: the design puts
- * Settings in the Edit menu and the stepper in the corner, and both write the
- * same store. A setting reachable two ways is not a setting duplicated.
+ * A rail of categories beside the one that is open, in order of how far each
+ * reaches: how the app looks, what it does to the library on its own, what
+ * leaves the machine, and the one row that is not a preference at all. The
+ * popup is the `Tabs.Root` so that the rail and the open panel can both be its
+ * direct children - the panel is the paned dialog's `.modal-body`, and only
+ * one is mounted at a time, so switching category starts it at the top.
  *
- * The dynamic background joins it in phase 39. It is the one thing in the app
- * that draws attention without being asked to, so it is the one thing that
- * needs a switch - and it belongs here rather than in a menu, because it is a
- * preference the user sets once rather than a command.
+ * Interface zoom is the same control the status bar carries, deliberately: the
+ * design puts Settings in the Edit menu and the stepper in the corner, and both
+ * write the same store. A setting reachable two ways is not a setting
+ * duplicated. last.fm is reachable twice on the same terms - the Account menu
+ * names the connected user and disconnects in one click, and sends Connect
+ * here, where there is room to say what a scrobble carries.
  *
- * last.fm joins it in phase 10b, last and set apart: the two rows above are
- * preferences about how the app looks, and that section is the only thing in
- * the app that makes it talk to a server.
- *
- * The music folders join it in issue 71, between the two: they are the first
- * thing here that is not about appearance, and they are where the app is told
- * what to do to the library while nobody is watching.
- *
- * The activity log joins it in issue 86, at the end: it is not a preference at
- * all, and the only other route to a file this app writes - the crash log - is
- * behind a notice that only appears after a crash.
- *
- * The Library folder joins it in issue 83c, above the music folders: it is the
- * stronger statement of the same thing. The one piece of state held here rather
- * than inside a section is the folder those two have to agree about - the root
+ * The one piece of state held here rather than inside a section is the folder
+ * the Library folder and music folder sections have to agree about - the root
  * is a watch folder that cannot be removed while the filing is on, and a value
  * two siblings read has to come from above them.
  */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({
+  category = "appearance",
+  onClose,
+}: {
+  /** Where it opens; it is remounted on every open, so this is read once. */
+  category?: SettingsCategory;
+  onClose: () => void;
+}) {
   const factor = useZoomStore((s) => s.factor);
   const step = useZoomStore((s) => s.step);
   const dynamicBackground = useDynamicBackgroundStore((s) => s.enabled);
@@ -88,86 +97,102 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup className="modal settings">
+        <Dialog.Popup
+          className="modal paned settings"
+          render={<Tabs.Root orientation="vertical" defaultValue={category} />}
+        >
           {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
           <Dialog.Title render={<h2 />}>Settings</Dialog.Title>
 
-          <div className="settings-row">
-            <span>Interface Zoom</span>
-            {/* No group label: each button already says what it does, and a
-                plain span cannot carry one without inventing a role for it. */}
-            <span className="statusbar-zoom">
-              <button
-                type="button"
-                aria-label="Zoom out"
-                disabled={factor <= MIN_ZOOM}
-                onClick={() => void step(-1)}
-              >
-                −
-              </button>
-              <span className="statusbar-zoom-value" aria-live="polite">
-                {formatZoom(factor)}
+          <Tabs.List className="settings-rail">
+            {CATEGORIES.map(({ value, label }) => (
+              <Tabs.Tab key={value} value={value} className="settings-tab">
+                {label}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+
+          <Tabs.Panel value="appearance" className="modal-body settings-pane">
+            <h3>Appearance</h3>
+
+            <div className="settings-row">
+              <span>Interface Zoom</span>
+              {/* No group label: each button already says what it does, and a
+                  plain span cannot carry one without inventing a role for it. */}
+              <span className="statusbar-zoom">
+                <button
+                  type="button"
+                  aria-label="Zoom out"
+                  disabled={factor <= MIN_ZOOM}
+                  onClick={() => void step(-1)}
+                >
+                  −
+                </button>
+                <span className="statusbar-zoom-value" aria-live="polite">
+                  {formatZoom(factor)}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Zoom in"
+                  disabled={factor >= MAX_ZOOM}
+                  onClick={() => void step(1)}
+                >
+                  +
+                </button>
               </span>
-              <button
-                type="button"
-                aria-label="Zoom in"
-                disabled={factor >= MAX_ZOOM}
-                onClick={() => void step(1)}
-              >
-                +
+            </div>
+
+            {/* A native checkbox rather than a Base UI switch: it is a plain
+                on/off preference in a dialog, which is what the platform
+                control is for, and `<label>` gives it its own hit target and
+                name without a `role` or an `aria-label`. */}
+            <div className="settings-row">
+              <label htmlFor="dynamic-background">Colour From Album Art</label>
+              <input
+                id="dynamic-background"
+                type="checkbox"
+                checked={dynamicBackground}
+                onChange={(event) => void setDynamicBackground(event.target.checked)}
+              />
+            </div>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="library" className="modal-body settings-pane">
+            <h3>Library</h3>
+            <LibraryFolderSettings onLockChange={lock} />
+            <WatchFolderSettings lockedRoot={lockedRoot} />
+          </Tabs.Panel>
+
+          {/* The lookup is here rather than under Library, beside the other
+              things the app does to the library unasked, because it is the one
+              of them that also leaves the machine. */}
+          <Tabs.Panel value="online" className="modal-body settings-pane">
+            <h3>Online</h3>
+            <div className="settings-row">
+              <label htmlFor="unattended-lookup">Look Up Releases Online</label>
+              <input
+                id="unattended-lookup"
+                type="checkbox"
+                checked={unattendedLookup}
+                onChange={(event) => void setUnattendedLookup(event.target.checked)}
+              />
+            </div>
+            <LastfmSettings />
+          </Tabs.Panel>
+
+          {/* The one row that is not a preference: it opens the file every
+              backend operation is written down in. Settings is where somebody
+              already goes when the app has done something they cannot account
+              for, and a log nobody can find is not one. */}
+          <Tabs.Panel value="about" className="modal-body settings-pane">
+            <h3>About</h3>
+            <div className="settings-row">
+              <span>Activity Log</span>
+              <button type="button" onClick={() => void showLog()}>
+                Show Log File
               </button>
-            </span>
-          </div>
-
-          {/* A native checkbox rather than a Base UI switch: it is a plain
-              on/off preference in a dialog, which is what the platform control
-              is for, and `<label>` gives it its own hit target and name
-              without a `role` or an `aria-label`. */}
-          <div className="settings-row">
-            <label htmlFor="dynamic-background">Colour From Album Art</label>
-            <input
-              id="dynamic-background"
-              type="checkbox"
-              checked={dynamicBackground}
-              onChange={(event) => void setDynamicBackground(event.target.checked)}
-            />
-          </div>
-
-          {/* Below the two appearance rows and above last.fm, which is the
-              order of how far each reaches: how the app looks, then what it
-              does on its own to the library, then what leaves the machine. */}
-          <LibraryFolderSettings onLockChange={lock} />
-
-          <WatchFolderSettings lockedRoot={lockedRoot} />
-
-          {/* Beside the music folders, because both are things the app does to
-              the library unasked - and after them, because this is the one of
-              the two that also leaves the machine. */}
-          <div className="settings-row">
-            <label htmlFor="unattended-lookup">Look Up Releases Online</label>
-            <input
-              id="unattended-lookup"
-              type="checkbox"
-              checked={unattendedLookup}
-              onChange={(event) => void setUnattendedLookup(event.target.checked)}
-            />
-          </div>
-
-          {/* Set apart: everything above it is a preference about how the app
-              looks, and this is the one thing in Settings that makes the app
-              talk to a server. */}
-          <LastfmSettings />
-
-          {/* Last, and the one row here that is not a preference: it opens the
-              file every backend operation is written down in. Settings is
-              where somebody already goes when the app has done something they
-              cannot account for, and a log nobody can find is not one. */}
-          <div className="settings-row">
-            <span>Activity Log</span>
-            <button type="button" onClick={() => void showLog()}>
-              Show Log File
-            </button>
-          </div>
+            </div>
+          </Tabs.Panel>
 
           <div className="modal-actions">
             <Dialog.Close render={<button type="button" className="primary" />}>Done</Dialog.Close>

@@ -2086,13 +2086,66 @@ th.status {
   color: var(--muted);
 }
 
-/* One row per setting: a label, and the control that changes it. Wider than
-   the two switches need since phase 10b, because the last.fm section is prose
-   as well as a button and 340px turned it into a column of three words. */
+/* A rail of categories beside a pane that keeps the ~420px column the dialog
+   had, which is what the last.fm prose was measured against in phase 10b. A
+   grid rather than the paned column, because the rail sits beside the body;
+   the rail stays put, and the pane is `.modal-body`, the one scroller. */
 .modal.settings {
-  width: min(420px, 90vw);
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 0;
+  width: min(640px, 92vw);
+  height: min(560px, 86vh);
 }
 
+.modal.settings > h2,
+.modal.settings > .modal-actions {
+  grid-column: 1 / -1;
+}
+
+.settings-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 10px;
+  border-right: 1px solid var(--chrome-border);
+}
+
+/* The sidebar's navigation item, so choosing a category reads as the same act
+   as choosing a view. Two classes to beat `.modal button`, which would
+   otherwise make it a bordered 29px control. */
+.settings-rail .settings-tab {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.settings-rail .settings-tab[aria-selected="true"] {
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+/* Clear of the rail's hairline on the left, and of the scrollbar on the right
+   when the pane has one. */
+.settings-pane {
+  padding: 0 8px 0 20px;
+}
+
+.settings-pane > h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* One row per setting: a label, and the control that changes it. */
 .settings-row {
   display: flex;
   align-items: center;
@@ -2100,20 +2153,24 @@ th.status {
   gap: 14px;
 }
 
-/* Ruled off like the two sections below it, and for the same reason: the rows
-   above are one control each, and this is controls plus prose. */
-.settings-library {
+/* A section is controls plus prose, where a row is one control. */
+.settings-pane section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.settings-pane section h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Ruled off from what is above it in the pane, but not from the pane's own
+   heading, where a line would only underline it. */
+.settings-pane > :not(h3) + section {
   margin-top: 4px;
   padding-top: 12px;
   border-top: 1px solid var(--chrome-border);
-}
-
-.settings-library h3 {
-  margin: 0;
-  font-size: 13px;
 }
 
 /* The path takes what the button leaves, and truncates rather than pushing the
@@ -2148,33 +2205,14 @@ th.status {
   color: var(--danger);
 }
 
-/* Ruled off like the last.fm section below it, and for the same reason: the
-   rows above are one control each, and this is controls plus a list plus
-   prose. */
-.settings-watch {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--chrome-border);
-}
-
-.settings-watch h3 {
-  margin: 0;
-  font-size: 13px;
-}
-
-/* Capped and scrolling: a library can be spread over a dozen roots, and the
-   dialog must not grow past the window to say so. */
+/* Uncapped: a library spread over a dozen roots scrolls the pane, which is the
+   one scroller a paned dialog has. */
 .settings-folders {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 132px;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
 }
 
@@ -2211,22 +2249,6 @@ th.status {
   color: var(--dim);
   font-size: 11.5px;
   line-height: 1.45;
-}
-
-/* Ruled off above rather than merely spaced: what is below the line makes the
-   app talk to a server, and what is above it does not. */
-.settings-lastfm {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--chrome-border);
-}
-
-.settings-lastfm h3 {
-  margin: 0;
-  font-size: 13px;
 }
 
 .settings-lastfm-status {

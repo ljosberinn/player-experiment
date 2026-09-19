@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadUnattendedLookup, revealMainLog } from "../../ipc";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
-import { SettingsDialog } from "./SettingsDialog";
+import { type SettingsCategory, SettingsDialog } from "./SettingsDialog";
 import { useStatusStore } from "./statusStore";
 
 vi.mock("../../ipc", () => ({
@@ -31,10 +31,90 @@ function checkbox(): HTMLInputElement {
   return screen.getByRole("checkbox", { name: "Colour From Album Art" });
 }
 
+/** The scrolling pane, which is the one panel mounted. */
+function pane(): HTMLElement {
+  const found = document.querySelector<HTMLElement>(".modal-body");
+  if (found === null) {
+    throw new Error("the dialog has no scrolling pane");
+  }
+  return found;
+}
+
+/** Something that belongs to one category and no other. */
+const MARKERS: Record<SettingsCategory, () => HTMLElement | null> = {
+  appearance: () => screen.queryByText("Interface Zoom"),
+  library: () => screen.queryByLabelText("Organise My Library"),
+  online: () => screen.queryByLabelText("Look Up Releases Online"),
+  about: () => screen.queryByRole("button", { name: "Show Log File" }),
+};
+
+const LABELS: Record<SettingsCategory, string> = {
+  appearance: "Appearance",
+  library: "Library",
+  online: "Online",
+  about: "About",
+};
+
 describe("the Settings dialog", () => {
   beforeEach(() => {
     useDynamicBackgroundStore.setState({ enabled: true });
     useLookupStore.setState({ enabled: false });
+  });
+
+  it("offers four categories, and opens on Appearance", () => {
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    // The popup renders as the tabs' root; it has to stay the named dialog.
+    expect(screen.getByRole("dialog", { name: "Settings" })).toContainElement(
+      screen.getByRole("tablist"),
+    );
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(Object.values(LABELS));
+    expect(screen.getByRole("tab", { name: "Appearance" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it.each(Object.keys(MARKERS) as SettingsCategory[])(
+    "shows %s's controls and none of the others'",
+    async (category) => {
+      const user = userEvent.setup();
+      render(<SettingsDialog onClose={vi.fn()} />);
+
+      await user.click(screen.getByRole("tab", { name: LABELS[category] }));
+
+      expect(screen.getByRole("tab", { name: LABELS[category] })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent(LABELS[category]);
+      for (const [other, marker] of Object.entries(MARKERS)) {
+        if (other === category) {
+          expect(marker()).toBeInTheDocument();
+        } else {
+          expect(marker()).not.toBeInTheDocument();
+        }
+      }
+    },
+  );
+
+  it("opens on the category it is asked for", () => {
+    render(<SettingsDialog category="online" onClose={vi.fn()} />);
+
+    // Account ▸ Connect to last.fm… lands here, not a category away.
+    expect(screen.getByRole("tab", { name: "Online" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "last.fm" })).toBeInTheDocument();
+  });
+
+  it("scrolls the pane without the rail, the heading or Done", () => {
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    // The dialog keeps one size and one scroller; anything inside the pane
+    // would travel with a long folder list.
+    expect(pane()).not.toContainElement(screen.getByRole("tablist"));
+    expect(pane()).not.toContainElement(screen.getByRole("heading", { level: 2 }));
+    expect(pane()).not.toContainElement(screen.getByRole("button", { name: "Done" }));
+    expect(pane()).toContainElement(screen.getByText("Interface Zoom"));
   });
 
   it("shows the background switch in the state the store is in", () => {
@@ -63,19 +143,15 @@ describe("the Settings dialog", () => {
     expect(checkbox()).not.toBeChecked();
   });
 
-  it("still carries the interface zoom", () => {
+  it("carries the interface zoom", () => {
     render(<SettingsDialog onClose={vi.fn()} />);
 
-    // Phase 39 added a second row to a dialog that had one. Asserting the
-    // first one is still there is what makes that an addition rather than a
-    // replacement.
-    expect(screen.getByText("Interface Zoom")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
   });
 
   it("opens the activity log in the file manager", async () => {
     const user = userEvent.setup();
-    render(<SettingsDialog onClose={vi.fn()} />);
+    render(<SettingsDialog category="about" onClose={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Show Log File" }));
 
@@ -85,35 +161,26 @@ describe("the Settings dialog", () => {
   it("reports a file manager that would not open, rather than failing silently", async () => {
     vi.mocked(revealMainLog).mockRejectedValueOnce(new Error("no file manager"));
     const user = userEvent.setup();
-    render(<SettingsDialog onClose={vi.fn()} />);
+    render(<SettingsDialog category="about" onClose={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Show Log File" }));
 
     expect(useStatusStore.getState().message).toContain("no file manager");
   });
 
-  it("carries the music folders section", () => {
-    render(<SettingsDialog onClose={vi.fn()} />);
-
-    // The dialog is where the watch folders became visible at all - the same
-    // argument as the row above, one section later.
-    expect(screen.getByText("Music Folders")).toBeInTheDocument();
-    expect(screen.getByLabelText("Check For Changes")).toBeInTheDocument();
-  });
-
-  it("carries the library folder section, above the music folders", () => {
-    render(<SettingsDialog onClose={vi.fn()} />);
+  it("carries the library folder above the music folders", () => {
+    render(<SettingsDialog category="library" onClose={vi.fn()} />);
 
     // Above, because it is the stronger statement of the same thing: what the
     // app does to the library while nobody is watching.
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    expect(headings.indexOf("Library Folder")).toBeLessThan(headings.indexOf("Music Folders"));
-    expect(screen.getByLabelText("Organise My Library")).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Library Folder", "Music Folders"]);
+    expect(screen.getByLabelText("Check For Changes")).toBeInTheDocument();
   });
 
   it("opts the library into looking releases up online", async () => {
     const user = userEvent.setup();
-    render(<SettingsDialog onClose={vi.fn()} />);
+    render(<SettingsDialog category="online" onClose={vi.fn()} />);
     const lookup = screen.getByRole("checkbox", { name: "Look Up Releases Online" });
 
     expect(lookup).not.toBeChecked();
@@ -125,7 +192,7 @@ describe("the Settings dialog", () => {
 
   it("reads the stored preference when it opens", async () => {
     vi.mocked(loadUnattendedLookup).mockResolvedValueOnce(true);
-    render(<SettingsDialog onClose={vi.fn()} />);
+    render(<SettingsDialog category="online" onClose={vi.fn()} />);
 
     // Loaded on open rather than at startup: nothing outside this dialog
     // draws from it.

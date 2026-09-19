@@ -11,6 +11,7 @@ import { usePlayerStore } from "../player/store";
 import { usePlaylistsStore } from "../playlists/store";
 import { useTagsourceStore } from "../tagsource/store";
 import { exportSelectionLabel, menus, REPOSITORY } from "./menus";
+import type { SettingsCategory } from "./SettingsDialog";
 
 /**
  * The menu bar's contents, subscribed on their own behalf.
@@ -35,7 +36,7 @@ export function AppMenus({
 }: {
   /** Opens the confirm dialog; the flag it sets lives in `App`. */
   onRemoveMissing: () => void;
-  onSettings: () => void;
+  onSettings: (category?: SettingsCategory) => void;
   /** Runs a save dialog and writes the file; the notice it sets is `App`'s. */
   onExport: (choice: ExportChoice) => void;
 }) {

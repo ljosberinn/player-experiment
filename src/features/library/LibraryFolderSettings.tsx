@@ -97,7 +97,7 @@ export function LibraryFolderSettings({
 
   return (
     <section className="settings-library">
-      <h3>Library Folder</h3>
+      <h4>Library Folder</h4>
 
       <div className="settings-row">
         <span id="library-root-label">Folder</span>

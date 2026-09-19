@@ -50,7 +50,7 @@ Six dialogs carry `.modal`: `ConfirmDialog`, `CrashNotice`, `SettingsDialog`,
 off the base rule would leave the other four unable to scroll at all, so the
 fixed height, the `overflow: hidden` and the scrolling body are an opt-in
 modifier — `.modal.paned` with a `.modal-body` inside it — that
-[91](../upcoming/91-settings-reorganised.md) applies to `.modal.settings` unchanged.
+[91](91-settings-reorganised.md) applies to `.modal.settings` unchanged.
 
 `.lookup-map-scroll` is deleted rather than uncapped: an `overflow-y: auto` box
 at automatic height is a scroll container that never scrolls, and it would

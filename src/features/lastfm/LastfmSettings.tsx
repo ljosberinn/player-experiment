@@ -13,7 +13,7 @@ import { useLastfmStore } from "./store";
  * before turning it on.
  *
  * A `<section>` with its own heading rather than another `.settings-row`: the
- * two rows above it are one control each, and this is a control plus prose.
+ * row above it is one control, and this is a control plus prose.
  */
 export function LastfmSettings() {
   const configured = useLastfmStore((s) => s.configured);
@@ -38,7 +38,7 @@ export function LastfmSettings() {
 
   return (
     <section className="settings-lastfm">
-      <h3>last.fm</h3>
+      <h4>last.fm</h4>
 
       <div className="settings-row">
         {/* `aria-live`, because the line changes underneath a user who is

@@ -351,7 +351,7 @@ What gets a line:
 and the last.fm username do land in the file; it never leaves the machine it
 was written on, which is the same reason the crash log has nothing to scrub.
 
-Reachable from Settings ▸ Activity Log, which reveals it through `reveal.rs`
+Reachable from Settings ▸ About ▸ Activity Log, which reveals it through `reveal.rs`
 beside `reveal_crash_log`: a log nobody can find is not one.
 
 - **The play queue is a list of ids sent to Rust**, not a view the backend
