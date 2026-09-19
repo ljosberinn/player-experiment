@@ -23,10 +23,26 @@ use crate::error::AppResult;
 ///
 /// The generated values repeat on deliberately coprime-ish cycles so that
 /// grouping, sorting and filtering all have something to do: 250 artists, 800
-/// albums, 20 genres, 55 years. Names carry no spaces or punctuation, so each
-/// is a single FTS token and a search term cannot half-match a different
-/// column.
+/// albums, 20 genres, 55 years, 7 bitrates, 3 sample rates. Names carry no
+/// spaces or punctuation, so each is a single FTS token and a search term
+/// cannot half-match a different column.
+///
+/// **The quality columns and `added_at` are filled for the reason the
+/// timestamps in [`seed_plays`] are spread**: left at NULL and at zero, the
+/// two bitrate aggregates and `added_over_time` were one-group scans, and the
+/// budgets in `tests/perf.rs` measured the NULL rather than the query.
 pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
+    /// The bitrates a library actually holds, in the order they turn up, so a
+    /// 32 kbps histogram bin has more than one occupant and an album's mean
+    /// is a mean rather than a constant.
+    const BITRATES: [i64; 7] = [96, 128, 160, 192, 224, 256, 320];
+    const SAMPLE_RATES: [i64; 3] = [44_100, 48_000, 96_000];
+    /// 2020-09-13, and fifteen minutes between additions: 150k rows then span
+    /// a little over four years and fall in some fifty month buckets, all of
+    /// them in the past.
+    const ADDED_FROM: i64 = 1_600_000_000;
+    const ADDED_SPACING: i64 = 900;
+
     let existing: u32 = conn.query_row(
         "SELECT count(*) FROM tracks WHERE path LIKE 'synthetic://%'",
         [],
@@ -37,8 +53,9 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
     {
         let mut stmt = tx.prepare(
             "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album,
-                                 album_artist, genre, year, track_no, added_at)
-             VALUES (?1, 1, 1, ?2, ?3, ?4, ?5, ?4, ?6, ?7, ?8, 0)",
+                                 album_artist, genre, year, track_no, bitrate, sample_rate,
+                                 added_at)
+             VALUES (?1, 1, 1, ?2, ?3, ?4, ?5, ?4, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?;
 
         for index in existing..existing + count {
@@ -51,6 +68,9 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
                 format!("Genre{:02}", index % 20),
                 1970 + i64::from(index % 55),
                 i64::from(index % 20) + 1,
+                BITRATES[index as usize % BITRATES.len()],
+                SAMPLE_RATES[index as usize % SAMPLE_RATES.len()],
+                ADDED_FROM + i64::from(index) * ADDED_SPACING,
             ])?;
         }
     }

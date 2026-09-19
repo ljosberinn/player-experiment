@@ -1,8 +1,8 @@
 # 84c — The shape of a week
 
-The Listening tab's charts, and the two primitives that draw them. Stacks on
+The Listening tab's charts, and the primitive that draws one of them. Stacks on
 [84a](../done/84a-what-you-have-heard.md), which built the tab's lists and the panel
-plumbing under them.
+plumbing under them, and on [84b](84b-what-you-own.md) for `Bar`.
 
 Split from 84a along the primitive seam rather than the tab: `BarList` is HTML
 and `Bar` and `Heatmap` are SVG over `scales.ts`, so a split by primitive lands
@@ -10,13 +10,18 @@ each one with its callers — [70](../done/70-chart-primitives.md)'s rule one
 level up — and a split by tab-half would have put three `Bar` callers on one
 side of it and one on the other.
 
+**`Bar` moved to [84b](84b-what-you-own.md).** A histogram is a bar chart, so
+as written both phases created the same file in parallel; it lands with the
+three callers that come first and this phase adds two more. `Heatmap` is still
+this phase's.
+
 Plays over time, bucket chosen from the range; new artists per bucket;
 hour-of-day bars; a weekday-by-hour heatmap. Their three `src/ipc/index.ts`
 wrappers — `stats_plays_over_time`, `stats_week_clock`, `stats_firsts` — land
 here with them.
 
-`scales.ts` gets its first real caller here. `d3-shape` is still not a
-dependency: nothing draws an arc or an area, and the donut is 84b's.
+`d3-shape` is still not a dependency: nothing draws an arc or an area, and the
+donut is [84d](84d-a-genre-is-a-guess.md)'s.
 
 - **Hour-of-day costs no query.** `week_clock` returns 168 counts and
   hour-of-day is its column sums, done in the panel. It is kept beside the

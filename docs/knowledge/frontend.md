@@ -112,11 +112,21 @@ require.
   empty and loading states, and it draws each fill as a share of the largest
   value rather than of the total - a top list is read as rows against each
   other, and a long tail measured against the total is ten slivers.
-- **What has not landed**: `Bar`, `Line`, `Donut`, `Heatmap`, `Sparkline`. Each
-  wants a real panel as its caller; `Bar` and `Heatmap` are phase 84c and the
-  donut is 84b. The file list in the plan is a ceiling, not a checklist.
-  `d3-shape` is still not a dependency, because nothing draws an arc or an
-  area.
+- **`Bar` is a categorical axis, never a numeric one.** The domain is the
+  array's order: a histogram with an empty bin and a sparse time series both
+  want the gap the caller left, and a scale over the values would close it. So
+  `fillBins` in `features/stats/histogram.ts` is what puts an empty bin back,
+  and it has to know the backend's bin width to do it. The per-bar readout is
+  a `<title>`, which costs nothing and keeps the chart a pure function of its
+  props.
+- **`ChartFrame` takes its ticks as a function of the measured plot**, as well
+  as as an array. Every tick on a scale sits at a position derived from the
+  plot's height or width, which only the frame knows; `Bar`, its first real
+  caller, is what found that out.
+- **What has not landed**: `Line`, `Donut`, `Sparkline`, `Heatmap`. Each wants
+  a real panel as its caller; `Heatmap` is phase 84c and the donut is 84d. The
+  file list in the plan is a ceiling, not a checklist. `d3-shape` is still not
+  a dependency, because nothing draws an arc or an area.
 - Charts hold no virtualizer, so unlike `SongTable` and `BrowseView` they
   compile clean under the React Compiler and want no `"use no memo"`.
 

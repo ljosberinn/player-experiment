@@ -337,7 +337,7 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
 
 ## The genre tree
 
-An ID3 genre frame is free text, and the drill-down 84b wants is black metal →
+An ID3 genre frame is free text, and the drill-down 84d wants is black metal →
 atmospheric black metal, raw black metal. Migration 11 carries the hierarchy
 that makes that possible, and `db::genres` turns one tag string into a genre and
 a parent.
@@ -365,7 +365,7 @@ a parent.
 - **Resolution is three layers: Wikidata label or alias → suffix derivation →
   override.** The suffix layer treats a genre as a child of any shorter genre
   its name ends with **at a word boundary**, longest match winning, and is
-  reported as `ParentSource::Derived` so 84b can label a guess as a guess.
+  reported as `ParentSource::Derived` so 84d can label a guess as a guess.
 - **The primary parent is arbitrary where a genre has several.** Blackened death
   metal is a child of both black metal and death metal; the generator takes the
   lexicographically smallest label, `genre_edges` keeps both, and

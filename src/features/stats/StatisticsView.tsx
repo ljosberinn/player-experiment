@@ -1,7 +1,7 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { useEffect } from "react";
 import { useLibraryStore } from "../library/store";
-import { LibraryTiles } from "./LibraryTiles";
+import { LibraryPanels } from "./LibraryPanels";
 import { ListeningPanels } from "./ListeningPanels";
 import { STATS_TAB_TITLES, type StatsTab, statsRoot, walkBack } from "./path";
 import { StatsFilterBar } from "./StatsFilterBar";
@@ -77,7 +77,7 @@ export function StatisticsView() {
         <ListeningPanels />
       </Tabs.Panel>
       <Tabs.Panel className="stats-panels" value="library">
-        <LibraryTiles />
+        <LibraryPanels />
       </Tabs.Panel>
     </Tabs.Root>
   );

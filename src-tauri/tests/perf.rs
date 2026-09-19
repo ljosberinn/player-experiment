@@ -596,12 +596,15 @@ fn every_library_aggregate_costs_what_a_browse_grouping_does() {
         HistogramField::Year,
         HistogramField::Duration,
     ] {
+        // Non-empty, which is the half the budget cannot state: every one of
+        // these columns is filled by the seeder precisely so that the bins
+        // are bins rather than the one group a table of NULLs collapses to.
         assert_under(&format!("histogram of {field:?}"), BUDGET, || {
-            stats::histogram(&conn, &q, field).unwrap();
+            assert!(!stats::histogram(&conn, &q, field).unwrap().is_empty());
         });
     }
     assert_under("worst albums by bitrate", BUDGET, || {
-        stats::worst_by_bitrate(&conn, &q, 100).unwrap();
+        assert_eq!(stats::worst_by_bitrate(&conn, &q, 100).unwrap().len(), 100);
     });
     // Includes loading the genre tree, which is the larger half.
     assert_under("the genre breakdown", BUDGET, || {
@@ -611,7 +614,12 @@ fn every_library_aggregate_costs_what_a_browse_grouping_does() {
             .is_empty());
     });
     assert_under("additions per month", BUDGET, || {
-        stats::added_over_time(&conn, &q, TimeBucket::Month).unwrap();
+        assert!(
+            stats::added_over_time(&conn, &q, TimeBucket::Month)
+                .unwrap()
+                .len()
+                > 1
+        );
     });
     assert_under("tag health", BUDGET, || {
         assert_eq!(stats::tag_health(&conn, &q).unwrap().tracks, ROWS as u32);

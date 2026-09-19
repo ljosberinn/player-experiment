@@ -3,8 +3,8 @@ import { invoke } from "../invoke";
 import { capture } from "../screenshot";
 
 /**
- * The Statistics view: the sidebar destination, its two tabs, and the
- * Listening tab's panels under the tile row.
+ * The Statistics view: the sidebar destination, its two tabs, and the panels
+ * under each tile row.
  *
  * Screenshots because this is a view the design has no mockup for, so what a
  * tab strip, a filter bar, a row of tiles and a column of panels look like
@@ -131,7 +131,49 @@ describe("the Statistics view", () => {
     // the count under the table.
     await expect(browser.$("//dl[@class='stat-tile'][dt[text()='Songs']]")).toBeExisting();
 
+    for (const title of [
+      "Bitrates",
+      "Sample rates",
+      "Track lengths",
+      "Release years",
+      "Albums by mean bitrate",
+      "Tag health",
+    ]) {
+      await panel(title).waitForExist({ timeout: 30_000 });
+    }
+
+    // Bars, not a skeleton and not an empty state. `synthetic::seed` fills
+    // the quality columns precisely so there is a distribution here to draw;
+    // left at NULL they were one empty bin.
+    await browser.waitUntil(async () => (await panel("Bitrates").$$("rect.chart-bar").length) > 1, {
+      timeout: 30_000,
+      timeoutMsg: "the bitrate histogram never arrived",
+    });
+
     await capture("statistics-library");
+  });
+
+  it("reads the release years as decades without asking again", async () => {
+    // The toggle is why there is one panel and not two: a decade is ten year
+    // bins summed, and the second panel would have been a second full scan.
+    const years = panel("Release years");
+    await browser.waitUntil(async () => (await years.$$("rect.chart-bar").length) > 1, {
+      timeout: 30_000,
+      timeoutMsg: "the release years never arrived",
+    });
+    const before = await years.$$("rect.chart-bar").length;
+
+    await years.$(".//button[normalize-space()='By decade']").click();
+
+    // 55 synthetic years and a handful of real ones collapse to seven
+    // decades, so fewer bars is the assertion that the rollup happened.
+    await browser.waitUntil(async () => (await years.$$("rect.chart-bar").length) < before, {
+      timeout: 10_000,
+      timeoutMsg: "the decade rollup never drew",
+    });
+    await expect(years.$("button[aria-pressed='true']")).toBeExisting();
+
+    await capture("statistics-library-decades");
   });
 
   it("goes back to Listening the way it goes back anywhere", async () => {

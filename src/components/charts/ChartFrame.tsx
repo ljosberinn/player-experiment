@@ -26,6 +26,16 @@ export interface AxisTick {
   readonly label: string;
 }
 
+/**
+ * Axis ticks, or how to work them out once the plot has been measured.
+ *
+ * A scale's range is the measured plot, so every tick position on it depends
+ * on a number only this component has. The first chart to draw one - `Bar` -
+ * is what found that out; the plain array stays for an axis whose positions
+ * are fixed.
+ */
+export type Ticks = readonly AxisTick[] | ((plot: PlotRect) => readonly AxisTick[]);
+
 export interface ChartFrameProps {
   /** What the chart shows, for a reader who cannot see it. */
   readonly label: string;
@@ -41,8 +51,8 @@ export interface ChartFrameProps {
    * without one.
    */
   readonly table?: ReactNode;
-  readonly xTicks?: readonly AxisTick[];
-  readonly yTicks?: readonly AxisTick[];
+  readonly xTicks?: Ticks;
+  readonly yTicks?: Ticks;
   readonly children: (plot: PlotRect) => ReactNode;
 }
 
@@ -57,8 +67,8 @@ export function ChartFrame({
   empty,
   loading = false,
   table,
-  xTicks = [],
-  yTicks = [],
+  xTicks: xSource = [],
+  yTicks: ySource = [],
   children,
 }: ChartFrameProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -83,6 +93,8 @@ export function ChartFrame({
     width: Math.max(0, size.width - CHART_MARGIN.left - CHART_MARGIN.right),
     height: Math.max(0, size.height - CHART_MARGIN.top - CHART_MARGIN.bottom),
   };
+  const xTicks = typeof xSource === "function" ? xSource(plot) : xSource;
+  const yTicks = typeof ySource === "function" ? ySource(plot) : ySource;
 
   // Loading outranks empty: an aggregate that has not landed is not an
   // aggregate of nothing, and saying there are no plays and correcting it a
@@ -90,58 +102,76 @@ export function ChartFrame({
   // make the same argument.
   if (loading) {
     return (
-      <section className="chart chart-loading" ref={attach}>
-        <div className="chart-skeleton" data-testid="chart-skeleton" />
+      <section className="chart chart-loading">
+        <div className="chart-plot" ref={attach}>
+          <div className="chart-skeleton" data-testid="chart-skeleton" />
+        </div>
       </section>
     );
   }
 
-  // The section is still measured while empty, so the chart that arrives when
-  // the filter widens is drawn at the right size on its first frame rather
-  // than at zero and then again.
+  // Still measured while empty, so the chart that arrives when the filter
+  // widens is drawn at the right size on its first frame rather than at zero
+  // and then again.
   if (empty !== undefined) {
     return (
-      <section className="chart chart-empty" ref={attach}>
-        <p>{empty}</p>
+      <section className="chart chart-empty">
+        <div className="chart-plot" ref={attach}>
+          <p>{empty}</p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="chart" ref={attach}>
-      {showTable ? (
-        table
-      ) : (
-        <svg role="img" aria-label={label} width={size.width} height={size.height}>
-          <g transform={`translate(${CHART_MARGIN.left}, ${CHART_MARGIN.top})`}>
-            {/* Nothing inside carries an `aria-hidden`: `role="img"` already
+    <section className="chart">
+      {/* The measured box is this, not the section, and the toggle is outside
+          it. Measuring a box that contains the button would make the svg as
+          tall as the section, the section as tall as the svg plus the button,
+          and every frame a little taller than the last. */}
+      {/* Scrollable only while the table is up. With the svg in it, the svg
+          is exactly the box's client size, so a scrollbar would narrow the
+          box, which would narrow the svg, which would take the scrollbar
+          away again - a measurement that never settles. */}
+      <div className={showTable ? "chart-plot chart-plot-table" : "chart-plot"} ref={attach}>
+        {showTable ? (
+          table
+        ) : (
+          <svg role="img" aria-label={label} width={size.width} height={size.height}>
+            <g transform={`translate(${CHART_MARGIN.left}, ${CHART_MARGIN.top})`}>
+              {/* Nothing inside carries an `aria-hidden`: `role="img"` already
                 makes the whole subtree presentational, and the label plus the
                 table toggle are what a reader gets instead. */}
-            <g className="chart-grid">
-              {yTicks.map((tick) => (
-                <line key={tick.label} x1={0} x2={plot.width} y1={tick.offset} y2={tick.offset} />
-              ))}
+              <g className="chart-grid">
+                {yTicks.map((tick) => (
+                  <line key={tick.label} x1={0} x2={plot.width} y1={tick.offset} y2={tick.offset} />
+                ))}
+              </g>
+              <g className="chart-axis chart-axis-x">
+                {xTicks.map((tick) => (
+                  <text key={tick.label} x={tick.offset} y={plot.height + CHART_MARGIN.bottom - 6}>
+                    {tick.label}
+                  </text>
+                ))}
+              </g>
+              <g className="chart-axis chart-axis-y">
+                {yTicks.map((tick) => (
+                  <text key={tick.label} x={-6} y={tick.offset}>
+                    {tick.label}
+                  </text>
+                ))}
+              </g>
+              {children(plot)}
             </g>
-            <g className="chart-axis chart-axis-x">
-              {xTicks.map((tick) => (
-                <text key={tick.label} x={tick.offset} y={plot.height + CHART_MARGIN.bottom - 6}>
-                  {tick.label}
-                </text>
-              ))}
-            </g>
-            <g className="chart-axis chart-axis-y">
-              {yTicks.map((tick) => (
-                <text key={tick.label} x={-6} y={tick.offset}>
-                  {tick.label}
-                </text>
-              ))}
-            </g>
-            {children(plot)}
-          </g>
-        </svg>
-      )}
+          </svg>
+        )}
+      </div>
       {table !== undefined && (
-        <button type="button" onClick={() => setShowTable((shown) => !shown)}>
+        <button
+          type="button"
+          className="chart-toggle"
+          onClick={() => setShowTable((shown) => !shown)}
+        >
           {showTable ? "Show as chart" : "Show as table"}
         </button>
       )}

@@ -402,8 +402,9 @@ then simplest first. The gaps below are those issues.
 | 78 | last.fm history import — worker, cursor, progress, settings surface | 76 |
 | 80 | Statistics shell — sidebar, tabs, filter bar, `StatsPath` history, both tile rows | 70, 77, 78 |
 | 84a | Listening lists — `BarList`, top-N, plays table, streaks, the residue, the CSV path | 78, 80 |
-| 84b | Library panels | 75, 80, 84a |
-| 84c | Listening charts — `Bar`, `Heatmap`, the time-shaped panels | 84a |
+| 84b | Library panels — `Bar`, the histograms, the re-download list, tag health | 80, 84a |
+| 84c | Listening charts — `Heatmap`, the time-shaped panels | 84a, 84b |
+| 84d | Genre donut — `Donut`, the drill, override editing | 75, 84b |
 
 70, 75 and 76 are independent and belong in parallel worktrees. 77 and 78 both
 stack on 76; 80 waits on 70 and 77, and took 78 as well for the `loved` toggle
@@ -424,6 +425,14 @@ is SVG over `scales.ts`. So 84a is `BarList` and its callers and 84c is `Bar`,
 **84b lost its independence to the CSV path.** Both halves of 84 have an
 exporting panel, so one of them owns the code; 84a is the lower number and lands
 first.
+
+**The Library half then split along the same seam, and for a second reason.**
+84b's panels are reads over `tracks`; the genre donut is the view's only
+writer, and its drill cannot narrow the tab without a genre-subtree filter
+`TrackQuery` does not have. So 84d is the donut, `Donut`, the override command
+pair and that filter, and 84b is everything that only reads. **`Bar` moved from
+84c to 84b** with the three histogram callers that come first, which is why
+84c now stacks on it.
 
 ## Open, and deliberately so
 

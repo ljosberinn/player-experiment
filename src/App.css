@@ -2586,14 +2586,39 @@ body:not(:focus-within) .sidebar-row.current {
    No hover backgrounds and no transitions, like everything else; the chart
    tooltip is a positioned readout the panel mounts, not a hover state. */
 
+/* A fixed height, because the plot inside is sized from a measurement of it:
+   left to size itself from its contents, the box would report a height, the
+   svg would take it, the box would grow by the toggle's height, and the
+   observer would run again on a taller box every frame. */
 .chart {
+  display: flex;
+  flex-direction: column;
   position: relative;
   width: 100%;
-  min-height: 120px;
+  height: 180px;
 }
 
-.chart-empty,
-.chart-loading {
+/* What `ChartFrame` measures. `min-height: 0` because a flex item's default
+   `auto` would floor it at the svg's own height and defeat the point. */
+.chart-plot {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The svg is exactly the box's client size, and an inline element's baseline
+   gap under it would be enough to make the box scrollable. */
+.chart-plot svg {
+  display: block;
+}
+
+.chart-plot-table {
+  overflow: auto;
+}
+
+.chart-empty .chart-plot,
+.chart-loading .chart-plot {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2604,13 +2629,26 @@ body:not(:focus-within) .sidebar-row.current {
   color: var(--muted);
 }
 
+/* Reads as a caption, not as a control: it is the way to the numbers for
+   anyone who wants them, and it sits under every chart in the view. */
+.chart-toggle {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+}
+
 /* No shimmer: the table's skeleton rows animate, this does not, and a chart
    that has not landed yet is a held space rather than a thing pretending to
    load. */
 .chart-skeleton {
   width: 100%;
   height: 100%;
-  min-height: 120px;
   background: var(--skeleton);
   border-radius: 4px;
 }
@@ -2960,4 +2998,66 @@ body:not(:focus-within) .sidebar-row.current {
   flex: none;
   color: var(--dim);
   font-size: 11px;
+}
+
+/* ---------- the Library tab's tables ---------- */
+
+/* The re-download list and every chart's show-as-table reading. Both are
+   ordinary tables: rows that are read down a column, not marks.
+
+   Every cell rule below is written under `.stats-panel`, which both tables
+   are always inside. It is not for the cascade - nothing else claims these
+   cells - but for `noDescendingSpecificity`: a bare `.x td` after the lookup
+   window's `.lookup-map tr.unmapped td` is a warning per rule. */
+.stats-table,
+.chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.stats-panel :is(.stats-table, .chart-table) :is(th, td) {
+  padding: 3px 8px;
+  text-align: left;
+  font-weight: normal;
+}
+
+.stats-panel :is(.stats-table, .chart-table) thead th {
+  color: var(--label);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats-panel :is(.stats-table, .chart-table) tbody th {
+  color: var(--text);
+}
+
+.stats-panel :is(.stats-table, .chart-table) tbody td {
+  color: var(--muted);
+}
+
+/* Tabular figures for the same reason `.bar-list-value` has them: these are
+   compared down the column, and proportional digits make a longer number
+   look shorter. */
+.stats-panel .chart-table tbody td,
+.stats-panel .stats-table-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-panel .stats-table-number {
+  text-align: right;
+}
+
+/* Two hundred albums, windowed the way the plays table is rather than left to
+   push every panel below it off the screen. */
+.stats-table-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--chrome-border);
+  border-radius: 3px;
+}
+
+.chart-bar {
+  fill: var(--accent-soft);
 }

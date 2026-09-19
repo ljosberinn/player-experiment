@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { AlbumBitrate } from "./bindings/AlbumBitrate";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { BackgroundTask } from "./bindings/BackgroundTask";
 import type { BrowseFilter } from "./bindings/BrowseFilter";
@@ -17,6 +18,8 @@ import type { FilterNode } from "./bindings/FilterNode";
 import type { FilterOp } from "./bindings/FilterOp";
 import type { FilterRule } from "./bindings/FilterRule";
 import type { FilterValue } from "./bindings/FilterValue";
+import type { HistogramBin } from "./bindings/HistogramBin";
+import type { HistogramField } from "./bindings/HistogramField";
 import type { LastfmConnection } from "./bindings/LastfmConnection";
 import type { LastfmImport } from "./bindings/LastfmImport";
 import type { LastfmImported } from "./bindings/LastfmImported";
@@ -48,6 +51,7 @@ import type { SortDirection } from "./bindings/SortDirection";
 import type { SortField } from "./bindings/SortField";
 import type { Streaks } from "./bindings/Streaks";
 import type { TagEdit } from "./bindings/TagEdit";
+import type { TagHealth } from "./bindings/TagHealth";
 import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
 import type { TimeRange } from "./bindings/TimeRange";
@@ -58,6 +62,7 @@ import type { TrackQuery } from "./bindings/TrackQuery";
 import type { WriteProgress } from "./bindings/WriteProgress";
 
 export type {
+  AlbumBitrate,
   AppInfo,
   BackgroundTask,
   BrowseFilter,
@@ -75,6 +80,8 @@ export type {
   FilterOp,
   FilterRule,
   FilterValue,
+  HistogramBin,
+  HistogramField,
   LastfmConnection,
   LastfmImport,
   LastfmImported,
@@ -106,6 +113,7 @@ export type {
   SortField,
   Streaks,
   TagEdit,
+  TagHealth,
   TagValueField,
   TagWriteSummary,
   TimeRange,
@@ -334,6 +342,27 @@ export function statsStreaks(query: ListenQuery): Promise<Streaks> {
  */
 export function statsLibraryTotals(query: TrackQuery): Promise<LibraryTotals> {
   return invoke<LibraryTotals>("stats_library_totals", { query });
+}
+
+/**
+ * How many tracks fall in each bin of one field, lowest bin first.
+ *
+ * One command for bitrate, sample rate, year and duration: the bin width
+ * differs per field and is the backend's, because it is a fact about the
+ * column rather than about the panel drawing it.
+ */
+export function statsHistogram(query: TrackQuery, field: HistogramField): Promise<HistogramBin[]> {
+  return invoke<HistogramBin[]>("stats_histogram", { query, field });
+}
+
+/** Albums by mean bitrate, worst first: the re-download list. */
+export function statsWorstByBitrate(query: TrackQuery, limit: number): Promise<AlbumBitrate[]> {
+  return invoke<AlbumBitrate[]>("stats_worst_by_bitrate", { query, limit });
+}
+
+/** How many tracks are missing each tag, over one scan. */
+export function statsTagHealth(query: TrackQuery): Promise<TagHealth> {
+  return invoke<TagHealth>("stats_tag_health", { query });
 }
 
 /**
