@@ -2,11 +2,13 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type ListenTotals,
   saveTextFile,
   statsFirsts,
   statsListenTotals,
   statsPlaysOverTime,
   statsTop,
+  statsWeekClock,
 } from "../../ipc";
 import { historyAt } from "../library/history";
 import { useLibraryStore } from "../library/store";
@@ -15,6 +17,23 @@ import { ListeningPanels } from "./ListeningPanels";
 import { forgetListenTotals } from "./listenTotals";
 import { statsRoot } from "./path";
 import { useStatsStore } from "./store";
+
+const { TOTALS } = vi.hoisted(() => ({
+  TOTALS: {
+    plays: 1000,
+    artists: 40,
+    albums: 90,
+    tracks: 310,
+    days: 64,
+    durationMs: 180_000_000,
+    owned: 600,
+    withGenre: 840,
+    timed: 600,
+    dated: 1000,
+    firstAt: 1_400_000_000,
+    lastAt: 1_700_000_000,
+  } satisfies ListenTotals,
+}));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn(async () => "C:/out/heard.csv") }));
 
@@ -29,20 +48,7 @@ vi.mock("../../ipc", () => ({
   saveColumnConfig: vi.fn(async () => undefined),
   listPlaylists: vi.fn(async () => []),
   saveTextFile: vi.fn(async () => undefined),
-  statsListenTotals: vi.fn(async () => ({
-    plays: 1000,
-    artists: 40,
-    albums: 90,
-    tracks: 310,
-    days: 64,
-    durationMs: 180_000_000,
-    owned: 600,
-    withGenre: 840,
-    timed: 600,
-    dated: 1000,
-    firstAt: 1_400_000_000,
-    lastAt: 1_700_000_000,
-  })),
+  statsListenTotals: vi.fn(async () => TOTALS),
   statsRecentPlays: vi.fn(async () => []),
   statsPlaysOverTime: vi.fn(async () => [{ start: "2020-06-01", count: 40 }]),
   statsFirsts: vi.fn(async () => [{ start: "2020-06-01", count: 3 }]),
@@ -232,6 +238,54 @@ describe("ListeningPanels", () => {
     );
     expect(titles).toContain(`${eight}: 5`);
     expect(clock.querySelectorAll("rect.chart-cell")).toHaveLength(168);
+  });
+
+  it("says what share of the history the time panels could place", async () => {
+    totalsMock.mockResolvedValueOnce({ ...TOTALS, dated: 800 });
+    overTimeMock.mockResolvedValueOnce([{ start: "2020-06-01", count: 800 }]);
+    firstsMock.mockResolvedValueOnce([{ start: "2020-06-01", count: 30 }]);
+    render(<ListeningPanels />);
+
+    expect(
+      await within(panel("Plays over time")).findByText("Date known for 80% of plays."),
+    ).toBeInTheDocument();
+    // An artist first heard undated is missing, not a share of the plays: 30
+    // of the 40.
+    expect(
+      await within(panel("New artists")).findByText("First play dated for 75% of artists."),
+    ).toBeInTheDocument();
+    expect(
+      await within(panel("When you listen")).findByText("Date known for 80% of plays."),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing of coverage where every play has a date", async () => {
+    render(<ListeningPanels />);
+
+    for (const title of ["Plays over time", "New artists", "When you listen"]) {
+      await waitFor(() =>
+        expect(within(panel(title)).getAllByRole("img").length).toBeGreaterThan(0),
+      );
+      expect(panel(title).querySelector(".stats-panel-caption")).toBeNull();
+    }
+  });
+
+  it("says why a history with no dates draws nothing over time", async () => {
+    totalsMock.mockResolvedValueOnce({ ...TOTALS, dated: 0, days: 0, firstAt: null, lastAt: null });
+    overTimeMock.mockResolvedValueOnce([]);
+    firstsMock.mockResolvedValueOnce([]);
+    vi.mocked(statsWeekClock).mockResolvedValueOnce(Array.from({ length: 168 }, () => 0));
+    render(<ListeningPanels />);
+
+    const plays = panel("Plays over time");
+    expect(await within(plays).findByText("Date known for 0% of plays.")).toBeInTheDocument();
+    expect(within(plays).getByText("Nothing in this range.")).toBeInTheDocument();
+    expect(
+      await within(panel("New artists")).findByText("First play dated for 0% of artists."),
+    ).toBeInTheDocument();
+    expect(
+      await within(panel("When you listen")).findByText("Date known for 0% of plays."),
+    ).toBeInTheDocument();
   });
 
   it("names the longest streak's run", async () => {

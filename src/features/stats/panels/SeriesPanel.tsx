@@ -1,5 +1,5 @@
 import { Bar } from "../../../components/charts/Bar";
-import type { ListenQuery, TimeBucket, TimeCount, TimeRange } from "../../../ipc";
+import type { ListenQuery, ListenTotals, TimeBucket, TimeCount, TimeRange } from "../../../ipc";
 import { useLibraryStore } from "../../library/store";
 import { listenQuery } from "../filters";
 import { listenTotalsOnce } from "../listenTotals";
@@ -14,12 +14,24 @@ export interface SeriesPanelProps {
   readonly aggregate: (query: ListenQuery, bucket: TimeBucket) => Promise<TimeCount[]>;
   /** What one bar counts, for the table and the readout. */
   readonly noun: string;
+  /** The total the bars are a part of, for the coverage caption. */
+  readonly whole: "plays" | "artists";
 }
 
 interface Series {
   readonly bucket: TimeBucket;
   readonly counts: readonly TimeCount[];
 }
+
+interface Answer {
+  readonly series: Series | null;
+  readonly caption: string | null;
+}
+
+const COVERAGE: Record<SeriesPanelProps["whole"], (share: number) => string> = {
+  plays: (share) => `Date known for ${share}% of plays.`,
+  artists: (share) => `First play dated for ${share}% of artists.`,
+};
 
 /**
  * A count per stretch of time, across the whole range.
@@ -28,29 +40,39 @@ interface Series {
  * two series are cut, filled and drawn the same way and differ only in what a
  * bar counts.
  */
-export function SeriesPanel({ title, aggregate, noun }: SeriesPanelProps) {
+export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps) {
   const filters = useStatsStore((s) => s.filters);
   const path = useLibraryStore((s) => s.statsPath);
 
-  const { data, loading } = usePanelQuery(async (): Promise<Series | null> => {
+  const { data, loading } = usePanelQuery(async (): Promise<Answer> => {
     const query = listenQuery(filters, path, new Date());
-    const span = await spanOf(query);
+    // Asked before the series rather than after it, so that under a range,
+    // where the span needs no totals, the two are in flight together.
+    const asked = listenTotalsOnce(query);
+    const span = query.range ?? historySpan(await asked);
     if (span === null) {
-      return null;
+      return { series: null, caption: coverage(await asked, 0, whole) };
     }
     const bucket = bucketFor(span);
-    const counts = await aggregate(query, bucket);
-    // An all-zero axis is not a chart of nothing: it says so instead.
-    return counts.length === 0 ? null : { bucket, counts: fillSeries(counts, bucket, span) };
+    const [totals, counts] = await Promise.all([asked, aggregate(query, bucket)]);
+    return {
+      // An all-zero axis is not a chart of nothing: it says so instead.
+      series: counts.length === 0 ? null : { bucket, counts: fillSeries(counts, bucket, span) },
+      caption: coverage(
+        totals,
+        counts.reduce((sum, entry) => sum + entry.count, 0),
+        whole,
+      ),
+    };
   }, [filters, path]);
 
-  const bucket = data?.bucket ?? "month";
+  const bucket = data?.series?.bucket ?? "month";
 
   return (
-    <StatsPanel title={title}>
+    <StatsPanel title={title} caption={data?.caption ?? null}>
       <Bar
         label={`${noun} per ${bucket}`}
-        data={(data?.counts ?? []).map((entry) => ({
+        data={(data?.series?.counts ?? []).map((entry) => ({
           label: bucketLabel(entry.start, bucket),
           value: entry.count,
         }))}
@@ -64,16 +86,33 @@ export function SeriesPanel({ title, aggregate, noun }: SeriesPanelProps) {
 }
 
 /**
- * The stretch of time the axis covers: the range, or under all time the
- * history's own first and last play.
+ * The stretch of time all time covers: the history's own first and last
+ * dated play.
  *
  * The tiles ask `listen_totals` for the same query, and `listenTotalsOnce`
  * hands this the scan they started rather than a second one.
  */
-async function spanOf(query: ListenQuery): Promise<TimeRange | null> {
-  if (query.range !== null) {
-    return query.range;
-  }
-  const { firstAt, lastAt } = await listenTotalsOnce(query);
+function historySpan({ firstAt, lastAt }: ListenTotals): TimeRange | null {
   return firstAt === null || lastAt === null ? null : { from: firstAt, to: lastAt + 1 };
+}
+
+/**
+ * What share of the whole the bars hold, where some of it has no date.
+ *
+ * Wherever a play is undated the range reaches back before every dated one,
+ * so an artist missing from the new ones was first heard undated, and the
+ * bars' sum is the placed share of either total.
+ */
+function coverage(
+  totals: ListenTotals,
+  placed: number,
+  whole: SeriesPanelProps["whole"],
+): string | null {
+  const total = totals[whole];
+  if (totals.dated === totals.plays || total === 0) {
+    return null;
+  }
+  // Down rather than to nearest: the caption is only here because something
+  // is missing, and "100%" would say nothing is.
+  return COVERAGE[whole](Math.floor((placed / total) * 100));
 }

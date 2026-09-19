@@ -4,8 +4,8 @@ import { type ListenQuery, type ListenTotals, statsListenTotals } from "../../ip
  * The last totals asked for, so two panels asking the same question ask once.
  *
  * Panels load independently on purpose - that is what keeps a range change out
- * of `App`'s render - but the tile row and the genre panel's coverage caption
- * want the same answer, and `listen_totals` is the dearest aggregate in the
+ * of `App`'s render - but the tile row, the series panels and every coverage
+ * caption want the same answer, and `listen_totals` is the dearest aggregate in the
  * set: three distinct counts over one scan of the whole log.
  *
  * One entry, not a cache. Every panel moves to the new filters together, so
