@@ -6,7 +6,7 @@
 //! (a dropped index, a `LIKE '%x%'` filter, sorting in Rust instead of SQL),
 //! which costs orders of magnitude rather than percent.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Instant;
 
 use apex_lib::db::{genres, plays, query, stats, synthetic, tag_values, Db};
@@ -57,8 +57,27 @@ fn assert_under(label: &str, budget_ms: u128, mut work: impl FnMut()) {
     );
 }
 
+/// Held shared by every test, and exclusively by a measurement that is a
+/// single sample and so cannot shrug off a neighbour the way `assert_under`
+/// does.
+///
+/// Every test has to take it, because the one left out is the neighbour: the
+/// cold resolve took 78s on the runner beside the library aggregates, where
+/// it takes some 8s alone.
+static RUNNER: RwLock<()> = RwLock::new(());
+
+/// A panic in one test must not fail the rest through a poisoned lock.
+fn alongside_others() -> RwLockReadGuard<'static, ()> {
+    RUNNER.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn alone() -> RwLockWriteGuard<'static, ()> {
+    RUNNER.write().unwrap_or_else(PoisonError::into_inner)
+}
+
 #[test]
 fn a_sorted_page_is_cheap_on_every_sort_column() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
 
@@ -94,6 +113,7 @@ fn a_sorted_page_is_cheap_on_every_sort_column() {
 
 #[test]
 fn paging_deep_into_the_library_stays_cheap() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
 
@@ -112,6 +132,7 @@ fn paging_deep_into_the_library_stays_cheap() {
 
 #[test]
 fn counting_the_library_is_cheap() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery::default();
@@ -123,6 +144,7 @@ fn counting_the_library_is_cheap() {
 
 #[test]
 fn search_is_cheap_and_uses_the_index() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery {
@@ -142,6 +164,7 @@ fn search_is_cheap_and_uses_the_index() {
 
 #[test]
 fn ranking_a_search_stays_cheap() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery {
@@ -160,6 +183,7 @@ fn ranking_a_search_stays_cheap() {
 
 #[test]
 fn the_sorted_page_query_plan_reads_an_index_in_order_rather_than_sorting_everything() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
 
@@ -195,6 +219,7 @@ fn the_sorted_page_query_plan_reads_an_index_in_order_rather_than_sorting_everyt
 
 #[test]
 fn totalling_the_library_stays_cheap() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery::default();
@@ -211,6 +236,7 @@ fn totalling_the_library_stays_cheap() {
 
 #[test]
 fn totalling_a_filtered_view_stays_cheap() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery {
@@ -225,6 +251,7 @@ fn totalling_a_filtered_view_stays_cheap() {
 
 #[test]
 fn browsing_stays_cheap_on_every_grouping() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery::default();
@@ -252,6 +279,7 @@ fn browsing_stays_cheap_on_every_grouping() {
 
 #[test]
 fn drilling_into_a_group_is_as_cheap_as_any_other_page() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery {
@@ -273,6 +301,7 @@ fn drilling_into_a_group_is_as_cheap_as_any_other_page() {
 
 #[test]
 fn asking_how_many_files_are_missing_is_free() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery::default();
@@ -291,6 +320,7 @@ fn asking_how_many_files_are_missing_is_free() {
 
 #[test]
 fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
+    let _shared = alongside_others();
     // The change phase 16 makes to a scan: what used to be one DELETE per
     // vanished row is now one UPDATE per vanished row. The worst case is every
     // file at once - an unplugged drive - so that is what is measured.
@@ -332,6 +362,7 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
 
 #[test]
 fn a_suggestion_lookup_is_cheap_and_the_rebuild_that_feeds_it_is_affordable() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
 
@@ -380,6 +411,7 @@ fn a_suggestion_lookup_is_cheap_and_the_rebuild_that_feeds_it_is_affordable() {
 /// with a data file that a regeneration could quietly multiply.
 #[test]
 fn the_genre_tree_is_cheap_to_seed_and_to_load() {
+    let _shared = alongside_others();
     let dir = tempfile::tempdir().unwrap();
 
     let start = Instant::now();
@@ -425,18 +457,6 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
 /// the round number just above it is the one worth being sure of.
 const PLAYS: u32 = 250_000;
 
-/// Held by every test that seeds `PLAYS`, so they run one at a time.
-///
-/// The cold resolve is a single sample - no second call does the same work -
-/// so unlike `assert_under` it cannot shrug off a neighbour, and on the runner
-/// it has no headroom to spare either way.
-static PLAY_LOG: Mutex<()> = Mutex::new(());
-
-/// A panic in one log test must not fail the other through a poisoned lock.
-fn play_log() -> MutexGuard<'static, ()> {
-    PLAY_LOG.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 /// `plays::resolve` reads every play on every run, which is the one perf risk
 /// the play log takes on, and it is taken on purpose: the alternative is
 /// re-resolving only the keys a write touched, which is correct but owes an
@@ -465,15 +485,17 @@ fn play_log() -> MutexGuard<'static, ()> {
 /// fails, and a busy runner does not.
 #[test]
 fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
-    let _serial = play_log();
+    let shared = alongside_others();
     let (_dir, db) = seeded_library();
     let mut conn = db.conn().unwrap();
     synthetic::seed_plays(&mut conn, PLAYS).unwrap();
+    drop(shared);
 
     // Cold: every matched row moves off NULL. This is what runs once after an
     // import and once after a first scan, and it is measured directly rather
     // than through `assert_under`, because by construction no second call does
     // the same work.
+    let _alone = alone();
     let start = Instant::now();
     let moved = plays::resolve(&conn).unwrap();
     let elapsed = start.elapsed().as_millis();
@@ -506,7 +528,7 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
 /// is a test that reports the weather.
 #[test]
 fn every_listening_aggregate_is_one_pass_over_the_log() {
-    let _serial = play_log();
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let mut conn = db.conn().unwrap();
     synthetic::seed_plays(&mut conn, PLAYS).unwrap();
@@ -579,6 +601,7 @@ fn every_listening_aggregate_is_one_pass_over_the_log() {
 /// percentage.
 #[test]
 fn every_library_aggregate_costs_what_a_browse_grouping_does() {
+    let _shared = alongside_others();
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();
     let q = TrackQuery::default();
