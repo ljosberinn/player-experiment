@@ -13,7 +13,7 @@ import { useLibraryStore, VIEW_TITLES } from "./store";
  */
 function destinationOf(entry: HistoryEntry, playlists: Playlist[]): string {
   if (entry.browse !== null) {
-    return entry.browse.key ?? unknownLabel(entry.browse.kind);
+    return entry.browseLabel ?? unknownLabel(entry.browse.kind);
   }
   if (entry.playlistId !== null) {
     return (

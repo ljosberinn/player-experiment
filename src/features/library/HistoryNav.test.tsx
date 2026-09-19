@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlaylistsStore } from "../playlists/store";
+import { albumIdentity } from "./browse";
 import { HistoryNav } from "./HistoryNav";
 import { emptyHistory, type HistoryEntry, historyAt, record } from "./history";
 import { useLibraryStore } from "./store";
@@ -19,7 +20,7 @@ vi.mock("../../ipc", () => ({
 }));
 
 function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
-  return { tab: "songs", browse: null, playlistId: null, stats: null, ...over };
+  return { tab: "songs", browse: null, browseLabel: null, playlistId: null, stats: null, ...over };
 }
 
 const initial = useLibraryStore.getState();
@@ -53,10 +54,16 @@ describe("HistoryNav", () => {
     expect(screen.getByRole("button", { name: "Back" })).toHaveAttribute("title", "Back to Songs");
   });
 
+  // The id is a release group MBID here on purpose: the tooltip has to read
+  // the label beside the filter, because the filter itself is a UUID.
   it("names an album by its title rather than by the tab it is in", () => {
     visited([
       entry({ tab: "albums" }),
-      entry({ tab: "albums", browse: { kind: "albums", key: "Shields", secondary: null } }),
+      entry({
+        tab: "albums",
+        browse: { kind: "albums", id: "1f5d0a4e-0f0a-4c4c-8f8f-9a9a9a9a9a9a" },
+        browseLabel: "Shields",
+      }),
       entry({ tab: "songs" }),
     ]);
 
@@ -71,7 +78,11 @@ describe("HistoryNav", () => {
   it("names the untagged group rather than leaving the tooltip blank", () => {
     visited([
       entry({ tab: "albums" }),
-      entry({ tab: "albums", browse: { kind: "albums", key: null, secondary: null } }),
+      entry({
+        tab: "albums",
+        browse: { kind: "albums", id: albumIdentity(null, null) },
+        browseLabel: null,
+      }),
       entry({ tab: "songs" }),
     ]);
 

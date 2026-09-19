@@ -285,8 +285,7 @@ fn drilling_into_a_group_is_as_cheap_as_any_other_page() {
     let q = TrackQuery {
         browse: Some(BrowseFilter {
             kind: BrowseKind::Artists,
-            key: Some("Artist042".to_owned()),
-            secondary: None,
+            id: Some("Artist042".to_owned()),
         }),
         limit: 100,
         ..Default::default()

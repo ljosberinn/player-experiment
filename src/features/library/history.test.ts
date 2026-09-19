@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { albumIdentity } from "./browse";
 import {
   backEntry,
   currentEntry,
@@ -16,7 +17,7 @@ import {
 } from "./history";
 
 function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
-  return { tab: "songs", browse: null, playlistId: null, stats: null, ...over };
+  return { tab: "songs", browse: null, browseLabel: null, playlistId: null, stats: null, ...over };
 }
 
 /** A history that has visited each of `entries` in turn. */
@@ -29,7 +30,7 @@ describe("sameView", () => {
     const list = entry({ tab: "albums" });
     const album = entry({
       tab: "albums",
-      browse: { kind: "albums", key: "Shields", secondary: null },
+      browse: { kind: "albums", id: albumIdentity("Shields", null) },
     });
 
     expect(sameView(list, album)).toBe(false);
@@ -38,20 +39,42 @@ describe("sameView", () => {
   it("tells two albums apart by artist as well as by title", () => {
     // Eponymous albums exist, and going back to the wrong one is worse than
     // not going back at all.
-    const one = entry({ tab: "albums", browse: { kind: "albums", key: "A", secondary: "B" } });
-    const other = entry({ tab: "albums", browse: { kind: "albums", key: "A", secondary: "C" } });
+    const one = entry({ tab: "albums", browse: { kind: "albums", id: albumIdentity("A", "B") } });
+    const other = entry({ tab: "albums", browse: { kind: "albums", id: albumIdentity("A", "C") } });
 
     expect(sameView(one, other)).toBe(false);
   });
 
+  it("ignores the label, which is a name for an identity rather than part of it", () => {
+    // The same release reached from a tile and from "reveal in library", which
+    // labels it from the playing track's own casing of the tag.
+    const fromTile = entry({
+      tab: "albums",
+      browse: { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") },
+      browseLabel: "Shields",
+    });
+    const revealed = entry({
+      tab: "albums",
+      browse: { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") },
+      browseLabel: "SHIELDS",
+    });
+
+    expect(sameView(fromTile, revealed)).toBe(true);
+  });
+
   it("matches the untagged group against itself rather than against everything", () => {
+    // An untagged release is two empty strings rather than a null - the album
+    // identity never is one - while an untagged artist still keys on null.
     const untagged = entry({
       tab: "albums",
-      browse: { kind: "albums", key: null, secondary: null },
+      browse: { kind: "albums", id: albumIdentity(null, null) },
     });
+    const noArtist = entry({ tab: "artists", browse: { kind: "artists", id: null } });
 
     expect(sameView(untagged, { ...untagged })).toBe(true);
     expect(sameView(untagged, entry({ tab: "albums" }))).toBe(false);
+    expect(sameView(noArtist, { ...noArtist })).toBe(true);
+    expect(sameView(noArtist, entry({ tab: "artists" }))).toBe(false);
   });
 
   it("separates the same tab inside a playlist from the same tab outside one", () => {
@@ -158,13 +181,13 @@ describe("forgetPlaylist", () => {
 describe("forgetGroup", () => {
   const shields = entry({
     tab: "albums",
-    browse: { kind: "albums", key: "Shields", secondary: "Grizzly Bear" },
+    browse: { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") },
   });
 
   it("drops only the entry that matches the dead group", () => {
     const veckatimest = entry({
       tab: "albums",
-      browse: { kind: "albums", key: "Veckatimest", secondary: "Grizzly Bear" },
+      browse: { kind: "albums", id: albumIdentity("Veckatimest", "Grizzly Bear") },
     });
     const history = visited([entry({ tab: "albums" }), shields, veckatimest]);
 

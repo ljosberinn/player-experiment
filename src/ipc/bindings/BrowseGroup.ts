@@ -8,12 +8,28 @@
  * "Unknown Artist", which files really carry. The frontend supplies the
  * label; the database says only that the tag is absent.
  */
-export type BrowseGroup = { key: string | null, 
+export type BrowseGroup = { 
+/**
+ * What the drill-in filters by, and what the grid keys its tiles on:
+ * `BrowseKind::identity_sql`'s value over the group. For albums that is
+ * the release group MBID where the files carry one and the two tags
+ * folded together where they do not; for the other two it is `key`.
+ */
+id: string | null, key: string | null, 
 /**
  * Albums only: the artist the album is filed under. `None` everywhere
  * else, and also for an album whose artist tags are all empty.
  */
-secondary: string | null, trackCount: number, durationMs: number, 
+secondary: string | null, 
+/**
+ * Albums only: how many distinct artists the group holds.
+ *
+ * Grouping by the release rather than by `(album, artist)` means a group
+ * can span artists, and a compilation of twelve has to read as many
+ * rather than as whichever of the twelve `min()` picked. `secondary`
+ * alone cannot say which of the two it is.
+ */
+artistCount: number, trackCount: number, durationMs: number, 
 /**
  * Any one cover from the group - they are per-album in practice, and
  * `covers.hash` already dedupes the bytes behind them.

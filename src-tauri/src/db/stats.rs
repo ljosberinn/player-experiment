@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use rusqlite::{types::ToSql, Connection};
 
 use crate::db::genres::{self, Tree};
-use crate::db::query::{self, GROUP_ARTIST, MAX_LIMIT};
+use crate::db::query::{self, GROUP_ALBUM, GROUP_ARTIST, MAX_LIMIT};
 use crate::error::AppResult;
 use crate::model::{
     AlbumBitrate, GenreBreakdown, GenreSlice, HistogramBin, HistogramField, LibraryTotals,
@@ -211,9 +211,16 @@ pub fn recent_plays(
 /// The most played artists, albums, tracks or genres.
 ///
 /// Artists and albums group case-insensitively and are labelled with one
-/// casing, as `browse_groups` does. A track is its `match_key`, so the album
-/// cut and the `(feat. …)` spelling are one entry. A blank is never an entry:
-/// the untagged are not a band.
+/// casing. A track is its `match_key`, so the album cut and the `(feat. …)`
+/// spelling are one entry. A blank is never an entry: the untagged are not a
+/// band.
+///
+/// An album here is the play's own `(album, artist)` and deliberately *not*
+/// `query::release_identity`, which the Library aggregates group by. A play
+/// outlives the file it came from and an imported scrobble never had one, so
+/// `plays.track_id` is NULL for a large share of these rows - and every one of
+/// those would evaluate the release identity over a LEFT JOIN's NULL columns
+/// and collapse into a single entry.
 pub fn top(
     conn: &Connection,
     query: &ListenQuery,
@@ -429,11 +436,17 @@ pub fn library_totals(conn: &Connection, query: &TrackQuery) -> AppResult<Librar
     let scope = query::scope(conn, query)?;
     // Keyed as `browse_groups` keys them, less the untagged group: a tile
     // counting "no album" as an album would be off by one in every library.
+    //
+    // The `CASE` is what the old NULL propagation did for free. The release
+    // identity folds an absent album tag to an empty string and so is never
+    // NULL, and without the guard every untagged file would start counting as
+    // a release.
+    let identity = query::release_identity();
     let sql = format!(
         "SELECT count(*),
                 count(DISTINCT lower({GROUP_ARTIST})),
-                count(DISTINCT lower(nullif(tracks.album, '')) || char(31)
-                               || coalesce(lower({GROUP_ARTIST}), '')),
+                count(DISTINCT CASE WHEN {GROUP_ALBUM} IS NOT NULL
+                                    THEN lower({identity}) END),
                 coalesce(sum(tracks.duration_ms), 0),
                 coalesce(sum(tracks.size), 0),
                 count(tracks.missing_since)
@@ -491,19 +504,21 @@ pub fn histogram(
 
 /// Albums by mean bitrate, worst first: the re-download list.
 ///
-/// Albums are keyed as `browse_groups` keys them. The untagged group is left
-/// out - it is not a thing anyone can download again.
+/// Albums are keyed as `browse_groups` keys them - by release identity, so a
+/// compilation is one row here and one tile there. The untagged group is left
+/// out: it is not a thing anyone can download again.
 pub fn worst_by_bitrate(
     conn: &Connection,
     query: &TrackQuery,
     limit: u32,
 ) -> AppResult<Vec<AlbumBitrate>> {
     let mut scope = query::scope(conn, query)?;
+    let identity = query::release_identity();
     let sql = format!(
-        "SELECT min(nullif(tracks.album, '')) AS album, min({GROUP_ARTIST}), count(*),
+        "SELECT min({GROUP_ALBUM}) AS album, min({GROUP_ARTIST}), count(*),
                 CAST(round(avg(tracks.bitrate)) AS INTEGER) AS mean, min(tracks.cover_hash)
          {}
-         GROUP BY nullif(tracks.album, '') COLLATE NOCASE, {GROUP_ARTIST} COLLATE NOCASE
+         GROUP BY {identity} COLLATE NOCASE
          HAVING album IS NOT NULL AND mean IS NOT NULL
          ORDER BY mean ASC, album COLLATE NOCASE ASC
          LIMIT ?",
@@ -680,13 +695,15 @@ mod tests {
         bitrate: Option<i64>,
         duration_ms: i64,
         added_at: i64,
+        release_group_mbid: Option<&'a str>,
     }
 
     fn add_file(conn: &Connection, file: File<'_>) -> i64 {
         conn.execute(
             "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album,
-                                 album_artist, genre, year, bitrate, added_at)
-             VALUES (hex(randomblob(8)), 0, 1000, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                 album_artist, genre, year, bitrate, added_at,
+                                 release_group_mbid)
+             VALUES (hex(randomblob(8)), 0, 1000, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 file.duration_ms,
                 file.title,
@@ -697,6 +714,7 @@ mod tests {
                 file.year,
                 file.bitrate,
                 file.added_at,
+                file.release_group_mbid,
             ],
         )
         .unwrap();
@@ -1253,6 +1271,57 @@ mod tests {
         );
     }
 
+    /// The Releases tile counts what the grid draws tiles for.
+    ///
+    /// Two notions of what a release is would put a number on the Library tab
+    /// that disagrees with the number of tiles beside it.
+    #[test]
+    fn library_totals_count_releases_by_identity_the_way_the_grid_groups_them() {
+        let (_dir, conn) = open();
+        const RG: &str = "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a";
+        for (album, album_artist, release) in [
+            // Two pressings of one release: differently titled, one release
+            // group, so one tile and one release.
+            (Some("Double"), Some("Dio"), Some(RG)),
+            (Some("Double (Remastered)"), Some("Dio"), Some(RG)),
+            // Two compilations that agree on every tag they carry, told apart
+            // only by their release groups.
+            (
+                Some("Chill"),
+                Some("Various Artists"),
+                Some("11111111-1111-4111-8111-111111111111"),
+            ),
+            (
+                Some("Chill"),
+                Some("Various Artists"),
+                Some("22222222-2222-4222-8222-222222222222"),
+            ),
+            // No album tag: not a release, the way it never was. The identity
+            // is a string rather than NULL now, so this is the case the `CASE`
+            // in the query exists for.
+            (None, None, None),
+        ] {
+            add_file(
+                &conn,
+                File {
+                    artist: Some("Someone"),
+                    album,
+                    album_artist,
+                    release_group_mbid: release,
+                    duration_ms: 1_000,
+                    ..File::default()
+                },
+            );
+        }
+
+        assert_eq!(
+            library_totals(&conn, &TrackQuery::default())
+                .unwrap()
+                .albums,
+            3
+        );
+    }
+
     #[test]
     fn histograms_bin_and_leave_out_the_unknown() {
         let (_dir, conn) = open();
@@ -1391,8 +1460,7 @@ mod tests {
         let query = TrackQuery {
             browse: Some(BrowseFilter {
                 kind: BrowseKind::Artists,
-                key: Some("Blue Room".to_owned()),
-                secondary: None,
+                id: Some("Blue Room".to_owned()),
             }),
             ..TrackQuery::default()
         };

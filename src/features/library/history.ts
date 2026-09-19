@@ -14,6 +14,16 @@ import type { ViewTab } from "./store";
 export interface HistoryEntry {
   readonly tab: ViewTab;
   readonly browse: BrowseFilter | null;
+  /**
+   * What the open group is called, for the back button's tooltip.
+   *
+   * Beside the filter rather than in it, because the two are different things:
+   * `BrowseFilter.id` is a release group MBID as often as it is a title, and a
+   * tooltip reading a UUID is worse than no tooltip at all. Null both outside a
+   * drill-in and inside an untagged one, where the label is the caller's
+   * `unknownLabel`.
+   */
+  readonly browseLabel: string | null;
   readonly playlistId: number | null;
   /** Where Statistics is pointed, or null outside it. */
   readonly stats: StatsPath | null;
@@ -33,13 +43,16 @@ export function historyAt(entry: HistoryEntry): History {
   return { entries: [entry], index: 0 };
 }
 
+/**
+ * `browseLabel` is deliberately out: two entries carrying one identity are one
+ * view however each of them happened to be labelled.
+ */
 export function sameView(a: HistoryEntry, b: HistoryEntry): boolean {
   return (
     a.tab === b.tab &&
     a.playlistId === b.playlistId &&
     a.browse?.kind === b.browse?.kind &&
-    (a.browse?.key ?? null) === (b.browse?.key ?? null) &&
-    (a.browse?.secondary ?? null) === (b.browse?.secondary ?? null) &&
+    (a.browse?.id ?? null) === (b.browse?.id ?? null) &&
     sameStatsPath(a.stats, b.stats)
   );
 }

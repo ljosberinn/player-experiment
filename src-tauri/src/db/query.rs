@@ -18,16 +18,58 @@ use crate::model::{
 /// its own group sorting above everything.
 pub(crate) const GROUP_ARTIST: &str =
     "coalesce(nullif(tracks.album_artist, ''), nullif(tracks.artist, ''))";
-const GROUP_ALBUM: &str = "nullif(tracks.album, '')";
+pub(crate) const GROUP_ALBUM: &str = "nullif(tracks.album, '')";
 const GROUP_GENRE: &str = "nullif(tracks.genre, '')";
 
+/// What makes two files the same release.
+///
+/// The release group MBID where the file carries one, so two unrelated
+/// compilations sharing a title and `Various Artists` stay two tiles and two
+/// rips of one album from different pressings are one; the two tags folded into
+/// a single string where it does not. Release *group* rather than release,
+/// because a release MBID is per pressing and would split the second case.
+///
+/// The inner `coalesce`s are not decoration: `nullif(album, '') || x` is NULL
+/// whenever the album tag is absent, and every untagged release would land in
+/// one tile together. Folding them to empty strings first makes the fallback a
+/// string that is never NULL, which is what lets the album drill-in stop
+/// carrying a NULL at all.
+///
+/// A release whose files disagree about whether they have an MBID is two tiles,
+/// and that is accepted rather than solved. Neither writer leaves one that way -
+/// the unattended pass refuses a candidate whose track count disagrees, and the
+/// dialog stamps every member - so it takes a file arriving in a release that
+/// was already looked up, which is its own tile until somebody looks the release
+/// up again. Holding those together would mean propagating an MBID across the
+/// rest of its `(album, artist)`, and a window function may appear in neither
+/// `GROUP BY` nor [`scope`]'s `WHERE`.
+pub(crate) fn release_identity() -> String {
+    format!(
+        "coalesce(tracks.release_group_mbid, \
+         coalesce({GROUP_ALBUM}, '') || char(31) || coalesce({GROUP_ARTIST}, ''))"
+    )
+}
+
 impl BrowseKind {
-    /// The expression a group is keyed by.
+    /// The expression a group is labelled from.
     fn key_sql(self) -> &'static str {
         match self {
             Self::Albums => GROUP_ALBUM,
             Self::Artists => GROUP_ARTIST,
             Self::Genres => GROUP_GENRE,
+        }
+    }
+
+    /// The expression a group is identified by, which is what it is grouped and
+    /// filtered on.
+    ///
+    /// Only albums are a release. The other two are single-column keys and
+    /// their identity is the key itself.
+    fn identity_sql(self) -> String {
+        match self {
+            Self::Albums => release_identity(),
+            Self::Artists => GROUP_ARTIST.to_owned(),
+            Self::Genres => GROUP_GENRE.to_owned(),
         }
     }
 }
@@ -39,7 +81,8 @@ pub(crate) const COLUMNS: &str =
                        tracks.album, tracks.album_artist, tracks.genre, tracks.year, \
                        tracks.track_no, tracks.disc_no, tracks.comment, tracks.bitrate, \
                        tracks.sample_rate, tracks.cover_hash, tracks.added_at, \
-                       tracks.play_count, tracks.last_played_at, tracks.missing_since";
+                       tracks.play_count, tracks.last_played_at, tracks.missing_since, \
+                       tracks.release_group_mbid";
 
 /// Upper bound on a single page, so a bad `limit` cannot ask for the whole
 /// library and blow up the IPC payload.
@@ -66,6 +109,7 @@ pub(crate) fn row_to_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         play_count: row.get(16)?,
         last_played_at: row.get(17)?,
         missing_since: row.get(18)?,
+        release_group_mbid: row.get(19)?,
     })
 }
 
@@ -177,18 +221,17 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
         // of selecting it. `IS` compares NULLs as equal, which is what an
         // absent tag needs here.
         //
-        // `COLLATE NOCASE` because [`browse_groups`] folds case: the tile is
-        // labelled with the one casing `min()` picked, so without the same
-        // collation here opening it would show only that casing's tracks.
-        conditions.push(format!("{} IS ? COLLATE NOCASE", browse.kind.key_sql()));
-        params.push(Box::new(browse.key.clone()));
-
-        // Only albums are keyed by two columns; for the other two the artist
-        // is the key itself and constraining it again would be a no-op at best.
-        if browse.kind == BrowseKind::Albums {
-            conditions.push(format!("{GROUP_ARTIST} IS ? COLLATE NOCASE"));
-            params.push(Box::new(browse.secondary.clone()));
-        }
+        // `COLLATE NOCASE` because [`browse_groups`] folds case: the id is the
+        // one casing `min()` picked, so without the same collation here opening
+        // the tile would show only that casing's tracks.
+        //
+        // One condition for all three kinds, because the album's two keys are
+        // one expression now - see [`release_identity`].
+        conditions.push(format!(
+            "{} IS ? COLLATE NOCASE",
+            browse.kind.identity_sql()
+        ));
+        params.push(Box::new(browse.id.clone()));
     }
 
     // The resolved member list rather than a join on `genre_edges`: see
@@ -431,31 +474,46 @@ pub fn browse_groups(
     )?;
 
     let key = kind.key_sql();
+    let identity = kind.identity_sql();
 
-    // Albums carry their artist so the grid can label them and so the drill-in
-    // can filter by both. The other two have no second key.
+    // Albums carry their artist so the grid can label them. The other two have
+    // no second label - their key is the artist, or a genre has no artist.
     let secondary = if kind == BrowseKind::Albums {
         GROUP_ARTIST
     } else {
         "NULL"
     };
 
-    // `COLLATE NOCASE` on both keys: a release tagged `A Sense Of Purpose` on
-    // one file and `A Sense of Purpose` on the next is one release and was two
-    // tiles. Grouping on a folded key leaves no row of the group carrying the
-    // label, so `min()` picks it - a binary comparison, so the uppercase
-    // variant, arbitrary but the same one every time, which is what the grid's
-    // React keys need. `min()` of an all-NULL group is still NULL, so the
-    // untagged group keeps its key and its place last.
+    // Grouping is by identity alone, so `key` and `secondary` are labels over
+    // the group rather than the columns it is cut on: a release merged by its
+    // MBID can span two spellings of its title and twelve artists.
+    //
+    // `COLLATE NOCASE`: a release tagged `A Sense Of Purpose` on one file and
+    // `A Sense of Purpose` on the next is one release and was two tiles.
+    // Grouping on a folded key leaves no row of the group carrying the label,
+    // so `min()` picks it - a binary comparison, so the uppercase variant,
+    // arbitrary but the same one every time. `min()` of an all-NULL group is
+    // still NULL, so the untagged group keeps its key and its place last.
+    //
+    // `min(identity)` for the same reason: the expression is per row, and two
+    // rows of one folded group can carry differently-cased identities. Which
+    // one it picked does not matter, because the drill-in compares `COLLATE
+    // NOCASE` too.
     //
     // `min(year)` rather than any year: a remaster tagged a year later should
     // not move an album to the wrong end of a chronological sort.
+    //
+    // `group_id` last in the ordering, so it is total: two releases of one name
+    // by one artist - which is exactly what this identity exists to keep apart -
+    // agree on every term before it, and the grid would otherwise reorder two
+    // identical-looking tiles between calls.
     let sql = format!(
-        "SELECT min({key}) AS group_key, min({secondary}) AS group_secondary, count(*), \
+        "SELECT min({identity}) AS group_id, min({key}) AS group_key, \
+         min({secondary}) AS group_secondary, count(DISTINCT lower({secondary})), count(*), \
          coalesce(sum(tracks.duration_ms), 0), min(tracks.cover_hash), min(tracks.year) {} \
-         GROUP BY {key} COLLATE NOCASE, {secondary} COLLATE NOCASE \
+         GROUP BY {identity} COLLATE NOCASE \
          ORDER BY group_key IS NULL, group_key COLLATE NOCASE ASC, \
-                  group_secondary COLLATE NOCASE ASC",
+                  group_secondary COLLATE NOCASE ASC, group_id COLLATE NOCASE ASC",
         scope.from_where
     );
 
@@ -463,12 +521,14 @@ pub fn browse_groups(
     let groups = stmt
         .query_map(rusqlite::params_from_iter(scope.params.iter()), |row| {
             Ok(BrowseGroup {
-                key: row.get(0)?,
-                secondary: row.get(1)?,
-                track_count: row.get::<_, i64>(2)? as u32,
-                duration_ms: row.get(3)?,
-                cover_hash: row.get(4)?,
-                year: row.get(5)?,
+                id: row.get(0)?,
+                key: row.get(1)?,
+                secondary: row.get(2)?,
+                artist_count: row.get::<_, i64>(3)? as u32,
+                track_count: row.get::<_, i64>(4)? as u32,
+                duration_ms: row.get(5)?,
+                cover_hash: row.get(6)?,
+                year: row.get(7)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1931,6 +1991,12 @@ mod tests {
         groups.iter().map(|g| g.key.as_deref()).collect()
     }
 
+    /// The identity of an album no file of which carries a release group MBID,
+    /// built the way [`release_identity`]'s fallback builds it.
+    fn album_id(album: &str, artist: &str) -> String {
+        format!("{album}\u{1f}{artist}")
+    }
+
     #[test]
     fn a_compilation_is_one_album_not_one_per_artist() {
         let (_dir, db) = browsable();
@@ -2069,8 +2135,7 @@ mod tests {
         let query = TrackQuery {
             browse: Some(BrowseFilter {
                 kind: BrowseKind::Albums,
-                key: Some("Double".to_owned()),
-                secondary: Some("Dio".to_owned()),
+                id: Some(album_id("Double", "Dio")),
             }),
             sort_by: SortField::Path,
             limit: 100,
@@ -2090,23 +2155,36 @@ mod tests {
         let (_dir, db) = browsable();
         let conn = db.conn().unwrap();
 
-        // The case `= ?` would get wrong: a bound NULL equals nothing, so this
-        // would come back empty, and a dropped clause would return the library.
-        let query = TrackQuery {
-            browse: Some(BrowseFilter {
-                kind: BrowseKind::Albums,
-                key: None,
-                secondary: None,
-            }),
-            sort_by: SortField::Path,
-            limit: 100,
-            ..Default::default()
+        let drill = |kind, id: Option<&str>| {
+            paths(
+                query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        browse: Some(BrowseFilter {
+                            kind,
+                            id: id.map(str::to_owned),
+                        }),
+                        sort_by: SortField::Path,
+                        limit: 100,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            )
         };
 
+        // An untagged album is an identity of two empty strings rather than a
+        // NULL, which is what the inner `coalesce`s buy: without them every
+        // untagged release would share one tile.
         assert_eq!(
-            paths(query_tracks(&conn, &query).unwrap()),
+            drill(BrowseKind::Albums, Some(&album_id("", ""))),
             ["/b/8.mp3", "/b/9.mp3"]
         );
+
+        // Artists and genres still key on NULL, and this is the case `= ?`
+        // would get wrong: a bound NULL equals nothing, so it would come back
+        // empty, and a dropped clause would return the library.
+        assert_eq!(drill(BrowseKind::Artists, None), ["/b/8.mp3", "/b/9.mp3"]);
     }
 
     #[test]
@@ -2121,8 +2199,7 @@ mod tests {
             &TrackQuery {
                 browse: Some(BrowseFilter {
                     kind: BrowseKind::Albums,
-                    key: Some("Comp".to_owned()),
-                    secondary: Some("Various Artists".to_owned()),
+                    id: Some(album_id("Comp", "Various Artists")),
                 }),
                 ..Default::default()
             },
@@ -2186,8 +2263,7 @@ mod tests {
         let query = TrackQuery {
             browse: Some(BrowseFilter {
                 kind: BrowseKind::Genres,
-                key: Some("Rock".to_owned()),
-                secondary: None,
+                id: Some("Rock".to_owned()),
             }),
             search: Some("Dio".to_owned()),
             sort_by: SortField::Path,
@@ -2393,15 +2469,14 @@ mod tests {
     fn drilling_into_a_folded_tile_shows_both_casings() {
         let (_dir, db) = mixed_cased();
         let conn = db.conn().unwrap();
-        let drill = |kind, key: &str, secondary: Option<&str>| {
+        let drill = |kind, id: &str| {
             paths(
                 query_tracks(
                     &conn,
                     &TrackQuery {
                         browse: Some(BrowseFilter {
                             kind,
-                            key: Some(key.to_owned()),
-                            secondary: secondary.map(str::to_owned),
+                            id: Some(id.to_owned()),
                         }),
                         sort_by: SortField::Path,
                         limit: 100,
@@ -2412,20 +2487,20 @@ mod tests {
             )
         };
 
-        // The tile carries the label `min()` picked, so the other casing's
+        // The tile carries the identity `min()` picked, so the other casing's
         // tracks are only reachable if the filter folds case as well.
         assert_eq!(
-            drill(BrowseKind::Albums, "A Sense Of Purpose", Some("In Flames")),
+            drill(
+                BrowseKind::Albums,
+                &album_id("A Sense Of Purpose", "In Flames")
+            ),
             ["/c/1.mp3", "/c/2.mp3"]
         );
         assert_eq!(
-            drill(BrowseKind::Albums, "Requiembryo", Some("ASP")),
+            drill(BrowseKind::Albums, &album_id("Requiembryo", "ASP")),
             ["/c/3.mp3", "/c/4.mp3"]
         );
-        assert_eq!(
-            drill(BrowseKind::Artists, "ASP", None),
-            ["/c/3.mp3", "/c/4.mp3"]
-        );
+        assert_eq!(drill(BrowseKind::Artists, "ASP"), ["/c/3.mp3", "/c/4.mp3"]);
     }
 
     #[test]
@@ -2532,5 +2607,287 @@ mod tests {
             Some((Some("Zutiefst".to_owned()), Some("ASP".to_owned())))
         );
         assert_eq!(release_of(&conn, -1).unwrap(), None);
+    }
+
+    const RG_ONE: &str = "11111111-1111-4111-8111-111111111111";
+    const RG_TWO: &str = "22222222-2222-4222-8222-222222222222";
+    const RG_THREE: &str = "33333333-3333-4333-8333-333333333333";
+    const RG_FOUR: &str = "44444444-4444-4444-8444-444444444444";
+    const RG_FIVE: &str = "55555555-5555-4555-8555-555555555555";
+
+    /// Releases identified the two ways the library actually holds them.
+    ///
+    /// A release with a release group MBID is keyed by it; one without falls
+    /// back to its two tags. Every case here is one the grid has to get right.
+    fn released() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+
+        /// (path, album, album_artist, artist, release_group_mbid)
+        type Row<'a> = (
+            &'a str,
+            Option<&'a str>,
+            Option<&'a str>,
+            &'a str,
+            Option<&'a str>,
+        );
+
+        let rows: [Row<'_>; 13] = [
+            // Two unrelated compilations under one title and one album artist.
+            // Nothing but the MBID tells them apart.
+            (
+                "/r/1.mp3",
+                Some("Chill"),
+                Some("Various Artists"),
+                "Alice",
+                Some(RG_ONE),
+            ),
+            (
+                "/r/2.mp3",
+                Some("Chill"),
+                Some("Various Artists"),
+                "Bob",
+                Some(RG_ONE),
+            ),
+            (
+                "/r/3.mp3",
+                Some("Chill"),
+                Some("Various Artists"),
+                "Carol",
+                Some(RG_TWO),
+            ),
+            // Two pressings of one album: one release group, and the remaster
+            // is titled differently.
+            (
+                "/r/4.mp3",
+                Some("Double"),
+                Some("Dio"),
+                "Dio",
+                Some(RG_THREE),
+            ),
+            (
+                "/r/5.mp3",
+                Some("Double (Remastered)"),
+                Some("Dio"),
+                "Dio",
+                Some(RG_THREE),
+            ),
+            // Never looked up: falls back to the two tags.
+            ("/r/6.mp3", Some("Alone"), Some("Frank"), "Frank", None),
+            ("/r/7.mp3", Some("Alone"), Some("Frank"), "Frank", None),
+            // One release only half of which carries the identity.
+            (
+                "/r/8.mp3",
+                Some("Partial"),
+                Some("Grace"),
+                "Grace",
+                Some(RG_FOUR),
+            ),
+            ("/r/9.mp3", Some("Partial"), Some("Grace"), "Grace", None),
+            // No album tag at all, two different artists.
+            ("/r/10.mp3", None, None, "Heidi", None),
+            ("/r/11.mp3", None, None, "Ivan", None),
+            // A split, credited per file. One release group holds both, so this
+            // is the group that spans album artists.
+            (
+                "/r/12.mp3",
+                Some("Split"),
+                Some("Jade"),
+                "Jade",
+                Some(RG_FIVE),
+            ),
+            (
+                "/r/13.mp3",
+                Some("Split"),
+                Some("Kim"),
+                "Kim",
+                Some(RG_FIVE),
+            ),
+        ];
+        for (path, album, album_artist, artist, release) in rows {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist,
+                                     album_artist, album, release_group_mbid, added_at)
+                 VALUES (?1, 1, 1, 1000, 'T', ?2, ?3, ?4, ?5, 0)",
+                rusqlite::params![path, artist, album_artist, album, release],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    /// The album tiles `released()` produces, as (id, title, artists, tracks).
+    fn tiles(db: &Db) -> Vec<(Option<String>, Option<String>, u32, u32)> {
+        browse(db, BrowseKind::Albums)
+            .into_iter()
+            .map(|g| (g.id, g.key, g.artist_count, g.track_count))
+            .collect()
+    }
+
+    #[test]
+    fn two_releases_sharing_a_title_and_an_album_artist_stay_two_tiles() {
+        let (_dir, db) = released();
+
+        let chill: Vec<_> = tiles(&db)
+            .into_iter()
+            .filter(|(id, ..)| id.as_deref() == Some(RG_ONE) || id.as_deref() == Some(RG_TWO))
+            .collect();
+
+        // `(album, album_artist)` is identical across all three files, so
+        // without the release group this is one tile and there is nothing left
+        // in the tags to split it by.
+        assert_eq!(
+            chill,
+            [
+                (Some(RG_ONE.to_owned()), Some("Chill".to_owned()), 1, 2),
+                (Some(RG_TWO.to_owned()), Some("Chill".to_owned()), 1, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn two_pressings_of_one_release_are_one_tile() {
+        let (_dir, db) = released();
+
+        let pressings: Vec<_> = tiles(&db)
+            .into_iter()
+            .filter(|(id, ..)| id.as_deref() == Some(RG_THREE))
+            .collect();
+
+        // Differently titled, so the two tags alone would make two tiles - and
+        // a *release* MBID would too, which is why the identity is the group.
+        assert_eq!(
+            pressings,
+            [(Some(RG_THREE.to_owned()), Some("Double".to_owned()), 1, 2)]
+        );
+    }
+
+    #[test]
+    fn a_release_nobody_looked_up_falls_back_to_its_tags() {
+        let (_dir, db) = released();
+
+        let alone: Vec<_> = tiles(&db)
+            .into_iter()
+            .filter(|(_, key, ..)| key.as_deref() == Some("Alone"))
+            .collect();
+
+        // Mixed keys in one result: this tile is a string and the ones above
+        // are MBIDs. That is the permanent state, not a transitional one.
+        assert_eq!(
+            alone,
+            [(
+                Some(album_id("Alone", "Frank")),
+                Some("Alone".to_owned()),
+                1,
+                2
+            )]
+        );
+    }
+
+    /// The cost this identity accepts, asserted so it is a decision rather than
+    /// a surprise.
+    ///
+    /// Neither writer produces this state - the pass refuses a candidate whose
+    /// track count disagrees, and the dialog stamps every member of the release.
+    /// A file that arrives afterwards does, and is its own tile until somebody
+    /// looks the release up again.
+    #[test]
+    fn a_release_only_half_of_which_carries_an_mbid_is_two_tiles() {
+        let (_dir, db) = released();
+
+        let partial: Vec<_> = tiles(&db)
+            .into_iter()
+            .filter(|(_, key, ..)| key.as_deref() == Some("Partial"))
+            .collect();
+
+        // Two tiles with the same title and the same artist, so `group_id` is
+        // what puts them in an order at all.
+        assert_eq!(
+            partial,
+            [
+                (Some(RG_FOUR.to_owned()), Some("Partial".to_owned()), 1, 1),
+                (
+                    Some(album_id("Partial", "Grace")),
+                    Some("Partial".to_owned()),
+                    1,
+                    1
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn two_untagged_releases_by_different_artists_stay_two_tiles() {
+        let (_dir, db) = released();
+
+        let untitled: Vec<_> = tiles(&db)
+            .into_iter()
+            .filter(|(_, key, ..)| key.is_none())
+            .collect();
+
+        // What the inner `coalesce`s buy: `nullif(album, '') || x` is NULL for
+        // both of these, and a NULL identity would put every untagged release
+        // in the library into one tile together.
+        assert_eq!(
+            untitled,
+            [
+                (Some(album_id("", "Heidi")), None, 1, 1),
+                (Some(album_id("", "Ivan")), None, 1, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_release_that_spans_artists_counts_them_rather_than_naming_one() {
+        let (_dir, db) = released();
+        let tile_of = |wanted: &str| {
+            tiles(&db)
+                .into_iter()
+                .find(|(id, ..)| id.as_deref() == Some(wanted))
+                .unwrap()
+        };
+
+        // The split is two album artists under one release group, and
+        // `secondary` is whichever of them `min()` picked - so the row has to
+        // say how many there are for the subtitle to know not to use it.
+        assert_eq!(
+            tile_of(RG_FIVE),
+            (Some(RG_FIVE.to_owned()), Some("Split".to_owned()), 2, 2)
+        );
+        // A compilation whose files agree on `Various Artists` is one artist
+        // and reads as the tag it carries, not as a count.
+        assert_eq!(tile_of(RG_ONE).2, 1);
+        assert_eq!(tile_of(RG_THREE).2, 1);
+    }
+
+    #[test]
+    fn drilling_in_works_on_both_kinds_of_identity() {
+        let (_dir, db) = released();
+        let conn = db.conn().unwrap();
+        let drill = |id: &str| {
+            paths(
+                query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        browse: Some(BrowseFilter {
+                            kind: BrowseKind::Albums,
+                            id: Some(id.to_owned()),
+                        }),
+                        sort_by: SortField::Path,
+                        limit: 100,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            )
+        };
+
+        // An MBID group holds both pressings, whatever either one is titled.
+        assert_eq!(drill(RG_THREE), ["/r/4.mp3", "/r/5.mp3"]);
+        // And one of two compilations that agree on every tag they have.
+        assert_eq!(drill(RG_TWO), ["/r/3.mp3"]);
+        // A fallback group is reached through the same one condition.
+        assert_eq!(drill(&album_id("Alone", "Frank")), ["/r/6.mp3", "/r/7.mp3"]);
     }
 }

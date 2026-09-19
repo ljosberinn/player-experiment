@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { albumIdentity } from "../library/browse";
 import {
   DEFAULT_FILTERS,
   dateInputSeconds,
@@ -183,7 +184,7 @@ describe("libraryQuery", () => {
   });
 
   it("composes a genre with the view's drill-in rather than replacing it", () => {
-    const album = { kind: "albums", key: "Shields", secondary: "Grizzly Bear" } as const;
+    const album = { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") } as const;
     const query = libraryQuery(filters({ scope: { kind: "view" }, genre: "rock" }), {
       ...view,
       browse: album,

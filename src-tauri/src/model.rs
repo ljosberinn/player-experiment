@@ -56,6 +56,10 @@ pub struct Track {
     /// every track that is where it should be, which is nearly all of them.
     #[ts(type = "number | null")]
     pub missing_since: Option<i64>,
+    /// Selected so that "reveal in Library" can build the same release identity
+    /// the browse query groups by, without a round trip on a control the user
+    /// just pressed. No view renders it.
+    pub release_group_mbid: Option<String>,
 }
 
 /// Columns a query may sort by.
@@ -201,10 +205,22 @@ pub enum BrowseKind {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct BrowseGroup {
+    /// What the drill-in filters by, and what the grid keys its tiles on:
+    /// `BrowseKind::identity_sql`'s value over the group. For albums that is
+    /// the release group MBID where the files carry one and the two tags
+    /// folded together where they do not; for the other two it is `key`.
+    pub id: Option<String>,
     pub key: Option<String>,
     /// Albums only: the artist the album is filed under. `None` everywhere
     /// else, and also for an album whose artist tags are all empty.
     pub secondary: Option<String>,
+    /// Albums only: how many distinct artists the group holds.
+    ///
+    /// Grouping by the release rather than by `(album, artist)` means a group
+    /// can span artists, and a compilation of twelve has to read as many
+    /// rather than as whichever of the twelve `min()` picked. `secondary`
+    /// alone cannot say which of the two it is.
+    pub artist_count: u32,
     pub track_count: u32,
     #[ts(type = "number")]
     pub duration_ms: i64,
@@ -225,11 +241,12 @@ pub struct BrowseGroup {
 #[ts(export)]
 pub struct BrowseFilter {
     pub kind: BrowseKind,
-    /// `None` matches the untagged group - `IS NULL`, not "no filter".
-    pub key: Option<String>,
-    /// Applied only when `kind` is `Albums`, where `None` likewise means the
-    /// album whose artist is untagged.
-    pub secondary: Option<String>,
+    /// The group's identity, as [`BrowseGroup::id`] carries it.
+    ///
+    /// `None` matches the untagged group - `IS NULL`, not "no filter" - which
+    /// only artists and genres have: the album identity folds an absent tag to
+    /// an empty string and so is never NULL.
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
