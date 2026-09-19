@@ -445,6 +445,38 @@ describe("the stylesheet", () => {
     expect(art?.body).toMatch(/object-fit:\s*cover/);
   });
 
+  it("gives a paned dialog one size and one scroller", () => {
+    // The lookup passed through six heights - 154px reading the files, 695px
+    // confirming eleven - and it is centred, so every one of them moved both
+    // edges under the pointer resting on Skip. The box states a height and
+    // only `.modal-body` scrolls; a second `overflow` anywhere inside is the
+    // regression, because then the buttons travel again.
+    const paned = all.find((one) => /(^|\s)\.modal\.paned$/.test(one.selector));
+    const body = all.find((one) => /(^|\s)\.modal\.paned > \.modal-body$/.test(one.selector));
+
+    expect(paned?.body).toMatch(/overflow:\s*hidden/);
+    // A flex item's automatic minimum is its content, which is what makes an
+    // `overflow-y: auto` child of a column flex refuse to shrink.
+    expect(body?.body).toMatch(/overflow-y:\s*auto/);
+    expect(body?.body).toMatch(/min-height:\s*0/);
+    expect(body?.body).toMatch(/flex:\s*1/);
+
+    const lookup = all.find((one) => /(^|\s)\.modal\.lookup$/.test(one.selector));
+
+    expect(lookup?.body, ".modal.lookup should state a height").toMatch(/[^-]height:\s*min\(/);
+
+    const inside = all.filter(
+      (one) => /(^|\s)\.lookup[\w-]*$/.test(one.selector) && !one.selector.includes(".modal"),
+    );
+
+    // Counted, so that a selector this stops matching fails here rather than
+    // quietly emptying the loop below.
+    expect(inside.length).toBeGreaterThan(8);
+    for (const rule of inside) {
+      expect(rule.body, `${rule.selector} would be a second scroller`).not.toMatch(/overflow/);
+    }
+  });
+
   it("keeps the title bar and the footer the heights the design draws", () => {
     // Both are stated rather than left to their contents, and both are what
     // the transport strip and the content pane are measured against. A bar

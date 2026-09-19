@@ -282,3 +282,52 @@ describe("a release out of the review queue", () => {
     expect(screen.queryByRole("button", { name: "Set Aside" })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The dialog is a fixed box, so the body has to be the only thing that
+ * scrolls - a result list that grows by fourteen rows must not take the button
+ * under the pointer with it. jsdom lays nothing out, so what is asserted here
+ * is the structure the layout rests on.
+ */
+describe("the fixed box", () => {
+  /** The one scroll area, which every state has to put its content inside. */
+  function body(): HTMLElement {
+    const found = document.querySelector<HTMLElement>(".modal-body");
+    if (found === null) {
+      throw new Error("the dialog has no scrolling body");
+    }
+    return found;
+  }
+
+  it("scrolls the results without the heading or the queue actions", async () => {
+    await open();
+
+    expect(body()).toContainElement(screen.getByRole("button", { name: /Loveless/ }));
+    expect(body()).not.toContainElement(screen.getByRole("heading", { level: 2 }));
+    expect(body()).not.toContainElement(screen.getByRole("button", { name: "Skip" }));
+    expect(body()).not.toContainElement(screen.getByRole("button", { name: "Cancel" }));
+  });
+
+  it("scrolls the tracklist without either row of confirm actions", async () => {
+    const user = await open();
+
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
+    await screen.findAllByRole("row");
+
+    expect(body()).toContainElement(screen.getByRole("table"));
+    expect(body()).not.toContainElement(screen.getByRole("button", { name: "Apply" }));
+    expect(body()).not.toContainElement(screen.getByRole("button", { name: "Back to Results" }));
+    expect(body()).not.toContainElement(screen.getByRole("button", { name: "Skip" }));
+  });
+
+  /** An error that can scroll out of sight is no error message. */
+  it("keeps a refused search out of the scroller", async () => {
+    const user = await open();
+    vi.mocked(tagsourceSearch).mockRejectedValue(new Error("MusicBrainz is down"));
+
+    await user.click(screen.getByRole("button", { name: "Search again" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(body()).not.toContainElement(alert);
+  });
+});

@@ -92,7 +92,7 @@ export function ReleaseLookup() {
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup className="modal lookup">
+        <Dialog.Popup className="modal paned lookup">
           {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
           <Dialog.Title render={<h2 />}>
             {queue.length === 1
@@ -193,28 +193,28 @@ function Results({
   onSearchAgain: () => void;
 }) {
   if (stage === "opening") {
-    return <p className="modal-summary">Reading the files…</p>;
+    return <Waiting>Reading the files…</Waiting>;
   }
   if (stage === "searching") {
-    return <p className="modal-summary">Searching MusicBrainz…</p>;
+    return <Waiting>Searching MusicBrainz…</Waiting>;
   }
   if (stage === "fetching") {
-    return <p className="modal-summary">Reading the tracklist…</p>;
+    return <Waiting>Reading the tracklist…</Waiting>;
   }
   if (candidates.length === 0) {
     return (
-      <>
+      <div className="modal-body">
         <p className="modal-summary">
           MusicBrainz has nothing under that album and artist. Skip this release, or edit the tags
           by hand and try again.
         </p>
         <SearchAgain onSearchAgain={onSearchAgain} />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="modal-body">
       <ul className="lookup-results">
         {candidates.map((candidate) => (
           <li key={candidate.mbid}>
@@ -231,7 +231,16 @@ function Results({
         ))}
       </ul>
       <SearchAgain onSearchAgain={onSearchAgain} />
-    </>
+    </div>
+  );
+}
+
+/** A step with nothing to act on yet, in a dialog whose size does not change. */
+function Waiting({ children }: { children: string }) {
+  return (
+    <div className="modal-body">
+      <p className="modal-summary">{children}</p>
+    </div>
   );
 }
 
@@ -285,40 +294,38 @@ function Confirm({
 
   return (
     <>
-      <div className="lookup-covers">
-        <Art
-          label="Current"
-          src={commonCover === null ? null : coverUrl(commonCover)}
-          note={commonCover === null ? "Missing or mixed" : null}
-        />
-        <Art
-          label="MusicBrainz"
-          // The staging file has one name for every image the app is about to
-          // write, so the release id is what tells the webview these are not
-          // the bytes it fetched for the last one.
-          src={detail.coverPath === null ? null : stagedCoverUrl(detail.candidate.mbid)}
-          note={detail.coverPath === null ? "No artwork in the archive" : null}
-        />
-      </div>
-
-      <fieldset className="lookup-fields">
-        <legend>Write</legend>
-        {LOOKUP_FIELDS.map((field) => (
-          <FieldToggle
-            key={field.id}
-            label={field.label}
-            checked={fields[field.id]}
-            // Nothing in the archive is nothing to write, so the box says so
-            // rather than sitting there ticked over an empty square.
-            disabled={field.id === "artwork" && detail.coverPath === null}
-            onChange={(checked) => onFields({ ...fields, [field.id]: checked })}
+      <div className="modal-body">
+        <div className="lookup-covers">
+          <Art
+            label="Current"
+            src={commonCover === null ? null : coverUrl(commonCover)}
+            note={commonCover === null ? "Missing or mixed" : null}
           />
-        ))}
-      </fieldset>
+          <Art
+            label="MusicBrainz"
+            // The staging file has one name for every image the app is about to
+            // write, so the release id is what tells the webview these are not
+            // the bytes it fetched for the last one.
+            src={detail.coverPath === null ? null : stagedCoverUrl(detail.candidate.mbid)}
+            note={detail.coverPath === null ? "No artwork in the archive" : null}
+          />
+        </div>
 
-      {/* Its own scroll area, so a 22-track reissue does not push the buttons
-          that confirm it off the bottom of the dialog. */}
-      <div className="lookup-map-scroll">
+        <fieldset className="lookup-fields">
+          <legend>Write</legend>
+          {LOOKUP_FIELDS.map((field) => (
+            <FieldToggle
+              key={field.id}
+              label={field.label}
+              checked={fields[field.id]}
+              // Nothing in the archive is nothing to write, so the box says so
+              // rather than sitting there ticked over an empty square.
+              disabled={field.id === "artwork" && detail.coverPath === null}
+              onChange={(checked) => onFields({ ...fields, [field.id]: checked })}
+            />
+          ))}
+        </fieldset>
+
         <table className="lookup-map">
           <thead>
             <tr>

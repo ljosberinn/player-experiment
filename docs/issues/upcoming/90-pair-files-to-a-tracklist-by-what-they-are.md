@@ -74,7 +74,7 @@ above track 2 makes the arrows harder to aim, and `tracks.track_no IS NULL`
 ahead of `tracks.track_no` is the whole change.
 
 It touches `mapping.ts` and nothing else, so it runs in a worktree beside
-[89](89-the-lookup-window-stops-resizing.md), which touches the component.
+[89](../done/89-the-lookup-window-stops-resizing.md), which touches the component.
 
 Testing: `mapping.test.ts` — a release whose numbers agree asserted to pair as
 it does today; a flattened two-disc set with duplicate numbers asserted to pair

@@ -38,7 +38,7 @@ candidate, and that is what says why a 97% is in the queue.
   `trackCount`), Best Match (`describe` of `candidates[0]`, empty where the
   cache is gone). Rows activate on click and Enter. No column sorting.
 - About 400 rows: a plain `<table>`, no virtualisation. It goes in
-  [89](89-the-lookup-window-stops-resizing.md)'s scrolling body if 89 has
+  [89](../done/89-the-lookup-window-stops-resizing.md)'s scrolling body if 89 has
   landed.
 
 Testing: Rust — `queue` returns rows by score descending with NULL last, ties

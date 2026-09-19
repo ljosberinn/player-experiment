@@ -40,18 +40,45 @@ two scrollers again.
 
 The body is a flex child at `flex: 1`, and needs `min-height: 0` beside it: a
 flex item's automatic minimum is its content, which is what makes an
-`overflow-y: auto` child of a column flex refuse to shrink.
+`overflow-y: auto` child of a column flex refuse to shrink. The parts that stay
+take `flex: none`, so a tall body cannot shrink them instead.
+
+## The mechanism is shared, so it is not a `.lookup` rule
+
+Six dialogs carry `.modal`: `ConfirmDialog`, `CrashNotice`, `SettingsDialog`,
+`ReleaseLookup`, `TagEditor`, `SmartPlaylistEditor`. Taking `overflow: auto`
+off the base rule would leave the other four unable to scroll at all, so the
+fixed height, the `overflow: hidden` and the scrolling body are an opt-in
+modifier — `.modal.paned` with a `.modal-body` inside it — that
+[91](../upcoming/91-settings-reorganised.md) applies to `.modal.settings` unchanged.
+
+`.lookup-map-scroll` is deleted rather than uncapped: an `overflow-y: auto` box
+at automatic height is a scroll container that never scrolls, and it would
+capture `.lookup-map th`'s `position: sticky` away from the scrollport the
+header should stick to.
+
+## The confirm step has two action rows
+
+`Confirm` renders its own `.modal-actions.lookup-confirm-actions` — Back to
+Results, Apply — which today sits above the outer Cancel / Set Aside / Skip
+row. Both stay, and so does the summary line above them, or Apply scrolls off a
+22-track reissue, which is the defect `.lookup-map-scroll`'s cap exists to
+prevent. They are not merged into one row: Skip Release discards the release
+and Apply writes to disk, and they should not be adjacent.
+
+`Confirm` therefore renders the scrolling body and the pinned row as siblings,
+not one inside the other.
+
+The error line is outside the scroller too, above the action rows — an error
+that can scroll out of sight is no error message.
+
+Testing: e2e cannot reach this dialog — the transport is MusicBrainz, the
+driver runs the real app, and the review queue is only ever filled by the
+unattended pass, which no command seeds — so the numbers above are the
+acceptance criterion, re-measured by hand against `App.css` in headless Edge.
+`ReleaseLookup.test.tsx` asserts the structure jsdom can see: the heading and
+the action rows are siblings of the scrolling body rather than inside it, at
+both the results and the confirm step.
 
 **It is the same dialog on a selection**, opened from a right-click on rows
 rather than from the review row, so this is not review-queue-only.
-
-`.modal.settings` has the same defect and worse — see
-[91](91-settings-reorganised.md), which gives it the same treatment. Whatever
-this phase writes for a fixed-height dialog with a pinned footer should be
-reusable there rather than specific to `.lookup`.
-
-Testing: e2e cannot reach this dialog — the transport is MusicBrainz and the
-driver runs the real app — so the numbers above are the acceptance criterion,
-re-measured by hand. `ReleaseLookup.test.tsx` asserts the structure jsdom can
-see: the heading and the action row are siblings of the scrolling body rather
-than inside it, at both the results and the confirm step.
