@@ -1,7 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { saveTextFile, statsTop } from "../../ipc";
+import {
+  saveTextFile,
+  statsFirsts,
+  statsListenTotals,
+  statsPlaysOverTime,
+  statsTop,
+} from "../../ipc";
 import { historyAt } from "../library/history";
 import { useLibraryStore } from "../library/store";
 import { DEFAULT_FILTERS } from "./filters";
@@ -37,6 +43,13 @@ vi.mock("../../ipc", () => ({
     lastAt: 1_700_000_000,
   })),
   statsRecentPlays: vi.fn(async () => []),
+  statsPlaysOverTime: vi.fn(async () => [{ start: "2020-06-01", count: 40 }]),
+  statsFirsts: vi.fn(async () => [{ start: "2020-06-01", count: 3 }]),
+  // Nothing but Monday 20:00 and Sunday 20:00, so the hour bars' sum is the
+  // only way 20:00 reads 5.
+  statsWeekClock: vi.fn(async () =>
+    Array.from({ length: 168 }, (_, cell) => (cell === 20 ? 2 : cell === 6 * 24 + 20 ? 3 : 0)),
+  ),
   statsStreaks: vi.fn(async () => ({
     current: 3,
     longest: 12,
@@ -54,6 +67,9 @@ vi.mock("../../ipc", () => ({
 }));
 
 const topMock = vi.mocked(statsTop);
+const totalsMock = vi.mocked(statsListenTotals);
+const overTimeMock = vi.mocked(statsPlaysOverTime);
+const firstsMock = vi.mocked(statsFirsts);
 const writeMock = vi.mocked(saveTextFile);
 
 /** The panel with this heading, so an assertion names which list it means. */
@@ -169,6 +185,51 @@ describe("ListeningPanels", () => {
     expect(writeMock.mock.calls[0]?.[1]).toBe(
       "Artist,Title,Plays\r\nBoards of Canada,Roygbiv,31\r\n",
     );
+  });
+
+  it("cuts all time by the history's own span, off the scan the tiles started", async () => {
+    render(<ListeningPanels />);
+
+    // 2014 to 2023 is months. Asking for the span is not a second scan: the
+    // tiles, the genre caption and both series share one.
+    await waitFor(() => expect(overTimeMock).toHaveBeenCalledWith(expect.anything(), "month"));
+    expect(firstsMock).toHaveBeenCalledWith(expect.anything(), "month");
+    expect(totalsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cuts a week into days, without asking for the history's span", async () => {
+    useStatsStore.setState({ filters: { ...DEFAULT_FILTERS, range: "days7" } });
+    render(<ListeningPanels />);
+
+    await waitFor(() => expect(overTimeMock).toHaveBeenCalledWith(expect.anything(), "day"));
+    // Seven days and every one of them on the axis, the empty ones as zeroes.
+    await waitFor(() =>
+      expect(within(panel("Plays over time")).getAllByRole("img")).toHaveLength(1),
+    );
+    expect(panel("Plays over time").querySelectorAll("rect.chart-bar")).toHaveLength(7);
+  });
+
+  it("drops new artists inside an artist, where the answer is them, once", async () => {
+    useLibraryStore.setState({
+      statsPath: { tab: "listening", crumbs: [{ kind: "artist", key: "Aphex Twin" }] },
+    });
+    render(<ListeningPanels />);
+
+    expect(await screen.findByRole("heading", { name: "Plays over time" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New artists" })).not.toBeInTheDocument();
+  });
+
+  it("sums the week clock's columns into the hour bars", async () => {
+    render(<ListeningPanels />);
+    const eight = new Date(2024, 0, 1, 20).toLocaleTimeString(undefined, { hour: "numeric" });
+
+    const clock = panel("When you listen");
+    await waitFor(() => expect(clock.querySelectorAll("rect.chart-bar")).toHaveLength(24));
+    const titles = Array.from(clock.querySelectorAll("rect.chart-bar title")).map(
+      (title) => title.textContent,
+    );
+    expect(titles).toContain(`${eight}: 5`);
+    expect(clock.querySelectorAll("rect.chart-cell")).toHaveLength(168);
   });
 
   it("names the longest streak's run", async () => {

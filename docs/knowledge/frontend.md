@@ -102,9 +102,11 @@ require.
   it: single-series marks and every sequential magnitude draw from an
   accent-derived ramp, so the app stays monochrome where it can, and a separate
   five-to-six hue categorical set — validated against `--surface` — exists only
-  for the donut and for multi-series. Neither ramp is in the sheet yet;
-  `--chart-grid` is, because the frame draws gridlines. Each lands with its
-  first consumer rather than as tokens nothing reads.
+  for the donut and for multi-series. The sequential ramp is in the sheet as
+  `--chart-ramp-0` to `-4`, an empty step and four opaque steps up to the
+  accent, landed with `Heatmap`; a cell takes a step by its share of the
+  largest, rounded up so one play never reads as none. The categorical set
+  lands with the donut.
 - **`BarList` is HTML, and deliberately not a `ChartFrame`.** A ranked list is
   already the table `ChartFrame`'s toggle would offer, and wrapping it in one
   `role="img"` would take away the reading it has: names that truncate, rows
@@ -123,10 +125,19 @@ require.
   as as an array. Every tick on a scale sits at a position derived from the
   plot's height or width, which only the frame knows; `Bar`, its first real
   caller, is what found that out.
-- **What has not landed**: `Line`, `Donut`, `Sparkline`, `Heatmap`. Each wants
-  a real panel as its caller; `Heatmap` is phase 84c and the donut is 84d. The
-  file list in the plan is a ceiling, not a checklist. `d3-shape` is still not
-  a dependency, because nothing draws an arc or an area.
+- **`Heatmap` is categorical on both axes**, so `ChartFrame` draws it with
+  `grid={false}`: a gridline through a row of weekday cells shows through every
+  gap and measures nothing.
+- **A time series is cut by its span, not by the range filter.** `bucketFor`
+  in `features/stats/series.ts` picks days, weeks, months or years from how
+  long the span is; under all time the span is `listen_totals`' first and last
+  play, taken from the scan the tiles already started. `fillSeries` then puts
+  the empty buckets back, stepping by the local calendar - a local day is not
+  86,400 seconds twice a year.
+- **What has not landed**: `Line`, `Donut`, `Sparkline`. Each wants a real
+  panel as its caller; the donut is 84d. The file list in the plan is a
+  ceiling, not a checklist. `d3-shape` is still not a dependency, because
+  nothing draws an arc or an area.
 - Charts hold no virtualizer, so unlike `SongTable` and `BrowseView` they
   compile clean under the React Compiler and want no `"use no memo"`.
 

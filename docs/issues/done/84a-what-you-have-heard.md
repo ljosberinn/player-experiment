@@ -3,8 +3,8 @@
 The Listening tab's lists and numbers. Stacks on
 [78](78-import-the-lastfm-history.md) and
 [80](80-the-statistics-view.md). The tab's charts are
-[84c](../upcoming/84c-the-shape-of-a-week.md) and the other tab is
-[84b](../upcoming/84b-what-you-own.md); **both stack on this**, 84c for the
+[84c](84c-the-shape-of-a-week.md) and the other tab is
+[84b](84b-what-you-own.md); **both stack on this**, 84c for the
 panel plumbing and 84b for the CSV path alone.
 
 Split off from the plan's single phase 84 because one phase drawing both tabs is

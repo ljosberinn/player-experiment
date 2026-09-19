@@ -53,6 +53,11 @@ export interface ChartFrameProps {
   readonly table?: ReactNode;
   readonly xTicks?: Ticks;
   readonly yTicks?: Ticks;
+  /**
+   * Whether a line runs across the plot at each y tick. Off for an axis of
+   * categories, where a tick names a row rather than a value to read across.
+   */
+  readonly grid?: boolean;
   readonly children: (plot: PlotRect) => ReactNode;
 }
 
@@ -69,6 +74,7 @@ export function ChartFrame({
   table,
   xTicks: xSource = [],
   yTicks: ySource = [],
+  grid = true,
   children,
 }: ChartFrameProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -142,11 +148,19 @@ export function ChartFrame({
               {/* Nothing inside carries an `aria-hidden`: `role="img"` already
                 makes the whole subtree presentational, and the label plus the
                 table toggle are what a reader gets instead. */}
-              <g className="chart-grid">
-                {yTicks.map((tick) => (
-                  <line key={tick.label} x1={0} x2={plot.width} y1={tick.offset} y2={tick.offset} />
-                ))}
-              </g>
+              {grid && (
+                <g className="chart-grid">
+                  {yTicks.map((tick) => (
+                    <line
+                      key={tick.label}
+                      x1={0}
+                      x2={plot.width}
+                      y1={tick.offset}
+                      y2={tick.offset}
+                    />
+                  ))}
+                </g>
+              )}
               <g className="chart-axis chart-axis-x">
                 {xTicks.map((tick) => (
                   <text key={tick.label} x={tick.offset} y={plot.height + CHART_MARGIN.bottom - 6}>

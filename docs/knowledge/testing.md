@@ -187,7 +187,10 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   NULL and zero until the Library panels drew them, which quietly made four of
   the perf budgets a one-group scan over a column of NULLs — a budget met by
   the query never running. The rule: a column a `tests/perf.rs` budget touches
-  has to have a distribution in it.
+  has to have a distribution in it. Synthetic plays likewise have a weekly
+  shape - empty small hours, busy evenings, heavier weekends - because evenly
+  spaced they filled every hour of the week alike and the week clock
+  photographed as a flat field.
 - **The driver delivers neither `contextmenu` nor `dblclick`** through the
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;

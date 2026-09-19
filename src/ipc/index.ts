@@ -54,6 +54,8 @@ import type { TagEdit } from "./bindings/TagEdit";
 import type { TagHealth } from "./bindings/TagHealth";
 import type { TagValueField } from "./bindings/TagValueField";
 import type { TagWriteSummary } from "./bindings/TagWriteSummary";
+import type { TimeBucket } from "./bindings/TimeBucket";
+import type { TimeCount } from "./bindings/TimeCount";
 import type { TimeRange } from "./bindings/TimeRange";
 import type { TopEntry } from "./bindings/TopEntry";
 import type { Track } from "./bindings/Track";
@@ -116,6 +118,8 @@ export type {
   TagHealth,
   TagValueField,
   TagWriteSummary,
+  TimeBucket,
+  TimeCount,
   TimeRange,
   TopEntry,
   Track,
@@ -327,6 +331,27 @@ export function statsRecentPlays(
   limit: number,
 ): Promise<Play[]> {
   return invoke<Play[]>("stats_recent_plays", { query, offset, limit });
+}
+
+/** Plays per bucket, oldest first. Sparse: an empty bucket is not a row. */
+export function statsPlaysOverTime(query: ListenQuery, bucket: TimeBucket): Promise<TimeCount[]> {
+  return invoke<TimeCount[]>("stats_plays_over_time", { query, bucket });
+}
+
+/**
+ * Plays per weekday and hour: 168 counts, Monday 00:00 first, in local time.
+ * Hour-of-day is its column sums.
+ */
+export function statsWeekClock(query: ListenQuery): Promise<number[]> {
+  return invoke<number[]>("stats_week_clock", { query });
+}
+
+/**
+ * Artists heard for the first time, per bucket. The range narrows which first
+ * plays are counted, not which plays are searched for them.
+ */
+export function statsFirsts(query: ListenQuery, bucket: TimeBucket): Promise<TimeCount[]> {
+  return invoke<TimeCount[]>("stats_firsts", { query, bucket });
 }
 
 /** Runs of consecutive days with a play. `now` is the backend's, not ours. */

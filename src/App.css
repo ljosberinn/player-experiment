@@ -127,6 +127,16 @@
      opposite directions the moment either is tuned. Axis *text* is not here -
      it is text, and wears `--dim` like every other recessive label. */
   --chart-grid: oklch(1 0 0 / 0.08);
+  /* The sequential ramp, for a magnitude drawn as colour: an empty cell, then
+     four steps up to the accent, evenly spaced in lightness so each step reads
+     as the same distance. Opaque, so a step is the same colour over any
+     backdrop, and quantized rather than continuous, so the smallest count
+     still stands apart from none. */
+  --chart-ramp-0: oklch(0.22 0.01 55);
+  --chart-ramp-1: oklch(0.345 0.06 55);
+  --chart-ramp-2: oklch(0.47 0.1 55);
+  --chart-ramp-3: oklch(0.595 0.13 55);
+  --chart-ramp-4: oklch(0.72 0.16 55);
 
   /* Red, and the two surfaces it appears on. `--danger` is text: 7.16:1 on
      surface, 6.85:1 on a striped row. `--destructive` is a fill under
@@ -3060,4 +3070,29 @@ body:not(:focus-within) .sidebar-row.current {
 
 .chart-bar {
   fill: var(--accent-soft);
+}
+
+/* Two figures over one query, as the week clock's grid and its hour bars. */
+.chart + .chart {
+  margin-top: 12px;
+}
+
+.chart-cell[data-step="0"] {
+  fill: var(--chart-ramp-0);
+}
+
+.chart-cell[data-step="1"] {
+  fill: var(--chart-ramp-1);
+}
+
+.chart-cell[data-step="2"] {
+  fill: var(--chart-ramp-2);
+}
+
+.chart-cell[data-step="3"] {
+  fill: var(--chart-ramp-3);
+}
+
+.chart-cell[data-step="4"] {
+  fill: var(--chart-ramp-4);
 }
