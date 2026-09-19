@@ -50,6 +50,86 @@ pub(crate) fn release_identity() -> String {
     )
 }
 
+/// What a various-artists release is keyed under.
+///
+/// A literal rather than a column or a flag, because it is exactly what the
+/// lookup writes into every file's album artist when it resolves such a
+/// release. Afterwards [`GROUP_ARTIST`] yields it on its own, the derived key
+/// below still produces the same string, and the recorded row goes on matching
+/// - so the key heals into an ordinary one instead of provoking a re-search.
+///
+/// NULL was the other candidate and is wrong: it already means "no artist and
+/// no album artist", and a compilation is not that.
+pub(crate) const VARIOUS_ARTISTS: &str = "Various Artists";
+
+/// Per album title, whether that title is one various-artists release.
+///
+/// Belongs in a `WITH`, with [`JOIN_VARIOUS_TITLES`] in the `FROM` and
+/// [`release_artist`] as the key. Three conditions over the title's tracks
+/// that are present:
+///
+/// - more than one artist, or it is an ordinary release by one of them;
+/// - one `cover_hash` across the title, and none missing. **The artwork is the
+///   discriminator.** Twelve artists over one compilation share one embedded
+///   cover; `Above` by Mad Season and `Above` by Pillar do not, and grouping on
+///   the title alone would merge them.
+///
+/// The directory cannot serve here and the reason is ours: the mover files by
+/// the release key, so it has already scattered a compilation's files into one
+/// folder per artist.
+///
+/// `album` narrows it to a single title, as an SQL expression, for the
+/// statements that already have one in hand - there is no index behind
+/// `nullif(album, '')` either way, but a statement keyed on one release should
+/// not build a temp b-tree over every title in the library to answer for it.
+pub(crate) fn various_titles(album: Option<&str>) -> String {
+    let narrow = match album {
+        Some(album) => format!("AND {GROUP_ALBUM} IS {album} COLLATE NOCASE"),
+        None => String::new(),
+    };
+    format!(
+        "titles AS (
+             SELECT min({GROUP_ALBUM}) AS album,
+                    count(DISTINCT lower({GROUP_ARTIST})) > 1
+                    AND count(DISTINCT tracks.cover_hash) = 1
+                    AND count(tracks.cover_hash) = count(*) AS various
+               FROM tracks
+              WHERE tracks.missing_since IS NULL
+                AND {GROUP_ALBUM} IS NOT NULL
+                {narrow}
+              GROUP BY {GROUP_ALBUM} COLLATE NOCASE)"
+    )
+}
+
+/// Brings [`various_titles`]'s verdict into scope beside a row of `tracks`.
+///
+/// A `LEFT JOIN`, so a track with no album and a title whose every file is
+/// missing still come through - with `various` NULL, which [`release_artist`]
+/// reads as "not a compilation". The join is over the same `NOCASE` fold the
+/// title was grouped by, so it matches one row and cannot multiply the scan.
+pub(crate) const JOIN_VARIOUS_TITLES: &str =
+    "LEFT JOIN titles ON titles.album = nullif(tracks.album, '') COLLATE NOCASE";
+
+/// The artist half of a release key.
+///
+/// [`GROUP_ARTIST`], except over a title [`various_titles`] calls a
+/// compilation, where it is [`VARIOUS_ARTISTS`] for every one of its files.
+/// That is what makes twelve artists over one release one release: one entry
+/// in the pass's queue, one set of members for the fetched tracklist to be
+/// counted against, and one lookup the user is asked to agree to.
+///
+/// The flag is an aggregate over the title, and a `GROUP BY` may not reference
+/// an aggregate of the group it is forming - which is why it is computed in a
+/// `WITH` and joined back rather than written inline here.
+///
+/// **The browse grid does not use this.** [`release_identity`] is untouched: a
+/// compilation's tiles collapse when the pass writes the album artist, which is
+/// how [87](../../../docs/issues/done/87-one-release-one-tile.md) designed it,
+/// and this only makes the pass able to reach them.
+pub(crate) fn release_artist() -> String {
+    format!("CASE WHEN titles.various THEN '{VARIOUS_ARTISTS}' ELSE {GROUP_ARTIST} END")
+}
+
 impl BrowseKind {
     /// The expression a group is labelled from.
     fn key_sql(self) -> &'static str {
@@ -550,9 +630,11 @@ const RELEASE_ORDER: &str = "coalesce(tracks.disc_no, 1), tracks.track_no, track
 /// 8,000 releases, and the limiter lets one request out every twenty seconds -
 /// so this is what decides how many lookups a selection costs.
 ///
-/// Grouped by the browse view's own expressions, empty strings and all, so
-/// that a release is the same thing here as it is in the grid. Anything else
-/// would be a second notion of what an album is.
+/// Grouped by the release key, empty strings and all, so that a release is the
+/// same thing here as it is everywhere the lookup touches. Anything else would
+/// be a second notion of what an album is - and this is the one place the user
+/// is asked to agree to the number, so being told a compilation is twelve
+/// lookups would be the old answer surviving where it is most visible.
 pub fn release_selections(
     conn: &Connection,
     track_ids: &[i64],
@@ -562,11 +644,18 @@ pub fn release_selections(
     }
 
     let placeholders = vec!["?"; track_ids.len()].join(", ");
+    // Over every title, not just the selected ones: whether a title is a
+    // compilation is a fact about all of its files, and deciding it from the
+    // three the user happened to select would make the count depend on the
+    // selection.
+    let titles = various_titles(None);
+    let artist = release_artist();
     let sql = format!(
-        "SELECT {GROUP_ALBUM}, {GROUP_ARTIST}, tracks.id
-           FROM tracks
+        "WITH {titles}
+         SELECT {GROUP_ALBUM}, {artist}, tracks.id
+           FROM tracks {JOIN_VARIOUS_TITLES}
           WHERE tracks.id IN ({placeholders})
-          ORDER BY {GROUP_ARTIST} COLLATE NOCASE, {GROUP_ALBUM} COLLATE NOCASE, \
+          ORDER BY {artist} COLLATE NOCASE, {GROUP_ALBUM} COLLATE NOCASE, \
                    {RELEASE_ORDER}"
     );
 
@@ -653,11 +742,20 @@ pub fn release_members(
     // selecting it from the browse grid does, and `COLLATE NOCASE` so a release
     // tagged two ways comes back whole: handed one casing this would otherwise
     // return half of it, and the identity would be written to that half.
+    //
+    // Keyed on `release_artist`, so a compilation handed `Various Artists`
+    // matches every file of the title rather than the one whose artist happens
+    // to spell that. Without it a twelve-artist release arrives as twelve
+    // members of one, `pass::look_up` finds the track count disagrees with
+    // every real tracklist, and nothing is ever written.
+    let titles = various_titles(Some("?1"));
+    let artist_key = release_artist();
     let sql = format!(
-        "SELECT tracks.id, tracks.duration_ms, tracks.genre, tracks.cover_hash
-           FROM tracks
+        "WITH {titles}
+         SELECT tracks.id, tracks.duration_ms, tracks.genre, tracks.cover_hash
+           FROM tracks {JOIN_VARIOUS_TITLES}
           WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
-            AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
+            AND {artist_key} IS ?2 COLLATE NOCASE
             AND tracks.missing_since IS NULL
           ORDER BY {RELEASE_ORDER}"
     );
@@ -704,12 +802,17 @@ pub fn release_files(
 ) -> AppResult<Vec<ReleaseFile>> {
     // `IS` and `COLLATE NOCASE` for the reasons `release_members` gives: a
     // release tagged two ways is one release, and half a release moved is the
-    // one state this is written to avoid.
+    // one state this is written to avoid. Keyed on `release_artist` for the
+    // same reason it is there, which is also what files a compilation into one
+    // folder instead of one per artist.
+    let titles = various_titles(Some("?1"));
+    let artist_key = release_artist();
     let sql = format!(
-        "SELECT {RELEASE_FILE_COLUMNS}
-           FROM tracks
+        "WITH {titles}
+         SELECT {RELEASE_FILE_COLUMNS}
+           FROM tracks {JOIN_VARIOUS_TITLES}
           WHERE {GROUP_ALBUM} IS ?1 COLLATE NOCASE
-            AND {GROUP_ARTIST} IS ?2 COLLATE NOCASE
+            AND {artist_key} IS ?2 COLLATE NOCASE
           ORDER BY {RELEASE_ORDER}"
     );
 
@@ -763,10 +866,13 @@ pub fn for_each_release(
 ) -> AppResult<()> {
     // The same order `lookup::pending` reads releases in, so a pass over this
     // and a pass over that one work through the library the same way.
+    let titles = various_titles(None);
+    let artist = release_artist();
     let sql = format!(
-        "SELECT {GROUP_ALBUM}, {GROUP_ARTIST}, {RELEASE_FILE_COLUMNS}
-           FROM tracks
-          ORDER BY {GROUP_ARTIST} IS NULL, {GROUP_ARTIST} COLLATE NOCASE,
+        "WITH {titles}
+         SELECT {GROUP_ALBUM}, {artist}, {RELEASE_FILE_COLUMNS}
+           FROM tracks {JOIN_VARIOUS_TITLES}
+          ORDER BY {artist} IS NULL, {artist} COLLATE NOCASE,
                    {GROUP_ALBUM}  IS NULL, {GROUP_ALBUM}  COLLATE NOCASE,
                    {RELEASE_ORDER}"
     );
@@ -808,11 +914,20 @@ pub fn for_each_release(
 /// By id, so it answers for a row whose tags have just been rewritten - which
 /// is what the unattended pass asks after a lookup wrote a new album and
 /// artist onto every file of a release, and its old key stopped naming it.
+///
+/// The answer goes straight to the mover, so it is the key [`release_files`]
+/// matches on and not [`GROUP_ARTIST`] - otherwise a move under it would find
+/// no files.
 pub fn release_of(
     conn: &Connection,
     track_id: i64,
 ) -> AppResult<Option<(Option<String>, Option<String>)>> {
-    let sql = format!("SELECT {GROUP_ALBUM}, {GROUP_ARTIST} FROM tracks WHERE tracks.id = ?1");
+    let titles = various_titles(Some("(SELECT nullif(album, '') FROM tracks WHERE id = ?1)"));
+    let artist = release_artist();
+    let sql = format!(
+        "WITH {titles}
+         SELECT {GROUP_ALBUM}, {artist} FROM tracks {JOIN_VARIOUS_TITLES} WHERE tracks.id = ?1"
+    );
     Ok(conn
         .query_row(&sql, [track_id], |row| Ok((row.get(0)?, row.get(1)?)))
         .optional()?)
@@ -2385,6 +2500,141 @@ mod tests {
         let members = release_members(&conn, Some("Shields"), Some("Grizzly Bear")).unwrap();
 
         assert_eq!(members.len(), 1);
+    }
+
+    /// Twelve artists, twelve files, one embedded cover, no album artist: the
+    /// compilation
+    /// [99](../../../docs/issues/done/99-a-compilation-is-one-lookup.md) is
+    /// about. Returned with the ids in `RELEASE_ORDER`.
+    fn compilation() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "INSERT INTO covers (hash, mime, bytes) VALUES ('art', 'image/jpeg', x'00')",
+            [],
+        )
+        .unwrap();
+        for index in 1..=12 {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, album, artist, track_no, cover_hash, added_at)
+                 VALUES (?1, 0, 0, '...And In The Darkness Bind Them', ?2, ?3, 'art', 0)",
+                rusqlite::params![format!("/c/{index}.mp3"), format!("Artist {index}"), index],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    /// What `pass::look_up` counts against a fetched tracklist. Twelve of
+    /// twelve or the write never happens: a one-track release can match no
+    /// twelve-track candidate, whatever it scores.
+    #[test]
+    fn a_compilation_hands_over_every_file_of_the_title() {
+        let (_dir, db) = compilation();
+        let conn = db.conn().unwrap();
+
+        let members = release_members(
+            &conn,
+            Some("...And In The Darkness Bind Them"),
+            Some(VARIOUS_ARTISTS),
+        )
+        .unwrap();
+
+        assert_eq!(members.len(), 12);
+        assert_eq!(
+            members.iter().map(|m| m.id).collect::<Vec<_>>(),
+            (1..=12).collect::<Vec<_>>(),
+            "in RELEASE_ORDER, which is the order the tracklist is mapped on"
+        );
+    }
+
+    /// The number the user agrees to before the lookups are spent. Twelve
+    /// would be the old answer surviving in the one place it is asked about.
+    #[test]
+    fn a_compilation_is_one_lookup_rather_than_twelve() {
+        let (_dir, db) = compilation();
+        let conn = db.conn().unwrap();
+        let ids: Vec<i64> = all_track_ids(&conn, &TrackQuery::default()).unwrap();
+
+        let selections = release_selections(&conn, &ids).unwrap();
+
+        assert_eq!(selections.len(), 1);
+        assert_eq!(selections[0].artist.as_deref(), Some(VARIOUS_ARTISTS));
+        assert_eq!(selections[0].track_ids.len(), 12);
+    }
+
+    /// Whether a title is a compilation is a fact about all of its files, so a
+    /// selection of three of them is still one lookup on the whole release -
+    /// and not three releases because three artists were picked.
+    #[test]
+    fn a_partial_selection_of_a_compilation_is_still_one_release() {
+        let (_dir, db) = compilation();
+        let conn = db.conn().unwrap();
+
+        let selections = release_selections(&conn, &[1, 5, 9]).unwrap();
+
+        assert_eq!(selections.len(), 1);
+        assert_eq!(selections[0].artist.as_deref(), Some(VARIOUS_ARTISTS));
+        assert_eq!(
+            release_members(
+                &conn,
+                selections[0].album.as_deref(),
+                selections[0].artist.as_deref()
+            )
+            .unwrap()
+            .len(),
+            12
+        );
+    }
+
+    /// The mover's half of the key, which is what files the twelve into one
+    /// folder rather than twelve.
+    #[test]
+    fn the_mover_is_handed_a_compilation_whole() {
+        let (_dir, db) = compilation();
+        let conn = db.conn().unwrap();
+
+        let mut releases = Vec::new();
+        for_each_release(&conn, |album, artist, files| {
+            releases.push((album, artist, files.len()));
+        })
+        .unwrap();
+
+        assert_eq!(
+            releases,
+            vec![(
+                Some("...And In The Darkness Bind Them".to_owned()),
+                Some(VARIOUS_ARTISTS.to_owned()),
+                12
+            )]
+        );
+        assert_eq!(
+            release_files(
+                &conn,
+                Some("...And In The Darkness Bind Them"),
+                Some(VARIOUS_ARTISTS)
+            )
+            .unwrap()
+            .len(),
+            12
+        );
+    }
+
+    /// The answer the worker hands the mover after a write. It has to be the
+    /// key `release_files` matches on, or the move finds nothing.
+    #[test]
+    fn the_release_a_compilations_track_belongs_to_is_the_compilation() {
+        let (_dir, db) = compilation();
+        let conn = db.conn().unwrap();
+
+        assert_eq!(
+            release_of(&conn, 1).unwrap(),
+            Some((
+                Some("...And In The Darkness Bind Them".to_owned()),
+                Some(VARIOUS_ARTISTS.to_owned())
+            ))
+        );
     }
 
     /// One release spelled two ways, and one artist spelled two ways, which is

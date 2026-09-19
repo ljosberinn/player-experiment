@@ -272,6 +272,49 @@ mod tests {
         survey(conn, steps, 10, &HashSet::new()).unwrap()
     }
 
+    /// The survey is what actually feeds the pass, so this is where a
+    /// compilation being twelve releases of one file would have shown - and
+    /// where its being one now has to hold.
+    #[test]
+    fn a_compilation_is_one_release_to_look_up() {
+        let (_dir, db) = open();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "INSERT INTO covers (hash, mime, bytes) VALUES ('art', 'image/jpeg', x'00')",
+            [],
+        )
+        .unwrap();
+        for track_no in 1..=12 {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, album, artist, title, track_no,
+                                     cover_hash, added_at)
+                 VALUES (?1, 0, 0, 'Bind Them', ?2, ?3, ?4, 'art', 0)",
+                rusqlite::params![
+                    format!("D:\\Inbox\\{track_no:02}.mp3"),
+                    format!("Artist {track_no}"),
+                    format!("Track {track_no}"),
+                    track_no
+                ],
+            )
+            .unwrap();
+        }
+
+        let found = found(
+            &conn,
+            &Steps {
+                look_up: true,
+                root: None,
+            },
+        );
+
+        assert_eq!(found.total, 1);
+        assert_eq!(
+            found.batch[0].release.artist.as_deref(),
+            Some(crate::db::query::VARIOUS_ARTISTS)
+        );
+        assert!(found.batch[0].look_up);
+    }
+
     #[test]
     fn a_release_already_at_its_targets_has_nothing_left_to_do() {
         let (dir, db) = open();

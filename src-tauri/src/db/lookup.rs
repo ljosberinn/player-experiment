@@ -7,12 +7,16 @@
 //! re-searched every miss on every launch would be the best part of a day
 //! that finds nothing, forever.
 //!
-//! Every query keys on `db::query`'s two grouping expressions, folded with
-//! `COLLATE NOCASE` the way the browse grid folds them, because a release has
-//! to be the same thing here as it is in the grid.
+//! Every query keys on the album title and `db::query::release_artist`, folded
+//! with `COLLATE NOCASE` the way the browse grid folds them, because a release
+//! has to be the same thing here as it is everywhere the pass touches it. That
+//! artist is the browse grid's, except over a compilation, where it is
+//! `Various Artists` for every file of the title - so twelve artists over one
+//! release are one row here rather than twelve none of which could be resolved.
 
 use rusqlite::Connection;
 
+use crate::db::query::{release_artist, various_titles, JOIN_VARIOUS_TITLES};
 use crate::error::AppResult;
 
 /// The album and artist of a release, as the grid's expressions produce them.
@@ -53,15 +57,19 @@ impl Status {
     }
 }
 
-/// The grid's two grouping expressions, spelled for this table's queries.
+/// The album half of the release key, spelled for this table's queries.
 ///
-/// Repeated from `db::query` rather than shared: those are private consts of a
-/// module that builds whole statements around them, and making them `pub`
-/// would invite a third notion of what a release is. They have to stay in
-/// step, which is what `a_release_tagged_two_ways_is_one_pending_release` is
-/// for.
+/// Repeated from `db::query` rather than shared: that is a private const of a
+/// module that builds whole statements around it, and making it `pub` would
+/// invite a third notion of what a release is. The two have to stay in step,
+/// which is what `a_release_tagged_two_ways_is_one_pending_release` is for.
+///
+/// The artist half is [`crate::db::query::release_artist`], imported rather
+/// than spelled again, and is the exception for the reason the paragraph above
+/// gives: it is not a const two copies of could be kept honest by eye but an
+/// aggregate over a whole album title, computed in a `WITH` and joined back to
+/// every row.
 const ALBUM: &str = "nullif(tracks.album, '')";
-const ARTIST: &str = "coalesce(nullif(tracks.album_artist, ''), nullif(tracks.artist, ''))";
 
 /// Releases with no row, in the order they would be read, at most `limit` of
 /// them, skipping the first `offset`.
@@ -82,12 +90,20 @@ pub fn pending(conn: &Connection, limit: usize, offset: usize) -> AppResult<Vec<
     // The grouping is a derived table rather than a `HAVING`, because SQLite
     // refuses an aggregate inside a correlated subquery: the label has to
     // exist as a column before it can be matched against a recorded row.
+    //
+    // Two grouped passes over `tracks` now, not one: `titles` decides which
+    // titles are compilations before the releases can be grouped at all. This
+    // is already batched for exactly that reason, so it doubles a cost paid
+    // once per batch rather than adding one paid per release.
+    let titles = various_titles(None);
+    let artist = release_artist();
     let sql = format!(
-        "SELECT album, artist
-           FROM (SELECT min({ALBUM}) AS album, min({ARTIST}) AS artist
-                   FROM tracks
+        "WITH {titles}
+         SELECT album, artist
+           FROM (SELECT min({ALBUM}) AS album, min({artist}) AS artist
+                   FROM tracks {JOIN_VARIOUS_TITLES}
                   WHERE tracks.missing_since IS NULL
-                  GROUP BY {ALBUM} COLLATE NOCASE, {ARTIST} COLLATE NOCASE) AS releases
+                  GROUP BY {ALBUM} COLLATE NOCASE, {artist} COLLATE NOCASE) AS releases
           WHERE NOT EXISTS (
                     SELECT 1 FROM release_lookup
                      WHERE coalesce(release_lookup.album,  '') = coalesce(releases.album,  '') COLLATE NOCASE
@@ -158,12 +174,18 @@ pub fn record(
 /// `OR IGNORE` rather than an upsert: a release the pass has already attempted
 /// keeps that attempt.
 pub fn seed_from_tags(conn: &Connection, now: i64) -> AppResult<usize> {
+    // Keyed the same way the rest of the table is: seeded under `GROUP_ARTIST`
+    // a compilation would get one resolved row per artist, none of which any
+    // later query could ever match, and the release would be searched anyway.
+    let titles = various_titles(None);
+    let artist = release_artist();
     let sql = format!(
-        "INSERT OR IGNORE INTO release_lookup (album, artist, status, release_mbid, attempted_at)
-         SELECT min({ALBUM}), min({ARTIST}), 'resolved', min(tracks.release_mbid), ?1
-           FROM tracks
+        "WITH {titles}
+         INSERT OR IGNORE INTO release_lookup (album, artist, status, release_mbid, attempted_at)
+         SELECT min({ALBUM}), min({artist}), 'resolved', min(tracks.release_mbid), ?1
+           FROM tracks {JOIN_VARIOUS_TITLES}
           WHERE tracks.missing_since IS NULL
-          GROUP BY {ALBUM} COLLATE NOCASE, {ARTIST} COLLATE NOCASE
+          GROUP BY {ALBUM} COLLATE NOCASE, {artist} COLLATE NOCASE
          HAVING count(*) = count(tracks.release_mbid)
             AND count(DISTINCT tracks.release_mbid) = 1"
     );
@@ -249,11 +271,19 @@ pub fn queue(conn: &Connection) -> AppResult<Vec<Queued>> {
     let mut live = vec![false; awaiting.len()];
     let mut queued: Vec<Queued> = Vec::new();
 
+    // The same key `record` wrote, because this scan is also the prune: a row
+    // whose key the scan cannot re-derive is taken for an orphan and deleted.
+    // Scanned under `GROUP_ARTIST`, every compilation queued for review would
+    // be pruned on the first open of the queue and searched again from
+    // scratch.
+    let titles = various_titles(None);
+    let artist = release_artist();
     let sql = format!(
-        "SELECT {ALBUM}, {ARTIST}, tracks.id
-           FROM tracks
+        "WITH {titles}
+         SELECT {ALBUM}, {artist}, tracks.id
+           FROM tracks {JOIN_VARIOUS_TITLES}
           WHERE tracks.missing_since IS NULL
-          ORDER BY {ARTIST} IS NULL, {ARTIST} COLLATE NOCASE,
+          ORDER BY {artist} IS NULL, {artist} COLLATE NOCASE,
                    {ALBUM}  IS NULL, {ALBUM}  COLLATE NOCASE,
                    coalesce(tracks.disc_no, 1), tracks.track_no, tracks.path"
     );
@@ -394,6 +424,7 @@ pub fn attempted(conn: &Connection) -> AppResult<std::collections::HashSet<Key>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::query::VARIOUS_ARTISTS;
     use crate::db::Db;
 
     fn open() -> (tempfile::TempDir, Connection) {
@@ -486,6 +517,245 @@ mod tests {
         track(&conn, "b.mp3", "loveless", "my bloody valentine", None);
 
         assert_eq!(pending(&conn, 10, 0).unwrap().len(), 1);
+
+        // The derived half of the key folds the same way, which is what keeps
+        // this module's `ALBUM` and `db::query`'s expressions in step.
+        cover(&conn, "art");
+        various(&conn, "c.mp3", "Bind Them", "Alice", Some("art"));
+        various(&conn, "d.mp3", "bind them", "Bob", Some("art"));
+
+        assert_eq!(
+            keys(&pending(&conn, 10, 0).unwrap()),
+            [
+                (Some("Loveless"), Some("My Bloody Valentine")),
+                (Some("Bind Them"), Some(VARIOUS_ARTISTS)),
+            ]
+        );
+    }
+
+    /// Cover art a track can point at: `tracks.cover_hash` is a foreign key.
+    fn cover(conn: &Connection, hash: &str) {
+        conn.execute(
+            "INSERT INTO covers (hash, mime, bytes) VALUES (?1, 'image/jpeg', x'00')",
+            [hash],
+        )
+        .unwrap();
+    }
+
+    /// One file of a compilation: its own artist, no album artist at all, and
+    /// whatever cover the caller wants it to share or not share.
+    fn various(conn: &Connection, path: &str, album: &str, artist: &str, cover: Option<&str>) {
+        conn.execute(
+            "INSERT INTO tracks (path, mtime, size, album, artist, cover_hash, added_at)
+             VALUES (?1, 0, 0, ?2, ?3, ?4, 0)",
+            rusqlite::params![path, album, artist, cover],
+        )
+        .unwrap();
+    }
+
+    /// Twelve artists, twelve files, one embedded cover and no album artist
+    /// anywhere: the shape that used to enter the queue as twelve releases of
+    /// one track each, none of which a twelve-track tracklist could ever match.
+    fn compilation(conn: &Connection, cover_of: impl Fn(usize) -> Option<&'static str>) {
+        for index in 0..12 {
+            various(
+                conn,
+                &format!("{index}.mp3"),
+                "...And In The Darkness Bind Them",
+                &format!("Artist {index}"),
+                cover_of(index),
+            );
+        }
+    }
+
+    #[test]
+    fn twelve_artists_over_one_cover_are_one_pending_release() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        compilation(&conn, |_| Some("art"));
+
+        assert_eq!(
+            keys(&pending(&conn, 20, 0).unwrap()),
+            [(
+                Some("...And In The Darkness Bind Them"),
+                Some(VARIOUS_ARTISTS)
+            )]
+        );
+    }
+
+    /// The artwork is the whole discriminator, so two of it is no answer: a
+    /// compilation ripped twice, or art embedded by two tools, stays split
+    /// rather than being guessed at.
+    #[test]
+    fn a_title_whose_files_carry_two_covers_stays_split() {
+        let (_dir, conn) = open();
+        cover(&conn, "one");
+        cover(&conn, "two");
+        compilation(&conn, |index| Some(if index < 6 { "one" } else { "two" }));
+
+        assert_eq!(pending(&conn, 20, 0).unwrap().len(), 12);
+    }
+
+    /// `Above` by Mad Season and `Above` by Pillar: two unrelated albums that
+    /// share a name, which grouping on the title alone would merge.
+    #[test]
+    fn two_albums_of_a_name_stay_two_releases() {
+        let (_dir, conn) = open();
+        cover(&conn, "mad");
+        cover(&conn, "pil");
+        for index in 0..5 {
+            various(
+                &conn,
+                &format!("m{index}.mp3"),
+                "Above",
+                "Mad Season",
+                Some("mad"),
+            );
+            various(
+                &conn,
+                &format!("p{index}.mp3"),
+                "Above",
+                "Pillar",
+                Some("pil"),
+            );
+        }
+
+        assert_eq!(
+            keys(&pending(&conn, 20, 0).unwrap()),
+            [
+                (Some("Above"), Some("Mad Season")),
+                (Some("Above"), Some("Pillar")),
+            ]
+        );
+    }
+
+    /// One cover and one artist is an ordinary album, and nothing about it is
+    /// various.
+    #[test]
+    fn one_artist_under_one_cover_is_keyed_on_that_artist() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        for index in 0..5 {
+            various(
+                &conn,
+                &format!("{index}.mp3"),
+                "Loveless",
+                "My Bloody Valentine",
+                Some("art"),
+            );
+        }
+
+        assert_eq!(
+            keys(&pending(&conn, 20, 0).unwrap()),
+            [(Some("Loveless"), Some("My Bloody Valentine"))]
+        );
+    }
+
+    /// No artwork is not shared artwork. Untagged files are the case most
+    /// likely to share a title by accident, and they carry no signal at all.
+    #[test]
+    fn a_title_no_file_of_which_has_a_cover_does_not_merge() {
+        let (_dir, conn) = open();
+        compilation(&conn, |_| None);
+
+        assert_eq!(pending(&conn, 20, 0).unwrap().len(), 12);
+    }
+
+    /// One file short of the whole title is still short: a release half of
+    /// whose covers are missing is not evidence that they agree.
+    #[test]
+    fn a_title_one_of_whose_files_has_no_cover_does_not_merge() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        compilation(&conn, |index| (index > 0).then_some("art"));
+
+        assert_eq!(pending(&conn, 20, 0).unwrap().len(), 12);
+    }
+
+    /// An untagged group is not a release, whatever its files share.
+    #[test]
+    fn files_with_no_album_are_not_a_compilation() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        for (index, artist) in ["Alice", "Bob", "Carol"].iter().enumerate() {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, artist, cover_hash, added_at)
+                 VALUES (?1, 0, 0, ?2, 'art', 0)",
+                rusqlite::params![format!("{index}.mp3"), artist],
+            )
+            .unwrap();
+        }
+
+        assert_eq!(
+            keys(&pending(&conn, 20, 0).unwrap()),
+            [
+                (None, Some("Alice")),
+                (None, Some("Bob")),
+                (None, Some("Carol"))
+            ]
+        );
+    }
+
+    /// The self-healing property, and the one that stops a re-search: once the
+    /// pass has written `Various Artists` onto every file, the rule no longer
+    /// fires - one album artist is not more than one - and [`GROUP_ARTIST`]
+    /// produces the same literal on its own, so the recorded row still matches.
+    ///
+    /// [`GROUP_ARTIST`]: crate::db::query::GROUP_ARTIST
+    #[test]
+    fn a_release_already_tagged_various_artists_keys_the_same_way() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        compilation(&conn, |_| Some("art"));
+        let release = pending(&conn, 20, 0).unwrap().remove(0);
+        record(&conn, &release, Status::Review, None, Some(0.5), None, 100).unwrap();
+
+        conn.execute("UPDATE tracks SET album_artist = ?1", [VARIOUS_ARTISTS])
+            .unwrap();
+
+        assert!(pending(&conn, 20, 0).unwrap().is_empty());
+        assert_eq!(queue(&conn).unwrap().len(), 1);
+    }
+
+    /// The prune in [`queue`] scans the library and deletes any awaiting row it
+    /// cannot re-derive. Scanned under `GROUP_ARTIST` it would take every
+    /// queued compilation for an orphan.
+    #[test]
+    fn a_queued_compilation_survives_the_prune() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        compilation(&conn, |_| Some("art"));
+        let release = pending(&conn, 20, 0).unwrap().remove(0);
+        record(&conn, &release, Status::Review, None, Some(0.5), None, 100).unwrap();
+
+        let queued = queue(&conn).unwrap();
+
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].artist.as_deref(), Some(VARIOUS_ARTISTS));
+        assert_eq!(queued[0].track_ids.len(), 12);
+        assert_eq!(review_count(&conn).unwrap(), 1);
+    }
+
+    /// Seeded under `GROUP_ARTIST` a compilation would get one resolved row per
+    /// artist, none of which any later query could match - and it would be
+    /// searched anyway, which is the one thing the seed exists to prevent.
+    #[test]
+    fn a_compilation_already_tagged_by_picard_is_seeded_as_one_release() {
+        let (_dir, conn) = open();
+        cover(&conn, "art");
+        compilation(&conn, |_| Some("art"));
+        conn.execute("UPDATE tracks SET release_mbid = 'mb-1'", [])
+            .unwrap();
+
+        assert_eq!(seed_from_tags(&conn, 100).unwrap(), 1);
+        assert_eq!(
+            attempted(&conn).unwrap(),
+            std::collections::HashSet::from([fold(
+                &Some("...and in the darkness bind them".to_owned()),
+                &Some(VARIOUS_ARTISTS.to_ascii_lowercase()),
+            )])
+        );
+        assert!(pending(&conn, 20, 0).unwrap().is_empty());
     }
 
     #[test]

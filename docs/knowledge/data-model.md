@@ -193,9 +193,10 @@ pass re-searching eight thousand releases. **No row means never attempted**, and
 nothing clears a row — a pass that re-searched every miss on every launch would
 be the best part of a day that finds nothing, forever.
 
-- **The key is `db::query`'s two grouping expressions**, so a release is the
-  same thing here as it is in the browse grid, and so retagging invalidates by
-  itself: change the album or the artist and the key changes.
+- **The key is the album title and `db::query::release_artist`**, so a release
+  is the same thing here as it is everywhere else the pass touches it, and so
+  retagging invalidates by itself: change the album or the artist and the key
+  changes.
 - **A `PRIMARY KEY (album, artist)` would not hold it.** SQLite permits NULLs in
   a rowid table's primary key, so an untagged release inserts twice; a UNIQUE
   index over `coalesce(album, ''), coalesce(artist, '')` is what does. Both
@@ -208,6 +209,39 @@ be the best part of a day that finds nothing, forever.
   call**, so a re-install or a rescan of an already-tagged library pays nothing.
   Files that name two different pressings are left pending — that disagreement
   is what the lookup is for.
+
+### A compilation is one release, not one per artist
+
+`release_artist` is the browse grid's `GROUP_ARTIST` except over a title whose
+present files carry **more than one artist and exactly one `cover_hash`, with
+none missing** — there it is the literal `Various Artists` for every file. The
+artwork is the discriminator: twelve artists over one compilation share one
+embedded cover, and `Above` by Mad Season and `Above` by Pillar do not, so
+grouping on the title alone would merge them. It is an aggregate over a whole
+title, so it is computed in a `WITH` and joined back rather than written inline
+— a `GROUP BY` may not reference an aggregate of the group it is forming.
+
+Without it a twelve-artist compilation with no album artist entered the pass as
+twelve releases of one file each, `pass::look_up` found the track count
+disagreed with every real tracklist, and nothing was ever written — the pass
+meant to collapse those tiles was split by the same key the grid is split by.
+
+- **The literal is the key, and it self-heals.** It is exactly what the pass
+  writes into every file's album artist on a resolve, so afterwards
+  `GROUP_ARTIST` yields it on its own and the recorded row still matches. After
+  a `review` or a `none` the files are unchanged and the rule derives the same
+  literal, so the release is not re-searched either.
+- **The browse grid is untouched.** `release_identity` still groups the tiles,
+  which collapse when the pass writes the album artist. The fix is not
+  retroactive at migration — a split title collapses as the pass reaches it.
+- **The files move.** The mover keys on `release_artist` too, so a compilation
+  is filed into one `Various Artists` folder instead of one folder per artist.
+  On a library with the folder turned on this is the change's largest visible
+  consequence.
+- **What it does not fix:** a title whose files do not share one cover — a
+  compilation ripped twice, art embedded by two tools, or genuinely two albums
+  of a name. `release_type` cannot help; `tags::primary_type` discards secondary
+  types, so no row ever carries `compilation`.
 
 ### The four statuses, and what leaves the queue
 
