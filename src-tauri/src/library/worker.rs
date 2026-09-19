@@ -824,18 +824,31 @@ fn next_sweep(previous: Duration, attempted: usize) -> Duration {
 /// cannot be told from a line about a write is worse than no line.
 ///
 /// `retries` only when there were some, because there almost never are and a
-/// `retries=0` on eight thousand lines says nothing.
+/// `retries=0` on eight thousand lines says nothing. `sole` the same, and it
+/// is what makes the `score` readable: a write carrying it cleared the bar on
+/// the search score, so its `score` - the fetched one - is below the
+/// threshold, and without the field a tuning pass would read a broken bar.
 fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
     let fields = match &outcome.verdict {
         Verdict::Written {
             mbid,
             score,
             tracks,
-        } => Fields::new()
-            .add("status", if dry_run { "would-write" } else { "written" })
-            .add("mbid", mbid)
-            .add("score", format!("{score:.3}"))
-            .add("tracks", tracks),
+            sole,
+        } => {
+            let fields = Fields::new()
+                .add("status", if dry_run { "would-write" } else { "written" })
+                .add("mbid", mbid)
+                .add("score", format!("{score:.3}"))
+                .add("tracks", tracks);
+            // Only where it is true, and for the same reason as `retries`:
+            // almost every line is a `false` that says nothing.
+            if *sole {
+                fields.add("sole", true)
+            } else {
+                fields
+            }
+        }
         Verdict::Queued { score, candidates } => Fields::new()
             .add("status", if dry_run { "would-queue" } else { "queued" })
             .add("score", format!("{score:.3}"))

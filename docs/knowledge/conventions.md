@@ -48,10 +48,12 @@
 - **A match is confirmed by hand unless it is not a guess.** The one place the
   app writes tags nobody approved is the release lookup pass, and only above
   `tagsource::score::UNATTENDED_THRESHOLD` — a release whose track count, track
-  order and per-track durations all agree with MusicBrainz. Below it nothing is
+  order and per-track durations all agree with MusicBrainz, or whose track count
+  and title match the only candidate MusicBrainz returned. Below it nothing is
   written and a person decides. Confirming eight thousand certain matches by
-  hand is not review, it is clicking; the threshold is where the line sits and
-  it is a constant with its reasoning beside it, not a setting.
+  hand is not review, it is clicking, and a queue entry offering a choice of one
+  is the same clicking; the threshold is where the line sits and it is a
+  constant with its reasoning beside it, not a setting.
 - **One bad file does not cost the good ones.** A locked file mid-batch is
   counted and reported; the rest are written.
 - **A destructive action names the cost that is easy to miss**, and Cancel takes
