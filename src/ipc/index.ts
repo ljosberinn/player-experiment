@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { type DragDropEvent, getCurrentWebview } from "@tauri-apps/api/webview";
+import type { DragDropEvent } from "@tauri-apps/api/webview";
 import type { AlbumBitrate } from "./bindings/AlbumBitrate";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { BackgroundTask } from "./bindings/BackgroundTask";
@@ -852,8 +852,13 @@ export function moveInPlaylist(
  *
  * The webview's own drag and drop is off for the whole window while this
  * works - `dragDropEnabled` replaces one with the other, see `gotchas.md`.
+ *
+ * The webview API is imported lazily, as `zoomStore` imports it: statically,
+ * it would be pulled into the entry chunk and that store's own dynamic import
+ * would stop splitting anything.
  */
-export function onFileDrop(handler: (event: DragDropEvent) => void): Promise<UnlistenFn> {
+export async function onFileDrop(handler: (event: DragDropEvent) => void): Promise<UnlistenFn> {
+  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
   return getCurrentWebview().onDragDropEvent((event) => handler(event.payload));
 }
 
