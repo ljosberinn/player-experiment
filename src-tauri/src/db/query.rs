@@ -191,6 +191,16 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
         }
     }
 
+    // The resolved member list rather than a join on `genre_edges`: see
+    // [`crate::db::genres::members`] for why the tree and the edges disagree.
+    // Costly enough to be worth knowing about - it loads the tree and reads
+    // every distinct genre, and `tracks.genre` has no index - so it is built
+    // only when the slot is filled.
+    if let Some(genre) = &query.genre {
+        conditions.push("tracks.genre IN (SELECT value FROM json_each(?))".to_owned());
+        params.push(Box::new(crate::db::genres::members(conn, genre)?));
+    }
+
     let searching = fts.is_some();
     if let Some(match_expr) = fts {
         from_where.push_str(" JOIN tracks_fts ON tracks_fts.rowid = tracks.id");
@@ -1765,6 +1775,28 @@ mod tests {
     /// A library with the shapes that break naive grouping: a compilation
     /// whose per-track artists differ, an album split across two discs, an
     /// album name reused by a different artist, and an untagged file.
+    /// Three tags, two of which resolve under `black metal` in migration 11's
+    /// tree: the label itself and a child the suffix derivation reaches.
+    /// `Techno` resolves elsewhere and is what the filter must drop.
+    fn subtree() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        for (path, genre) in [
+            ("/g/1.mp3", "Black Metal"),
+            ("/g/2.mp3", "Atmospheric Black Metal"),
+            ("/g/3.mp3", "Techno"),
+        ] {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, title, genre, added_at)
+                 VALUES (?1, 1, 1, ?1, ?2, 0)",
+                rusqlite::params![path, genre],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
     fn browsable() -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
@@ -2121,6 +2153,29 @@ mod tests {
             total, 3,
             "the playlist has three tracks, so its albums hold three"
         );
+    }
+
+    /// The Library tab's genre slot, which the Listening tab has had since 75.
+    /// A tag reaches a label through normalization, aliases and the suffix
+    /// derivation, so the filter has to resolve rather than string-match.
+    #[test]
+    fn a_genre_filter_takes_everything_below_it() {
+        let (_dir, db) = subtree();
+        let conn = db.conn().unwrap();
+
+        let query = TrackQuery {
+            genre: Some("Black Metal".to_owned()),
+            sort_by: SortField::Path,
+            limit: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            paths(query_tracks(&conn, &query).unwrap()),
+            ["/g/1.mp3", "/g/2.mp3"],
+            "the drilled genre itself and a tag that resolves under it"
+        );
+        assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
     }
 
     #[test]

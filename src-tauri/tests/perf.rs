@@ -647,4 +647,18 @@ fn every_library_aggregate_costs_what_a_browse_grouping_does() {
     assert_under("tag health", BUDGET, || {
         assert_eq!(stats::tag_health(&conn, &q).unwrap().tracks, ROWS as u32);
     });
+
+    // 84d's drill-down, which every panel above pays once. `genres::members`
+    // loads the tree and reads every distinct genre, and `tracks.genre` has no
+    // index - so this is the one clause in `scope` whose cost is a table scan
+    // plus a walk rather than an index seek. 17ms against 10,000 rows on a
+    // developer machine, nearly all of it the tree; the budget is what says
+    // whether it ever needs the `tag_values` list instead.
+    let drilled = TrackQuery {
+        genre: Some("Genre03".to_owned()),
+        ..TrackQuery::default()
+    };
+    assert_under("tag health under a genre", BUDGET, || {
+        assert!(stats::tag_health(&conn, &drilled).unwrap().tracks > 0);
+    });
 }

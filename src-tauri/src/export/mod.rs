@@ -272,6 +272,7 @@ fn all_tracks(
                 // Narrowing it to whatever album happened to be open would make
                 // the file silently partial.
                 browse: None,
+                genre: None,
             },
         )?;
         let count = page.len() as u32;
@@ -312,6 +313,7 @@ fn count_tracks_in(conn: &Connection, playlist_id: Option<i64>) -> AppResult<u32
             limit: query::MAX_LIMIT,
             search: None,
             browse: None,
+            genre: None,
         },
     )
 }

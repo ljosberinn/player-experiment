@@ -163,9 +163,33 @@ describe("libraryQuery", () => {
     expect(query.search).toBeNull();
   });
 
-  it("puts the genre facet through browse, which is where genre filtering is", () => {
+  it("puts the genre facet in the genre slot, which is a subtree and not a tag", () => {
     const query = libraryQuery(filters({ genre: "black metal" }), view);
 
-    expect(query.browse).toEqual({ kind: "genres", key: "black metal", secondary: null });
+    expect(query.genre).toBe("black metal");
+    expect(query.browse).toBeNull();
+  });
+
+  it("lets the deepest genre crumb beat the facet", () => {
+    const query = libraryQuery(filters({ genre: "metal" }), view, {
+      tab: "library",
+      crumbs: [
+        { kind: "genre", key: "black metal" },
+        { kind: "genre", key: "atmospheric black metal" },
+      ],
+    });
+
+    expect(query.genre).toBe("atmospheric black metal");
+  });
+
+  it("composes a genre with the view's drill-in rather than replacing it", () => {
+    const album = { kind: "albums", key: "Shields", secondary: "Grizzly Bear" } as const;
+    const query = libraryQuery(filters({ scope: { kind: "view" }, genre: "rock" }), {
+      ...view,
+      browse: album,
+    });
+
+    expect(query.genre).toBe("rock");
+    expect(query.browse).toEqual(album);
   });
 });
