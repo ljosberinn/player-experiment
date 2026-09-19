@@ -81,6 +81,9 @@ describe("the Statistics view", () => {
   it("draws a panel per question under the tiles", async () => {
     for (const title of [
       "Streaks",
+      "Plays over time",
+      "New artists",
+      "When you listen",
       "Top artists",
       "Top albums",
       "Top tracks",
@@ -101,6 +104,32 @@ describe("the Statistics view", () => {
     });
 
     await capture("statistics-listening");
+  });
+
+  it("draws the week the plays fall in", async () => {
+    const clock = panel("When you listen");
+    // Cells, not a skeleton: the clock is 168 counts whatever was played, so
+    // the grid existing says the aggregate landed, and the seed's quiet
+    // nights are what make some of it the ramp's empty step.
+    await browser.waitUntil(async () => (await clock.$$("rect.chart-cell").length) === 168, {
+      timeout: 30_000,
+      timeoutMsg: "the week clock never arrived",
+    });
+    await expect(clock.$("rect.chart-cell[data-step='0']")).toBeExisting();
+    await expect(clock.$("rect.chart-cell[data-step='4']")).toBeExisting();
+    // 24 hour bars under the grid, off the same answer.
+    await expect(clock.$$("rect.chart-bar")).toBeElementsArrayOfSize(24);
+
+    // Months: the seeded history is late 2023 and `library`'s one real play
+    // is today, and the axis runs the whole span between them.
+    const overTime = panel("Plays over time");
+    await browser.waitUntil(async () => (await overTime.$$("rect.chart-bar").length) > 1, {
+      timeout: 30_000,
+      timeoutMsg: "plays over time never drew",
+    });
+
+    await clock.scrollIntoView({ block: "center" });
+    await capture("statistics-listening-week");
   });
 
   it("drills into an artist by clicking its bar", async () => {

@@ -403,7 +403,7 @@ then simplest first. The gaps below are those issues.
 | 80 | Statistics shell — sidebar, tabs, filter bar, `StatsPath` history, both tile rows | 70, 77, 78 |
 | 84a | Listening lists — `BarList`, top-N, plays table, streaks, the residue, the CSV path | 78, 80 |
 | 84b | Library panels — `Bar`, the histograms, the re-download list, tag health | 80, 84a |
-| 84c | Listening charts — `Heatmap`, the time-shaped panels | 84a, 84b |
+| 84c | Listening charts — `Heatmap`, the accent ramp, the time-shaped panels | 84a, 84b |
 | 84d | Genre donut — `Donut`, the drill, override editing | 75, 84b |
 
 70, 75 and 76 are independent and belong in parallel worktrees. 77 and 78 both
@@ -433,6 +433,11 @@ writer, and its drill cannot narrow the tab without a genre-subtree filter
 pair and that filter, and 84b is everything that only reads. **`Bar` moved from
 84c to 84b** with the three histogram callers that come first, which is why
 84c now stacks on it.
+
+**84c drew hour-of-day into the heatmap's panel**, since both are one
+`week_clock` answer and two panels would be two scans. Plays over time and new
+artists take their bucket from the span rather than the range id, so all time
+is cut by the history's own length.
 
 ## Open, and deliberately so
 

@@ -1,9 +1,12 @@
+import { statsFirsts, statsPlaysOverTime } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { ListeningTiles } from "./ListeningTiles";
 import { HeardNeverOwned } from "./panels/HeardNeverOwned";
 import { RecentPlays } from "./panels/RecentPlays";
+import { SeriesPanel } from "./panels/SeriesPanel";
 import { StreakTiles } from "./panels/StreakTiles";
 import { TopPanel } from "./panels/TopPanel";
+import { WeekClock } from "./panels/WeekClock";
 
 /**
  * What the Listening tab draws, and what it stops drawing once drilled in.
@@ -23,11 +26,18 @@ export function ListeningPanels() {
 
   // An artist's top artist is themselves, and an album's is whoever made it.
   const inArtist = crumbs.some((crumb) => crumb.kind === "artist");
+  // Either way the new artists are one artist, once.
+  const inAlbum = crumbs.some((crumb) => crumb.kind === "album");
 
   return (
     <>
       <ListeningTiles />
       <StreakTiles />
+      <SeriesPanel title="Plays over time" aggregate={statsPlaysOverTime} noun="Plays" />
+      {!inArtist && !inAlbum && (
+        <SeriesPanel title="New artists" aggregate={statsFirsts} noun="Artists" />
+      )}
+      <WeekClock />
       {!inArtist && <TopPanel dimension="artist" />}
       <TopPanel dimension="album" />
       <TopPanel dimension="track" />

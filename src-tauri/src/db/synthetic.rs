@@ -90,6 +90,10 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
 /// second apart: a quarter of a million plays inside three days would measure
 /// the day buckets and the streak walk at a cardinality no history has.
 ///
+/// **And they have a weekly shape**: quiet nights, busy evenings, weekends
+/// busier than weekdays. Evenly spaced, every hour of the week held the same
+/// count, and the week clock the e2e suite photographs was a flat field.
+///
 /// **One play in three cannot match anything.** A seed that resolved
 /// completely would make 77's `coverage` untestable and would make [`resolve`]
 /// look fast for the wrong reason - the guarded `UPDATE` only pays for the
@@ -102,13 +106,15 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
 ///
 /// [`resolve`]: crate::db::plays::resolve
 pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
-    /// 2023-11-14, far enough from zero that local-time bucketing has a real
-    /// date to work with.
-    const EPOCH: i64 = 1_700_000_000;
-    /// About ten minutes, and not a divisor of an hour or a day, so the plays
-    /// land on every hour and weekday rather than on a few of them. 250,000
-    /// plays span nearly five years.
-    const SPACING: i64 = 613;
+    /// Monday 2023-11-13, 00:00 UTC, far enough from zero that local-time
+    /// bucketing has a real date to work with. A Monday so that cell 0 of
+    /// [`week_cells`] is one, in UTC at least.
+    const EPOCH: i64 = 1_699_833_600;
+    /// 250,000 plays then span nearly five years.
+    const PER_WEEK: u32 = 1_000;
+    const WEEK: i64 = 7 * 86_400;
+
+    let cells = week_cells(PER_WEEK);
 
     let tracks: u32 = conn.query_row(
         "SELECT count(*) FROM tracks WHERE path LIKE 'synthetic://%'",
@@ -142,7 +148,7 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
                 )
             };
             stmt.execute(rusqlite::params![
-                EPOCH + i64::from(index) * SPACING,
+                EPOCH + i64::from(index / PER_WEEK) * WEEK + cells(index % PER_WEEK),
                 artist,
                 title,
                 album,
@@ -153,6 +159,45 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
     tx.commit()?;
 
     Ok(count)
+}
+
+/// Where in its week the `slot`th of `per_week` plays falls, in seconds from
+/// Monday 00:00.
+///
+/// The week is 168 hour cells, Monday first, each given a share of the plays
+/// by a fixed weight. A cell's plays are spread evenly across its hour, so no
+/// two slots share a second as long as no cell holds more than 3,600 of them.
+fn week_cells(per_week: u32) -> impl Fn(u32) -> i64 {
+    /// Midnight first. Nothing between two and seven, most in the evening.
+    const HOURS: [u32; 24] = [
+        3, 1, 0, 0, 0, 0, 0, 1, 2, 3, 3, 3, 4, 4, 3, 3, 4, 5, 6, 8, 9, 9, 7, 5,
+    ];
+    /// Monday first. Friday and the weekend busier than the working week.
+    const DAYS: [u32; 7] = [2, 2, 2, 2, 3, 4, 3];
+
+    let weights: Vec<u64> = DAYS
+        .iter()
+        .flat_map(|day| HOURS.iter().map(move |hour| u64::from(day * hour)))
+        .collect();
+    let total: u64 = weights.iter().sum();
+    // `starts[c]` is the first slot in cell `c`; an unweighted cell starts
+    // where the next one does and is never picked.
+    let starts: Vec<u32> = weights
+        .iter()
+        .scan(0_u64, |seen, weight| {
+            let start = *seen * u64::from(per_week) / total;
+            *seen += weight;
+            Some(start as u32)
+        })
+        .chain(std::iter::once(per_week))
+        .collect();
+
+    move |slot| {
+        let cell = starts.partition_point(|&start| start <= slot) - 1;
+        let first = starts[cell];
+        let held = starts[cell + 1] - first;
+        cell as i64 * 3_600 + i64::from(slot - first) * 3_600 / i64::from(held)
+    }
 }
 
 #[cfg(test)]
@@ -225,6 +270,48 @@ mod tests {
         // make `coverage` untestable and `resolve` look fast for the wrong
         // reason.
         assert_eq!(matched, 200);
+    }
+
+    #[test]
+    fn seeded_plays_have_a_weekly_shape() {
+        let (_dir, db) = temp_db();
+        let mut conn = db.conn().unwrap();
+        seed_plays(&mut conn, 7_000).unwrap();
+
+        // In UTC, where the seed is laid out; the local-time week clock sees
+        // the same shape shifted by the offset.
+        let hour = |hour: u32| -> u32 {
+            conn.query_row(
+                "SELECT count(*) FROM plays
+                 WHERE CAST(strftime('%H', started_at, 'unixepoch') AS INTEGER) = ?",
+                [hour],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(hour(4), 0, "the small hours are empty");
+        assert!(hour(20) > hour(12) * 2, "evenings outweigh middays");
+
+        let weekday = |day: &str| -> u32 {
+            conn.query_row(
+                "SELECT count(*) FROM plays WHERE strftime('%w', started_at, 'unixepoch') = ?",
+                [day],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert!(weekday("6") > weekday("1"), "Saturday outweighs Monday");
+    }
+
+    #[test]
+    fn a_weeks_slots_fill_its_hours_without_sharing_a_second() {
+        let at = week_cells(1_000);
+        let seconds: Vec<i64> = (0..1_000).map(&at).collect();
+
+        assert!(seconds.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(seconds
+            .iter()
+            .all(|&second| (0..7 * 86_400).contains(&second)));
     }
 
     #[test]
