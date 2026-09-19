@@ -39,8 +39,11 @@ Both sides carry a title and a length — `Track.title` and `Track.duration_ms`
 against `RemoteTrack.title` and `RemoteTrack.durationMs`. Score each (file,
 remote track) pair over duration closeness, title similarity and track-number
 agreement, then take pairs best-first with each file and each remote track used
-once. Neither side exceeds sixty entries, so an O(n²) sweep is free and there is
-no reason to reach for anything cleverer.
+once. Both sides are one release, so an O(n²) sweep is free.
+
+A file with no title tag is scored on its filename, less a leading track
+number — untagged files are the ones a lookup is run for. Equal scores go to
+the pair nearest the diagonal, so files nothing tells apart pair by position.
 
 **A pair below a floor stays `null`.** The row already reads "Nothing to write"
 and the arrows already repair it. A wrong pairing is worse than no pairing,
@@ -68,13 +71,12 @@ releases the pass writes without asking, which is a decision about
 `UNATTENDED_THRESHOLD` and belongs to a phase that can measure it with
 `APEX_LOOKUP_DRY_RUN`.
 
-**Not the row order**, which is cosmetic once the pairing is by content. One
-line of it is still worth taking: `RELEASE_ORDER` hoisting unnumbered files
-above track 2 makes the arrows harder to aim, and `tracks.track_no IS NULL`
-ahead of `tracks.track_no` is the whole change.
+**Not the row order.** `RELEASE_ORDER` also orders `release_members`, whose
+durations the unattended score zips positionally, so sorting unnumbered files
+last changes that score for exactly the releases carrying them — the same
+deferred decision.
 
-It touches `mapping.ts` and nothing else, so it runs in a worktree beside
-[89](../done/89-the-lookup-window-stops-resizing.md), which touches the component.
+It touches `mapping.ts` and nothing else.
 
 Testing: `mapping.test.ts` — a release whose numbers agree asserted to pair as
 it does today; a flattened two-disc set with duplicate numbers asserted to pair
