@@ -1595,6 +1595,16 @@ th.status {
   gap: 10px;
 }
 
+/* Outlined the way a sidebar drop target is, and for a reason the sidebar does
+   not have: while `dragDropEnabled` is on the cursor reads "copy" over the
+   whole window, so this is the only thing that says where a file would land.
+   Offset outwards, since the block's own content goes to its edges. */
+.tag-cover.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+
 .tag-cover-preview {
   display: flex;
   align-items: center;

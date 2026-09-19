@@ -5,8 +5,8 @@ Known, decided, and not scheduled. Anything with work attached lives in
 
 - **No folder drag-and-drop ingest.** Adding music is a folder picker. What made
   this a limitation rather than a task was that `dragDropEnabled` had to stay
-  `false` for in-app dragging to work at all; phase 74 removed that, and the
-  work now lives in
+  `false` for in-app dragging to work at all; phase 74 removed that and 85a
+  turned the flag on, and the work now lives in
   [85b](../issues/upcoming/85b-drop-files-and-folders.md).
 - **No crash reporting off the machine.** A local panic log covers the failure
   class; a network reporter contradicts the product.
@@ -105,8 +105,10 @@ Known, decided, and not scheduled. Anything with work attached lives in
   Chromium's implicit pointer capture for touch and pen would undo.
 - **The frameless window is not covered end to end** — the e2e build pins
   `decorations: true` or the embedded driver never sees the webview.
-- **e2e cannot perform an OS drag** — a file from Explorer onto the artwork
-  square. In-app dragging is covered from a dispatched `PointerEvent` sequence
+- **e2e cannot perform an OS drag** — Explorer's own drag loop onto the window.
+  What the drag produces is emitted instead, so only the leg between the mouse
+  and `wry` is uncovered. In-app dragging is covered from a dispatched
+  `PointerEvent` sequence
   down. No test asserts that sound came out, or that the OS delivers a media key
   to an unfocused window.
 - **`npm audit` reports a dev-only advisory** in `serialize-javascript` via the

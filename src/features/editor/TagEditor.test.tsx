@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { PhysicalPosition } from "@tauri-apps/api/dpi";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
 import { suggestTagValues } from "../../ipc";
+import { routeFileDrop } from "../shell/fileDrop";
 import { TagEditor } from "./TagEditor";
 
 vi.mock("../../ipc", () => ({
@@ -58,21 +60,37 @@ function open(
   return { onSave, onCancel, onPickCover, onDropCover, user: userEvent.setup() };
 }
 
-/**
- * A drag payload jsdom cannot make: it implements no `DataTransfer` at all,
- * so what the handlers read has to be handed to them.
- */
-function dragPayload(types: string[], files: File[] = []) {
-  return { types, files, getData: () => "" };
-}
-
-const jpeg = () =>
-  new File([new Uint8Array([0xff, 0xd8, 0xff])], "cover.jpg", {
-    type: "image/jpeg",
-  });
-
 /** The block that takes the drop, which is the whole artwork row. */
 const coverBlock = () => document.querySelector(".tag-cover") as HTMLElement;
+
+/**
+ * Where the block is, which jsdom otherwise reports as a zero-sized rect at the
+ * origin - and a drop is routed by hit-testing exactly that rect.
+ */
+function placeCoverBlock(): void {
+  coverBlock().getBoundingClientRect = () =>
+    ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100 }) as DOMRect;
+}
+
+/**
+ * A file dragged in from the OS, over the block or somewhere else in the
+ * window, as the window's listener would route it.
+ *
+ * The editor is no longer handed a `DataTransfer` by a `drop` event: since
+ * phase 85a the window takes OS drops natively and there is no HTML5 drag and
+ * drop in it at all, so a drop is a position and a path.
+ */
+function dragOverCover(over: boolean, paths = ["C:/art/sleeve.png"]): void {
+  placeCoverBlock();
+  const position = new PhysicalPosition({ x: over ? 50 : 500, y: 50 });
+  act(() => routeFileDrop({ type: "enter", paths, position }, 1));
+}
+
+function dropOnCover(over: boolean, paths = ["C:/art/sleeve.png"]): void {
+  dragOverCover(over, paths);
+  const position = new PhysicalPosition({ x: over ? 50 : 500, y: 50 });
+  act(() => routeFileDrop({ type: "drop", paths, position }, 1));
+}
 
 const savedEdit = (onSave: ReturnType<typeof vi.fn>) => onSave.mock.calls.at(-1)?.[0] as TagEdit;
 
@@ -249,7 +267,7 @@ describe("TagEditor", () => {
   it("changes the URL for a second choice, since the file name never does", async () => {
     const { user } = open([track()], "C:/cache/chosen-cover.png");
 
-    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    dropOnCover(true);
     await waitFor(() =>
       expect(document.querySelector(".tag-cover-art")).toHaveAttribute("src", "staged-cover-url:1"),
     );
@@ -298,37 +316,47 @@ describe("TagEditor", () => {
   it("attaches an image dropped on the artwork", async () => {
     const { onSave, onDropCover, user } = open([track()]);
 
-    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    dropOnCover(true, ["C:/art/sleeve.png"]);
 
     await screen.findByText("New artwork selected.");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    // The drop crosses as bytes and comes back a path, so what is saved is the
-    // same shape the picker produces - `CoverEdit` never learns a drop
-    // happened.
-    expect(onDropCover).toHaveBeenCalledWith(expect.any(File));
+    // The drop carries a path, which is what the picker gives too - so what is
+    // saved is one shape and `CoverEdit` never learns a drop happened.
+    expect(onDropCover).toHaveBeenCalledWith("C:/art/sleeve.png");
     expect(savedEdit(onSave).cover).toEqual({
       kind: "replace",
       path: "C:/staged/dropped-cover.png",
     });
   });
 
-  it("accepts a file drag and nothing else", () => {
-    open([track()]);
+  it("takes the first path of a multi-file drop", async () => {
+    const { onDropCover } = open([track()]);
 
-    // The app's last HTML5 drop target, and deliberately so: a song dragged
-    // out of the table is a pointer gesture that carries no `DataTransfer` at
-    // all, so what is left to tell apart is a file from anything else.
-    const file = fireEvent.dragOver(coverBlock(), {
-      dataTransfer: dragPayload(["Files"]),
-    });
-    const text = fireEvent.dragOver(coverBlock(), { dataTransfer: dragPayload(["text/plain"]) });
+    dropOnCover(true, ["C:/art/front.png", "C:/art/back.png"]);
+    await screen.findByText("New artwork selected.");
 
-    // `fireEvent` returns false once something called `preventDefault`, which
-    // on `dragover` is the whole of "this is a drop target": a drag that is
-    // not accepted here never becomes a drop.
-    expect(file).toBe(false);
-    expect(text).toBe(true);
+    // One square, one image. The rest of a selection is not artwork for
+    // anything the editor knows about.
+    expect(onDropCover).toHaveBeenCalledExactlyOnceWith("C:/art/front.png");
+  });
+
+  it("outlines itself only while a file is over it", () => {
+    const { onDropCover } = open([track()]);
+
+    dragOverCover(true);
+
+    // The one signal there is: `dragDropEnabled` makes the cursor read "copy"
+    // over the whole window, whatever is under it.
+    expect(coverBlock()).toHaveClass("drop-target");
+
+    dragOverCover(false);
+
+    expect(coverBlock()).not.toHaveClass("drop-target");
+
+    dropOnCover(false);
+
+    expect(onDropCover).not.toHaveBeenCalled();
   });
 
   it("says why a dropped image was refused, and still lets a typed field save", async () => {
@@ -348,7 +376,7 @@ describe("TagEditor", () => {
     );
     const user = userEvent.setup();
 
-    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    dropOnCover(true);
     await screen.findByText("Cover art has to be a JPEG or a PNG.");
 
     // A refused image is not a reason to hold a typed field hostage: the cover
@@ -372,7 +400,7 @@ describe("TagEditor", () => {
     );
     const user = userEvent.setup();
 
-    fireEvent.drop(coverBlock(), { dataTransfer: dragPayload(["Files"], [jpeg()]) });
+    dropOnCover(true);
     await screen.findByRole("alert");
 
     // The picker is the other way to choose artwork, and a sentence about the

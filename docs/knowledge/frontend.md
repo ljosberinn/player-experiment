@@ -429,10 +429,9 @@ absences are what nobody notices coming back — hence the guards in
   `DRAG_THRESHOLD_PX` (on `Math.hypot`, because a row drag is vertical for a
   reorder and horizontal for the sidebar), swallowing the `click` that follows a
   `pointerup`, `pointercancel` and Escape, and edge auto-scroll.
-- The tag editor's artwork square is the one HTML5 drop target left, because an
-  OS file drop is the one thing a pointer gesture inside the window cannot be.
-  `dragover` sees only the payload's *types*, which is all it needs now that no
-  song drag carries a `DataTransfer` at all.
+- There is no HTML5 drag and drop in the window at all, in either direction:
+  since phase 85a `dragDropEnabled` is on and the webview's own drop target is
+  revoked. An in-app drag is a pointer gesture; an OS drop is the native event.
 - The tag editor's square shows a pending replacement from `cover://staged`,
   not from the library — it has no hash until it is saved. The URL carries a
   counter because the staging file's name never changes; a pending *removal*
@@ -475,12 +474,13 @@ absences are what nobody notices coming back — hence the guards in
   nothing from it: something mounted for the whole session has to subscribe,
   and doing it in the dialog would mean subscribing as the write it reports on
   is already starting.
-- `useNativeFeel` swallows any drag the app did not claim. A file dropped where
-  nothing handles it is *opened* by the webview, which navigates the window away
-  from the app; the guard runs at the window, skips anything a target already
-  called `preventDefault` on, and sets `dropEffect = "none"` so the pointer
-  still reads honestly outside a target. Since phase 74 the artwork square is
-  the only target it is guarding.
+- OS file drops arrive as one window-wide event and are routed by
+  `shell/fileDrop.ts`: targets register an element while they are mounted, the
+  position is divided by `devicePixelRatio` to reach CSS pixels, and the hit is
+  a rect test. `over` fires on every pointer move, so a target hears the hover
+  only when it changes. A target outlines itself while a drag is over it —
+  `dragDropEnabled` makes the cursor read "copy" over the whole window, so
+  nothing else says where a file would land.
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.
