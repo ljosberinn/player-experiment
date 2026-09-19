@@ -96,8 +96,127 @@ describe("defaultAssignment", () => {
   /** Two files claiming track 1 must not both be written the same title. */
   it("never gives one remote track to two files", () => {
     const files = [track(1, { track_no: 1 }), track(2, { track_no: 1 })];
+    const tracks = [remote(1, "One"), { ...remote(2, "Two"), durationMs: 400_000 }];
 
-    expect(defaultAssignment(files, [remote(1, "One"), remote(2, "Two")])).toEqual([0, null]);
+    expect(defaultAssignment(files, tracks)).toEqual([0, null]);
+  });
+
+  it("pairs a release whose numbers agree exactly as its numbers say", () => {
+    const titles = ["Only Shallow", "Loomer", "Touched", "To Here Knows When"];
+    const files = titles.map((title, index) =>
+      track(index + 1, {
+        track_no: index + 1,
+        title: title.toUpperCase(),
+        duration_ms: 200_000 + index * 40_000 + 1_000,
+      }),
+    );
+    const tracks = titles.map((title, index) => ({
+      ...remote(index + 1, title),
+      durationMs: 200_000 + index * 40_000,
+    }));
+
+    expect(defaultAssignment(files, tracks)).toEqual([0, 1, 2, 3]);
+  });
+
+  /** An intro MusicBrainz counts and the files do not: every number is one short. */
+  it("follows the titles and lengths when the numbers disagree with them", () => {
+    const files = [
+      track(1, { track_no: 1, title: "Only Shallow", duration_ms: 257_000 }),
+      track(2, { track_no: 2, title: "Loomer", duration_ms: 158_000 }),
+    ];
+    const tracks = [
+      { ...remote(1, "Intro"), durationMs: 60_000 },
+      { ...remote(2, "Only Shallow"), durationMs: 257_000 },
+      { ...remote(3, "Loomer"), durationMs: 158_000 },
+    ];
+
+    expect(defaultAssignment(files, tracks)).toEqual([1, 2]);
+  });
+
+  /** Two discs in one folder with no disc number: every number appears twice. */
+  it("pairs a flattened two-disc set on what its files are", () => {
+    const discOne = ["Autre temps", "Là où naissent", "Les iris"];
+    const discTwo = ["Le secret", "Élévation", "Souvenirs"];
+    const tracks = [
+      ...discOne.map((title, index) => ({
+        ...remote(index + 1, title, 1),
+        durationMs: 300_000 + index * 60_000,
+      })),
+      ...discTwo.map((title, index) => ({
+        ...remote(index + 1, title, 2),
+        durationMs: 420_000 + index * 50_000 + 20_000,
+      })),
+    ];
+    // Read in `RELEASE_ORDER`: by number, the two discs interleaved.
+    const files = [1, 2, 3].flatMap((number) => [
+      track(number, {
+        track_no: number,
+        title: discTwo[number - 1] ?? null,
+        duration_ms: 420_000 + (number - 1) * 50_000 + 20_000,
+      }),
+      track(number + 10, {
+        track_no: number,
+        title: discOne[number - 1] ?? null,
+        duration_ms: 300_000 + (number - 1) * 60_000,
+      }),
+    ]);
+
+    expect(defaultAssignment(files, tracks)).toEqual([3, 0, 4, 1, 5, 2]);
+  });
+
+  it("does not drop a numbered release to position over one unnumbered file", () => {
+    const tracks = Array.from({ length: 12 }, (_, index) => ({
+      ...remote(index + 1, `Song ${String.fromCharCode(65 + index)}`),
+      durationMs: 150_000 + index * 35_000,
+    }));
+    // `RELEASE_ORDER` sorts the unnumbered file first.
+    const files = [
+      track(7, { title: "Song G", duration_ms: 150_000 + 6 * 35_000 }),
+      ...Array.from({ length: 12 }, (_, index) => index)
+        .filter((index) => index !== 6)
+        .map((index) => track(index + 1, { track_no: index + 1, title: null, duration_ms: 1 })),
+    ];
+
+    expect(defaultAssignment(files, tracks)).toEqual([6, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11]);
+  });
+
+  it("tells two tracks of one length apart by their titles", () => {
+    const files = [track(1, { title: "Loomer" }), track(2, { title: "Only Shallow" })];
+
+    expect(defaultAssignment(files, [remote(1, "Only Shallow"), remote(2, "Loomer")])).toEqual([
+      1, 0,
+    ]);
+  });
+
+  it("reads a title off the filename when the file has no title tag", () => {
+    const files = [
+      track(1, { title: null, path: "C:\\Music\\MBV\\02 - Loomer.flac" }),
+      track(2, { title: null, path: "C:\\Music\\MBV\\01. Only Shallow.flac" }),
+    ];
+
+    expect(defaultAssignment(files, [remote(1, "Only Shallow"), remote(2, "Loomer")])).toEqual([
+      1, 0,
+    ]);
+  });
+
+  /** A wrong pairing is the one somebody applies without reading it. */
+  it("leaves a file nothing on the release resembles unmapped", () => {
+    const files = [
+      track(1, { title: "Only Shallow" }),
+      track(2, { title: "Hidden Bonus Jam", duration_ms: 900_000 }),
+    ];
+    const tracks = [remote(1, "Only Shallow"), { ...remote(2, "Loomer"), durationMs: 158_000 }];
+
+    expect(defaultAssignment(files, tracks)).toEqual([0, null]);
+  });
+
+  it("falls back to position when nothing tells the files apart", () => {
+    const files = Array.from({ length: 12 }, (_, index) => track(index + 1, { title: null }));
+    const tracks = Array.from({ length: 12 }, (_, index) =>
+      remote(index + 1, `Song ${String.fromCharCode(65 + index)}`),
+    );
+
+    expect(defaultAssignment(files, tracks)).toEqual(Array.from({ length: 12 }, (_, i) => i));
   });
 });
 

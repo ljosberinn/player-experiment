@@ -134,6 +134,7 @@ Known, decided, and not scheduled. Anything with work attached lives in
   limit at the IP address and blocks rather than throttles. A selection of a
   hundred releases is therefore a minute and a half of searching even before
   anybody reads a result.
-- **The confirm dialog pairs files with tracks one to one**, in track order,
-  with arrows to swap two rows. There is no drag reorder and no way to map two
+- **The confirm dialog pairs files with tracks one to one**, by track number,
+  length and title, with arrows to swap two rows. A file nothing on the release
+  resembles is left unpaired rather than guessed at. There is no drag reorder and no way to map two
   files onto one track.
