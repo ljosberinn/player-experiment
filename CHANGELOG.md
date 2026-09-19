@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/ljosberinn/player-experiment/compare/v0.12.0...v0.13.0) (2026-09-19)
+
+
+### Features
+
+* a genre is a guess ([#198](https://github.com/ljosberinn/player-experiment/issues/198)) ([83ad2ec](https://github.com/ljosberinn/player-experiment/commit/83ad2ece402e3db33d4bff8f20fc6eb737bdd60f))
+
 ## [0.12.0](https://github.com/ljosberinn/player-experiment/compare/v0.11.1...v0.12.0) (2026-09-19)
 
 
