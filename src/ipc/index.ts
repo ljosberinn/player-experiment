@@ -18,6 +18,8 @@ import type { FilterNode } from "./bindings/FilterNode";
 import type { FilterOp } from "./bindings/FilterOp";
 import type { FilterRule } from "./bindings/FilterRule";
 import type { FilterValue } from "./bindings/FilterValue";
+import type { GenreBreakdown } from "./bindings/GenreBreakdown";
+import type { GenreSlice } from "./bindings/GenreSlice";
 import type { HistogramBin } from "./bindings/HistogramBin";
 import type { HistogramField } from "./bindings/HistogramField";
 import type { LastfmConnection } from "./bindings/LastfmConnection";
@@ -82,6 +84,8 @@ export type {
   FilterOp,
   FilterRule,
   FilterValue,
+  GenreBreakdown,
+  GenreSlice,
   HistogramBin,
   HistogramField,
   LastfmConnection,
@@ -383,6 +387,21 @@ export function statsHistogram(query: TrackQuery, field: HistogramField): Promis
 /** Albums by mean bitrate, worst first: the re-download list. */
 export function statsWorstByBitrate(query: TrackQuery, limit: number): Promise<AlbumBitrate[]> {
   return invoke<AlbumBitrate[]>("stats_worst_by_bitrate", { query, limit });
+}
+
+/**
+ * One level of the genre tree: `parent`'s children, or the roots when null.
+ *
+ * `parent` rather than `query.genre` for the level, even though the two
+ * always carry the same genre: the aggregate positions every tag by its
+ * lineage against `parent`, so narrowing the query as well would be a second
+ * resolution of the tree for a result that cannot differ. See 84d.
+ */
+export function statsGenreBreakdown(
+  query: TrackQuery,
+  parent: string | null,
+): Promise<GenreBreakdown> {
+  return invoke<GenreBreakdown>("stats_genre_breakdown", { query, parent });
 }
 
 /** How many tracks are missing each tag, over one scan. */

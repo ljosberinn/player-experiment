@@ -165,6 +165,7 @@ describe("the Statistics view", () => {
       "Sample rates",
       "Track lengths",
       "Release years",
+      "Genres",
       "Albums by mean bitrate",
       "Tag health",
     ]) {
@@ -205,7 +206,45 @@ describe("the Statistics view", () => {
     await capture("statistics-library-decades");
   });
 
+  /**
+   * The drill only exists over the six fixture files. `Ambient`, `Downtempo`
+   * and `Modern Classical` resolve through migration 11's tree and land under
+   * a root that has something below it; the synthetic `Genre00`-`Genre19` are
+   * in no layer of it, so they are roots with no children and no way down.
+   */
+  it("drills into a genre and narrows the whole tab with it", async () => {
+    const genres = panel("Genres");
+    await browser.waitUntil(async () => (await genres.$$("path.chart-slice").length) > 1, {
+      timeout: 30_000,
+      timeoutMsg: "the genre donut never arrived",
+    });
+    await genres.scrollIntoView({ block: "center" });
+    await capture("statistics-library-genres");
+
+    // The tag health's own count is what says the crumb reached the rest of
+    // the tab rather than only the panel it was clicked in.
+    const health = panel("Tag health");
+    await browser.waitUntil(async () => (await health.$$("li").length) > 0, {
+      timeout: 30_000,
+      timeoutMsg: "the tag health never arrived",
+    });
+    const before = await health.getText();
+
+    await genres.$("path.chart-slice[data-drills]").click();
+
+    await expect(browser.$(".stats-breadcrumb")).toBeExisting();
+    await browser.waitUntil(async () => (await health.getText()) !== before, {
+      timeout: 30_000,
+      timeoutMsg: "the genre crumb never reached the other panels",
+    });
+
+    await genres.scrollIntoView({ block: "center" });
+    await capture("statistics-library-genre-drilled");
+  });
+
   it("goes back to Listening the way it goes back anywhere", async () => {
+    // Two steps now: the genre crumb first, then the tab.
+    await browser.$("button[aria-label='Back']").click();
     await browser.$("button[aria-label='Back']").click();
 
     await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Listening");

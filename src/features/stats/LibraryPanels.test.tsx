@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { saveTextFile, statsHistogram, statsTagHealth } from "../../ipc";
+import { saveTextFile, statsGenreBreakdown, statsHistogram, statsTagHealth } from "../../ipc";
 import { historyAt } from "../library/history";
 import { useLibraryStore } from "../library/store";
 import { DEFAULT_FILTERS } from "./filters";
@@ -64,11 +64,30 @@ vi.mock("../../ipc", () => ({
     trackNo: 0,
     cover: 0,
   })),
+  statsGenreBreakdown: vi.fn(async (_query, parent: string | null) =>
+    parent === null
+      ? {
+          slices: [
+            { label: "metal", tracks: 400, parentSource: "wikidata", hasChildren: true },
+            { label: "techno", tracks: 150, parentSource: "derived", hasChildren: false },
+          ],
+          own: 0,
+          untagged: 600,
+        }
+      : {
+          slices: [
+            { label: "black metal", tracks: 240, parentSource: "wikidata", hasChildren: true },
+          ],
+          own: 160,
+          untagged: 0,
+        },
+  ),
 }));
 
 const histogramMock = vi.mocked(statsHistogram);
 const healthMock = vi.mocked(statsTagHealth);
 const writeMock = vi.mocked(saveTextFile);
+const genreMock = vi.mocked(statsGenreBreakdown);
 
 /** The panel with this heading, so an assertion names which one it means. */
 function panel(title: string): HTMLElement {
@@ -205,5 +224,57 @@ describe("LibraryPanels", () => {
       expect(query.playlistId).toBe(4);
     }
     expect(healthMock.mock.calls[0]?.[0].search).toBe("ambient");
+  });
+
+  it("draws the genres of the level it is on, and what is under nothing", async () => {
+    render(<LibraryPanels />);
+
+    expect(await tableOf("Genres")).toStrictEqual([
+      ["metal", "400"],
+      // The qualifier is its own element, spaced by the sheet: the primary
+      // parent is arbitrary wherever a genre has several, and techno reached
+      // this level through the suffix guess rather than through Wikidata.
+      ["technoderived", "150"],
+      ["No genre", "600"],
+    ]);
+  });
+
+  it("drills into a genre by pushing a crumb rather than by keeping its own level", async () => {
+    // The crumb is the level, so Back walks out of a drill the way it walks
+    // out of every other navigation, and `useLibraryQuery` narrows the rest
+    // of the tab from the same value.
+    const user = userEvent.setup();
+    render(<LibraryPanels />);
+    await tableOf("Genres");
+
+    await user.click(within(panel("Genres")).getByRole("button", { name: "metal" }));
+
+    await waitFor(() =>
+      expect(useLibraryStore.getState().statsPath?.crumbs).toStrictEqual([
+        { kind: "genre", key: "metal" },
+      ]),
+    );
+  });
+
+  it("asks for the level as a parent and leaves the donut's own query unnarrowed", async () => {
+    // Both would resolve the tree for the same answer: the aggregate drops
+    // every tag that is not under `parent` regardless. The other panels do
+    // carry it, which is what makes the drill narrow the tab.
+    useLibraryStore.setState({
+      statsPath: { tab: "library", crumbs: [{ kind: "genre", key: "metal" }] },
+    });
+    render(<LibraryPanels />);
+
+    await waitFor(() => expect(genreMock).toHaveBeenCalled());
+    expect(genreMock.mock.calls.at(-1)?.[1]).toBe("metal");
+    expect(genreMock.mock.calls.at(-1)?.[0].genre).toBeNull();
+    expect(healthMock.mock.calls.at(-1)?.[0].genre).toBe("metal");
+  });
+
+  it("leaves a genre with nothing below it out of the drill", async () => {
+    render(<LibraryPanels />);
+    await tableOf("Genres");
+
+    expect(within(panel("Genres")).queryByRole("button", { name: "techno" })).toBeNull();
   });
 });

@@ -6,7 +6,24 @@ import { type ReactNode, useCallback, useState } from "react";
  * One constant rather than a prop: every chart in the view shares an axis
  * gutter, and charts whose plots start at different x do not read as a set.
  */
-export const CHART_MARGIN = { top: 8, right: 8, bottom: 20, left: 40 } as const;
+export interface ChartMargin {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+export const CHART_MARGIN: ChartMargin = { top: 8, right: 8, bottom: 20, left: 40 };
+
+/**
+ * The margin a chart with no axis takes instead.
+ *
+ * Not a violation of the rule above but the other side of it: what the one
+ * constant buys is charts whose *plots* line up, and a radial chart has no
+ * plot to line up - an axis gutter under a donut is a ring drawn off-centre
+ * in its own panel.
+ */
+export const RADIAL_MARGIN: ChartMargin = { top: 8, right: 8, bottom: 8, left: 8 };
 
 /** The plot rect, in pixels, once the margins are taken off the measurement. */
 export interface PlotRect {
@@ -58,6 +75,8 @@ export interface ChartFrameProps {
    * categories, where a tick names a row rather than a value to read across.
    */
   readonly grid?: boolean;
+  /** [`RADIAL_MARGIN`] for a chart with no axis; the default otherwise. */
+  readonly margin?: ChartMargin;
   readonly children: (plot: PlotRect) => ReactNode;
 }
 
@@ -75,6 +94,7 @@ export function ChartFrame({
   xTicks: xSource = [],
   yTicks: ySource = [],
   grid = true,
+  margin = CHART_MARGIN,
   children,
 }: ChartFrameProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -96,8 +116,8 @@ export function ChartFrame({
   }, []);
 
   const plot: PlotRect = {
-    width: Math.max(0, size.width - CHART_MARGIN.left - CHART_MARGIN.right),
-    height: Math.max(0, size.height - CHART_MARGIN.top - CHART_MARGIN.bottom),
+    width: Math.max(0, size.width - margin.left - margin.right),
+    height: Math.max(0, size.height - margin.top - margin.bottom),
   };
   const xTicks = typeof xSource === "function" ? xSource(plot) : xSource;
   const yTicks = typeof ySource === "function" ? ySource(plot) : ySource;
@@ -144,7 +164,7 @@ export function ChartFrame({
           table
         ) : (
           <svg role="img" aria-label={label} width={size.width} height={size.height}>
-            <g transform={`translate(${CHART_MARGIN.left}, ${CHART_MARGIN.top})`}>
+            <g transform={`translate(${margin.left}, ${margin.top})`}>
               {/* Nothing inside carries an `aria-hidden`: `role="img"` already
                 makes the whole subtree presentational, and the label plus the
                 table toggle are what a reader gets instead. */}
@@ -163,7 +183,7 @@ export function ChartFrame({
               )}
               <g className="chart-axis chart-axis-x">
                 {xTicks.map((tick) => (
-                  <text key={tick.label} x={tick.offset} y={plot.height + CHART_MARGIN.bottom - 6}>
+                  <text key={tick.label} x={tick.offset} y={plot.height + margin.bottom - 6}>
                     {tick.label}
                   </text>
                 ))}
