@@ -98,7 +98,15 @@ shape is a group of rules:
 `combinator` is `all` or `any`. Each child is either a `rule` or a nested
 `group`. A rule's `value` is one of `{"kind":"text","text":…}`,
 `{"kind":"number","number":…}`, `{"kind":"range","from":…,"to":…}`, or
-`{"kind":"none"}` for operators that take no value.
+`{"kind":"none"}` for a field or operator that takes no value.
+
+**A new `field` is forward-incompatible, and it is the one thing in this
+document that is.** The tree is serialised verbatim and read back into a
+closed enum, so an older Apex opening an export that uses a field it does not
+know fails on the whole file rather than on that one playlist. Adding one does
+not move `schemaVersion` — nothing existing is removed or reinterpreted — but a
+reader with its own list of fields has to expect additions. `loved` (issue 101)
+is the first; it takes `is` or `is not` and `{"kind":"none"}`.
 
 ### `order`
 

@@ -583,12 +583,19 @@ pub enum TagValueField {
     Year,
 }
 
-/// A track column a smart playlist can filter on.
+/// Something a smart playlist can filter on.
 ///
 /// A whitelist enum rather than a string, for the same reason [`SortField`] is
 /// one: the column name is interpolated into SQL, so restricting it at the
-/// type level is what keeps that interpolation safe. Every arm below returns a
-/// literal.
+/// type level is what keeps that interpolation safe. Every arm of
+/// [`FilterField::as_sql`] returns a literal.
+///
+/// Mostly columns on `tracks`, but not necessarily - a [`FilterFieldKind`] of
+/// `Boolean` names a fact the compiler answers with a subquery instead.
+///
+/// **Adding an arm is forward-incompatible**: an export carries the filter
+/// tree verbatim, so an older build meeting a field it does not know fails to
+/// read the file. See `docs/knowledge/export-schema.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -609,6 +616,11 @@ pub enum FilterField {
     PlayCount,
     AddedAt,
     LastPlayedAt,
+    /// Whether last.fm holds this track in the user's loved set.
+    ///
+    /// Not a column on `tracks`: the loved set is keyed by `plays::match_key`
+    /// and reaches a track through `plays.track_id`. See `compile_boolean`.
+    Loved,
 }
 
 /// What kind of value a field holds, which decides the operators it accepts.
@@ -624,6 +636,9 @@ pub enum FilterFieldKind {
     /// Unix seconds. Numeric underneath, but "in the last N days" only makes
     /// sense here, and a date picker is the right editor rather than a spinner.
     Timestamp,
+    /// A fact the row either carries or does not, with no value to compare
+    /// against: the rule reads "Loved is" and binds nothing.
+    Boolean,
 }
 
 impl FilterField {
@@ -645,6 +660,10 @@ impl FilterField {
             Self::PlayCount => "play_count",
             Self::AddedAt => "added_at",
             Self::LastPlayedAt => "last_played_at",
+            // `compile_rule` returns on a `Boolean` field before it asks for a
+            // column, so naming one here would only be a lie a later reader
+            // could act on.
+            Self::Loved => unreachable!("Loved is not a column on tracks"),
         }
     }
 
@@ -665,6 +684,7 @@ impl FilterField {
             | Self::SampleRate
             | Self::PlayCount => FilterFieldKind::Number,
             Self::AddedAt | Self::LastPlayedAt => FilterFieldKind::Timestamp,
+            Self::Loved => FilterFieldKind::Boolean,
         }
     }
 }

@@ -58,6 +58,7 @@ export const FIELDS: FieldDef[] = [
   { id: "playCount", label: "Plays" },
   { id: "addedAt", label: "Date Added" },
   { id: "lastPlayedAt", label: "Last Played" },
+  { id: "loved", label: "Loved" },
 ];
 
 /**
@@ -66,7 +67,7 @@ export const FIELDS: FieldDef[] = [
  * "artist is ___" wants exactly what the tag editor's Artist field wants, and
  * typing a band name by hand into a filter is how a smart playlist ends up
  * matching nothing at all. The fields with no shared vocabulary - title,
- * comment, location, every count and every date - offer none.
+ * comment, location, every count, every date and Loved - offer none.
  *
  * Year is absent even though it has a vocabulary: its editor is a number input,
  * and trading the spinner and the numeric keyboard for a dropdown of four-digit
@@ -129,6 +130,9 @@ const OPS_BY_KIND: Record<FilterFieldKind, FilterOp[]> = {
   ],
   number: ["is", "isNot", "greaterThan", "lessThan", "between", "isEmpty", "isNotEmpty"],
   timestamp: ["inLast", "greaterThan", "lessThan", "between", "isEmpty", "isNotEmpty"],
+  // "Loved is empty" is not a question: the row either carries the fact or
+  // does not, which is what `is not` already says.
+  boolean: ["is", "isNot"],
 };
 
 /**
@@ -162,7 +166,9 @@ export function opsFor(field: FilterField): FilterOp[] {
  * kind of small insult that makes an editor tiring.
  */
 export function valueFor(field: FilterField, op: FilterOp, previous?: FilterValue): FilterValue {
-  if (VALUELESS.includes(op)) {
+  // A boolean field is valueless whatever its operator: "Loved is" is the
+  // whole rule, and the backend refuses one that carries anything.
+  if (VALUELESS.includes(op) || kindOf(field) === "boolean") {
     return { kind: "none" };
   }
   if (op === "between") {

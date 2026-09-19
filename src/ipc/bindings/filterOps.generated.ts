@@ -22,6 +22,7 @@ export const FILTER_FIELD_KINDS: Record<FilterField, FilterFieldKind> = {
   playCount: "number",
   addedAt: "timestamp",
   lastPlayedAt: "timestamp",
+  loved: "boolean",
 };
 
 /**
@@ -33,4 +34,5 @@ export const ACCEPTED_FILTER_OPS: Record<FilterFieldKind, FilterOp[]> = {
   text: ["is", "isNot", "contains", "doesNotContain", "startsWith", "endsWith", "isEmpty", "isNotEmpty"],
   number: ["is", "isNot", "greaterThan", "lessThan", "between", "isEmpty", "isNotEmpty"],
   timestamp: ["is", "isNot", "greaterThan", "lessThan", "between", "inLast", "isEmpty", "isNotEmpty"],
+  boolean: ["is", "isNot"],
 };

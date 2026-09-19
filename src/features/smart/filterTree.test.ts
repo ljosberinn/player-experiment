@@ -33,12 +33,16 @@ describe("field metadata", () => {
     expect(kindOf("artist")).toBe("text");
     expect(kindOf("year")).toBe("number");
     expect(kindOf("addedAt")).toBe("timestamp");
+    expect(kindOf("loved")).toBe("boolean");
   });
 
   it("offers each kind the operators that fit it", () => {
     expect(opsFor("artist")).toContain("contains");
     expect(opsFor("year")).toContain("between");
     expect(opsFor("addedAt")).toContain("inLast");
+    // Loved is a fact the row carries or does not, so only the two that read
+    // as one. "Loved is empty" would be a third way to ask the same question.
+    expect(opsFor("loved")).toEqual(["is", "isNot"]);
   });
 
   it("offers every field the backend can filter on", () => {
@@ -79,6 +83,13 @@ describe("valueFor", () => {
   it("gives a valueless operator no value at all", () => {
     expect(valueFor("artist", "isEmpty")).toEqual({ kind: "none" });
     expect(valueFor("year", "isNotEmpty")).toEqual({ kind: "none" });
+  });
+
+  it("gives a boolean field no value under either of its operators", () => {
+    // Not covered by VALUELESS: "is" and "is not" carry a value everywhere
+    // else, and the backend refuses a Loved rule that brings one.
+    expect(valueFor("loved", "is")).toEqual({ kind: "none" });
+    expect(valueFor("loved", "isNot", { kind: "text", text: "yes" })).toEqual({ kind: "none" });
   });
 
   it("matches the value to the field's kind", () => {

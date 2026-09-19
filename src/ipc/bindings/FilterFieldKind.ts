@@ -6,4 +6,4 @@
  * Exported so the editor classifies fields from this table rather than from a
  * copy of it; see `smart::bindings::export_bindings_filter_ops`.
  */
-export type FilterFieldKind = "text" | "number" | "timestamp";
+export type FilterFieldKind = "text" | "number" | "timestamp" | "boolean";

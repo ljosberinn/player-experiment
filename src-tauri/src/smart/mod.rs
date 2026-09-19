@@ -94,10 +94,18 @@ fn compile_rule(
     now: i64,
     params: &mut Vec<Box<dyn ToSql>>,
 ) -> AppResult<String> {
+    let kind = rule.field.kind();
+
+    // Above everything below, which all assumes the field names a column:
+    // `as_sql` has nothing to return for a boolean field, and `IsEmpty` on a
+    // fact that is either true or false is not a question.
+    if kind == FilterFieldKind::Boolean {
+        return compile_boolean(rule);
+    }
+
     // Table-qualified: a smart filter runs in the same statement as the FTS
     // join, which carries columns of the same names.
     let column = format!("tracks.{}", rule.field.as_sql());
-    let kind = rule.field.kind();
 
     match rule.op {
         FilterOp::IsEmpty => return Ok(format!("({column} IS NULL OR {column} = '')")),
@@ -179,6 +187,47 @@ fn compile_rule(
         }
 
         (_, op) => Err(AppError::Internal(format!(
+            "{:?} does not accept the operator {op:?}.",
+            rule.field
+        ))),
+    }
+}
+
+/// The tracks last.fm holds in the loved set, as a subquery over `tracks.id`.
+///
+/// The set is keyed by [`crate::db::plays::match_key`] and nothing maps a key
+/// to a track except `plays.track_id`, so membership goes through the play
+/// log. Measured at 53 ms over 237,675 plays, which is why no covering index
+/// on `plays(match_key, track_id)` was bought for it; see issue 101.
+///
+/// `track_id IS NOT NULL` sits *inside* the subquery, so the list `NOT IN`
+/// reads can never hold a NULL to swallow the comparison with. That is why
+/// this needs none of the `IS NULL OR …` shape every text `IsNot` carries.
+const LOVED_TRACKS: &str = "SELECT track_id FROM plays \
+                            WHERE track_id IS NOT NULL \
+                            AND match_key IN (SELECT match_key FROM lastfm_loved)";
+
+/// A field that is a fact about the row rather than a column on it.
+///
+/// Valueless on purpose: a `FilterValue::Bool` would be a second way to spell
+/// "Loved is not", and a second thing to validate. The rule reads "Loved is"
+/// or "Loved is not" and binds nothing.
+fn compile_boolean(rule: &crate::model::FilterRule) -> AppResult<String> {
+    if !matches!(rule.value, FilterValue::None) {
+        return Err(mismatch(rule, "no value"));
+    }
+    let members = match rule.field {
+        crate::model::FilterField::Loved => LOVED_TRACKS,
+        field => {
+            return Err(AppError::Internal(format!(
+                "{field:?} has no membership test."
+            )))
+        }
+    };
+    match rule.op {
+        FilterOp::Is => Ok(format!("tracks.id IN ({members})")),
+        FilterOp::IsNot => Ok(format!("tracks.id NOT IN ({members})")),
+        op => Err(AppError::Internal(format!(
             "{:?} does not accept the operator {op:?}.",
             rule.field
         ))),
@@ -480,6 +529,43 @@ mod tests {
             [],
         )
         .unwrap();
+        (dir, db)
+    }
+
+    /// The seeded library with a play log and a loved set over it.
+    ///
+    /// Four shapes, because the subquery has to tell them apart: a track whose
+    /// play is loved, a track whose play is not, a track with no play at all,
+    /// and a loved play that resolved to no track - an imported scrobble for
+    /// something the library does not hold, which is 70 of the 285 rows on the
+    /// real library and the reason `track_id IS NOT NULL` is inside the
+    /// subquery.
+    fn seeded_with_loved() -> (tempfile::TempDir, Db) {
+        use crate::db::plays::match_key;
+
+        let (dir, db) = seeded();
+        {
+            let conn = db.conn().unwrap();
+            let play = |started_at: i64, artist: &str, title: &str, track: Option<i64>| {
+                conn.execute(
+                    "INSERT INTO plays (started_at, source, artist, title, match_key, track_id)
+                     VALUES (?1, 'lastfm', ?2, ?3, ?4, ?5)",
+                    rusqlite::params![started_at, artist, title, match_key(artist, title), track],
+                )
+                .unwrap();
+            };
+            play(NOW - 10, "Guitar", "Maki", Some(1));
+            play(NOW - 20, "Grizzly Bear", "Half Gate", Some(3));
+            play(NOW - 30, "Nobody", "Nothing At All", None);
+
+            for (artist, title) in [("Guitar", "Maki"), ("Nobody", "Nothing At All")] {
+                conn.execute(
+                    "INSERT INTO lastfm_loved (match_key) VALUES (?1)",
+                    [match_key(artist, title)],
+                )
+                .unwrap();
+            }
+        }
         (dir, db)
     }
 
@@ -917,5 +1003,89 @@ mod tests {
         // A drift between the two is the classic way a rebuilt clause starts
         // binding the wrong value to the wrong slot.
         assert_eq!(compiled.sql.matches('?').count(), compiled.params.len());
+    }
+
+    #[test]
+    fn loved_selects_the_tracks_the_loved_set_reaches() {
+        let (_dir, db) = seeded_with_loved();
+
+        assert_eq!(
+            matches(
+                &db,
+                &all(vec![rule(
+                    FilterField::Loved,
+                    FilterOp::Is,
+                    FilterValue::None
+                )])
+            ),
+            ["/m/1.mp3"]
+        );
+    }
+
+    /// Everything else, and *everything* else: a track whose plays are not
+    /// loved, and a track with no play row at all, both belong here. The loved
+    /// play that resolved to no track has to leave this list alone - a NULL in
+    /// the `NOT IN` list would empty it entirely.
+    #[test]
+    fn not_loved_keeps_the_tracks_with_no_plays() {
+        let (_dir, db) = seeded_with_loved();
+
+        assert_eq!(
+            matches(
+                &db,
+                &all(vec![rule(
+                    FilterField::Loved,
+                    FilterOp::IsNot,
+                    FilterValue::None
+                )])
+            ),
+            ["/m/2.mp3", "/m/3.mp3", "/m/4.mp3", "/m/5.mp3", "/m/6.mp3"]
+        );
+    }
+
+    /// It compiles to a subquery rather than to a comparison, so where a rule
+    /// can sit is worth pinning: OR'd beside another rule, and nested in a
+    /// group that excludes.
+    #[test]
+    fn loved_composes_with_the_rest_of_the_tree() {
+        let (_dir, db) = seeded_with_loved();
+
+        assert_eq!(
+            matches(
+                &db,
+                &any(vec![
+                    rule(FilterField::Loved, FilterOp::Is, FilterValue::None),
+                    rule(FilterField::Artist, FilterOp::Is, text_value("Ads")),
+                ])
+            ),
+            ["/m/1.mp3", "/m/5.mp3"]
+        );
+
+        // Guitar's two songs, minus the loved one.
+        assert_eq!(
+            matches(
+                &db,
+                &all(vec![
+                    rule(FilterField::Artist, FilterOp::Is, text_value("Guitar")),
+                    FilterNode::Group(all(vec![rule(
+                        FilterField::Loved,
+                        FilterOp::IsNot,
+                        FilterValue::None
+                    )])),
+                ])
+            ),
+            ["/m/2.mp3"]
+        );
+    }
+
+    #[test]
+    fn loved_refuses_a_value() {
+        let group = all(vec![rule(
+            FilterField::Loved,
+            FilterOp::Is,
+            text_value("yes"),
+        )]);
+
+        assert!(compile(&group, NOW).is_err());
     }
 }
