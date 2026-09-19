@@ -1649,6 +1649,15 @@ th.status {
 
 /* ---------- release lookup ---------- */
 
+/* The dialog passed through six heights - 154px while it read the files, 695px
+   confirming eleven - and `advance` resets to "opening" between releases, so a
+   Skip moved Cancel and Skip Release 270px and back under the pointer holding
+   them. 720px is the tallest of the six, so the box that holds all of them
+   costs the largest state nothing. */
+.modal.lookup {
+  height: min(720px, 86vh);
+}
+
 /* Which release the dialog is on, under the heading that says which of how
    many it is. */
 .lookup-subject {
@@ -1656,17 +1665,14 @@ th.status {
   color: var(--muted);
 }
 
-/* Its own scroll area rather than the dialog's: a reissue-heavy album returns
-   fifteen candidates, and scrolling the dialog would take Skip and Cancel with
-   it. */
+/* No cap and no scroller of its own: the dialog's body is the one scroll area,
+   and Skip and Cancel sit outside it. */
 .lookup-results {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 46vh;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
 }
 
@@ -1757,16 +1763,14 @@ th.status {
   padding: 0;
 }
 
-.lookup-map-scroll {
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
 .lookup-map {
   width: 100%;
   border-collapse: collapse;
 }
 
+/* Sticks to the top of `.modal-body`, which is the nearest scrollport now that
+   the table has no wrapper of its own: the covers and the field toggles scroll
+   under it rather than pushing it off. */
 .lookup-map th {
   position: sticky;
   top: 0;
@@ -1848,6 +1852,38 @@ th.status {
   border: 1px solid var(--chrome-border);
   border-radius: 6px;
   background: var(--chrome);
+}
+
+/**
+ * A dialog that keeps its size while its contents change.
+ *
+ * `.modal` alone is a scroller with a maximum, so every state it passes
+ * through is a different height - and it is centred, so both edges move under
+ * whatever the pointer is resting on. A paned dialog takes a `height` instead,
+ * and only `.modal-body` scrolls: the heading above it and the action rows
+ * below it stay where they are.
+ *
+ * Opt-in rather than a change to `.modal`, which six dialogs wear - the four
+ * that are not paned still need `overflow: auto` to be scrollable at all.
+ */
+.modal.paned {
+  overflow: hidden;
+}
+
+/* A flex item's automatic minimum is its content, which is what makes an
+   `overflow-y: auto` child of a column flex refuse to shrink. */
+.modal.paned > .modal-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Nothing but the body gives way when the body is full. */
+.modal.paned > :not(.modal-body) {
+  flex: none;
 }
 
 .modal h2 {

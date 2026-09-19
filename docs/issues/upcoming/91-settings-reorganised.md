@@ -27,7 +27,7 @@ Four groups is what there is to hold:
 - **Online** — Look Up Releases Online, last.fm
 - **About** — Activity Log
 
-The dialog takes a fixed size the way [89](89-the-lookup-window-stops-resizing.md)
+The dialog takes a fixed size the way [89](../done/89-the-lookup-window-stops-resizing.md)
 gives the lookup one, with the rail and the action row fixed and the pane the
 only thing that scrolls. Do that phase first, or after it, but share the
 mechanism rather than writing a second one.

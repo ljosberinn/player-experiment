@@ -268,6 +268,15 @@ absences are what nobody notices coming back — hence the guards in
   - **The caption buttons are the exception** and stay Segoe MDL2 (see
     `.window-buttons` in `App.css`). Those are the OS glyphs; a library X in the
     corner of a Windows title bar reads as a web page.
+- **A dialog that outlives its own content states does not resize.** `.modal` on
+  its own is a scroller with a `max-height`, which is right for a dialog asked
+  once and dismissed. One that is stepped through — the lookup's queue,
+  settings' categories — adds `.modal.paned`: the popup takes a `height` and
+  `overflow: hidden`, and `.modal-body` inside it is the only scroll area, with
+  `flex: 1` and the `min-height: 0` beside it that lets a column flex child
+  shrink below its content. Everything else is `flex: none` and stays put. A
+  second `max-height` scroller inside a paned dialog is the regression;
+  `App.css.test.ts` guards it.
 - No hover backgrounds, except window caption buttons and menu items.
 - No transitions or animations, except the playing-row speaker, which **is** the
   state — and it stands down under `prefers-reduced-motion`.
@@ -449,6 +458,14 @@ absences are what nobody notices coming back — hence the guards in
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.
+- **It is a fixed box, because a queue reuses it.** `advance` re-enters at
+  `stage: "opening"` with no tracks, so a dialog sized by its contents collapsed
+  to its shortest state and grew back on every Skip — 270px each way, under the
+  pointer still resting on Skip. `.modal.lookup` states `height: min(720px,
+  86vh)`, which is the tallest state it ever reached, so the largest step is
+  unchanged and only the short ones grow. Both rows of confirm actions are
+  pinned; Back and Apply are not merged into the queue's row, because Skip
+  Release discards and Apply writes.
 - **The review queue is the same dialog on a different queue.** What the
   unattended pass would not write is a row in the sidebar under the playlists,
   and clicking it opens the lookup on those releases — with the candidates the
