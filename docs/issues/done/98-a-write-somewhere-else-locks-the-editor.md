@@ -18,7 +18,11 @@ last `WriteProgress` of a batch and the reply are two messages over one bridge
 and nothing orders them, so the editor's `finally` could be overtaken by its
 own final event.
 
-`tagsource`'s `close` left `stage` at `"applying"` for the same reason — the
-apply that empties the queue is what closes the dialog. The review queue opens
-without going through a release, so it came back on a table whose Cancel was
-disabled. `close` resets `stage` and `progress` with the rest.
+`tagsource` had the same shape twice over: `stage` is what disables the
+dialog's Cancel and stops Escape closing it, and an apply is what leaves it at
+`"applying"`. Neither route back off a release reset it — `close`, which the
+apply that empties the queue takes, nor `toTable`, which the apply that does
+not takes. So an apply from the review queue returned to a table with no way
+out, and the next `openReview` opened on one too, since it reaches the table
+without going through a release. Both reset the stage and the readout with the
+rest of what belongs to the release.

@@ -515,10 +515,14 @@ absences are what nobody notices coming back — hence the guards in
   nothing to clear, which is what disabled Save at "Saving…" for the rest of
   the session. The guard also drops the last event of a batch when it lands
   after the command's own reply — two messages over one bridge, in no fixed
-  order. `TaskProgress` owns the subscription that fills the editor store and
-  draws nothing from it: something mounted for the whole session has to
-  subscribe, and doing it in the dialog would mean subscribing as the write it
-  reports on is already starting.
+  order. `tagsource`'s `stage` is what disables the lookup's Cancel and stops
+  Escape closing it, so every route back off a release resets it: `close` and
+  `toTable` both put it back to `"opening"` with `progress`, or an apply left
+  the review queue's table with no way out. `TaskProgress` owns the
+  subscription that fills the editor store and draws nothing from it:
+  something mounted for the whole session has to subscribe, and doing it in
+  the dialog would mean subscribing as the write it reports on is already
+  starting.
 - OS file drops arrive as one window-wide event and are routed by
   `shell/fileDrop.ts`: targets register an element while they are mounted, the
   position is divided by `devicePixelRatio` to reach CSS pixels, and the hit is

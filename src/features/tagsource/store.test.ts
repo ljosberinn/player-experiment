@@ -390,6 +390,10 @@ describe("the review queue", () => {
 
     expect(useTagsourceStore.getState().index).toBeNull();
     expect(useTagsourceStore.getState().queue?.map((entry) => entry.album)).toEqual(["Spiderland"]);
+    // The table it returns to is the dialog's own way out, so a stage left at
+    // "applying" is a queue with Cancel disabled and Escape doing nothing.
+    expect(useTagsourceStore.getState().stage).not.toBe("applying");
+    expect(useTagsourceStore.getState().progress).toBeNull();
   });
 
   /** An empty table is a dead end, so the last decision is also the way out. */
