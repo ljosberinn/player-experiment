@@ -10,11 +10,10 @@ import type { BrowseKind } from "./BrowseKind";
  */
 export type BrowseFilter = { kind: BrowseKind, 
 /**
- * `None` matches the untagged group - `IS NULL`, not "no filter".
+ * The group's identity, as [`BrowseGroup::id`] carries it.
+ *
+ * `None` matches the untagged group - `IS NULL`, not "no filter" - which
+ * only artists and genres have: the album identity folds an absent tag to
+ * an empty string and so is never NULL.
  */
-key: string | null, 
-/**
- * Applied only when `kind` is `Albums`, where `None` likewise means the
- * album whose artist is untagged.
- */
-secondary: string | null, };
+id: string | null, };

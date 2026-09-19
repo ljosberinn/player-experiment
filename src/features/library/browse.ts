@@ -19,6 +19,15 @@ export function unknownLabel(kind: BrowseKind): string {
   }
 }
 
+/**
+ * What a release credited to more than one artist is called.
+ *
+ * Lives here for the reason `unknownLabel` does: the row carries how many
+ * distinct artists the group holds, and naming them is the frontend's job. A
+ * merged compilation must not read as whichever of twelve `min()` picked.
+ */
+export const MANY_ARTISTS_LABEL = "Various Artists";
+
 /** The heading for a group, falling back to the untagged label. */
 export function groupTitle(group: BrowseGroup, kind: BrowseKind): string {
   return group.key ?? unknownLabel(kind);
@@ -30,29 +39,53 @@ export function groupTitle(group: BrowseGroup, kind: BrowseKind): string {
  * Only albums have one - an artist's subtitle would repeat its own name - and
  * an album whose artist tags are all empty gets the unknown-artist label
  * rather than a blank line that looks like a rendering bug.
+ *
+ * Three states, not two. A release is grouped by its identity rather than by
+ * its artist, so it can hold several: no artist at all and many artists are
+ * different things, and `secondary` is one arbitrary member of the group in the
+ * second case.
  */
 export function groupSubtitle(group: BrowseGroup, kind: BrowseKind): string | null {
   if (kind !== "albums") {
     return null;
   }
+  if (group.artistCount > 1) {
+    return MANY_ARTISTS_LABEL;
+  }
   return group.secondary ?? unknownLabel("artists");
+}
+
+/**
+ * The separator between the two tags of a release carrying no MusicBrainz id.
+ *
+ * U+001F, the ASCII unit separator, rather than a space: with a space, album
+ * "A" by "B C" and album "A B" by "C" would produce the same identity. A
+ * control character cannot appear in a tag string read from a file.
+ *
+ * `release_identity` in `db/query.rs` is the other half of this and the two
+ * have to agree, because `albumIdentity` builds ids the drill-in compares
+ * against the ones that query produced.
+ */
+const UNIT_SEPARATOR = "\u001f";
+
+/**
+ * A release's identity from its own tags, for a track the grid did not supply.
+ *
+ * An empty string rather than null on either side, because the query folds an
+ * absent tag the same way - see `release_identity`.
+ */
+export function albumIdentity(album: string | null, artist: string | null): string {
+  return `${album ?? ""}${UNIT_SEPARATOR}${artist ?? ""}`;
 }
 
 /**
  * A stable identity for a group, for React keys.
  *
- * Two keys, because albums are grouped by title *and* artist: keying on the
- * title alone would collide for two artists with an eponymous album, and React
- * would reuse one tile for the other.
- *
- * The separator is U+001F, the ASCII unit separator, rather than a space: with
- * a space, album "A" by "B C" and album "A B" by "C" produce the same id. A
- * control character cannot appear in a tag string read from a file.
+ * The row carries it now, and this is left only to survive `id` being null -
+ * which the untagged artist and genre groups are, and a React key may not be.
  */
-const UNIT_SEPARATOR = "\u001f";
-
 export function groupId(group: BrowseGroup): string {
-  return `${group.key ?? ""}${UNIT_SEPARATOR}${group.secondary ?? ""}`;
+  return group.id ?? "";
 }
 
 /**

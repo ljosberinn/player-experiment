@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { BrowseGroup } from "../../ipc";
-import { groupId, groupMeta, groupSubtitle, groupTitle, unknownLabel } from "./browse";
+import {
+  albumIdentity,
+  groupId,
+  groupMeta,
+  groupSubtitle,
+  groupTitle,
+  MANY_ARTISTS_LABEL,
+  unknownLabel,
+} from "./browse";
 
 function group(over: Partial<BrowseGroup> = {}): BrowseGroup {
   return {
+    id: albumIdentity("Shields", "Grizzly Bear"),
     key: "Shields",
     secondary: "Grizzly Bear",
+    artistCount: 1,
     trackCount: 10,
     durationMs: 1000,
     coverHash: null,
@@ -40,26 +50,41 @@ describe("browse labels", () => {
     expect(groupSubtitle(group({ secondary: null }), "albums")).toBe("Unknown Artist");
   });
 
-  it("distinguishes two albums that share a title", () => {
-    const dio = group({ key: "Double", secondary: "Dio" });
-    const eve = group({ key: "Double", secondary: "Eve" });
-
-    expect(groupId(dio)).not.toBe(groupId(eve));
-  });
-
-  it("does not collide when a separator falls differently across the two keys", () => {
-    // With a space as the separator these are the same string, and React would
-    // reuse one group's tile for the other.
-    const a = group({ key: "A", secondary: "B C" });
-    const b = group({ key: "A B", secondary: "C" });
-
-    expect(groupId(a)).not.toBe(groupId(b));
-  });
-
-  it("keeps the untagged group's id stable and distinct from an empty title", () => {
-    expect(groupId(group({ key: null, secondary: null }))).toBe(
-      groupId(group({ key: null, secondary: null })),
+  it("tells no artist apart from many artists", () => {
+    // A release grouped by its MBID can hold twelve artists, and `secondary` is
+    // then one arbitrary member of the group rather than what it is called.
+    expect(groupSubtitle(group({ artistCount: 0, secondary: null }), "albums")).toBe(
+      "Unknown Artist",
     );
+    expect(groupSubtitle(group({ artistCount: 1, secondary: "Dio" }), "albums")).toBe("Dio");
+    expect(groupSubtitle(group({ artistCount: 12, secondary: "Alice" }), "albums")).toBe(
+      MANY_ARTISTS_LABEL,
+    );
+  });
+
+  it("does not collide when a separator falls differently across the two tags", () => {
+    // With a space as the separator these are the same string, and React would
+    // reuse one release's tile for the other.
+    expect(albumIdentity("A", "B C")).not.toBe(albumIdentity("A B", "C"));
+  });
+
+  it("folds an absent tag the way the query does, rather than to null", () => {
+    // `release_identity`'s inner `coalesce`s: an untagged release is a string,
+    // so two of them by different artists stay two ids.
+    expect(albumIdentity(null, null)).toBe(albumIdentity("", ""));
+    expect(albumIdentity(null, "Dio")).not.toBe(albumIdentity(null, "Eve"));
+  });
+
+  it("keys a tile on the identity the row carries rather than on its label", () => {
+    // Two pressings merged by their release group are one tile, and the labels
+    // `min()` picked may differ - a remaster is titled differently.
+    const mbid = "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a";
+    expect(groupId(group({ id: mbid, key: "Double" }))).toBe(
+      groupId(group({ id: mbid, key: "Double (Remastered)" })),
+    );
+    // The untagged artist and genre groups carry no id, and a React key may
+    // not be null.
+    expect(groupId(group({ id: null }))).toBe("");
   });
 
   it("counts songs, singularly when there is one", () => {

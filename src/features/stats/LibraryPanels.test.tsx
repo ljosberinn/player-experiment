@@ -128,6 +128,7 @@ beforeEach(() => {
     history: historyAt({
       tab: "stats",
       browse: null,
+      browseLabel: null,
       playlistId: null,
       stats: statsRoot("library"),
     }),

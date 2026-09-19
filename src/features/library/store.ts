@@ -23,6 +23,7 @@ import {
 import { debounce } from "../../lib/debounce";
 import { dismiss, notify, report } from "../shell/statusStore";
 import { type StatsPath, statsRoot } from "../stats/path";
+import { albumIdentity } from "./browse";
 import {
   type ColumnConfig,
   DEFAULT_COLUMN_CONFIG,
@@ -118,6 +119,8 @@ interface LibraryState {
    * with a filter set is the songs table, scoped.
    */
   browse: BrowseFilter | null;
+  /** What the drilled-into group is called, as `HistoryEntry.browseLabel`. */
+  browseLabel: string | null;
   /**
    * Where Statistics is pointed, or null outside it.
    *
@@ -401,6 +404,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   playlistId: null,
   tab: "songs",
   browse: null,
+  browseLabel: null,
   statsPath: null,
   groups: [],
   groupsLoading: false,
@@ -417,7 +421,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   queryToken: 0,
   // Seeded with the view the app opens in, so the first navigation has
   // somewhere to go back to.
-  history: historyAt({ tab: "songs", browse: null, playlistId: null, stats: null }),
+  history: historyAt({
+    tab: "songs",
+    browse: null,
+    browseLabel: null,
+    playlistId: null,
+    stats: null,
+  }),
 
   rememberBrowseOffset: (kind, topGroup) => {
     set((state) => ({ browseOffsets: { ...state.browseOffsets, [kind]: topGroup } }));
@@ -481,6 +491,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const dead: HistoryEntry = {
         tab: state.tab,
         browse: state.browse,
+        browseLabel: state.browseLabel,
         playlistId: state.playlistId,
         stats: null,
       };
@@ -490,6 +501,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // happened.
       set({
         browse: null,
+        browseLabel: null,
         selection: emptySelection,
         history: dropGroupEntry(state.history, dead),
       });
@@ -606,7 +618,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Statistics is not a grouping a playlist can be shown in, so opening one
     // from there lands on the table rather than on a tab that does not apply.
     const tab = get().tab === "stats" ? "songs" : get().tab;
-    await pushEntry({ tab, browse: null, playlistId, stats: null });
+    await pushEntry({ tab, browse: null, browseLabel: null, playlistId, stats: null });
   },
 
   loadColumns: async () => {
@@ -688,6 +700,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     await pushEntry({
       tab,
       browse: null,
+      browseLabel: null,
       playlistId: null,
       // Listening rather than Library: the history is the half of this view
       // that the rest of the app cannot already answer.
@@ -696,7 +709,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   showStatsPath: async (path) => {
-    await pushEntry({ tab: "stats", browse: null, playlistId: null, stats: path });
+    await pushEntry({
+      tab: "stats",
+      browse: null,
+      browseLabel: null,
+      playlistId: null,
+      stats: path,
+    });
   },
 
   openGroup: async (group) => {
@@ -709,7 +728,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     await pushEntry({
       tab,
-      browse: { kind: tab, key: group.key, secondary: group.secondary },
+      browse: { kind: tab, id: group.id },
+      browseLabel: group.key,
       playlistId,
       stats: null,
     });
@@ -724,7 +744,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (browse === null) {
       return;
     }
-    await pushEntry({ tab, browse: null, playlistId, stats: null });
+    await pushEntry({ tab, browse: null, browseLabel: null, playlistId, stats: null });
   },
 
   applyEntry: async (entry, history) => {
@@ -736,6 +756,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         {
           tab: state.tab,
           browse: state.browse,
+          browseLabel: state.browseLabel,
           playlistId: state.playlistId,
           stats: state.statsPath,
         },
@@ -764,6 +785,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       history,
       tab: entry.tab,
       browse: entry.browse,
+      browseLabel: entry.browseLabel,
       statsPath: entry.stats,
       playlistId: entry.playlistId,
       selection: emptySelection,
@@ -959,10 +981,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 /**
  * Where a track lives in the library: its album, else its artist, else Songs.
  *
- * The two tag rules are the browse query's, restated here because this builds
- * the filter that query will be given: an empty tag is an absent one, and the
- * album artist names the group where there is one, so a compilation opens as
- * the compilation rather than as the track's own artist.
+ * The tag rules are the browse query's, restated here because this builds the
+ * filter that query will be given: an empty tag is an absent one, the album
+ * artist names the group where there is one so a compilation opens as the
+ * compilation rather than as the track's own artist, and the release group
+ * MBID wins over both where the file carries one - which is why `Track` selects
+ * a column no view renders. Building the id here rather than asking the backend
+ * which tile holds this song keeps a round trip off a control the user pressed.
  *
  * The playlist goes: revealing what is playing means finding it in the
  * library, and a playlist the song is not in cannot show it.
@@ -970,11 +995,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 function entryForTrack(track: Track): HistoryEntry {
   const album = tagged(track.album);
   const artist = tagged(track.album_artist) ?? tagged(track.artist);
+  const release = tagged(track.release_group_mbid);
 
-  if (album !== null) {
+  if (release !== null || album !== null) {
     return {
       tab: "albums",
-      browse: { kind: "albums", key: album, secondary: artist },
+      browse: { kind: "albums", id: release ?? albumIdentity(album, artist) },
+      browseLabel: album,
       playlistId: null,
       stats: null,
     };
@@ -982,12 +1009,13 @@ function entryForTrack(track: Track): HistoryEntry {
   if (artist !== null) {
     return {
       tab: "artists",
-      browse: { kind: "artists", key: artist, secondary: null },
+      browse: { kind: "artists", id: artist },
+      browseLabel: artist,
       playlistId: null,
       stats: null,
     };
   }
-  return { tab: "songs", browse: null, playlistId: null, stats: null };
+  return { tab: "songs", browse: null, browseLabel: null, playlistId: null, stats: null };
 }
 
 function tagged(value: string | null): string | null {

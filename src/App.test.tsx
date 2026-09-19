@@ -3,6 +3,7 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useEditorStore } from "./features/editor/store";
+import { albumIdentity } from "./features/library/browse";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
 import { usePlaylistsStore } from "./features/playlists/store";
@@ -310,7 +311,7 @@ describe("App", () => {
     // The id is lowercase, so interpolating it read "All genres".
     useLibraryStore.setState({
       tab: "genres",
-      browse: { kind: "genres", key: "Shoegaze", secondary: null },
+      browse: { kind: "genres", id: "Shoegaze" },
     });
 
     render(<App />);
@@ -543,6 +544,7 @@ describe("App playback", () => {
       play_count: 0,
       last_played_at: null,
       missing_since: null,
+      release_group_mbid: null,
     };
   }
 
@@ -897,11 +899,7 @@ describe("App playback", () => {
     // The fixture's tracks carry an artist and no album, so the artist is the
     // group they belong to.
     await waitFor(() => expect(useLibraryStore.getState().tab).toBe("artists"));
-    expect(useLibraryStore.getState().browse).toEqual({
-      kind: "artists",
-      key: "Artist",
-      secondary: null,
-    });
+    expect(useLibraryStore.getState().browse).toEqual({ kind: "artists", id: "Artist" });
   });
 });
 
@@ -1106,8 +1104,10 @@ describe("the browse tabs", () => {
     const user = userEvent.setup();
     vi.mocked(browseGroups).mockResolvedValue([
       {
+        id: albumIdentity("Shields", "Grizzly Bear"),
         key: "Shields",
         secondary: "Grizzly Bear",
+        artistCount: 1,
         trackCount: 10,
         durationMs: 0,
         coverHash: null,

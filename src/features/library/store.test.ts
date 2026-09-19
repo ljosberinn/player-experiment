@@ -13,6 +13,7 @@ import {
   saveColumnConfig,
 } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
+import { albumIdentity } from "./browse";
 import { DEFAULT_COLUMN_CONFIG } from "./columns";
 import { backEntry, forwardEntry, historyAt } from "./history";
 import { PAGE_SIZE } from "./pageCache";
@@ -54,8 +55,10 @@ const saveColumnConfigMock = vi.mocked(saveColumnConfig);
 
 function browseGroup(over: Partial<BrowseGroup> = {}): BrowseGroup {
   return {
+    id: albumIdentity("Shields", "Grizzly Bear"),
     key: "Shields",
     secondary: "Grizzly Bear",
+    artistCount: 1,
     trackCount: 10,
     durationMs: 1000,
     coverHash: null,
@@ -85,6 +88,7 @@ function track(id: number): Track {
     play_count: 0,
     last_played_at: null,
     missing_since: null,
+    release_group_mbid: null,
   };
 }
 
@@ -117,7 +121,13 @@ beforeEach(() => {
     browseOffsets: { albums: 0, artists: 0, genres: 0 },
     queryToken: 0,
     pendingRemoval: null,
-    history: historyAt({ tab: "songs", browse: null, playlistId: null, stats: null }),
+    history: historyAt({
+      tab: "songs",
+      browse: null,
+      browseLabel: null,
+      playlistId: null,
+      stats: null,
+    }),
   });
   useStatusStore.setState({ message: null, notice: null });
   statsMock.mockResolvedValue(stats(1000));
@@ -651,30 +661,19 @@ describe("browse tabs", () => {
 
     await useLibraryStore.getState().openGroup(browseGroup());
 
-    expect(useLibraryStore.getState().browse).toEqual({
-      kind: "albums",
-      key: "Shields",
-      secondary: "Grizzly Bear",
-    });
-    expect(statsMock.mock.calls.at(-1)?.[0].browse).toEqual({
-      kind: "albums",
-      key: "Shields",
-      secondary: "Grizzly Bear",
-    });
+    const identity = { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") };
+    expect(useLibraryStore.getState().browse).toEqual(identity);
+    expect(statsMock.mock.calls.at(-1)?.[0].browse).toEqual(identity);
   });
 
-  it("carries a null key through rather than dropping the filter", async () => {
-    await useLibraryStore.getState().showTab("albums");
+  it("carries a null id through rather than dropping the filter", async () => {
+    await useLibraryStore.getState().showTab("artists");
 
-    await useLibraryStore.getState().openGroup(browseGroup({ key: null, secondary: null }));
+    await useLibraryStore.getState().openGroup(browseGroup({ id: null, key: null }));
 
     // A dropped filter would show the whole library as though it were the
     // untagged group, which is the failure that looks like success.
-    expect(useLibraryStore.getState().browse).toEqual({
-      kind: "albums",
-      key: null,
-      secondary: null,
-    });
+    expect(useLibraryStore.getState().browse).toEqual({ kind: "artists", id: null });
   });
 
   it("opens an album in track order, not the library's artist order", async () => {
@@ -732,6 +731,62 @@ describe("browse tabs", () => {
     await stale;
 
     expect(useLibraryStore.getState().groups.map((g) => g.key)).toEqual(["Newer"]);
+  });
+});
+
+describe("revealing the playing track in the library", () => {
+  /** A track with every tag the identity is built from. */
+  function tagged(over: Partial<Track> = {}): Track {
+    return { ...track(1), album: "Double", album_artist: "Dio", artist: "Dio", ...over };
+  }
+
+  it("opens the release the file's MusicBrainz id names", async () => {
+    const mbid = "2c7d1b1a-1a1a-4c4c-8f8f-9a9a9a9a9a9a";
+
+    await useLibraryStore.getState().showTrackGroup(tagged({ release_group_mbid: mbid }));
+
+    // The id wins over the tags, because that is what the browse query groups
+    // by - opening on the tags would miss a tile merged across two spellings.
+    const state = useLibraryStore.getState();
+    expect(state.tab).toBe("albums");
+    expect(state.browse).toEqual({ kind: "albums", id: mbid });
+    // The tooltip still needs something a person can read.
+    expect(state.browseLabel).toBe("Double");
+  });
+
+  it("falls back to the two tags for a file that was never looked up", async () => {
+    await useLibraryStore.getState().showTrackGroup(tagged());
+
+    expect(useLibraryStore.getState().browse).toEqual({
+      kind: "albums",
+      id: albumIdentity("Double", "Dio"),
+    });
+  });
+
+  it("files a track under its album artist rather than its own", async () => {
+    // A compilation opens as the compilation. The album artist is what the
+    // query groups by, so building the id from `artist` would miss the tile.
+    await useLibraryStore
+      .getState()
+      .showTrackGroup(tagged({ album_artist: "Various Artists", artist: "Alice" }));
+
+    expect(useLibraryStore.getState().browse).toEqual({
+      kind: "albums",
+      id: albumIdentity("Double", "Various Artists"),
+    });
+  });
+
+  it("opens an untagged release rather than dropping to the artist", async () => {
+    // The identity is a string even with no album tag, so there is a tile to
+    // open; an empty tag is an absent one on both sides.
+    await useLibraryStore
+      .getState()
+      .showTrackGroup(tagged({ album: "  ", release_group_mbid: null }));
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      tab: "artists",
+      browse: { kind: "artists", id: "Dio" },
+    });
   });
 });
 
@@ -1004,8 +1059,7 @@ describe("navigation history", () => {
 
     expect(useLibraryStore.getState().browse).toEqual({
       kind: "albums",
-      key: "Shields",
-      secondary: "Grizzly Bear",
+      id: albumIdentity("Shields", "Grizzly Bear"),
     });
   });
 

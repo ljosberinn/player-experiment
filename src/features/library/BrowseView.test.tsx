@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowseGroup } from "../../ipc";
 import { BrowseView } from "./BrowseView";
+import { albumIdentity } from "./browse";
 import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -17,8 +18,10 @@ vi.mock("../../ipc", () => ({
 
 function group(over: Partial<BrowseGroup> = {}): BrowseGroup {
   return {
+    id: albumIdentity("Shields", "Grizzly Bear"),
     key: "Shields",
     secondary: "Grizzly Bear",
+    artistCount: 1,
     trackCount: 10,
     durationMs: 600_000,
     coverHash: null,
