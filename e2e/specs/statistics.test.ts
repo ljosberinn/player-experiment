@@ -211,6 +211,15 @@ describe("the Statistics view", () => {
    * and `Modern Classical` resolve through migration 11's tree and land under
    * a root that has something below it; the synthetic `Genre00`-`Genre19` are
    * in no layer of it, so they are roots with no children and no way down.
+   *
+   * **Driven from the table rather than from a slice**, which is not a
+   * concession to the harness but the same thing the component says about
+   * itself: `ChartFrame` makes the svg `role="img"`, so a path is reachable by
+   * a pointer and nothing else, and the drill's real control is the button in
+   * the table. WebDriver agrees by accident - `elementClick` aims at an
+   * element's bounding-box centre, and the centre of a ring segment's box is
+   * the hole, so clicking a slice here dispatches at a point no part of the
+   * path occupies and the event lands on nothing.
    */
   it("drills into a genre and narrows the whole tab with it", async () => {
     const genres = panel("Genres");
@@ -218,6 +227,9 @@ describe("the Statistics view", () => {
       timeout: 30_000,
       timeoutMsg: "the genre donut never arrived",
     });
+    // The geometry the screenshot is of: slices drawn, and at least one of
+    // them marked as having a level below.
+    await expect(genres.$("path.chart-slice[data-drills]")).toBeExisting();
     await genres.scrollIntoView({ block: "center" });
     await capture("statistics-library-genres");
 
@@ -230,7 +242,8 @@ describe("the Statistics view", () => {
     });
     const before = await health.getText();
 
-    await genres.$("path.chart-slice[data-drills]").click();
+    await genres.$(".//button[normalize-space()='Show as table']").click();
+    await genres.$("button.chart-table-drill").click();
 
     await expect(browser.$(".stats-breadcrumb")).toBeExisting();
     await browser.waitUntil(async () => (await health.getText()) !== before, {
@@ -238,6 +251,8 @@ describe("the Statistics view", () => {
       timeoutMsg: "the genre crumb never reached the other panels",
     });
 
+    // Back to the ring for the photograph, which is what this panel is.
+    await genres.$(".//button[normalize-space()='Show as chart']").click();
     await genres.scrollIntoView({ block: "center" });
     await capture("statistics-library-genre-drilled");
   });
