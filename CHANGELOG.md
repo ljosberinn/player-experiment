@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/ljosberinn/player-experiment/compare/v0.14.0...v0.15.0) (2026-09-19)
+
+
+### Features
+
+* a lone candidate is a match, not a question ([#218](https://github.com/ljosberinn/player-experiment/issues/218)) ([216b6dc](https://github.com/ljosberinn/player-experiment/commit/216b6dc697cf6459c6fae8b8b68e4811e8a222ae))
+
+
+### Bug Fixes
+
+* a write somewhere else no longer locks the tag editor ([#216](https://github.com/ljosberinn/player-experiment/issues/216)) ([b444d76](https://github.com/ljosberinn/player-experiment/commit/b444d763bf52c9b0bf5b74481673dff1c7a53443))
+
 ## [0.14.0](https://github.com/ljosberinn/player-experiment/compare/v0.13.0...v0.14.0) (2026-09-19)
 
 
