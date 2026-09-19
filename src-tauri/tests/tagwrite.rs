@@ -451,7 +451,7 @@ fn the_musicbrainz_id_backfill_reads_what_the_files_carry_once() {
     let lock = scan::ScanLock::default();
 
     assert_eq!(
-        scan::read_musicbrainz_ids(&mut conn, &lock).unwrap(),
+        scan::read_musicbrainz_tags(&mut conn, &lock).unwrap(),
         Some(1)
     );
     assert_eq!(
@@ -465,7 +465,7 @@ fn the_musicbrainz_id_backfill_reads_what_the_files_carry_once() {
     conn.execute("UPDATE tracks SET release_mbid = NULL", [])
         .unwrap();
     assert_eq!(
-        scan::read_musicbrainz_ids(&mut conn, &lock).unwrap(),
+        scan::read_musicbrainz_tags(&mut conn, &lock).unwrap(),
         None,
         "a finished pass does not run again"
     );
@@ -485,7 +485,7 @@ fn the_musicbrainz_id_backfill_leaves_an_id_the_row_already_has() {
     )
     .unwrap();
 
-    scan::read_musicbrainz_ids(&mut conn, &scan::ScanLock::default()).unwrap();
+    scan::read_musicbrainz_tags(&mut conn, &scan::ScanLock::default()).unwrap();
 
     assert_eq!(
         mbids(&h.db, track),
@@ -495,6 +495,78 @@ fn the_musicbrainz_id_backfill_leaves_an_id_the_row_already_has() {
         ),
         "the row's own id stays, the empty column beside it is filled"
     );
+}
+
+/// Picard's release type is read as the primary type it names, which is what
+/// the mover files a release under.
+#[test]
+fn a_release_type_picard_wrote_reads_as_its_primary_type() {
+    let h = harness();
+    let path = path_of(&h.db, id_of(&h.db, "Maki"));
+
+    for (written, read) in [
+        ("album\0compilation", Some("Album")),
+        ("\u{feff}ep", Some("EP")),
+        ("album; live", Some("Album")),
+        ("live", None),
+    ] {
+        fixture::tag_release_type_as_picard(&path, written);
+        assert_eq!(
+            tags::read(&path).unwrap().release_type.as_deref(),
+            read,
+            "{written:?}"
+        );
+        assert_eq!(
+            tags::musicbrainz_tags(&path)
+                .unwrap()
+                .release_type
+                .as_deref(),
+            read,
+            "{written:?}"
+        );
+    }
+}
+
+/// A scan stored Picard's type raw before the read normalized it, and rows
+/// from before migration 9 have none. The backfill brings both to what the
+/// file names, and leaves a type that is already a primary type alone.
+#[test]
+fn the_backfill_reads_the_release_type_the_files_carry() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let cases = [
+        // Title, what the file says, what the row says, what the row ends as.
+        ("Maki", "ep", None, Some("EP")),
+        (
+            "Sakura Coming",
+            "album; compilation",
+            Some("album; compilation"),
+            Some("Album"),
+        ),
+        ("Sleeping Ute", "album", Some("Single"), Some("Single")),
+        ("Wasted Acres", "live", Some("live"), None),
+    ];
+    for (title, file, row, _) in cases {
+        let track = id_of(&h.db, title);
+        fixture::tag_release_type_as_picard(&path_of(&h.db, track), file);
+        conn.execute(
+            "UPDATE tracks SET release_type = ?1 WHERE id = ?2",
+            rusqlite::params![row, track],
+        )
+        .unwrap();
+    }
+
+    assert_eq!(
+        scan::read_musicbrainz_tags(&mut conn, &scan::ScanLock::default()).unwrap(),
+        Some(3)
+    );
+    for (title, _, _, expected) in cases {
+        assert_eq!(
+            release_type(&h.db, id_of(&h.db, title)).as_deref(),
+            expected,
+            "{title}"
+        );
+    }
 }
 
 /// An empty value clears them, the same as any other text field - the lookup

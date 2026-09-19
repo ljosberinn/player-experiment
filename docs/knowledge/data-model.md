@@ -20,6 +20,7 @@ edit a shipped one.
 | 12 | `tracks.path` collates `NOCASE` — one file is one row whatever it is spelled like. A whole-table rebuild, because the constraint is on the column, and a merge in the same migration for the rows that collide under the fold |
 | 13 | `plays` — one row per play, with the artist and title as they were heard. `track_id` is the one derived column and the one foreign key; `idx_plays_identity` over `(started_at, match_key)` is the dedupe rule within a source |
 | 14 | `lastfm_loved` — the loved set the last import fetched |
+| 15 | no schema: deletes the MusicBrainz id backfill's two `settings` flags, retired by the pass that reads the release type too |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -111,12 +112,19 @@ assumed nothing had written them, but Picard had: about 9% of the measured
 library carries a release and release group id, and a scan never re-reads an
 unchanged file, so none of them had reached the rows — which left the lookup
 pass searching, and overwriting, releases whose files already named them.
-`scan::read_musicbrainz_ids` reads both off every file once, holding the scan
-lock a chunk at a time, and fills **only empty columns** so an id the lookup
-wrote stays. `release_type` is left out: Picard writes it lowercase and with
-secondary types, and it names the folder the mover files into.
-`tracks.mbidsRead` marks the pass done and `tracks.mbidsReadThrough` holds the
-last track id finished.
+`scan::read_musicbrainz_tags` reads both off every file once, holding the scan
+lock a chunk at a time, and fills **only empty id columns** so an id the lookup
+wrote stays. `tracks.musicbrainzRead` marks the pass done and
+`tracks.musicbrainzReadThrough` holds the last track id finished.
+
+**`release_type` is one of MusicBrainz's five primary types or NULL.** Picard
+writes it lowercase, followed by secondary types (`album; compilation`),
+sometimes behind a byte-order mark, and sometimes as a secondary type alone
+(`live`). `tags::primary_type` takes the first primary type named and nothing
+otherwise, on every read. The same pass fills the type wherever the row's is
+not already a primary type, since a scan stored Picard's raw before; the mover
+then re-files those releases. Migration 15 retires the ids-only pass's flags,
+so a library that finished that pass runs this one.
 
 ## The Library folder
 
