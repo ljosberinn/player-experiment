@@ -76,3 +76,9 @@ from a font CDN — the app is offline-first and the CSP forbids it.
   of the fold on the word "Songs".
 - A 27px translucent status bar: zoom stepper left, view summary centred, version
   right.
+- **Settings is a rail and a pane**, at one size whichever category is open:
+  Appearance (Interface Zoom, Colour From Album Art), Library (Library Folder,
+  Music Folders), Online (Look Up Releases Online, last.fm) and About (Activity
+  Log). The rail items wear the sidebar's navigation look. Issue 91 built it on
+  the app's tokens while the design could not be fetched, so the design's own
+  settings dialog wants re-fetching and amending to match.

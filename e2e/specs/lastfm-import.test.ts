@@ -22,6 +22,7 @@ describe("the last.fm history import", () => {
 
   it("offers the import beside the connection", async () => {
     await chooseFromMenu("Edit", "Settings…");
+    await browser.$("//*[@role='tab'][normalize-space()='Online']").click();
     const section = browser.$(".settings-lastfm");
     await section.waitForExist({ timeout: 10_000 });
     await section.scrollIntoView();

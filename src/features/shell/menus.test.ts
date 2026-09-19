@@ -75,7 +75,8 @@ describe("the menu bar", () => {
         throw new Error("expected an item");
       }
       item?.onSelect?.();
-      expect(onSettings).toHaveBeenCalled();
+      // On Online, or it lands a category away from what it was opened for.
+      expect(onSettings).toHaveBeenCalledWith("online");
     });
 
     it("names the account and offers the one-click way out", () => {

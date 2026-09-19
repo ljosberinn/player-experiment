@@ -91,7 +91,7 @@ export function WatchFolderSettings({ lockedRoot }: { lockedRoot: string | null 
 
   return (
     <section className="settings-watch">
-      <h3>Music Folders</h3>
+      <h4>Music Folders</h4>
 
       <div className="settings-row">
         <label htmlFor="watch-interval">Check For Changes</label>

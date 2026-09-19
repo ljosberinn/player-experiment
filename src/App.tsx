@@ -36,7 +36,7 @@ import { BackgroundTaskProgress } from "./features/shell/BackgroundTaskProgress"
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
 import { useFileDrops } from "./features/shell/fileDrop";
-import { SettingsDialog } from "./features/shell/SettingsDialog";
+import { type SettingsCategory, SettingsDialog } from "./features/shell/SettingsDialog";
 import { NOTICE_MS, notify, useStatusStore } from "./features/shell/statusStore";
 import { TaskProgress } from "./features/shell/TaskProgress";
 import { useHistoryShortcuts } from "./features/shell/useHistoryShortcuts";
@@ -59,7 +59,8 @@ import { type AppInfo, getAppInfo, stagePickedCover } from "./ipc";
 
 export function App() {
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  /** Which category Settings is open on, or null while it is closed. */
+  const [settings, setSettings] = useState<SettingsCategory | null>(null);
   /** What the error popover points at: the box that says what is playing. */
   const statusRef = useRef<HTMLDivElement>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -292,7 +293,7 @@ export function App() {
             had open. */}
         <AppMenus
           onRemoveMissing={() => setConfirmRemoveMissing(true)}
-          onSettings={() => setShowSettings(true)}
+          onSettings={(category = "appearance") => setSettings(category)}
           onExport={(choice) => void runExport(choice)}
         />
       </TitleBar>
@@ -572,7 +573,9 @@ export function App() {
         />
       ) : null}
 
-      {showSettings ? <SettingsDialog onClose={() => setShowSettings(false)} /> : null}
+      {settings === null ? null : (
+        <SettingsDialog category={settings} onClose={() => setSettings(null)} />
+      )}
 
       {editing ? (
         <SmartPlaylistEditor

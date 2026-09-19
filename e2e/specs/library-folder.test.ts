@@ -27,6 +27,7 @@ const ROOT = resolve(import.meta.dirname, "..", ".tmp", "library-folder");
 
 async function openSettings(): Promise<void> {
   await chooseFromMenu("Edit", "Settings…");
+  await browser.$("//*[@role='tab'][normalize-space()='Library']").click();
   await browser.$(".settings-library").waitForExist({ timeout: 10_000 });
 }
 
