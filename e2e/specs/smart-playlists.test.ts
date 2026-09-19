@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { LIBRARY } from "../fixtures";
+import { capture } from "../screenshot";
 
 /**
  * A smart playlist with a cutoff, built through the editor.
@@ -157,6 +158,10 @@ describe("a smart playlist with a cutoff", () => {
     // The sidebar count runs through the same scope the grid did, so a
     // disagreement here means the cutoff reached one and not the other.
     await expect(playlistItem(NAME).$(".sidebar-count")).toHaveText(String(LIMIT));
+
+    // The landing state is the point of phase 100, and the tiles and the
+    // highlighted sidebar row only read as one picture together.
+    await capture("smart-playlist-releases");
   });
 
   it("holds the same songs however the view is sorted", async () => {
