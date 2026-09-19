@@ -7,6 +7,8 @@ import {
   lastfmCompleteConnect,
   lastfmDisconnect,
   lastfmImport,
+  lastfmLove,
+  lastfmLovedTracks,
   lastfmStatus,
   onLastfmDisconnected,
   onLastfmImport,
@@ -44,9 +46,34 @@ interface LastfmState {
   importing: boolean;
   /** How far the running import has got, or null before its first page. */
   importProgress: WriteProgress | null;
+  /**
+   * The library tracks last.fm holds a love for.
+   *
+   * Held whole rather than asked per row: a right-click menu has to say Love
+   * or Unlove the instant it opens, and `rowMenuItems` is pure and
+   * synchronous. Read with `getState()` where it is only needed at menu-build
+   * time, so the table subscribes to nothing.
+   */
+  loved: ReadonlySet<number>;
 
   /** Reads the stored status. Called once, at startup. */
   load: () => Promise<void>;
+  /**
+   * Reads the loved set. Called at startup, after an import, and to recover
+   * from a love that failed part-way.
+   */
+  loadLoved: () => Promise<void>;
+  /**
+   * Loves or unloves `trackIds`, answering in the UI before last.fm has
+   * confirmed it.
+   *
+   * The set moves first and is replaced by what the backend answers with,
+   * which is the whole set: two library rows can share one match key, and
+   * loving either loves both. A refusal is reported — the user asked for
+   * this — and the set is re-read rather than simply put back, because a
+   * selection can fail part-way through.
+   */
+  love: (trackIds: number[], loved: boolean) => Promise<void>;
   /**
    * Listens for what the scrobbler thread decides on its own: a rejected key,
    * and how many plays are waiting. Called once, at startup; resolves to its
@@ -95,6 +122,7 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
   imported: null,
   importing: false,
   importProgress: null,
+  loved: new Set<number>(),
 
   load: async () => {
     try {
@@ -108,6 +136,39 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
     } catch {
       // Left as "no key, no account", which is what an app that cannot read
       // the setting should offer: nothing.
+    }
+  },
+
+  loadLoved: async () => {
+    try {
+      set({ loved: new Set(await lastfmLovedTracks()) });
+    } catch {
+      // Left as it was. Nobody asked for this read, and an empty set would
+      // make every menu offer Love on a song the user has already loved.
+    }
+  },
+
+  love: async (trackIds, loved) => {
+    const before = get().loved;
+    const optimistic = new Set(before);
+    for (const id of trackIds) {
+      if (loved) {
+        optimistic.add(id);
+      } else {
+        optimistic.delete(id);
+      }
+    }
+    set({ loved: optimistic });
+
+    try {
+      set({ loved: new Set(await lastfmLove(trackIds, loved)) });
+    } catch (error) {
+      report(error);
+      set({ loved: before });
+      // The backend stops at the first refusal and keeps whatever it had
+      // already sent, so after a partial failure neither set is the truth.
+      // Put it back, then ask; the read is what settles it.
+      await get().loadLoved();
     }
   },
 
@@ -200,6 +261,9 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
     try {
       const { imported, state } = await lastfmImport(username, fresh);
       set({ imported: state });
+      // The import replaces the loved set wholesale, so what the window holds
+      // is stale the moment this returns.
+      await get().loadLoved();
       notify(
         imported === 1
           ? "Imported 1 play from last.fm."

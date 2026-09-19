@@ -91,6 +91,18 @@ describe("ContextMenu", () => {
     expect(after).toHaveBeenCalled();
   });
 
+  it("reads a greyed item's reason out as part of it", async () => {
+    // Real text in the item rather than a tooltip: a disabled entry that does
+    // not say what would un-grey it leaves the user guessing, and a title
+    // attribute is not read out.
+    await open([{ label: "Love", disabled: true, hint: "Needs a last.fm account" }]);
+
+    expect(
+      screen.getByRole("menuitem", { name: "Love. Needs a last.fm account" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Needs a last.fm account")).toBeInTheDocument();
+  });
+
   it("does not run a disabled item that is clicked", async () => {
     const onSelect = vi.fn();
     const { user } = await open([{ label: "Show in Explorer", disabled: true, onSelect }]);

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SortField, Track, TrackQuery } from "../../ipc";
 import { addToPlaylist, libraryStats, queryTracks, revealTrack } from "../../ipc";
+import { useLastfmStore } from "../lastfm/store";
 import { usePlaylistsStore } from "../playlists/store";
 import { trackDragIds } from "../playlists/trackDrag";
 import { SongTable } from "./SongTable";
@@ -23,6 +24,9 @@ vi.mock("../../ipc", () => ({
   listPlaylists: vi.fn(async () => []),
   addToPlaylist: vi.fn(async () => 1),
   tracksByIds: vi.fn(async () => []),
+  // The Love entry's route out; the store is what these tests assert against.
+  lastfmLovedTracks: vi.fn(async () => []),
+  lastfmLove: vi.fn(async () => []),
 }));
 
 const statsMock = vi.mocked(libraryStats);
@@ -105,6 +109,9 @@ beforeEach(() => {
     direction: "asc",
     selection: { ids: new Set(), anchorIndex: null },
   });
+  // No key, so the Love entry is absent unless a test says otherwise - which
+  // is what every other row-menu test here assumes.
+  useLastfmStore.setState({ configured: false, username: null, loved: new Set() });
   statsMock.mockResolvedValue(stats(500));
   queryTracksMock.mockImplementation(async (query: TrackQuery) =>
     Array.from({ length: query.limit }, (_, i) => track(query.offset + i)),
@@ -604,6 +611,49 @@ describe("SongTable", () => {
       expect(
         screen.queryByRole("menuitem", { name: /Remove .*from Library/ }),
       ).not.toBeInTheDocument();
+    });
+
+    describe("the Love entry", () => {
+      it("is absent on a build with no last.fm key", async () => {
+        await openRowMenu();
+
+        expect(await screen.findByRole("menu", { name: "Song actions" })).toBeInTheDocument();
+        expect(screen.queryByRole("menuitem", { name: /^Love/ })).not.toBeInTheDocument();
+      });
+
+      it("loves the rows the menu was opened on", async () => {
+        const love = vi.fn(async () => {});
+        useLastfmStore.setState({ configured: true, username: "listener", love });
+        const user = await openRowMenu();
+
+        await user.click(await screen.findByRole("menuitem", { name: "Love" }));
+
+        expect(love).toHaveBeenCalledWith([0], true);
+      });
+
+      it("reads as the way back out once the row is loved", async () => {
+        const love = vi.fn(async () => {});
+        useLastfmStore.setState({
+          configured: true,
+          username: "listener",
+          loved: new Set([0]),
+          love,
+        });
+        const user = await openRowMenu();
+
+        await user.click(await screen.findByRole("menuitem", { name: "Unlove" }));
+
+        expect(love).toHaveBeenCalledWith([0], false);
+      });
+
+      it("greys itself with no account, and says which", async () => {
+        useLastfmStore.setState({ configured: true, username: null });
+        await openRowMenu();
+
+        expect(
+          await screen.findByRole("menuitem", { name: "Love. Needs a last.fm account" }),
+        ).toBeInTheDocument();
+      });
     });
 
     it("plays the row it was opened on", async () => {

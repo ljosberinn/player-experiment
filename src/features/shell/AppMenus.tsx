@@ -3,6 +3,7 @@ import { MenuBar } from "../../components/ui/MenuBar";
 import { revealTrack } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { type ExportChoice, exportChoice } from "../export/scope";
+import { useLoveEntry } from "../lastfm/loveEntry";
 import { useLastfmStore } from "../lastfm/store";
 import { rowMenuItems } from "../library/rowMenu";
 import { useScanStore } from "../library/scan";
@@ -74,6 +75,7 @@ export function AppMenus({
 
   const currentPlaylist = playlists.find((playlist) => playlist.id === playlistId) ?? null;
   const selectedIds = [...selection.ids];
+  const loving = useLoveEntry(selectedIds, trackById);
 
   return (
     <MenuBar
@@ -114,6 +116,7 @@ export function AppMenus({
                     void removeTracks(playlistId, selectedIds);
                   }
                 },
+                loving,
                 onExport: () => onExport(exportChoice(selectedIds, null)),
                 onReveal: () => void revealTrack(selectedIds[0] as number),
                 onOpenUrl: (url) => void openUrl(url).catch(() => {}),

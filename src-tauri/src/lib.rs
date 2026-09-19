@@ -290,6 +290,8 @@ pub fn run() {
             commands::lastfm_complete_connect,
             commands::lastfm_disconnect,
             commands::lastfm_import,
+            commands::lastfm_loved_tracks,
+            commands::lastfm_love,
             commands::last_crash,
             commands::acknowledge_crash,
             commands::reveal_crash_log,

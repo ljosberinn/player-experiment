@@ -340,6 +340,15 @@ leaves for the next one's `from=`. It is not exportable.
   the history finishes, then swapped in one transaction, so a failed fetch keeps
   the old set. `ListenQuery.loved` and the smart-playlist field `Loved` both
   filter on `plays.match_key` against it.
+- **The set has a second writer.** `db::loved` owns the table: `replace` is the
+  import, `remember`/`forget` are the user loving a song from the song menu,
+  written before last.fm has been asked and put back if it refuses (102). No
+  queue - a scrobble has a timestamp that expires, a love is a present-tense
+  preference.
+- **Membership resolves through the play log** - `db::loved::MEMBERS`, the one
+  copy of that subquery, read both by the smart field and by the command the
+  window asks for the whole set. Nothing maps a `match_key` to a track except
+  `plays.track_id`; 101 measured a resolved link table as gaining zero rows.
 
 ## Statistics
 

@@ -269,13 +269,7 @@ impl Import<'_> {
         }
 
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM lastfm_loved", [])?;
-        {
-            let mut insert = tx.prepare("INSERT INTO lastfm_loved (match_key) VALUES (?1)")?;
-            for key in &keys {
-                insert.execute([key])?;
-            }
-        }
+        crate::db::loved::replace(&tx, &keys.into_iter().collect::<Vec<_>>())?;
         tx.commit()?;
         Ok(())
     }

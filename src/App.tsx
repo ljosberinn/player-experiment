@@ -70,6 +70,7 @@ export function App() {
   // Launch lifecycle, and nothing else: who is connected is `AppMenus`'
   // business. Both are actions, so they cost no renders where they are.
   const loadLastfm = useLastfmStore((s) => s.load);
+  const loadLoved = useLastfmStore((s) => s.loadLoved);
   const watchLastfm = useLastfmStore((s) => s.watch);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
@@ -140,7 +141,10 @@ export function App() {
     // One SQLite read, and the only thing last.fm does unbidden: it decides
     // whether the Account menu opens at all. Nothing leaves the machine.
     void loadLastfm();
-  }, [loadDynamicBg, loadLastfm]);
+    // The set the song menu reads to say Love or Unlove. Local too: it is the
+    // last import's answer, held in SQLite.
+    void loadLoved();
+  }, [loadDynamicBg, loadLastfm, loadLoved]);
 
   useEffect(() => {
     // The one thing last.fm reports without being asked: the stored key has

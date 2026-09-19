@@ -20,7 +20,8 @@ src-tauri/src/
   audio/      symphonia + rodio player thread, command/event channels
   smart/      filter tree -> parameterized SQL
   export/     JSON export
-  lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue
+  lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue,
+              the history import, loving a track
   tagsource/  MusicBrainz + Cover Art Archive lookup: transport seam, the
               process-wide rate limiter, candidate scoring, one release's
               lookup in `pass`
@@ -75,6 +76,16 @@ session, sleeps a quarter-second between pages, and stops after three failed
 attempts at one page with its cursor committed, so the next Import resumes. It
 announces on `library://changed` whether it finished or stopped: every page it
 got through is committed and linked.
+
+**Neither is a love.** `lastfm_love` runs `lastfm::love` through
+`commands::blocking`, one signed request per song - `track.love` has no batch
+form. It is the one last.fm call the user pressed a control to make, so unlike
+a scrobble it is not queued and its failure is reported. It writes
+`db::loved` first and puts the row back if the request is refused, stops at the
+first refusal rather than working through the rest, and answers with the loved
+set as it now stands so the window never has to guess. A key last.fm rejects is
+forgotten there, and the command emits `lastfm://disconnected` when the session
+it started with is gone by the end.
 
 One dedicated audio thread owns the `rodio` sink and receives an `mpsc` command
 enum. It emits `player://position` (throttled ~4/s), `player://state`,

@@ -551,6 +551,22 @@ absences are what nobody notices coming back — hence the guards in
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.
+- **A greyed menu entry says what would un-grey it.** `MenuItem.hint` is a few
+  words in the trailing column a menu elsewhere gives a shortcut, and the item
+  carries an explicit `aria-label` because an accessible name is the plain
+  concatenation of its text nodes — without one, Love with a hint is announced
+  as "LoveNeeds a last.fm account".
+- **Love is one hook, two menus.** `useLoveEntry` gives the right-click menu and
+  the Edit menu the same answer, subscribed rather than read once: a menu opened
+  after a love has to say Unlove, and `getState()` would leave the bar one press
+  behind. The store holds the loved set whole, because `rowMenuItems` is pure
+  and synchronous and a round trip per row under the pointer is not that. The
+  set moves optimistically and is replaced by what the backend answers with —
+  two library rows can share one match key, so loving either loves both.
+- **A row the table no longer caches counts as loveable.** A selection outlives
+  the pages behind it, and greying the entry because a page was evicted would
+  make the menu's answer depend on how far the user has scrolled; the backend
+  refuses an untaggable selection whole and says so.
 - **The row menu's keyboard route synthesizes a `contextmenu` event** rather
   than opening the menu directly, because `ContextMenu.Trigger` derives the
   position from that event and the row's own handler decides which rows the

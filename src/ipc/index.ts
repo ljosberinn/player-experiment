@@ -590,6 +590,26 @@ export function lastfmImport(username: string, fresh: boolean): Promise<LastfmIm
   return invoke<LastfmImported>("lastfm_import", { username, fresh });
 }
 
+/**
+ * Every library track last.fm holds a love for.
+ *
+ * The whole set in one call, because the right-click menu has to say Love or
+ * Unlove the instant it opens and a round trip per row is not that.
+ */
+export function lastfmLovedTracks(): Promise<number[]> {
+  return invoke<number[]>("lastfm_loved_tracks");
+}
+
+/**
+ * Loves or unloves a selection, answering with the set as it now stands.
+ *
+ * The set rather than nothing: two library rows can share one match key, and
+ * loving either loves both.
+ */
+export function lastfmLove(trackIds: number[], loved: boolean): Promise<number[]> {
+  return invoke<number[]>("lastfm_love", { trackIds, loved });
+}
+
 /** How far an import has got: scrobbles read, of about how many. */
 export function onLastfmImport(handler: (progress: WriteProgress) => void): Promise<UnlistenFn> {
   return listen<WriteProgress>("lastfm://import", (event) => handler(event.payload));
