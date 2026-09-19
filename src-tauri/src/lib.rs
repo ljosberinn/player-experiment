@@ -145,7 +145,7 @@ pub fn run() {
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
             normalize_covers(db.clone(), lock.clone(), log.clone());
-            read_musicbrainz_ids(db.clone(), lock.clone(), log.clone());
+            read_musicbrainz_tags(db.clone(), lock.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -430,20 +430,20 @@ fn sweep_covers(db: &Db, lock: &scan::ScanLock) -> crate::error::AppResult<(u32,
     Ok((collected, db::covers::vacuum_if_worthwhile(&conn)?))
 }
 
-/// Reads the MusicBrainz release ids off every file once, off the setup path,
+/// Reads the MusicBrainz release tags off every file once, off the setup path,
 /// for the reason [`normalize_covers`] runs there. See
-/// `scan::read_musicbrainz_ids`.
+/// `scan::read_musicbrainz_tags`.
 ///
-/// Nothing announces: the columns it fills are read by the lookup pass rather
-/// than drawn anywhere, so no view is out of date because of it.
-fn read_musicbrainz_ids(db: Db, lock: scan::ScanLock, log: log::Log) {
+/// Nothing announces: the columns it fills are read by the lookup pass and the
+/// mover rather than drawn anywhere, so no view is out of date because of it.
+fn read_musicbrainz_tags(db: Db, lock: scan::ScanLock, log: log::Log) {
     let _ = std::thread::Builder::new()
-        .name("musicbrainz-ids".to_owned())
+        .name("musicbrainz-tags".to_owned())
         .spawn(move || {
-            let op = log.op("tracks.mbids");
+            let op = log.op("tracks.musicbrainz");
             match db
                 .conn()
-                .and_then(|mut conn| scan::read_musicbrainz_ids(&mut conn, &lock))
+                .and_then(|mut conn| scan::read_musicbrainz_tags(&mut conn, &lock))
             {
                 // Every launch after the one that finished the pass.
                 Ok(None) => {}

@@ -9,8 +9,10 @@
 
 use std::path::{Path, PathBuf};
 
-use lofty::config::WriteOptions;
+use lofty::config::{ParseOptions, WriteOptions};
+use lofty::file::AudioFile;
 use lofty::id3::v2::Id3v2Tag;
+use lofty::mpeg::MpegFile;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::tag::{Tag, TagType};
@@ -103,6 +105,18 @@ pub fn write_mp3(path: &Path, frames: usize, meta: &Meta) {
     if let Some(v) = meta.release_group_mbid {
         id3.insert_user_text("MusicBrainz Release Group Id".to_owned(), v.to_owned());
     }
+    id3.save_to_path(path, WriteOptions::default())
+        .expect("write tags");
+}
+
+/// Puts `value` in an mp3's release-type frame as Picard does, which the app's
+/// writer never would: lowercase, and with secondary types after it.
+pub fn tag_release_type_as_picard(path: &Path, value: &str) {
+    let mut file = std::fs::File::open(path).expect("open fixture mp3");
+    let mut mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).expect("read fixture mp3");
+    drop(file);
+    let id3 = mpeg.id3v2_mut().expect("fixture mp3s carry ID3v2");
+    id3.insert_user_text("MusicBrainz Album Type".to_owned(), value.to_owned());
     id3.save_to_path(path, WriteOptions::default())
         .expect("write tags");
 }

@@ -418,11 +418,12 @@ transaction and rewrites the whole file, so a gigabyte of rewriting to reclaim
 one orphan is not a trade worth making on every launch. The lock is dropped
 before it, since it moves no row.
 
-The `musicbrainz-ids` thread beside it reads the release and release-group
-ids off every file once, for the reason [the data model](data-model.md) gives.
-It takes the scan lock a chunk at a time, so a scan or a move cannot rewrite a
-row between the read and the write. Nothing announces: the columns it fills are
-read by the lookup pass rather than drawn anywhere.
+The `musicbrainz-tags` thread beside it reads the release and release-group
+ids and the release type off every file once, for the reason
+[the data model](data-model.md) gives. It takes the scan lock a chunk at a
+time, so a scan or a move cannot rewrite a row between the read and the write.
+Nothing announces: the columns it fills are read by the lookup pass and the
+mover rather than drawn anywhere.
 
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
 whichever way it was chosen, and either way **stages**: `stage_picked_cover`

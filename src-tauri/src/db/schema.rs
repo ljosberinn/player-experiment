@@ -633,6 +633,14 @@ CREATE TABLE lastfm_loved (
     match_key TEXT PRIMARY KEY
 ) WITHOUT ROWID;
 "#,
+    // 15 - the MusicBrainz id backfill's flags, retired
+    //
+    // `scan::read_musicbrainz_tags` reads the release type as well now, under
+    // flags of its own, so a library that finished the ids-only pass runs it
+    // again. These two would otherwise sit in `settings` naming nothing.
+    r#"
+DELETE FROM settings WHERE key IN ('tracks.mbidsRead', 'tracks.mbidsReadThrough');
+"#,
 ];
 
 #[cfg(test)]

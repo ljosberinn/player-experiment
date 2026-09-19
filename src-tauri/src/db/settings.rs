@@ -73,12 +73,12 @@ pub const COVERS_NORMALIZED: &str = "covers.normalized";
 /// instead of re-encoding a generation onto what it already did.
 pub const COVERS_NORMALIZED_THROUGH: &str = "covers.normalizedThrough";
 
-/// Set once every track has had its MusicBrainz ids read, for
-/// `scan::read_musicbrainz_ids`. A flag for [`COVERS_NORMALIZED`]'s reason: a
+/// Set once every track has had its MusicBrainz release tags read, for
+/// `scan::read_musicbrainz_tags`. A flag for [`COVERS_NORMALIZED`]'s reason: a
 /// read of every file in the library is not work for a migration.
-pub const MBIDS_READ: &str = "tracks.mbidsRead";
+pub const MUSICBRAINZ_READ: &str = "tracks.musicbrainzRead";
 /// The last track id that pass finished, so a quit resumes it.
-pub const MBIDS_READ_THROUGH: &str = "tracks.mbidsReadThrough";
+pub const MUSICBRAINZ_READ_THROUGH: &str = "tracks.musicbrainzReadThrough";
 /// Where the last.fm import stands, as `lastfm::import::State` JSON.
 ///
 /// Not exportable: it names an account and describes this library's copy of

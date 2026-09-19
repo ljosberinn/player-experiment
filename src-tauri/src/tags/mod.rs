@@ -13,7 +13,7 @@ use lofty::config::ParseOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::prelude::ItemKey;
 use lofty::probe::Probe;
-use lofty::tag::Accessor;
+use lofty::tag::{Accessor, Tag};
 use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
@@ -47,7 +47,7 @@ pub struct TrackTags {
     pub release_group_mbid: Option<String>,
     /// Album, EP, Single and the rest, read for the same reason the two ids
     /// above are: a column only the writer fills is blank again the next time
-    /// a rescan re-adds the row.
+    /// a rescan re-adds the row. One of [`PRIMARY_TYPES`] or nothing.
     pub release_type: Option<String>,
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
@@ -89,7 +89,7 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     tags.disc_no = tag.disk().map(i64::from);
     tags.release_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId));
     tags.release_group_mbid = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId));
-    tags.release_type = non_empty(tag.get_string(ItemKey::MusicBrainzReleaseType));
+    tags.release_type = release_type(tag);
 
     tags.cover = tag.pictures().first().map(|picture| {
         let bytes = picture.data().to_vec();
@@ -106,18 +106,19 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     Ok(tags)
 }
 
-/// The MusicBrainz ids a file carries, for `scan::read_musicbrainz_ids`.
+/// The MusicBrainz release a file names, for `scan::read_musicbrainz_tags`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct MusicBrainzIds {
+pub struct MusicBrainzTags {
     pub release: Option<String>,
     pub release_group: Option<String>,
+    pub release_type: Option<String>,
 }
 
-/// The MusicBrainz ids alone.
+/// The MusicBrainz release tags alone.
 ///
 /// Skips the audio properties and the artwork, which are most of what [`read`]
 /// costs and none of what a pass over the whole library needs here.
-pub fn musicbrainz_ids(path: &Path) -> AppResult<MusicBrainzIds> {
+pub fn musicbrainz_tags(path: &Path) -> AppResult<MusicBrainzTags> {
     let options = ParseOptions::new()
         .read_properties(false)
         .read_cover_art(false);
@@ -128,12 +129,41 @@ pub fn musicbrainz_ids(path: &Path) -> AppResult<MusicBrainzIds> {
         .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
 
     let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
-        return Ok(MusicBrainzIds::default());
+        return Ok(MusicBrainzTags::default());
     };
-    Ok(MusicBrainzIds {
+    Ok(MusicBrainzTags {
         release: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseId)),
         release_group: non_empty(tag.get_string(ItemKey::MusicBrainzReleaseGroupId)),
+        release_type: release_type(tag),
     })
+}
+
+/// MusicBrainz's release-group primary types, spelled the way its API, and so
+/// the lookup, spells them.
+pub const PRIMARY_TYPES: [&str; 5] = ["Album", "EP", "Single", "Broadcast", "Other"];
+
+fn release_type(tag: &Tag) -> Option<String> {
+    tag.get_strings(ItemKey::MusicBrainzReleaseType)
+        .find_map(primary_type)
+        .map(str::to_owned)
+}
+
+/// The primary type a release-type tag names, if it names one.
+///
+/// Picard writes the type lowercase and follows it with any secondary types,
+/// sometimes behind a byte-order mark, and in files tagged before MusicBrainz
+/// split the two, a secondary type alone. Several values arrive NUL-separated
+/// from ID3v2.4, `/`-joined from ID3v2.3, and `; `-joined where Picard joined
+/// them itself.
+pub fn primary_type(value: &str) -> Option<&'static str> {
+    value
+        .split(['\0', ';', '/', ','])
+        .map(|part| part.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}'))
+        .find_map(|part| {
+            PRIMARY_TYPES
+                .into_iter()
+                .find(|primary| primary.eq_ignore_ascii_case(part))
+        })
 }
 
 /// Pulls a year out of a date tag.
@@ -196,6 +226,27 @@ mod tests {
             "a zero year is a tagger's placeholder, not a year"
         );
         assert_eq!(parse_year("0000-00-00"), None);
+    }
+
+    #[test]
+    fn reads_the_primary_type_out_of_what_picard_writes() {
+        assert_eq!(primary_type("album"), Some("Album"));
+        assert_eq!(primary_type("Album"), Some("Album"));
+        assert_eq!(primary_type("ep"), Some("EP"));
+        assert_eq!(primary_type("single"), Some("Single"));
+        assert_eq!(primary_type("\u{feff}album"), Some("Album"));
+        assert_eq!(primary_type("\u{feff}ep"), Some("EP"));
+        assert_eq!(primary_type("album; compilation"), Some("Album"));
+        assert_eq!(primary_type("album\0live"), Some("Album"));
+        assert_eq!(primary_type("album/mixtape/street"), Some("Album"));
+    }
+
+    #[test]
+    fn a_secondary_type_alone_is_no_primary_type() {
+        assert_eq!(primary_type("live"), None);
+        assert_eq!(primary_type("compilation"), None);
+        assert_eq!(primary_type("mixtape/street"), None);
+        assert_eq!(primary_type(""), None);
     }
 
     #[test]
