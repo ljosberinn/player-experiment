@@ -450,6 +450,81 @@ pub(crate) mod tests {
         }
     }
 
+    /// The same library, tagged the way a compilation arrives: an artist per
+    /// file, no album artist anywhere, and one embedded cover holding the
+    /// title together.
+    fn compilation(album: &str, durations_ms: &[i64]) -> (tempfile::TempDir, Db) {
+        use lofty::config::WriteOptions;
+        use lofty::prelude::{Accessor, TagExt};
+        use lofty::tag::{Tag, TagType};
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "INSERT INTO covers (hash, mime, bytes) VALUES ('art', 'image/jpeg', x'00')",
+            [],
+        )
+        .unwrap();
+        let audio = silent_mp3();
+
+        for (index, duration) in durations_ms.iter().enumerate() {
+            let track_no = index as i64 + 1;
+            let artist = format!("Artist {track_no}");
+            let path = dir.path().join(format!("{album}-{track_no:02}.mp3"));
+            std::fs::write(&path, &audio).unwrap();
+
+            let mut tag = Tag::new(TagType::Id3v2);
+            tag.set_album(album.to_owned());
+            tag.set_artist(artist.clone());
+            tag.set_track(track_no as u32);
+            tag.save_to_path(&path, WriteOptions::default()).unwrap();
+
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, duration_ms, album, artist, track_no,
+                                     cover_hash, added_at)
+                 VALUES (?1, 0, 0, ?2, ?3, ?4, ?5, 'art', 0)",
+                rusqlite::params![path.to_string_lossy(), duration, album, artist, track_no],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    /// The whole point of
+    /// [99](../../../docs/issues/done/99-a-compilation-is-one-lookup.md), and
+    /// what failed at `counts_agree` before it: keyed per artist this release
+    /// reached the fetch as eleven releases of one file, and no eleven-track
+    /// tracklist can ever agree with one of those.
+    #[test]
+    fn a_compilation_is_matched_against_the_tracklist_whole_and_written() {
+        let (dir, db) = compilation("Loveless", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        let release = lookup::Release {
+            album: Some("Loveless".to_owned()),
+            artist: Some(crate::db::query::VARIOUS_ARTISTS.to_owned()),
+        };
+
+        let outcome = look_up(
+            &mut conn,
+            &musicbrainz(),
+            &ScanLock::default(),
+            &release,
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Written { tracks: 11, .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(untitled(&conn), 11, "every file of the release, not one");
+        assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
+    }
+
     fn loveless() -> lookup::Release {
         lookup::Release {
             album: Some("Loveless".to_owned()),
