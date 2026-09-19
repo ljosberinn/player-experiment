@@ -1,6 +1,12 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { png } from "../fixtures";
+import { emit } from "../invoke";
 import { capture } from "../screenshot";
+
+/** Where the files this spec drops are written; the app reads them by path. */
+const dropDir = join(import.meta.dirname, "..", ".tmp", "drops");
 
 /**
  * The artwork block in the tag editor, in an engine that has layout.
@@ -92,31 +98,45 @@ function artworkDecoded(): Promise<boolean> {
 }
 
 /**
- * Drops a file of `bytes` on the artwork block, and says whether it found it.
+ * Where to aim a drop, in the physical pixels the OS event speaks.
  *
- * Built and dispatched in the page: WebDriver has no drag of its own here (see
- * `docs/knowledge/limitations.md`), and an OS drag is not what this is anyway -
- * the webview's own `dragDropEnabled` is off, so what the app ever sees is an
- * HTML5 drop carrying a `File`. That is exactly what this constructs.
+ * Read out of the page rather than assumed: the app divides by the same ratio
+ * on the way in, so a hard-coded position would pass on the developer's display
+ * and miss on a scaled one.
  */
-function dropOnArtwork(bytes: number[], name: string, type: string): Promise<boolean> {
-  return browser.execute(
-    (values: number[], fileName: string, mime: string) => {
-      const block = document.querySelector(".tag-cover");
-      if (block === null) {
-        return false;
-      }
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([new Uint8Array(values)], fileName, { type: mime }));
-      block.dispatchEvent(
-        new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }),
-      );
-      return true;
-    },
-    bytes,
-    name,
-    type,
-  );
+function artworkCentre(): Promise<{ x: number; y: number } | null> {
+  return browser.execute(() => {
+    const block = document.querySelector(".tag-cover");
+    if (block === null) {
+      return null;
+    }
+    const box = block.getBoundingClientRect();
+    const ratio = window.devicePixelRatio;
+    return {
+      x: Math.round((box.left + box.width / 2) * ratio),
+      y: Math.round((box.top + box.height / 2) * ratio),
+    };
+  });
+}
+
+/**
+ * A file dropped on the artwork block, and what the app does with it.
+ *
+ * The OS half is what cannot be driven from here: WebDriver has no drag, and
+ * since phase 85a the page sees no HTML5 drop either - `wry` takes the drop and
+ * Tauri emits it. So the events it emits are emitted, carrying a path to a file
+ * this process wrote, and everything the app owns runs for real: the routing,
+ * the hit test, the staging command and the preview.
+ */
+async function dropOnArtwork(bytes: Buffer, name: string): Promise<void> {
+  const path = join(dropDir, name);
+  mkdirSync(dropDir, { recursive: true });
+  writeFileSync(path, bytes);
+
+  const position = await artworkCentre();
+  expect(position).not.toBeNull();
+  await emit("tauri://drag-enter", { paths: [path], position });
+  await emit("tauri://drag-drop", { paths: [path], position });
 }
 
 /** Cancel, which is the only exit that writes nothing. */
@@ -161,18 +181,34 @@ describe("the tag editor's artwork", () => {
     await capture("tag-editor-no-artwork");
   });
 
+  it("outlines the block while a file is over it", async () => {
+    // The only feedback a drop has now: `dragDropEnabled` makes the webview
+    // answer "copy" to the cursor everywhere in the window, so the block saying
+    // so itself is what tells the two apart.
+    await openEditorOn("Drift");
+
+    await emit("tauri://drag-enter", {
+      paths: [join(dropDir, "hover.png")],
+      position: await artworkCentre(),
+    });
+
+    await expect(browser.$(".tag-cover")).toHaveElementClass("drop-target");
+    await capture("tag-editor-drop-hover");
+
+    await emit("tauri://drag-leave", {});
+    await expect(browser.$(".tag-cover")).not.toHaveElementClass("drop-target");
+  });
+
   it("takes an image dropped on the square and shows it", async () => {
-    // The one thing no unit test can reach: the bytes travel as the whole
-    // invoke payload, the command that stages them hands back a path, and the
-    // square then loads that file back over `cover://staged`. A wrapper object
-    // around the buffer would still typecheck, still pass every mocked test,
-    // and arrive here as a JSON array of numbers.
+    // What no unit test can reach: the position arrives in physical pixels and
+    // has to land on the block, the command stages the file it names, and the
+    // square then loads it back over `cover://staged`.
     //
     // A real PNG rather than four magic bytes, because what is asserted is
     // that the webview *decoded* what came back.
     await openEditorOn("Drift");
 
-    expect(await dropOnArtwork([...png([[20, 120, 200]])], "art.png", "image/png")).toBe(true);
+    await dropOnArtwork(png([[20, 120, 200]]), "art.png");
 
     await expect(browser.$(".tag-cover-note")).toHaveText("New artwork selected.");
     await browser.waitUntil(async () => (await artworkSource()).includes("staged"), {
@@ -188,10 +224,10 @@ describe("the tag editor's artwork", () => {
   it("says why a dropped file that is not artwork was refused", async () => {
     await openEditorOn("Drift");
 
-    await dropOnArtwork([0x68, 0x69], "notes.txt", "text/plain");
+    await dropOnArtwork(Buffer.from("hi"), "notes.txt");
 
     // The sentence is the backend's, which is the only thing that has seen the
-    // bytes: `File.type` comes from the name and says nothing about them.
+    // bytes: the extension is a label and says nothing about them.
     await expect(browser.$("[role='alert']")).toHaveText("Cover art has to be a JPEG or a PNG.");
     await expect(browser.$(".tag-cover-note")).toHaveText("No artwork.");
 

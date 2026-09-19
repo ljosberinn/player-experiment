@@ -48,7 +48,6 @@ import {
   saveWindowGeometry,
   scanLibrary,
   setPlaylistFilter,
-  stageDroppedCover,
   stagedCoverUrl,
   stagePickedCover,
   type TagEdit,
@@ -248,18 +247,7 @@ describe("ipc", () => {
       expect(invokeMock).toHaveBeenCalledWith("write_tags", { trackIds: [1, 2], edit });
     });
 
-    it("stages a dropped image as the whole payload, not a field of one", async () => {
-      const bytes = new Uint8Array([0xff, 0xd8, 0xff]).buffer;
-      invokeMock.mockResolvedValue("C:/cache/dropped-cover.jpg");
-
-      await expect(stageDroppedCover(bytes)).resolves.toBe("C:/cache/dropped-cover.jpg");
-
-      // Wrapped in an object it would go as JSON - one number per byte, for a
-      // payload that can be 12 MB - so the shape of this call is the feature.
-      expect(invokeMock).toHaveBeenCalledWith("stage_dropped_cover", bytes);
-    });
-
-    it("stages a picked image by path, since the backend can read that itself", async () => {
+    it("stages a chosen image by path, since the backend can read that itself", async () => {
       invokeMock.mockResolvedValue("C:/cache/chosen-cover.jpg");
 
       await expect(stagePickedCover("C:/art/sleeve.jpg")).resolves.toBe(

@@ -1,5 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { useId, useState } from "react";
+import { useEffect, useEffectEvent, useId, useState } from "react";
 import { TagCombobox } from "../../components/ui/TagCombobox";
 import {
   type CoverEdit,
@@ -10,19 +10,8 @@ import {
   type Track,
   type WriteProgress,
 } from "../../ipc";
+import { registerDropTarget } from "../shell/fileDrop";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
-
-/**
- * Whether a drag over the artwork is a file worth taking.
- *
- * `dragover` sees the payload's types and nothing else, so the question has to
- * be answerable from those. This is the app's last HTML5 drop target, and
- * deliberately so: it is an *OS* file drop, which a pointer gesture inside the
- * window cannot be.
- */
-function isFileDrag(data: Pick<DataTransfer, "types">): boolean {
-  return Array.from(data.types).includes("Files");
-}
 
 /**
  * The tag editor, for one track or five hundred.
@@ -56,10 +45,10 @@ export function TagEditor({
    */
   onPickCover: () => Promise<string | null>;
   /**
-   * Stages a dropped image; resolves to a path, or rejects with the sentence
-   * to show. A `File` is bytes and no path, and the editor deals in paths.
+   * Stages an image dropped in from the OS; resolves to a path, or rejects
+   * with the sentence to show.
    */
-  onDropCover: (file: File) => Promise<string>;
+  onDropCover: (path: string) => Promise<string>;
 }) {
   const [draft, setDraft] = useState<Draft>({});
   const [cover, setCover] = useState<CoverEdit | null>(null);
@@ -80,6 +69,20 @@ export function TagEditor({
    * what changes it.
    */
   const [staged, setStaged] = useState(0);
+  /**
+   * Whether a file dragged in from the OS is over the block.
+   *
+   * The only feedback there is: with `dragDropEnabled` on, the cursor says
+   * "copy" over every part of the window whether or not anything there takes a
+   * drop.
+   */
+  const [hovered, setHovered] = useState(false);
+  /**
+   * The block itself, as state rather than a ref: the dialog is portalled and
+   * its content is not in the tree yet when this component's first effect runs,
+   * so an effect reading a ref would register nothing.
+   */
+  const [coverBlock, setCoverBlock] = useState<HTMLDivElement | null>(null);
 
   /**
    * Takes whichever route chose an image.
@@ -99,6 +102,22 @@ export function TagEditor({
       (error: unknown) => setRejected(String(error)),
     );
   };
+
+  // The block takes OS file drops for as long as the dialog is up. Registered
+  // once rather than per render: `fileDrop` keeps the hover state that goes
+  // with the registration, and re-registering mid-drag would drop it.
+  const dropped = useEffectEvent((paths: string[]) => {
+    const [path] = paths;
+    if (path !== undefined) {
+      choose(onDropCover(path));
+    }
+  });
+  useEffect(() => {
+    if (coverBlock === null) {
+      return;
+    }
+    return registerDropTarget({ element: coverBlock, onHover: setHovered, onDrop: dropped });
+  }, [coverBlock]);
 
   const saving = progress != null;
   const problem = numericProblem(draft);
@@ -184,28 +203,7 @@ export function TagEditor({
             })}
           </div>
 
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: a drop target has no role that describes it, and dragging is a pointer-only gesture - the keyboard route to the same state is the Choose Artwork… button inside this block. */}
-          <div
-            className="tag-cover"
-            // Both halves ask the same question, because `dragover` is where
-            // the answer is visible: without `preventDefault` there the pointer
-            // says "no drop" and the drop never arrives.
-            onDragOver={(event) => {
-              if (isFileDrag(event.dataTransfer)) {
-                event.preventDefault();
-              }
-            }}
-            onDrop={(event) => {
-              if (!isFileDrag(event.dataTransfer)) {
-                return;
-              }
-              event.preventDefault();
-              const file = event.dataTransfer.files[0];
-              if (file !== undefined) {
-                choose(onDropCover(file));
-              }
-            }}
-          >
+          <div ref={setCoverBlock} className={hovered ? "tag-cover drop-target" : "tag-cover"}>
             <div className="tag-cover-preview">
               {/* The square is drawn whether or not there is art to put in it,
                   so the block keeps its shape as the selection changes and as a

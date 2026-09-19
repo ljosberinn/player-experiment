@@ -259,7 +259,6 @@ pub fn run() {
             commands::load_window_geometry,
             commands::tracks_by_ids,
             commands::write_tags,
-            commands::stage_dropped_cover,
             commands::stage_picked_cover,
             commands::tagsource_groups,
             commands::tagsource_search,

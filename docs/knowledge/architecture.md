@@ -404,13 +404,12 @@ row between the read and the write. Nothing announces: the columns it fills are
 read by the lookup pass rather than drawn anywhere.
 
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
-whichever way it was chosen, and both ways **stage**: `stage_dropped_cover`
-takes the bytes as the whole invoke payload (a drop has no path — an HTML5 drop
-hands the page a `File`), `stage_picked_cover` copies the file the picker named.
-Both check first and write the same fixed-name file into the cache directory.
+whichever way it was chosen, and either way **stages**: `stage_picked_cover`
+copies the named file — picked or dropped, since an OS drop carries a path —
+checking it first and writing the same fixed-name file into the cache directory.
 The save re-reads and re-checks it like any other path.
 
-Staging both routes is what makes a pending choice previewable: the webview
+Staging is what makes a pending choice previewable: the webview
 cannot read a path, so `cover://staged` — the one path under that protocol that
 is not a hash — serves the staging file, `no-store`, with a version in the query
 string, since the file's name is fixed and its contents are whatever was chosen

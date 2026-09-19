@@ -18,19 +18,23 @@ Each of these cost real time once. They are here so they cost it once.
   registration is not an error, and only keys actually claimed get released.
   Never register Space or the arrows: a global shortcut is exclusive and would
   break them in every other application.
-- **`dragDropEnabled` kills HTML5 drag and drop.** While true the webview hands
-  OS drag events to the native file-drop handler instead of the page, and there
-  is no `dragover` or `drop` inside the window on Windows. It cannot be toggled
-  at runtime in Tauri v2 — the flag is fixed at window creation. Since phase 74
-  the only thing this still costs is the tag editor's artwork drop; every drag
-  that stays inside the window is a pointer gesture and does not care. Flipping
-  it is [85a](../issues/upcoming/85a-the-window-takes-os-drops.md)'s to do.
+- **`dragDropEnabled` kills HTML5 drag and drop**, and since phase 85a it is
+  **on and has to stay on**: `wry` revokes the WebView2 drop target rather than
+  intercepting it, so there is no `dragover` or `drop` inside the window at all
+  and no HTML5 drop target may be reintroduced anywhere. It cannot be toggled at
+  runtime in Tauri v2 — the flag is fixed at window creation. The handler's
+  return value is documented as a way to let the page have the drop too; on
+  Windows `wry` discards it (`src/webview2/drag_drop.rs`). The same file answers
+  `DROPEFFECT_COPY` for any file drag, so the cursor reads "copy" over the whole
+  window whether or not anything under it takes a drop — a target has to say so
+  itself.
 - **Raw bytes over IPC are all-or-nothing.** Tauri sends an `invoke` payload as
   a raw body only when the *whole* payload is an `ArrayBuffer` or a view of one;
   a `Uint8Array` inside an args object is JSON, one number per byte. Wrapping it
-  typechecks and passes every mocked test —
-  `invoke("stage_dropped_cover", bytes)`, never `{ bytes }`. The command reads
-  it as `tauri::ipc::Request`, whose body is `Raw` or `Json`.
+  typechecks and passes every mocked test — `invoke("command", bytes)`, never
+  `invoke("command", { bytes })`. The command reads it as `tauri::ipc::Request`,
+  whose body is `Raw` or `Json`. Nothing uses this today: the one caller was the
+  artwork drop, which carries a path since phase 85a.
 - **The CSP has to name the IPC protocol** — `connect-src ipc: http://ipc.localhost`.
   Tauri only ever rewrites `script-src` and `style-src`, so a bare
   `default-src 'self'` blocks the `fetch` that carries an invoke. The failure is

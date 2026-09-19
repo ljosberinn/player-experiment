@@ -569,44 +569,13 @@ const STAGED_COVER_STEM: &str = "chosen-cover";
 /// answers from the staging file instead of from `covers`.
 pub(crate) const STAGED_COVER: &str = "staged";
 
-/// Writes a dropped image into the cache directory and hands back its path.
+/// Copies a chosen image into the staging file, and hands back its path.
 ///
-/// The editor's cover travels as a path - `CoverEdit::Replace` - and an HTML5
-/// drop gives the page a `File`, which is bytes and no path: the native event
-/// that carries paths needs `dragDropEnabled`, which would kill in-app
-/// dragging. Staging is what turns one into the other, so a drop lands in the
-/// same state the picker produces and nothing downstream of `CoverEdit` has to
-/// know a drop happened.
-///
-/// The bytes arrive as the *whole* invoke payload, which is the only shape
-/// Tauri sends raw; a `Uint8Array` inside an args object is JSON, one number
-/// per byte. A JSON body here is therefore a caller that has lost the raw
-/// route, and is an error rather than something to decode.
-///
-/// Not on a worker thread, unlike the writes above: the body is a `&` into the
-/// message, so moving it would mean copying up to 12 MB to save a single write
-/// of the same bytes.
-#[tauri::command]
-pub fn stage_dropped_cover(
-    app: tauri::AppHandle,
-    request: tauri::ipc::Request<'_>,
-) -> AppResult<String> {
-    op(&app, "cover.stage_dropped").run(|| {
-        let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-            return Err(crate::error::AppError::Internal(
-                "A dropped image has to arrive as raw bytes.".to_owned(),
-            ));
-        };
-        stage_cover(&staging_dir(&app)?, bytes)
-    })
-}
-
-/// Copies a picked image into the same staging file, and hands back its path.
-///
-/// The picker's own path would do for the save - it did until this phase - but
-/// only what the backend can serve can be previewed, and the webview cannot
-/// read an arbitrary path. Staging both routes is also what makes a picked
-/// image refused while the dialog is open rather than at save time.
+/// One command for both routes: a drop carries a path the way the picker does,
+/// since phase 85a turned `dragDropEnabled` on. The chosen file's own path
+/// would do for the save, but only what the backend can serve can be previewed,
+/// and the webview cannot read an arbitrary path. Staging is also what makes a
+/// chosen image refused while the dialog is open rather than at save time.
 #[tauri::command]
 pub fn stage_picked_cover(app: tauri::AppHandle, path: String) -> AppResult<String> {
     op(&app, "cover.stage_picked").add("path", &path).run(|| {

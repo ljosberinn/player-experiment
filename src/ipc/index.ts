@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { type DragDropEvent, getCurrentWebview } from "@tauri-apps/api/webview";
 import type { AlbumBitrate } from "./bindings/AlbumBitrate";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { BackgroundTask } from "./bindings/BackgroundTask";
@@ -657,28 +658,13 @@ export function writeTags(trackIds: number[], edit: TagEdit): Promise<TagWriteSu
 }
 
 /**
- * Writes a dropped image to a staging file and resolves to its path.
+ * Copies a picked or dropped image into the staging file, and resolves to its
+ * path.
  *
- * The editor carries a replacement cover as a path, and a drop hands the page
- * a `File` - bytes with no path anywhere - so the bytes cross once, here, and
- * what comes back is what `CoverEdit.Replace` already knew how to carry.
- *
- * The buffer is the *whole* payload rather than a field of an args object,
- * which is the only shape Tauri sends as a raw body: a `Uint8Array` inside an
- * object is JSON-serialized as one number per byte. Rejects with the sentence
- * to show when the bytes are not a JPEG or a PNG, or are too big.
- */
-export function stageDroppedCover(bytes: ArrayBuffer): Promise<string> {
-  return invoke<string>("stage_dropped_cover", bytes);
-}
-
-/**
- * Copies a picked image into the same staging file, and resolves to its path.
- *
- * The picker's own path would do for the save, but only what the backend can
- * serve can be previewed - and staging both routes is what makes a picked
- * image refused while the dialog is open rather than at save time. Rejects
- * with the sentence to show.
+ * The chosen file's own path would do for the save, but only what the backend
+ * can serve can be previewed - and staging is what makes an image refused
+ * while the dialog is open rather than at save time. Rejects with the sentence
+ * to show.
  */
 export function stagePickedCover(path: string): Promise<string> {
   return invoke<string>("stage_picked_cover", { path });
@@ -858,6 +844,17 @@ export function moveInPlaylist(
   targetIndex: number,
 ): Promise<void> {
   return invoke<void>("move_in_playlist", { playlistId, trackIds, targetIndex });
+}
+
+/**
+ * Files dragged in from the OS: entering, moving over, dropped on or leaving
+ * the window, with the position in physical pixels.
+ *
+ * The webview's own drag and drop is off for the whole window while this
+ * works - `dragDropEnabled` replaces one with the other, see `gotchas.md`.
+ */
+export function onFileDrop(handler: (event: DragDropEvent) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((event) => handler(event.payload));
 }
 
 export function onScanProgress(handler: (progress: ScanProgress) => void): Promise<UnlistenFn> {

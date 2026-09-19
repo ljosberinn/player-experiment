@@ -34,6 +34,7 @@ import { AppMenus } from "./features/shell/AppMenus";
 import { BackgroundTaskProgress } from "./features/shell/BackgroundTaskProgress";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
+import { useFileDrops } from "./features/shell/fileDrop";
 import { SettingsDialog } from "./features/shell/SettingsDialog";
 import { NOTICE_MS, notify, useStatusStore } from "./features/shell/statusStore";
 import { TaskProgress } from "./features/shell/TaskProgress";
@@ -53,7 +54,7 @@ import { ReleaseLookup } from "./features/tagsource/ReleaseLookup";
 import { ReviewQueue } from "./features/tagsource/ReviewQueue";
 import { useUpdaterStore } from "./features/updater/store";
 import { useUpdater } from "./features/updater/useUpdater";
-import { type AppInfo, getAppInfo, stageDroppedCover, stagePickedCover } from "./ipc";
+import { type AppInfo, getAppInfo, stagePickedCover } from "./ipc";
 
 export function App() {
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
@@ -186,6 +187,9 @@ export function App() {
   useZoomShortcuts();
   useSelectionShortcuts();
   useNativeFeel();
+  // Files dragged in from the OS arrive as one window-wide event; this routes
+  // them, and holds no state of its own.
+  useFileDrops();
   useUpdater();
   useWindowGeometry();
   // Alt+Tab and the taskbar, which are the only places a decorationless
@@ -516,10 +520,9 @@ export function App() {
             // image previews and is refused the same way a dropped one is.
             return typeof picked === "string" ? await stagePickedCover(picked) : null;
           }}
-          // The bytes cross once, at drop time, and what comes back is a path -
-          // the same thing the picker gives, so the editor has one cover state
-          // rather than two.
-          onDropCover={async (file) => stageDroppedCover(await file.arrayBuffer())}
+          // A drop carries a path like the picker does, so both stage the same
+          // way and the editor has one cover state rather than two.
+          onDropCover={stagePickedCover}
         />
       ) : null}
 

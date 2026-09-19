@@ -1,6 +1,6 @@
 # 85b — Drop files and folders into the library
 
-What a drop then does. [85a](85a-the-window-takes-os-drops.md) is what makes
+What a drop then does. [85a](../done/85a-the-window-takes-os-drops.md) is what makes
 paths arrive at all; this is the ingest behind them, and it is the second thing
 in the app — after File ▸ Add Folders… — that puts music in the library.
 

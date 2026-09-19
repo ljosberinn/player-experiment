@@ -22,12 +22,12 @@ function wantsNativeMenu(target: EventTarget | null): boolean {
 }
 
 /**
- * The two ways a webview behaves like a document rather than an application.
+ * The way a webview behaves like a document rather than an application.
  *
- * Both are suppressed at the window rather than per element, so they cover the
- * chrome, the empty space, and anything added later without each one having to
- * remember. Handlers that want the browser behaviour, or that are a real drop
- * target, have already said so with `preventDefault` by the time these run.
+ * Suppressed at the window rather than per element, so it covers the chrome,
+ * the empty space, and anything added later without each one having to
+ * remember. Handlers that want the browser behaviour have already said so with
+ * `preventDefault` by the time this runs.
  */
 export function useNativeFeel(): void {
   useEffect(() => {
@@ -41,32 +41,5 @@ export function useNativeFeel(): void {
     };
     document.addEventListener("contextmenu", onContextMenu);
     return () => document.removeEventListener("contextmenu", onContextMenu);
-  }, []);
-
-  useEffect(() => {
-    // A file dropped anywhere that does not handle it is *opened* by the
-    // webview, which navigates the window away from the app and leaves nothing
-    // but a relaunch. Cheap to hit now that the tag editor invites images onto
-    // a 120px square.
-    //
-    // Only drags nothing accepted are swallowed: `defaultPrevented` is a real
-    // drop target having already claimed this one, and `dropEffect = "none"`
-    // keeps the pointer honest everywhere else instead of making the whole
-    // window look droppable.
-    const onDrag = (event: DragEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      event.preventDefault();
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = "none";
-      }
-    };
-    window.addEventListener("dragover", onDrag);
-    window.addEventListener("drop", onDrag);
-    return () => {
-      window.removeEventListener("dragover", onDrag);
-      window.removeEventListener("drop", onDrag);
-    };
   }, []);
 }

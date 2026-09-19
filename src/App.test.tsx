@@ -61,7 +61,7 @@ vi.mock("./ipc", () => ({
   tagsourceRestoreReview: vi.fn(async () => 0),
   coverUrl: vi.fn((hash: string) => `cover-url:${hash}`),
   stagedCoverUrl: vi.fn((version: number) => `staged-cover-url:${version}`),
-  stageDroppedCover: vi.fn(async () => "C:/cache/chosen-cover.png"),
+  onFileDrop: vi.fn(async () => () => {}),
   stagePickedCover: vi.fn(async () => "C:/cache/chosen-cover.png"),
   onPlayerState: vi.fn(async () => () => {}),
   onPlayerPosition: vi.fn(async () => () => {}),
