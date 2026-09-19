@@ -2998,7 +2998,8 @@ body:not(:focus-within) .sidebar-row.current {
   font-variant-numeric: tabular-nums;
 }
 
-.bar-list-caption {
+.bar-list-caption,
+.stats-panel-caption {
   margin: 6px 0 0;
   color: var(--dim);
   font-size: 11px;

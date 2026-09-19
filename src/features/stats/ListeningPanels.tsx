@@ -33,9 +33,14 @@ export function ListeningPanels() {
     <>
       <ListeningTiles />
       <StreakTiles />
-      <SeriesPanel title="Plays over time" aggregate={statsPlaysOverTime} noun="Plays" />
+      <SeriesPanel
+        title="Plays over time"
+        aggregate={statsPlaysOverTime}
+        noun="Plays"
+        whole="plays"
+      />
       {!inArtist && !inAlbum && (
-        <SeriesPanel title="New artists" aggregate={statsFirsts} noun="Artists" />
+        <SeriesPanel title="New artists" aggregate={statsFirsts} noun="Artists" whole="artists" />
       )}
       <WeekClock />
       {!inArtist && <TopPanel dimension="artist" />}

@@ -3,6 +3,7 @@ import { Heatmap } from "../../../components/charts/Heatmap";
 import { statsWeekClock } from "../../../ipc";
 import { useLibraryStore } from "../../library/store";
 import { listenQuery } from "../filters";
+import { listenTotalsOnce } from "../listenTotals";
 import { useStatsStore } from "../store";
 import { usePanelQuery } from "../usePanelQuery";
 import { StatsPanel } from "./StatsPanel";
@@ -28,18 +29,27 @@ const HOURS = Array.from({ length: 24 }, (_, hour) =>
 export function WeekClock() {
   const filters = useStatsStore((s) => s.filters);
   const path = useLibraryStore((s) => s.statsPath);
-  const { data, loading } = usePanelQuery(
-    () => statsWeekClock(listenQuery(filters, path, new Date())),
-    [filters, path],
-  );
+  const { data, loading } = usePanelQuery(() => {
+    const query = listenQuery(filters, path, new Date());
+    return Promise.all([statsWeekClock(query), listenTotalsOnce(query)]);
+  }, [filters, path]);
 
   // The clock is always 168 counts, so nothing played is all zeroes rather
   // than no rows; the charts are told it is empty.
-  const clock = data?.some((count) => count > 0) ? data : [];
+  const clock = data?.[0].some((count) => count > 0) ? data[0] : [];
+  const totals = data?.[1];
   const format = (count: number) => count.toLocaleString();
 
   return (
-    <StatsPanel title="When you listen">
+    <StatsPanel
+      title="When you listen"
+      caption={
+        totals !== undefined && totals.dated < totals.plays
+          ? // Down, for `SeriesPanel`'s reason.
+            `Date known for ${Math.floor((totals.dated / totals.plays) * 100)}% of plays.`
+          : null
+      }
+    >
       <Heatmap
         label="Plays by weekday and hour"
         rows={WEEKDAYS}

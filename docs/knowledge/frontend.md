@@ -338,10 +338,15 @@ absences are what nobody notices coming back — hence the guards in
   tab's query, and fifteen panels listing it by hand is where one forgets. The
   Listening tab needs it not at all, because Base UI unmounts the inactive tab
   and its panels remount and re-query on their own.
-- **`listenTotalsOnce` holds exactly one answer.** The tile row and the genre
-  panel's coverage caption want the same `listen_totals`, which is the dearest
-  aggregate in the set; the promise is held rather than its result, so the
-  second panel joins the first's scan. One entry and not a cache: every panel
+- **`listenTotalsOnce` holds exactly one answer.** The tile row, the series'
+  all-time span and every coverage caption want the same `listen_totals`, which
+  is the dearest aggregate in the set; the promise is held rather than its
+  result, so each later panel joins the first's scan.
+- **A coverage caption says what a panel leaves out.** Genre is known for a
+  matched play alone, and a play last.fm holds undated is placed in no series
+  and no clock; the panel names the share it covers rather than drawing a
+  subset as the whole. It is `StatsPanel`'s `caption`, not a chart's, because
+  When you listen draws two charts over one coverage. One entry and not a cache: every panel
   moves to the new filters together, so the entry before last has no reader.
 - **Drilling into an artist narrows the Listening tab rather than opening a
   page.** The crumb already reaches `ListenQuery` through `listenQuery`, so
