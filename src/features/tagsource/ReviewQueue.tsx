@@ -11,9 +11,8 @@ const ICON_SIZE = 15;
  * list.
  *
  * Under the playlists because it is the same kind of thing: somewhere to go,
- * with a count beside it. Clicking it opens the lookup dialog on the queue -
- * a release at a time, Skip moving to the next - which is the flow that dialog
- * was already built around.
+ * with a count beside it. Clicking it opens the lookup dialog on a table of
+ * the queue, best match first, to pick a release out of.
  *
  * Present only when there is something in it. A row that says nought for the
  * months before the pass has queued anything is a permanent reminder of a

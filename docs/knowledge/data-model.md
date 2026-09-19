@@ -206,8 +206,8 @@ be the best part of a day that finds nothing, forever.
 `resolved`, `review`, `none` and — since migration 10 — `aside`. Only `review`
 is counted beside the sidebar's row and offered in the dialog.
 
-- **Skipping in the review dialog writes nothing.** It means "not now": the
-  entry stays and is offered again the next time the queue is opened. `aside` is
+- **Back to Queue in the review dialog writes nothing.** It means "not now":
+  the entry stays in the table and in the queue. `aside` is
   the other decision, "leave this alone", and it is a separate action because a
   queue that can only say the first is a queue whose count never reaches zero.
   Every set-aside release comes back at once, from the sidebar row — one way

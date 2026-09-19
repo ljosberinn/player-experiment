@@ -468,12 +468,23 @@ absences are what nobody notices coming back — hence the guards in
   Release discards and Apply writes.
 - **The review queue is the same dialog on a different queue.** What the
   unattended pass would not write is a row in the sidebar under the playlists,
-  and clicking it opens the lookup on those releases — with the candidates the
-  pass already found, so the dialog opens on the results step rather than
-  spending a rate-limited twenty seconds an entry. They are a cache: every result
-  list carries Search again. Skip means "not now" and offers the release again;
-  Set Aside is the other decision and is offered on that queue alone, because a
-  selection's queue dies with the dialog.
+  and clicking it opens the lookup on a table of those releases, sorted by the
+  score the pass decided on (`index: null` in the store). A row opens that
+  release with the candidates the pass already found, so it lands on the
+  results step rather than spending a rate-limited twenty seconds an entry.
+  They are a cache: every result list carries Search again. Apply and Set Aside
+  take the row out of the table and return to it, and the last one closes the
+  dialog. Back to Queue means "not now" and leaves the row where it was. Set
+  Aside is offered on that queue alone, because a selection's queue dies with
+  the dialog.
+- **A selection has no table.** It opens on its first release and Skip Release
+  walks on, with "release N of M" in the title — the table is for four hundred
+  scored releases, not for a handful the user just picked.
+- **The table's Match is not the results' top percentage.** It is
+  `release_lookup.score`, measured against the fetched tracklist with
+  durations; the result list shows the search's scores without them. Its Tracks
+  column is what explains a 97% in the queue: the pass also queues a release
+  whose track count disagrees, and that cell turns `--danger`.
 - **The readout at the foot of the sidebar is not `TaskProgress`.**
   `BackgroundTaskProgress` reads `task://progress`, stands for as long as its
   task runs, and prints a percentage to two decimals with an estimate — one

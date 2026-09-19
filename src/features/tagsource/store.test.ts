@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReleaseCandidate, ReleaseDetail, ReleaseSelection, Track } from "../../ipc";
+import type {
+  ReleaseCandidate,
+  ReleaseDetail,
+  ReleaseSelection,
+  ReviewEntry,
+  Track,
+} from "../../ipc";
 import {
   tagsourceApply,
   tagsourceFetch,
@@ -30,6 +36,17 @@ vi.mock("../../ipc", () => ({
 
 function group(album: string, artist: string, trackIds: number[]): ReleaseSelection {
   return { album, artist, trackIds };
+}
+
+/** A row of the review queue, as the pass left it. */
+function queued(
+  album: string,
+  artist: string,
+  trackIds: number[],
+  candidates: ReleaseCandidate[] = [],
+  score: number | null = 0.5,
+): ReviewEntry {
+  return { album, artist, trackIds, candidates, score };
 }
 
 function track(id: number): Track {
@@ -133,6 +150,7 @@ describe("opening", () => {
   });
 });
 
+/** A selection's queue, which has no table behind it and is walked in order. */
 describe("the queue", () => {
   beforeEach(async () => {
     vi.mocked(tagsourceGroups).mockResolvedValue([
@@ -256,22 +274,36 @@ describe("going back", () => {
 
 describe("the review queue", () => {
   /**
-   * The point of caching the candidates. Searching again at review time is a
-   * rate-limited ten seconds an entry, and four hundred entries is over an
-   * hour of waiting to click.
+   * The point of 92: four hundred releases is a list to pick from, not a
+   * stack to be handed the top of. Nothing is read until a row is chosen.
    */
-  it("opens on the candidates the pass already found, without searching", async () => {
+  it("opens on the table rather than on a release", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      {
-        album: "Loveless",
-        artist: "My Bloody Valentine",
-        trackIds: [1, 2],
-        candidates: [candidate],
-      },
+      queued("Loveless", "My Bloody Valentine", [1, 2], [candidate]),
     ]);
 
     await useTagsourceStore.getState().openReview();
 
+    expect(useTagsourceStore.getState().queue).toHaveLength(1);
+    expect(useTagsourceStore.getState().index).toBeNull();
+    expect(tracksByIds).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The point of caching the candidates. Searching again at review time is a
+   * rate-limited ten seconds an entry, and four hundred entries is over an
+   * hour of waiting to click.
+   */
+  it("opens a chosen release on the candidates the pass already found", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      queued("Spiderland", "Slint", [3], []),
+      queued("Loveless", "My Bloody Valentine", [1, 2], [candidate]),
+    ]);
+    await useTagsourceStore.getState().openReview();
+
+    await useTagsourceStore.getState().choose(1);
+
+    expect(useTagsourceStore.getState().index).toBe(1);
     expect(useTagsourceStore.getState().stage).toBe("results");
     expect(useTagsourceStore.getState().candidates).toEqual([candidate]);
     expect(tagsourceSearch).not.toHaveBeenCalled();
@@ -280,9 +312,10 @@ describe("the review queue", () => {
   /** A cache with no way to refresh it is a worse answer than a slow one. */
   it("searches again when asked, over the cache it opened on", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1, 2], candidates: [] },
+      queued("Loveless", "My Bloody Valentine", [1, 2]),
     ]);
     await useTagsourceStore.getState().openReview();
+    await useTagsourceStore.getState().choose(0);
 
     await useTagsourceStore.getState().search();
 
@@ -292,15 +325,11 @@ describe("the review queue", () => {
 
   it("still reads the files of a release whose candidates were cached", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      {
-        album: "Loveless",
-        artist: "My Bloody Valentine",
-        trackIds: [1, 2],
-        candidates: [candidate],
-      },
+      queued("Loveless", "My Bloody Valentine", [1, 2], [candidate]),
     ]);
-
     await useTagsourceStore.getState().openReview();
+
+    await useTagsourceStore.getState().choose(0);
 
     expect(tracksByIds).toHaveBeenCalledWith([1, 2]);
     expect(useTagsourceStore.getState().tracks).toHaveLength(2);
@@ -320,27 +349,73 @@ describe("the review queue", () => {
     expect(useTagsourceStore.getState().queue).toBeNull();
   });
 
-  it("sets a release aside and moves to the next", async () => {
+  it("sets a release aside, takes it out of the table and returns there", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1], candidates: [] },
-      { album: "Spiderland", artist: "Slint", trackIds: [2], candidates: [] },
+      queued("Loveless", "My Bloody Valentine", [1]),
+      queued("Spiderland", "Slint", [2]),
     ]);
     await useTagsourceStore.getState().openReview();
+    await useTagsourceStore.getState().choose(0);
 
     await useTagsourceStore.getState().setAside();
 
     expect(tagsourceSetAside).toHaveBeenCalledWith("Loveless", "My Bloody Valentine");
-    expect(useTagsourceStore.getState().index).toBe(1);
+    expect(useTagsourceStore.getState().index).toBeNull();
+    expect(useTagsourceStore.getState().queue?.map((entry) => entry.album)).toEqual(["Spiderland"]);
+  });
+
+  it("takes an applied release out of the table and returns there", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      queued("Loveless", "My Bloody Valentine", [1], [candidate]),
+      queued("Spiderland", "Slint", [2]),
+    ]);
+    await useTagsourceStore.getState().openReview();
+    await useTagsourceStore.getState().choose(0);
+    await useTagsourceStore.getState().pick(candidate.mbid);
+
+    await useTagsourceStore.getState().apply([]);
+
+    expect(useTagsourceStore.getState().index).toBeNull();
+    expect(useTagsourceStore.getState().queue?.map((entry) => entry.album)).toEqual(["Spiderland"]);
+  });
+
+  /** An empty table is a dead end, so the last decision is also the way out. */
+  it("closes once the last release has been decided", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      queued("Loveless", "My Bloody Valentine", [1]),
+    ]);
+    await useTagsourceStore.getState().openReview();
+    await useTagsourceStore.getState().choose(0);
+
+    await useTagsourceStore.getState().setAside();
+
+    expect(useTagsourceStore.getState().queue).toBeNull();
+  });
+
+  /** Back to Queue is "not now": the release keeps its place in the table. */
+  it("leaves the release in the table on a skip", async () => {
+    vi.mocked(tagsourceReviewQueue).mockResolvedValue([
+      queued("Loveless", "My Bloody Valentine", [1]),
+      queued("Spiderland", "Slint", [2]),
+    ]);
+    await useTagsourceStore.getState().openReview();
+    await useTagsourceStore.getState().choose(0);
+
+    await useTagsourceStore.getState().skip();
+
+    expect(useTagsourceStore.getState().index).toBeNull();
+    expect(useTagsourceStore.getState().queue).toHaveLength(2);
   });
 
   /** Moving on would look like the release had been set aside. */
   it("stays where it is when setting aside fails", async () => {
     vi.mocked(tagsourceSetAside).mockRejectedValue("the database is locked");
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
-      { album: "Loveless", artist: "My Bloody Valentine", trackIds: [1], candidates: [] },
-      { album: "Spiderland", artist: "Slint", trackIds: [2], candidates: [] },
+      queued("Loveless", "My Bloody Valentine", [1]),
+      queued("Spiderland", "Slint", [2]),
     ]);
     await useTagsourceStore.getState().openReview();
+    await useTagsourceStore.getState().choose(0);
 
     await useTagsourceStore.getState().setAside();
 
