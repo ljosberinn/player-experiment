@@ -172,8 +172,23 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
     await enter();
   };
 
-  /** Back to the review queue's table, with the release's state cleared. */
-  const toTable = () => set({ index: null, tracks: [], candidates: [], detail: null, error: null });
+  /**
+   * Back to the review queue's table, with the release's state cleared.
+   *
+   * The stage and the readout are part of that state: an apply is one of the
+   * ways back here, and the table is the dialog's own way out - a stage left
+   * at "applying" disables its Cancel and stops Escape closing it.
+   */
+  const toTable = () =>
+    set({
+      index: null,
+      tracks: [],
+      candidates: [],
+      detail: null,
+      error: null,
+      stage: "opening",
+      progress: null,
+    });
 
   /**
    * What a decision about the release on screen leaves behind.
@@ -251,7 +266,21 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
     },
 
     close: () =>
-      set({ queue: null, tracks: [], candidates: [], detail: null, error: null, index: null }),
+      // The stage and the readout with it. An apply that empties the queue is
+      // what closes the dialog, and a stage left at "applying" comes back with
+      // it - the review queue opens without going through a release, so it
+      // would open on a table whose Cancel is disabled and whose Escape does
+      // nothing.
+      set({
+        queue: null,
+        tracks: [],
+        candidates: [],
+        detail: null,
+        error: null,
+        index: null,
+        stage: "opening",
+        progress: null,
+      }),
 
     skip: async () => {
       const { fromReview, index } = get();

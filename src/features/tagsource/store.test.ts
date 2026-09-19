@@ -183,6 +183,19 @@ describe("the queue", () => {
     expect(useStatusStore.getState().notice).toContain("2 songs");
   });
 
+  it("leaves nothing applying behind when the last release closes the dialog", async () => {
+    await useTagsourceStore.getState().skip();
+    await useTagsourceStore.getState().pick(candidate.mbid);
+
+    await useTagsourceStore.getState().apply([]);
+
+    // A stage that outlives the dialog comes back with it: the review queue
+    // opens without going through a release, so it would open on a table whose
+    // Cancel is disabled and whose Escape does nothing.
+    expect(useTagsourceStore.getState().queue).toBeNull();
+    expect(useTagsourceStore.getState().stage).not.toBe("applying");
+  });
+
   /**
    * The identity is what the apply is for, and it is keyed by what the library
    * calls the release rather than by what MusicBrainz does.
@@ -377,6 +390,10 @@ describe("the review queue", () => {
 
     expect(useTagsourceStore.getState().index).toBeNull();
     expect(useTagsourceStore.getState().queue?.map((entry) => entry.album)).toEqual(["Spiderland"]);
+    // The table it returns to is the dialog's own way out, so a stage left at
+    // "applying" is a queue with Cancel disabled and Escape doing nothing.
+    expect(useTagsourceStore.getState().stage).not.toBe("applying");
+    expect(useTagsourceStore.getState().progress).toBeNull();
   });
 
   /** An empty table is a dead end, so the last decision is also the way out. */

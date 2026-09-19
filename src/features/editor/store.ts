@@ -95,9 +95,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   watch: async () => {
-    // Unconditional: the only source of these events is the save this store
-    // started, and it clears `progress` when it finishes. Where it is drawn is
-    // the renderer's business.
-    return onTagWriteProgress((progress) => set({ progress }));
+    // Guarded on a save of this store's own being in flight - which is exactly
+    // what a non-null `progress` means, since `save` sets it before it awaits.
+    // `tags://progress` is one channel for every tag write and the lookup's
+    // apply is the other sender on it, so an unconditional `set` left the
+    // readout standing with nothing here to clear it: the next dialog to open
+    // found Save disabled at "Saving…" and no way out but a restart. It also
+    // drops the last event of the batch when that arrives after the command's
+    // own reply - two messages over one bridge, in no fixed order.
+    return onTagWriteProgress((progress) => {
+      if (get().progress !== null) {
+        set({ progress });
+      }
+    });
   },
 }));

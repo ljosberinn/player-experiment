@@ -100,6 +100,10 @@ describe("TaskProgress", () => {
     await mounted();
 
     act(() => {
+      // What a save of the editor's own in flight looks like: the store takes
+      // events from the channel only while one is, since the lookup's apply
+      // sends on it too.
+      useEditorStore.setState({ progress: { done: 0, total: 12 } });
       emitTags?.({ done: 3, total: 12 });
     });
 
