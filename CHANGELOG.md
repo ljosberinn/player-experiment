@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.14.0](https://github.com/ljosberinn/player-experiment/compare/v0.13.0...v0.14.0) (2026-09-19)
+
+
+### Features
+
+* collect an orphaned cover ([#206](https://github.com/ljosberinn/player-experiment/issues/206)) ([fd3271a](https://github.com/ljosberinn/player-experiment/commit/fd3271a2dd4fcdb09690101b683242ab597b8da5))
+* drop files and folders into the library ([#204](https://github.com/ljosberinn/player-experiment/issues/204)) ([f486b23](https://github.com/ljosberinn/player-experiment/commit/f486b2338ef1fe926a1eab90a7c8dd3660b7d982))
+* one release, one tile ([#205](https://github.com/ljosberinn/player-experiment/issues/205)) ([c561daa](https://github.com/ljosberinn/player-experiment/commit/c561daa44486b41790eb7de3117960a660dcb116))
+* pair files to a tracklist by what they are ([#212](https://github.com/ljosberinn/player-experiment/issues/212)) ([71bb669](https://github.com/ljosberinn/player-experiment/commit/71bb6697e130e87780728032daeacc4ef427fcd0))
+* pick from the review queue ([#208](https://github.com/ljosberinn/player-experiment/issues/208)) ([b42d928](https://github.com/ljosberinn/player-experiment/commit/b42d92838eedb13b445586d0a6773c1018f2b7c0))
+* settings, in categories ([#214](https://github.com/ljosberinn/player-experiment/issues/214)) ([13849a5](https://github.com/ljosberinn/player-experiment/commit/13849a5676906ef4e9d533913ba40cd1d72f4711))
+* the window takes OS drops ([#202](https://github.com/ljosberinn/player-experiment/issues/202)) ([911ed94](https://github.com/ljosberinn/player-experiment/commit/911ed94563c1fe9d7d58b231a13a2f2a9e43945f))
+* what the charts cannot place ([#211](https://github.com/ljosberinn/player-experiment/issues/211)) ([32176a9](https://github.com/ljosberinn/player-experiment/commit/32176a97ca5a5de1543708a534cf6fcfad6b427a))
+
+
+### Bug Fixes
+
+* a play without a time ([#209](https://github.com/ljosberinn/player-experiment/issues/209)) ([3a27bd0](https://github.com/ljosberinn/player-experiment/commit/3a27bd0cbf07f644adc8bee295c3d88b475606c4))
+* Picard's release types, as MusicBrainz spells them ([#213](https://github.com/ljosberinn/player-experiment/issues/213)) ([8725b25](https://github.com/ljosberinn/player-experiment/commit/8725b25b91e2fe9cba4b011c754c298de5e707a9))
+* the lookup window stops resizing ([#207](https://github.com/ljosberinn/player-experiment/issues/207)) ([371b6a9](https://github.com/ljosberinn/player-experiment/commit/371b6a93b7b9fff037e4a3a3c307071265d6cf67))
+
 ## [0.13.0](https://github.com/ljosberinn/player-experiment/compare/v0.12.0...v0.13.0) (2026-09-19)
 
 
