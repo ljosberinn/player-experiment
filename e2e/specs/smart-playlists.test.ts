@@ -18,8 +18,9 @@ import { capture } from "../screenshot";
  *
  * Since phase 100 a smart playlist opens on its releases, so the rows that
  * property is read off sit behind a drill-in. The playlist is pinned to one
- * artist for that reason: a cutoff spanning several releases has no single
- * screen listing what it holds, and the before-and-after comparison needs one.
+ * release year for that reason: a cutoff spanning several releases has no
+ * single screen listing what it holds, and the before-and-after comparison
+ * needs one. The fixture gives each of its three releases a year of its own.
  *
  * Runs after `library.test.ts` because it needs songs to cut off, and before
  * `virtualization.test.ts` because that one fills the library with a hundred
@@ -31,8 +32,8 @@ const LIMIT = 1;
 
 const NAME = "One Song";
 
-/** The artist the playlist is pinned to, and the one release it recorded. */
-const ARTIST = "Blue Room";
+/** The year the playlist is pinned to, and the one release carrying it. */
+const YEAR = 2018;
 const RELEASE = "Harbour";
 
 /**
@@ -113,8 +114,11 @@ describe("a smart playlist with a cutoff", () => {
 
   it("builds one through the editor", async () => {
     // The rule has to match more songs than the cutoff, or none of this proves
-    // anything at all.
-    expect(LIBRARY.filter((one) => one.artist === ARTIST).length).toBeGreaterThan(LIMIT);
+    // anything at all - and all of them have to be on the one release the
+    // drill-in below opens.
+    const matching = LIBRARY.filter((one) => one.year === YEAR);
+    expect(matching.length).toBeGreaterThan(LIMIT);
+    expect(matching.every((one) => one.album === RELEASE)).toBe(true);
 
     await browser.$("button[aria-label='New smart playlist']").click();
 
@@ -126,16 +130,21 @@ describe("a smart playlist with a cutoff", () => {
     await name.waitForExist({ timeout: 10_000 });
     await name.setValue(NAME);
 
-    // One rule, on the field a new one already opens with, so nothing here has
-    // to drive the field picker.
+    // Year rather than the Artist a new rule opens with. A rule on Artist is
+    // typed into a combobox, whose suggestion list is portalled over the rest
+    // of the dialog and arrives a SQLite round trip after the keystrokes -
+    // dismissing it is a race this spec lost. Year has a number input and no
+    // vocabulary at all, so there is nothing to dismiss.
     await browser.$("//button[normalize-space(.)='+ Rule']").click();
+    const field = await browser.$("select[aria-label='Field for condition 1']");
+    await field.waitForExist({ timeout: 10_000 });
+    await field.selectByAttribute("value", "year");
+
+    // Switching the field rewrites the operator and the value with it, so the
+    // input is looked up after the change rather than before.
     const value = await browser.$("input[aria-label='Value for condition 1']");
     await value.waitForExist({ timeout: 10_000 });
-    await value.setValue(ARTIST);
-    // The suggestion list is portalled and sits over what comes next in the
-    // dialog. Base UI swallows this Escape while the list is open, so it closes
-    // the list without also reaching the dialog's own cancel.
-    await browser.keys(["Escape"]);
+    await value.setValue(String(YEAR));
 
     await browser.$("//label[normalize-space(.)='Limited to']/preceding-sibling::input").click();
     const limit = await browser.$("input[aria-label='Limit']");
