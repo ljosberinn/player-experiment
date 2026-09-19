@@ -117,7 +117,7 @@ export function PlaylistSidebar({
           // Disabled rather than absent: the actions still exist, this
           // playlist just has no contents for them to act on yet.
           disabled: playlist.trackCount === 0,
-          onSelect: () => void playPlaylist(playlist.id),
+          onSelect: () => void playPlaylist(playlist),
         },
         { kind: "separator" },
         ...(playlist.kind === "smart"
@@ -187,7 +187,7 @@ export function PlaylistSidebar({
           // use than one that stays put. It stays visible.
           aria-label={playlist.name}
           aria-current={playlist.id === selectedId ? "page" : undefined}
-          onClick={() => void showPlaylist(playlist.id)}
+          onClick={() => void showPlaylist(playlist)}
           onDoubleClick={() => startRename(playlist.id)}
         >
           <Icon

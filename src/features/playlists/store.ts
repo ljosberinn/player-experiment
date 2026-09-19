@@ -96,7 +96,7 @@ interface PlaylistsState {
   /** Reorders within the playlist currently on screen. */
   moveTracks: (playlistId: number, trackIds: number[], targetIndex: number) => Promise<void>;
   /** Opens a playlist and starts playing it from the top. */
-  playPlaylist: (playlistId: number) => Promise<void>;
+  playPlaylist: (playlist: Playlist) => Promise<void>;
 }
 
 function nameOf(playlists: Playlist[], playlistId: number): string {
@@ -239,7 +239,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
         set({ editing: null });
         // Navigation, not invalidation: the new playlist has to be what is on
         // screen, and no event can say that.
-        await useLibraryStore.getState().showPlaylist(created.id);
+        await useLibraryStore.getState().showPlaylist(created);
         return;
       }
 
@@ -325,7 +325,8 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     }
   },
 
-  playPlaylist: async (playlistId) => {
+  playPlaylist: async (playlist) => {
+    const playlistId = playlist.id;
     try {
       // The ids are fetched for this playlist directly rather than read off
       // the current view: the view is switched in the same breath, and reading
@@ -341,7 +342,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
         offset: 0,
         limit: 0,
       });
-      await useLibraryStore.getState().showPlaylist(playlistId);
+      await useLibraryStore.getState().showPlaylist(playlist);
       if (ids.length === 0) {
         notify(`${nameOf(get().playlists, playlistId)} is empty.`);
         return;

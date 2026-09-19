@@ -7,7 +7,7 @@ import { LIBRARY } from "../fixtures";
  * The half a component test cannot reach. `SmartPlaylistEditor.test.tsx`
  * proves the dialog hands back the order it was given, and the Rust tests
  * prove the query layer applies it - but between the two sit a command, a JSON
- * column and a page query, and "the playlist holds two songs" is a fact about
+ * column and a page query, and "the playlist holds one song" is a fact about
  * all of them at once.
  *
  * The property worth an e2e is the one that makes a cutoff *membership* rather
@@ -15,15 +15,24 @@ import { LIBRARY } from "../fixtures";
  * one is invisible to every layer on its own, because each layer is doing
  * exactly what it should.
  *
+ * Since phase 100 a smart playlist opens on its releases, so the rows that
+ * property is read off sit behind a drill-in. The playlist is pinned to one
+ * artist for that reason: a cutoff spanning several releases has no single
+ * screen listing what it holds, and the before-and-after comparison needs one.
+ *
  * Runs after `library.test.ts` because it needs songs to cut off, and before
  * `virtualization.test.ts` because that one fills the library with a hundred
  * and fifty thousand rows and nothing after it would recognise the place.
  */
 
 /** How many songs the playlist under test is limited to. */
-const LIMIT = 2;
+const LIMIT = 1;
 
-const NAME = "Two Songs";
+const NAME = "One Song";
+
+/** The artist the playlist is pinned to, and the one release it recorded. */
+const ARTIST = "Blue Room";
+const RELEASE = "Harbour";
 
 /**
  * The titles on screen, in the order the table puts them.
@@ -102,9 +111,9 @@ describe("a smart playlist with a cutoff", () => {
   });
 
   it("builds one through the editor", async () => {
-    // The library has to have more songs than the cutoff, or none of this
-    // proves anything at all.
-    expect(LIBRARY.length).toBeGreaterThan(LIMIT);
+    // The rule has to match more songs than the cutoff, or none of this proves
+    // anything at all.
+    expect(LIBRARY.filter((one) => one.artist === ARTIST).length).toBeGreaterThan(LIMIT);
 
     await browser.$("button[aria-label='New smart playlist']").click();
 
@@ -116,8 +125,17 @@ describe("a smart playlist with a cutoff", () => {
     await name.waitForExist({ timeout: 10_000 });
     await name.setValue(NAME);
 
-    // No rules at all: every song is a candidate and the cutoff does all the
-    // work, which is exactly the shape "Recently Added" ships in.
+    // One rule, on the field a new one already opens with, so nothing here has
+    // to drive the field picker.
+    await browser.$("//button[normalize-space(.)='+ Rule']").click();
+    const value = await browser.$("input[aria-label='Value for condition 1']");
+    await value.waitForExist({ timeout: 10_000 });
+    await value.setValue(ARTIST);
+    // The suggestion list is portalled and sits over what comes next in the
+    // dialog. Base UI swallows this Escape while the list is open, so it closes
+    // the list without also reaching the dialog's own cancel.
+    await browser.keys(["Escape"]);
+
     await browser.$("//label[normalize-space(.)='Limited to']/preceding-sibling::input").click();
     const limit = await browser.$("input[aria-label='Limit']");
     await limit.setValue(String(LIMIT));
@@ -126,22 +144,31 @@ describe("a smart playlist with a cutoff", () => {
     await browser.$(".modal").waitForExist({ reverse: true, timeout: 10_000 });
   });
 
-  it("holds the number of songs it was limited to, and says so in the sidebar", async () => {
-    await settledAt(LIMIT, `the view never settled at ${LIMIT} rows`);
+  it("opens on its releases, scoped to what it holds", async () => {
+    // The landing state and the scope in one: the library has three releases
+    // and the playlist shows the one its only song was recorded for.
+    await browser.$(".browse-grid").waitForExist({ timeout: 30_000 });
+    await browser.waitUntil(async () => (await browser.$$("button.browse-tile").length) === 1, {
+      timeout: 15_000,
+      timeoutMsg: "the release grid never settled at the playlist's one release",
+    });
+    await expect(browser.$("button.browse-tile .browse-title")).toHaveText(RELEASE);
 
-    // The sidebar count runs through the same scope the rows did, so a
+    // The sidebar count runs through the same scope the grid did, so a
     // disagreement here means the cutoff reached one and not the other.
     await expect(playlistItem(NAME).$(".sidebar-count")).toHaveText(String(LIMIT));
   });
 
   it("holds the same songs however the view is sorted", async () => {
+    await browser.$(`//button[contains(@class,'browse-tile')][.//text()='${RELEASE}']`).click();
+    await settledAt(LIMIT, `the drill-in never settled at ${LIMIT} rows`);
     const before = (await titles()).slice().sort();
     expect(before).toHaveLength(LIMIT);
 
     // Clicking a column header sorts the *display*. If the cutoff had been a
     // LIMIT on the page query rather than a condition on the scope, this would
-    // quietly hand back a different two songs - with every layer behaving
-    // perfectly on its own.
+    // quietly hand back a different song - with every layer behaving perfectly
+    // on its own.
     const header = await browser.$("th[data-column='title']");
     await header.click();
     await settledAt(LIMIT, "the row count changed when the view was sorted");

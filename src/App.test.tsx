@@ -756,10 +756,25 @@ describe("App playback", () => {
     vi.mocked(listPlaylists).mockResolvedValue([
       { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0 },
     ]);
+    vi.mocked(browseGroups).mockResolvedValue([
+      {
+        id: albumIdentity("Shields", "Grizzly Bear"),
+        key: "Shields",
+        secondary: "Grizzly Bear",
+        artistCount: 1,
+        trackCount: 10,
+        durationMs: 0,
+        coverHash: null,
+        year: 2012,
+      },
+    ]);
     await renderWithLibrary();
     const user = userEvent.setup();
 
+    // A smart playlist opens on its releases, so the rows are behind a
+    // drill-in rather than under the playlist row itself.
     await user.click(await screen.findByRole("button", { name: "Grizzly" }));
+    await user.click(await screen.findByRole("button", { name: /Shields/ }));
     const row = (await screen.findByText("Track 1")).closest(".song-row") as HTMLElement;
     await user.click(row);
     await user.type(row, "{Delete}");
@@ -1122,6 +1137,39 @@ describe("the browse tabs", () => {
 
     await user.click(screen.getByRole("button", { name: "Artists" }));
     await waitFor(() => expect(screen.getByTestId("browse-scroll")).not.toBe(albums));
+  });
+
+  it("opens a smart playlist on a grid scoped to it", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listPlaylists).mockResolvedValue([
+      { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0 },
+    ]);
+    vi.mocked(browseGroups).mockResolvedValue([
+      {
+        id: albumIdentity("Shields", "Grizzly Bear"),
+        key: "Shields",
+        secondary: "Grizzly Bear",
+        artistCount: 1,
+        trackCount: 10,
+        durationMs: 0,
+        coverHash: null,
+        year: 2012,
+      },
+    ]);
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Grizzly" }));
+
+    expect(await screen.findByTestId("browse-scroll")).toBeInTheDocument();
+    // The grid, the tile counts and the drill-in all run through the same
+    // scope the table does, so the tiles are the playlist's and not the
+    // library's.
+    await waitFor(() =>
+      expect(browseGroups).toHaveBeenLastCalledWith(
+        expect.objectContaining({ playlistId: 9 }),
+        "albums",
+      ),
+    );
   });
 });
 

@@ -115,7 +115,7 @@ describe("playlists store", () => {
 
   it("leaves a deleted playlist's view before the sidebar drops it", async () => {
     vi.mocked(deletePlaylist).mockResolvedValue(undefined);
-    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showPlaylist(playlist(3, "Evening"));
 
     await usePlaylistsStore.getState().remove(3);
 
@@ -126,7 +126,7 @@ describe("playlists store", () => {
 
   it("takes a deleted playlist out of the navigation history", async () => {
     vi.mocked(deletePlaylist).mockResolvedValue(undefined);
-    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showPlaylist(playlist(3, "Evening"));
     await useLibraryStore.getState().showTab("albums");
 
     await usePlaylistsStore.getState().remove(3);
@@ -139,7 +139,7 @@ describe("playlists store", () => {
 
   it("stays where it is when some other playlist is deleted", async () => {
     vi.mocked(deletePlaylist).mockResolvedValue(undefined);
-    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showPlaylist(playlist(3, "Evening"));
 
     await usePlaylistsStore.getState().remove(9);
 
@@ -261,7 +261,7 @@ describe("playlists store", () => {
     await usePlaylistsStore.getState().load();
     vi.mocked(setPlaylistFilter).mockResolvedValue(undefined);
     vi.mocked(playlistFilter).mockResolvedValue(emptyFilter);
-    await useLibraryStore.getState().showPlaylist(4);
+    await useLibraryStore.getState().showPlaylist(smartPlaylist(4, "Recent"));
     await usePlaylistsStore.getState().editSmart(4);
     const before = useLibraryStore.getState().queryToken;
 
@@ -311,7 +311,7 @@ describe("playlists store", () => {
     // This used to be a guard here - "is the playlist I just wrote to the one
     // on screen" - which every new mutation had to remember to repeat.
     vi.mocked(addToPlaylist).mockResolvedValue(1);
-    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showPlaylist(playlist(3, "Evening"));
     const before = useLibraryStore.getState().queryToken;
 
     await usePlaylistsStore.getState().addTracks(3, [11]);
@@ -367,7 +367,7 @@ describe("playPlaylist", () => {
   it("opens the playlist and plays it from the top", async () => {
     vi.mocked(allTrackIds).mockResolvedValue([7, 8, 9]);
 
-    await usePlaylistsStore.getState().playPlaylist(3);
+    await usePlaylistsStore.getState().playPlaylist(playlist(3, "Evening"));
 
     // In its own order, not the view's: the sort on screen belongs to
     // whatever was open a moment ago.
@@ -382,7 +382,7 @@ describe("playPlaylist", () => {
     vi.mocked(allTrackIds).mockResolvedValue([]);
     usePlaylistsStore.setState({ playlists: [playlist(3, "Evening")] });
 
-    await usePlaylistsStore.getState().playPlaylist(3);
+    await usePlaylistsStore.getState().playPlaylist(playlist(3, "Evening"));
 
     expect(usePlayerStore.getState().play).not.toHaveBeenCalled();
     expect(useStatusStore.getState().notice).toBe("Evening is empty.");

@@ -59,6 +59,18 @@ classes that already exist.
   the group that was at the top and drops the virtualizer's size cache.
 - Lists stripe by **data index**, not `:nth-child` — the rows are absolutely
   positioned, so DOM order is the visible window rather than the list.
+- **A smart playlist opens on Releases, a static one on whatever was open.**
+  The landing tab is the kind's, which is why `showPlaylist` takes the
+  `Playlist` row rather than an id - the library store has no business reading
+  the playlists store to find it out. A smart playlist is a question about the
+  library and its answer reads as releases; a static one is an ordered list
+  somebody built by hand, so the order is the content. The grid, the per-tile
+  counts and the drill-in were already scoped to the playlist through the same
+  `scope()` the songs table uses, so this is only what the source resets *to*.
+  The consequence to know about: a smart playlist spanning several releases has
+  no screen listing its songs as one list, because a LIBRARY button still
+  changes the source back to the library. Reaching that list needs a source row
+  the sidebar does not have - see phase 100 in `issues/done/`.
 - **A drill-in that lands empty ejects to the group list**, from inside
   `refresh()` itself so a group emptied by a tag edit, a missing file or a
   rescan is covered the same way. Only when there is no active search — one

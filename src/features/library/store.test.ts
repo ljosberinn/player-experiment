@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BrowseGroup, Track, TrackQuery } from "../../ipc";
+import type { BrowseGroup, Playlist, PlaylistKind, Track, TrackQuery } from "../../ipc";
 import {
   allTrackIds,
   browseGroups,
@@ -52,6 +52,11 @@ const allTrackIdsMock = vi.mocked(allTrackIds);
 const browseGroupsMock = vi.mocked(browseGroups);
 const loadColumnConfigMock = vi.mocked(loadColumnConfig);
 const saveColumnConfigMock = vi.mocked(saveColumnConfig);
+
+/** A playlist row; only the id and the kind are what these tests turn on. */
+function playlist(id: number, kind: PlaylistKind = "static"): Playlist {
+  return { id, name: `Playlist ${id}`, kind, trackCount: 0, createdAt: 0 };
+}
 
 function browseGroup(over: Partial<BrowseGroup> = {}): BrowseGroup {
   return {
@@ -248,7 +253,7 @@ describe("refresh", () => {
 
 describe("showPlaylist", () => {
   it("scopes the query to the playlist and opens it in its own order", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
 
     expect(statsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ playlistId: 5, sortBy: "position", direction: "asc" }),
@@ -256,7 +261,7 @@ describe("showPlaylist", () => {
   });
 
   it("goes back to the library's own default on the way out", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
 
     await useLibraryStore.getState().showPlaylist(null);
 
@@ -272,7 +277,7 @@ describe("showPlaylist", () => {
       selection: { ids: new Set([1, 2]), anchorIndex: 0 },
     });
 
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
 
     // A search typed against the library is rarely the one you want against a
     // playlist, and the selected ids may not even be in it.
@@ -282,16 +287,16 @@ describe("showPlaylist", () => {
   });
 
   it("does not requery when the source did not change", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
     statsMock.mockClear();
 
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
 
     expect(statsMock).not.toHaveBeenCalled();
   });
 
   it("carries the playlist into every query the view makes", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
     allTrackIdsMock.mockResolvedValue([1, 2]);
 
     await useLibraryStore.getState().ensureRange(0, 10);
@@ -299,6 +304,49 @@ describe("showPlaylist", () => {
 
     expect(queryTracksMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 5 }));
     expect(allTrackIdsMock).toHaveBeenLastCalledWith(expect.objectContaining({ playlistId: 5 }));
+  });
+
+  it("opens a smart playlist on its releases", async () => {
+    await useLibraryStore.getState().showPlaylist(playlist(5, "smart"));
+
+    // A smart playlist is a question about the library, and the answer reads
+    // as releases rather than as a flat list of tracks.
+    expect(useLibraryStore.getState().tab).toBe("albums");
+  });
+
+  it("opens a static playlist on its songs", async () => {
+    await useLibraryStore.getState().showPlaylist(playlist(5));
+
+    // An ordered list somebody built by hand, so the order is the content.
+    expect(useLibraryStore.getState().tab).toBe("songs");
+  });
+
+  it("carries the open tab into a static playlist and overrides it for a smart one", async () => {
+    await useLibraryStore.getState().showTab("artists");
+
+    await useLibraryStore.getState().showPlaylist(playlist(5));
+    expect(useLibraryStore.getState().tab).toBe("artists");
+
+    await useLibraryStore.getState().showPlaylist(playlist(6, "smart"));
+    expect(useLibraryStore.getState().tab).toBe("albums");
+  });
+
+  it("opens a smart playlist on releases from Statistics too", async () => {
+    await useLibraryStore.getState().showTab("stats");
+
+    await useLibraryStore.getState().showPlaylist(playlist(5, "smart"));
+
+    // Statistics is not a grouping a playlist can be shown in, and the fallback
+    // out of it is still the kind's landing tab, not the table.
+    expect(useLibraryStore.getState().tab).toBe("albums");
+  });
+
+  it("opens a static playlist on songs from Statistics", async () => {
+    await useLibraryStore.getState().showTab("stats");
+
+    await useLibraryStore.getState().showPlaylist(playlist(5));
+
+    expect(useLibraryStore.getState().tab).toBe("songs");
   });
 });
 
@@ -698,7 +746,7 @@ describe("browse tabs", () => {
     await useLibraryStore.getState().showTab("albums");
     await useLibraryStore.getState().openGroup(browseGroup());
 
-    await useLibraryStore.getState().showPlaylist(7);
+    await useLibraryStore.getState().showPlaylist(playlist(7));
 
     // That album is unlikely to be in the playlist, and a stale filter would
     // show an empty view for no visible reason.
@@ -877,7 +925,7 @@ describe("column layout", () => {
   it("reloads the layout when the view changes", async () => {
     loadColumnConfigMock.mockResolvedValue('{"ids":["genre"]}');
 
-    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showPlaylist(playlist(3));
 
     expect(loadColumnConfigMock).toHaveBeenCalledWith(3);
     expect(useLibraryStore.getState().columns.ids).toEqual(["genre"]);
@@ -1077,7 +1125,7 @@ describe("navigation history", () => {
   });
 
   it("reloads the columns on the way back into a playlist", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
     await useLibraryStore.getState().showTab("albums");
     loadColumnConfigMock.mockClear();
 
@@ -1101,7 +1149,7 @@ describe("navigation history", () => {
   });
 
   it("leaves the playlist and picks the view in one entry", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
     statsMock.mockClear();
 
     await useLibraryStore.getState().showTab("songs");
@@ -1138,7 +1186,7 @@ describe("navigation history", () => {
     await search("bear");
     expect(useLibraryStore.getState().sortBy).toBe("relevance");
 
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
     await useLibraryStore.getState().showTab("albums");
 
     // The playlist change cleared the search, so this is the library's own
@@ -1159,7 +1207,7 @@ describe("navigation history", () => {
   });
 
   it("forgets a deleted playlist rather than offering to go back to it", async () => {
-    await useLibraryStore.getState().showPlaylist(5);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
     await useLibraryStore.getState().showTab("albums");
 
     useLibraryStore.getState().forgetPlaylist(5);
@@ -1249,7 +1297,7 @@ describe("where each browse tab was left", () => {
   it("forgets all three when the view crosses into a playlist", async () => {
     useLibraryStore.setState({ browseOffsets: scrolled });
 
-    await useLibraryStore.getState().showPlaylist(3);
+    await useLibraryStore.getState().showPlaylist(playlist(3));
 
     expect(useLibraryStore.getState().browseOffsets).toEqual({
       albums: 0,
@@ -1343,7 +1391,7 @@ describe("the Statistics view", () => {
   it("lands on the songs table when a playlist is opened from it", async () => {
     await useLibraryStore.getState().showTab("stats");
 
-    await useLibraryStore.getState().showPlaylist(7);
+    await useLibraryStore.getState().showPlaylist(playlist(7));
 
     expect(useLibraryStore.getState().tab).toBe("songs");
     expect(useLibraryStore.getState().statsPath).toBeNull();
