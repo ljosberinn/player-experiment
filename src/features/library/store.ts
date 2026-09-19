@@ -11,6 +11,7 @@ import {
   libraryStats,
   loadColumnConfig,
   onLibraryChanged,
+  type Playlist,
   queryTracks,
   removeMissingTracks,
   removeTracks,
@@ -250,8 +251,13 @@ interface LibraryState {
   forgetRemoved: () => Promise<void>;
   /** Reloads the open tab's groups under `refresh`'s token. Internal. */
   loadGroups: (token: number) => Promise<void>;
-  /** Switches the view to a playlist, or back to the whole library. */
-  showPlaylist: (playlistId: number | null) => Promise<void>;
+  /**
+   * Switches the view to a playlist, or back to the whole library.
+   *
+   * Takes the row rather than the id because the landing tab depends on the
+   * kind, and the library store has no business reading the playlists store.
+   */
+  showPlaylist: (playlist: Playlist | null) => Promise<void>;
   /** Shows or hides one column, and persists the result for this view. */
   toggleColumn: (id: SortField) => Promise<void>;
   /** Reorders a column by dragging its header. */
@@ -607,7 +613,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
-  showPlaylist: async (playlistId) => {
+  showPlaylist: async (playlist) => {
+    const playlistId = playlist?.id ?? null;
     // Clicking the playlist that is already open is a no-op rather than a
     // hidden way out of a drill-in, the same rule the browse tabs follow.
     if (get().playlistId === playlistId) {
@@ -615,10 +622,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     // A playlist's albums are not the library's, and the album that was open
     // is unlikely to be in it, so the drill-in goes with the source.
-    // Statistics is not a grouping a playlist can be shown in, so opening one
-    // from there lands on the table rather than on a tab that does not apply.
-    const tab = get().tab === "stats" ? "songs" : get().tab;
-    await pushEntry({ tab, browse: null, browseLabel: null, playlistId, stats: null });
+    await pushEntry({
+      tab: landingTab(get().tab, playlist),
+      browse: null,
+      browseLabel: null,
+      playlistId,
+      stats: null,
+    });
   },
 
   loadColumns: async () => {
@@ -1020,6 +1030,21 @@ function entryForTrack(track: Track): HistoryEntry {
 
 function tagged(value: string | null): string | null {
   return value === null || value.trim() === "" ? null : value;
+}
+
+/**
+ * Which tab a source opens in.
+ *
+ * A smart playlist is a question about the library and its answer reads as
+ * releases, so it lands there whatever was open. Everything else carries the
+ * open tab over, except Statistics: that is not a grouping a playlist can be
+ * shown in, so opening one from there lands on the table.
+ */
+function landingTab(current: ViewTab, playlist: Playlist | null): ViewTab {
+  if (playlist?.kind === "smart") {
+    return "albums";
+  }
+  return current === "stats" ? "songs" : current;
 }
 
 /**
