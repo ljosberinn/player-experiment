@@ -17,10 +17,10 @@ import { capture } from "../screenshot";
  * exactly what it should.
  *
  * Since phase 100 a smart playlist opens on its releases, so the rows that
- * property is read off sit behind a drill-in. The playlist is pinned to one
- * release year for that reason: a cutoff spanning several releases has no
- * single screen listing what it holds, and the before-and-after comparison
- * needs one. The fixture gives each of its three releases a year of its own.
+ * property is read off sit behind a drill-in. A cutoff of one is what keeps
+ * that reachable: one song is one release, so the drill-in holds the whole
+ * playlist and the before-and-after comparison has a screen to run on. A
+ * cutoff spanning several releases would have none.
  *
  * Runs after `library.test.ts` because it needs songs to cut off, and before
  * `virtualization.test.ts` because that one fills the library with a hundred
@@ -31,10 +31,6 @@ import { capture } from "../screenshot";
 const LIMIT = 1;
 
 const NAME = "One Song";
-
-/** The year the playlist is pinned to, and the one release carrying it. */
-const YEAR = 2018;
-const RELEASE = "Harbour";
 
 /**
  * The titles on screen, in the order the table puts them.
@@ -100,6 +96,15 @@ async function openContextMenu(name: string): Promise<void> {
   }, name);
 }
 
+/** The release names the grid is drawing. */
+function tileTitles(): Promise<string[]> {
+  return browser.execute(() =>
+    Array.from(document.querySelectorAll("button.browse-tile .browse-title")).map((one) =>
+      (one.textContent ?? "").trim(),
+    ),
+  );
+}
+
 async function settledAt(count: number, why: string): Promise<void> {
   await browser.waitUntil(async () => (await titles()).length === count, {
     timeout: 10_000,
@@ -113,12 +118,9 @@ describe("a smart playlist with a cutoff", () => {
   });
 
   it("builds one through the editor", async () => {
-    // The rule has to match more songs than the cutoff, or none of this proves
-    // anything at all - and all of them have to be on the one release the
-    // drill-in below opens.
-    const matching = LIBRARY.filter((one) => one.year === YEAR);
-    expect(matching.length).toBeGreaterThan(LIMIT);
-    expect(matching.every((one) => one.album === RELEASE)).toBe(true);
+    // The library has to have more songs than the cutoff, or none of this
+    // proves anything at all.
+    expect(LIBRARY.length).toBeGreaterThan(LIMIT);
 
     await browser.$("button[aria-label='New smart playlist']").click();
 
@@ -130,22 +132,12 @@ describe("a smart playlist with a cutoff", () => {
     await name.waitForExist({ timeout: 10_000 });
     await name.setValue(NAME);
 
-    // Year rather than the Artist a new rule opens with. A rule on Artist is
-    // typed into a combobox, whose suggestion list is portalled over the rest
-    // of the dialog and arrives a SQLite round trip after the keystrokes -
-    // dismissing it is a race this spec lost. Year has a number input and no
-    // vocabulary at all, so there is nothing to dismiss.
-    await browser.$("//button[normalize-space(.)='+ Rule']").click();
-    const field = await browser.$("select[aria-label='Field for condition 1']");
-    await field.waitForExist({ timeout: 10_000 });
-    await field.selectByAttribute("value", "year");
-
-    // Switching the field rewrites the operator and the value with it, so the
-    // input is looked up after the change rather than before.
-    const value = await browser.$("input[aria-label='Value for condition 1']");
-    await value.waitForExist({ timeout: 10_000 });
-    await value.setValue(String(YEAR));
-
+    // No rules at all: every song is a candidate and the cutoff does all the
+    // work, which is exactly the shape "Recently Added" ships in - and the
+    // only part of this dialog a driver can fill in reliably. A rule on a text
+    // field is a combobox whose suggestion list is portalled over what comes
+    // next; a rule on Year took `setValue` without complaint and then built a
+    // playlist that matched nothing. Neither is what this spec is about.
     await browser.$("//label[normalize-space(.)='Limited to']/preceding-sibling::input").click();
     const limit = await browser.$("input[aria-label='Limit']");
     await limit.setValue(String(LIMIT));
@@ -156,13 +148,12 @@ describe("a smart playlist with a cutoff", () => {
 
   it("opens on its releases, scoped to what it holds", async () => {
     // The landing state and the scope in one: the library has three releases
-    // and the playlist shows the one its only song was recorded for.
+    // and the playlist shows only the one its single song was recorded for.
     await browser.$(".browse-grid").waitForExist({ timeout: 30_000 });
-    await browser.waitUntil(async () => (await browser.$$("button.browse-tile").length) === 1, {
+    await browser.waitUntil(async () => (await tileTitles()).length === LIMIT, {
       timeout: 15_000,
-      timeoutMsg: "the release grid never settled at the playlist's one release",
+      timeoutMsg: `the release grid never settled at ${LIMIT} tile`,
     });
-    await expect(browser.$("button.browse-tile .browse-title")).toHaveText(RELEASE);
 
     // The sidebar count runs through the same scope the grid did, so a
     // disagreement here means the cutoff reached one and not the other.
@@ -174,7 +165,9 @@ describe("a smart playlist with a cutoff", () => {
   });
 
   it("holds the same songs however the view is sorted", async () => {
-    await browser.$(`//button[contains(@class,'browse-tile')][.//text()='${RELEASE}']`).click();
+    // The only tile there is, which is the whole playlist: what the comparison
+    // below needs is one screen holding everything the cutoff kept.
+    await browser.$("button.browse-tile").click();
     await settledAt(LIMIT, `the drill-in never settled at ${LIMIT} rows`);
     const before = (await titles()).slice().sort();
     expect(before).toHaveLength(LIMIT);

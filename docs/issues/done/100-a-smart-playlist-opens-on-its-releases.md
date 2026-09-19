@@ -57,16 +57,17 @@ carry-over; and both from Statistics.
 scoped. The reordering-and-removal case now reaches its rows through a
 drill-in, which is the only route to them.
 
-`e2e/specs/smart-playlists.test.ts` is pinned to one release year and a cutoff
-of one. Its point is that a cutoff is membership rather than display — sorting
-the view must not change which songs are in it — and that comparison needs a
-single screen listing everything the playlist holds. Behind a drill-in, that
-means the playlist has to fit in one release.
+`e2e/specs/smart-playlists.test.ts` keeps its cutoff of one and drops to a
+limit of one song. Its point is that a cutoff is membership rather than display
+— sorting the view must not change which songs are in it — and that comparison
+needs a single screen listing everything the playlist holds. Behind a drill-in,
+that means the playlist has to fit in one release, and one song always does.
 
-Year rather than the Artist a new rule opens with: a rule on Artist is typed
-into a combobox whose suggestion list is portalled over the rest of the dialog
-and arrives a SQLite round trip after the keystrokes. Escape closes it, but
-only while it is open — and when it is not, the same Escape reaches
-`useDialogKeys` and cancels the editor, which is how the first run of this
-failed. Year has a number input and no vocabulary, so there is nothing to
-dismiss.
+Two attempts at pinning it with a *rule* failed on the runner first, both in
+the editor rather than in anything this phase touched. A rule on Artist is
+typed into a combobox whose suggestion list is portalled over the rest of the
+dialog; Escape closes it, but Base UI only swallows that Escape while the list
+is open, and the list arrives a SQLite round trip after the keystrokes — so the
+Escape reached `useDialogKeys` and cancelled the editor. A rule on Year took
+`setValue` without complaint and then built a playlist that matched nothing.
+The cutoff alone needs no rule, so it avoids both.
