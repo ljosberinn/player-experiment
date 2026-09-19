@@ -41,6 +41,7 @@ vi.mock("../../ipc", () => ({
     owned: 4000,
     withGenre: 3500,
     timed: 4000,
+    dated: 7863,
     firstAt: 1_400_000_000,
     lastAt: 1_700_000_000,
   })),
@@ -163,6 +164,7 @@ describe("StatisticsView", () => {
       owned: 0,
       withGenre: 0,
       timed: 0,
+      dated: 0,
       firstAt: null,
       lastAt: null,
     });

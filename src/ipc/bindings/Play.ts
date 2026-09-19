@@ -3,7 +3,11 @@
 /**
  * One play, as heard.
  */
-export type Play = { id: number, startedAt: number, artist: string, title: string, album: string | null, 
+export type Play = { id: number, 
+/**
+ * `None` for a play last.fm imported without a date.
+ */
+startedAt: number | null, artist: string, title: string, album: string | null, 
 /**
  * The file it resolved to, or `None` for one not in the library.
  */

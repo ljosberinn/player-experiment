@@ -16,6 +16,13 @@
 //!
 //! A quarter of a million plays is one `GROUP BY`. A materialized aggregate
 //! would buy nothing and would owe an invalidation path.
+//!
+//! # Undated plays
+//!
+//! last.fm serves plays bulk-imported before it kept dates with a counter
+//! from 1 in place of a timestamp. They are stored as served - the counter is
+//! half of the import's dedupe key - and every aggregate that places a play
+//! in time leaves them out, while the ones that count plays keep them.
 
 use std::collections::HashMap;
 
@@ -32,6 +39,10 @@ use crate::model::{
 
 /// The modifiers that turn a unix-seconds column into local time.
 const LOCAL: &str = "'unixepoch', 'localtime'";
+
+/// 2002-01-01 UTC. No scrobble predates the service, so anything earlier is a
+/// placeholder rather than a time.
+const DATED_FROM: i64 = 1_009_843_200;
 
 /// A play's length where one is known.
 ///
@@ -102,6 +113,14 @@ impl Plays {
         sql
     }
 
+    /// `clause`, less the plays with no time to place.
+    fn dated_clause(&self, extra: &[&str]) -> String {
+        let dated = format!("plays.started_at >= {DATED_FROM}");
+        let mut conditions = vec![dated.as_str()];
+        conditions.extend_from_slice(extra);
+        self.clause(&conditions)
+    }
+
     fn params<'a>(&'a self, extra: &[&'a dyn ToSql]) -> Vec<&'a dyn ToSql> {
         self.params
             .iter()
@@ -143,18 +162,20 @@ pub fn listen_totals(conn: &Connection, query: &ListenQuery) -> AppResult<Listen
     // `lower()` rather than `COLLATE NOCASE` for the distinct counts, because
     // an album is two columns and a concatenation has no collation. Both fold
     // ASCII only, so these agree with the groups `top` draws.
+    let dated_at = format!("CASE WHEN plays.started_at >= {DATED_FROM} THEN plays.started_at END");
     let sql = format!(
         "SELECT count(*),
                 count(DISTINCT lower(nullif(plays.artist, ''))),
                 count(DISTINCT lower(nullif(plays.album, '')) || char(31) || lower(plays.artist)),
                 count(DISTINCT nullif(plays.match_key, '')),
-                count(DISTINCT date(plays.started_at, {LOCAL})),
+                count(DISTINCT date({dated_at}, {LOCAL})),
                 coalesce(sum({DURATION}), 0),
                 count(plays.track_id),
                 count(nullif(tracks.genre, '')),
                 count({DURATION}),
-                min(plays.started_at),
-                max(plays.started_at)
+                count({dated_at}),
+                min({dated_at}),
+                max({dated_at})
          {}",
         plays.clause(&[])
     );
@@ -170,8 +191,9 @@ pub fn listen_totals(conn: &Connection, query: &ListenQuery) -> AppResult<Listen
             owned: row.get::<_, i64>(6)? as u32,
             with_genre: row.get::<_, i64>(7)? as u32,
             timed: row.get::<_, i64>(8)? as u32,
-            first_at: row.get(9)?,
-            last_at: row.get(10)?,
+            dated: row.get::<_, i64>(9)? as u32,
+            first_at: row.get(10)?,
+            last_at: row.get(11)?,
         })
     })?;
     Ok(totals)
@@ -186,7 +208,9 @@ pub fn recent_plays(
 ) -> AppResult<Vec<Play>> {
     let plays = Plays::new(conn, query)?;
     let sql = format!(
-        "SELECT plays.id, plays.started_at, plays.artist, plays.title, plays.album, plays.track_id
+        "SELECT plays.id,
+                CASE WHEN plays.started_at >= {DATED_FROM} THEN plays.started_at END,
+                plays.artist, plays.title, plays.album, plays.track_id
          {} ORDER BY plays.started_at DESC, plays.id DESC LIMIT ? OFFSET ?",
         plays.clause(&[])
     );
@@ -311,7 +335,7 @@ pub fn plays_over_time(
     let sql = format!(
         "SELECT {} AS start, count(*) {} GROUP BY start ORDER BY start",
         bucket_sql("plays.started_at", bucket),
-        plays.clause(&[])
+        plays.dated_clause(&[])
     );
     time_series(conn, &sql, &plays.params(&[]))
 }
@@ -326,7 +350,7 @@ pub fn week_clock(conn: &Connection, query: &ListenQuery) -> AppResult<Vec<u32>>
     // hour come out of a single `strftime` and are split apart here.
     let sql = format!(
         "SELECT strftime('%w %H', plays.started_at, {LOCAL}) AS cell, count(*) {} GROUP BY cell",
-        plays.clause(&[])
+        plays.dated_clause(&[])
     );
 
     let mut clock = vec![0_u32; 7 * 24];
@@ -351,6 +375,10 @@ pub fn week_clock(conn: &Connection, query: &ListenQuery) -> AppResult<Vec<u32>>
 /// **The range narrows the result, not the plays.** Every other filter picks
 /// the plays; each artist's first one is then found over all time, or "new
 /// this year" would be every artist heard this year.
+///
+/// An artist first heard undated is left out rather than placed at its first
+/// dated play: the undated plays predate every dated one, so that artist was
+/// not new then.
 pub fn firsts(
     conn: &Connection,
     query: &ListenQuery,
@@ -368,9 +396,9 @@ pub fn firsts(
         plays.clause(&["plays.artist <> ''"])
     );
 
-    let (from, to) = query
-        .range
-        .map_or((i64::MIN, i64::MAX), |range| (range.from, range.to));
+    let (from, to) = query.range.map_or((DATED_FROM, i64::MAX), |range| {
+        (range.from.max(DATED_FROM), range.to)
+    });
     let sql = format!(
         "SELECT {} AS start, count(*) FROM ({inner}) WHERE first >= ? AND first < ?
          GROUP BY start ORDER BY start",
@@ -391,7 +419,7 @@ pub fn streaks(conn: &Connection, query: &ListenQuery, now: i64) -> AppResult<St
         "SELECT CAST(julianday(day) AS INTEGER), day
          FROM (SELECT DISTINCT date(plays.started_at, {LOCAL}) AS day {})
          ORDER BY day",
-        plays.clause(&[])
+        plays.dated_clause(&[])
     );
     let today: i64 = conn.query_row(
         &format!("SELECT CAST(julianday(date(?, {LOCAL})) AS INTEGER)"),
@@ -918,6 +946,7 @@ mod tests {
                 owned: 2,
                 with_genre: 2,
                 timed: 2,
+                dated: 3,
                 first_at: Some(day),
                 last_at: Some(day + 86_400),
             }
@@ -986,14 +1015,111 @@ mod tests {
     #[test]
     fn recent_plays_page_newest_first() {
         let (_dir, conn) = open();
-        for at in 1..=5 {
-            add_play(&conn, at, ("Blue Room", &format!("Song {at}"), None), None);
+        let day = local(&conn, "2024-03-05 12:00:00");
+        for n in 1..=5 {
+            add_play(
+                &conn,
+                day + n,
+                ("Blue Room", &format!("Song {n}"), None),
+                None,
+            );
         }
 
         let page = recent_plays(&conn, &all(), 1, 2).unwrap();
         assert_eq!(
             page.iter().map(|play| play.started_at).collect::<Vec<_>>(),
-            [4, 3]
+            [Some(day + 4), Some(day + 3)]
+        );
+    }
+
+    /// last.fm's counter for the plays it holds without a date: 1, 2, 3...
+    fn add_undated(conn: &Connection, plays: &[(&str, &str)]) {
+        for (at, &(artist, title)) in (1..).zip(plays) {
+            add_play(conn, at, (artist, title, None), None);
+        }
+    }
+
+    #[test]
+    fn an_undated_play_counts_but_is_placed_nowhere() {
+        let (_dir, conn) = open();
+        add_undated(
+            &conn,
+            &[
+                ("Blue Room", "Harbour"),
+                ("Blue Room", "Tide"),
+                ("Nobody", "Nothing"),
+            ],
+        );
+
+        let totals = listen_totals(&conn, &all()).unwrap();
+        assert_eq!(
+            (totals.plays, totals.artists, totals.tracks),
+            (3, 2, 3),
+            "still plays"
+        );
+        assert_eq!(
+            (totals.dated, totals.days, totals.first_at, totals.last_at),
+            (0, 0, None, None)
+        );
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Artist, 10).unwrap()),
+            [("Blue Room", 2), ("Nobody", 1)]
+        );
+        assert!(recent_plays(&conn, &all(), 0, 10)
+            .unwrap()
+            .iter()
+            .all(|play| play.started_at.is_none()));
+
+        assert!(plays_over_time(&conn, &all(), TimeBucket::Year)
+            .unwrap()
+            .is_empty());
+        assert!(firsts(&conn, &all(), TimeBucket::Year).unwrap().is_empty());
+        assert_eq!(week_clock(&conn, &all()).unwrap(), vec![0; 168]);
+        assert_eq!(streaks(&conn, &all(), 0).unwrap(), Streaks::default());
+    }
+
+    /// The undated plays predate the dated ones, so an artist among them was
+    /// not new at its first dated play.
+    #[test]
+    fn an_artist_first_heard_undated_is_never_new() {
+        let (_dir, conn) = open();
+        add_undated(&conn, &[("Blue Room", "Harbour")]);
+        let day = local(&conn, "2024-06-01 12:00:00");
+        add_play(&conn, day, ("BLUE ROOM", "Tide", None), None);
+        add_play(&conn, day + 60, ("Nobody", "Nothing", None), None);
+
+        assert_eq!(
+            series(&firsts(&conn, &all(), TimeBucket::Year).unwrap()),
+            [("2024-01-01", 1)]
+        );
+        let totals = listen_totals(&conn, &all()).unwrap();
+        assert_eq!(
+            (totals.plays, totals.dated, totals.days),
+            (3, 2, 1),
+            "1970-01-01 is no day"
+        );
+        assert_eq!(
+            (totals.first_at, totals.last_at),
+            (Some(day), Some(day + 60))
+        );
+    }
+
+    #[test]
+    fn the_first_dated_second_is_the_floor() {
+        let (_dir, conn) = open();
+        add_play(&conn, DATED_FROM - 1, ("Blue Room", "Harbour", None), None);
+        add_play(&conn, DATED_FROM, ("Blue Room", "Tide", None), None);
+
+        let totals = listen_totals(&conn, &all()).unwrap();
+        assert_eq!((totals.dated, totals.first_at), (1, Some(DATED_FROM)));
+        assert_eq!(week_clock(&conn, &all()).unwrap().iter().sum::<u32>(), 1);
+        assert_eq!(
+            recent_plays(&conn, &all(), 0, 10)
+                .unwrap()
+                .iter()
+                .map(|play| play.started_at)
+                .collect::<Vec<_>>(),
+            [Some(DATED_FROM), None]
         );
     }
 

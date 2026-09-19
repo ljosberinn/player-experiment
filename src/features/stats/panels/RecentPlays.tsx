@@ -145,7 +145,10 @@ export function RecentPlays() {
   );
 }
 
-function when(unixSeconds: number): string {
+function when(unixSeconds: number | null): string {
+  if (unixSeconds === null) {
+    return "Undated";
+  }
   const at = new Date(unixSeconds * 1000);
   return `${at.toLocaleDateString()} ${at.toLocaleTimeString([], {
     hour: "2-digit",

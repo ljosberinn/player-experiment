@@ -311,6 +311,12 @@ leaves for the next one's `from=`. It is not exportable.
 - **A play with no file counts everywhere but genre.** `listen_totals` carries
   how many plays have a genre and a duration, so a panel can say what share it
   covers.
+- **A play before 2002 has no time.** last.fm serves the plays imported before
+  it kept dates with a counter from 1 as `date.uts`, stored as served since it
+  is half the dedupe key. The aggregates that place a play in time leave them
+  out, the ones that count keep them, and `listen_totals.dated` is the share
+  placed. `firsts` drops an artist first heard undated rather than dating it to
+  its first dated play.
 - **How the view was last filtered is one `settings` key**, `stats.filters`,
   opaque JSON like `sidebar.sections`: which filters exist is the frontend's
   business, and it is not exportable for that key's reason.
