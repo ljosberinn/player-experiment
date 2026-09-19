@@ -1,6 +1,13 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
-import { addWatchFolder, onScanProgress, type ScanProgress, scanLibrary } from "../../ipc";
+import {
+  addWatchFolder,
+  type DropSummary,
+  ingestDroppedPaths,
+  onScanProgress,
+  type ScanProgress,
+  scanLibrary,
+} from "../../ipc";
 import { dismiss, report } from "../shell/statusStore";
 
 /**
@@ -20,9 +27,24 @@ export interface ScanState {
   busy: boolean;
   /** Asks for folders, adds them, and scans. Does nothing if the user cancels. */
   addFolder: () => Promise<void>;
+  /** Takes the paths of one OS drop, and scans behind them. */
+  drop: (paths: string[]) => Promise<void>;
   rescan: () => Promise<void>;
   /** Subscribes to `scan://progress`; returns its own teardown. */
   watch: () => Promise<() => void>;
+}
+
+/**
+ * The one sentence a refused drop gets, however many files it refused.
+ *
+ * One per file would be one popover per file, and they all have the same
+ * cause: nothing is watching where those files are, and there is no Library
+ * folder to put them in either.
+ */
+function refusal({ refused }: DropSummary): string {
+  return refused === 1
+    ? "That file is not in a watched folder. Turn on Organise My Library in Settings, or drop the folder it is in."
+    : `Those ${refused} files are not in a watched folder. Turn on Organise My Library in Settings, or drop the folders they are in.`;
 }
 
 export const useScanStore = create<ScanState>((set, get) => ({
@@ -46,6 +68,28 @@ export const useScanStore = create<ScanState>((set, get) => ({
       // folder, so scanning per addition would walk the first one again for
       // each of the rest.
       await get().rescan();
+    } catch (cause) {
+      report(cause);
+    }
+  },
+
+  drop: async (paths) => {
+    if (get().busy || paths.length === 0) {
+      return;
+    }
+    dismiss();
+    try {
+      const summary = await ingestDroppedPaths(paths);
+      // The scan is what makes rows: the command only leaves the filesystem in
+      // a state where the scan sees what was dropped. Skipped when nothing
+      // landed, so a drop of one refused file does not walk the library.
+      if (summary.folders + summary.moved + summary.adopted > 0) {
+        await get().rescan();
+      }
+      // After the scan, not before: `rescan` clears the popover as it starts.
+      if (summary.refused > 0) {
+        report(refusal(summary));
+      }
     } catch (cause) {
       report(cause);
     }

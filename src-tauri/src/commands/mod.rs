@@ -18,10 +18,11 @@ use crate::error::{AppError, AppResult};
 use crate::export::{self, ExportScope};
 use crate::log::{Fields, Log, Op};
 use crate::model::{
-    AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, FilterGroup, LastfmConnection,
-    LastfmImported, LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot, Playlist,
-    ReleaseCandidate, ReleaseDetail, ReleaseIdentity, ReleaseSelection, ReviewCounts, ReviewEntry,
-    ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track, TrackEdit, TrackQuery,
+    AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, DropSummary, FilterGroup,
+    LastfmConnection, LastfmImported, LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot,
+    Playlist, ReleaseCandidate, ReleaseDetail, ReleaseIdentity, ReleaseSelection, ReviewCounts,
+    ReviewEntry, ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track,
+    TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags, tagsource};
@@ -136,6 +137,35 @@ pub fn list_watch_folders(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<V
             .map(|p| p.to_string_lossy().into_owned())
             .collect())
     })
+}
+
+/// Takes the paths of one OS drop: folders watched, loose files housed.
+///
+/// No `library://changed` and no scan of its own. This leaves the filesystem
+/// and `removed_paths` in a state where the next scan sees what was dropped,
+/// and the caller runs that scan through the same store File ▸ Add Folders…
+/// uses - which already announces, already drives `ScanBar`, and already holds
+/// the guard that stops a second drop landing on top of the first.
+#[tauri::command]
+pub fn ingest_dropped_paths(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    paths: Vec<String>,
+) -> AppResult<DropSummary> {
+    log.op("library.drop").add("paths", paths.len()).run_with(
+        || {
+            let conn = db.conn()?;
+            let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+            crate::library::ingest::ingest(&conn, &crate::library::mover::OsRename, &paths)
+        },
+        |summary| {
+            Fields::new()
+                .add("folders", summary.folders)
+                .add("moved", summary.moved)
+                .add("adopted", summary.adopted)
+                .add("refused", summary.refused)
+        },
+    )
 }
 
 /// Stops watching a folder. The songs already in the library stay.

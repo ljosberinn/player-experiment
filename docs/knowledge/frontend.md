@@ -480,7 +480,13 @@ absences are what nobody notices coming back — hence the guards in
   a rect test. `over` fires on every pointer move, so a target hears the hover
   only when it changes. A target outlines itself while a drag is over it —
   `dragDropEnabled` makes the cursor read "copy" over the whole window, so
-  nothing else says where a file would land.
+  nothing else says where a file would land. The registry is a **stack**, hit
+  tested from the top down: `.content` is registered for the window's whole life
+  by `library/libraryDrop.ts`, and the tag editor's artwork block joins it while
+  the dialog is open, so the dialog wins where the two overlap.
+- **The library pane's drop holds no React state.** `useLibraryDrop` returns a
+  ref and toggles a class on the element: the alternative is a render of the
+  view with 150k rows in it, for every pointer crossing.
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.

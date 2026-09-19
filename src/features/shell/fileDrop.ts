@@ -25,18 +25,30 @@ export interface DropTarget {
   onDrop: (paths: string[]) => void;
 }
 
-/** One slot, because there is one target: the tag editor's artwork block. */
-let target: DropTarget | null = null;
-let hovering = false;
+/**
+ * The registered targets, oldest first, and whichever one a drag is currently
+ * over.
+ *
+ * A stack rather than one slot because two things take drops and one sits on
+ * top of the other: the library pane is registered for as long as the window
+ * is open, and the tag editor's artwork block joins it while the dialog is. Hit
+ * testing runs from the top down, so the dialog wins where they overlap.
+ */
+const targets: DropTarget[] = [];
+let hovered: DropTarget | null = null;
 
-/** Makes `next` the drop target; returns what takes it off again. */
+/** Puts `next` on top of the stack; returns what takes it off again. */
 export function registerDropTarget(next: DropTarget): () => void {
-  target = next;
-  hovering = false;
+  targets.push(next);
   return () => {
-    if (target === next) {
-      target = null;
-      hovering = false;
+    const at = targets.indexOf(next);
+    if (at !== -1) {
+      targets.splice(at, 1);
+    }
+    // No `onHover(false)`: the target is going away, and the only thing that
+    // call could reach is an unmounted component.
+    if (hovered === next) {
+      hovered = null;
     }
   };
 }
@@ -59,34 +71,41 @@ export function isOver(
   return x >= box.left && x < box.right && y >= box.top && y < box.bottom;
 }
 
-function hover(current: DropTarget, over: boolean): void {
-  // `over` arrives continuously while a drag sits over the window; a target
-  // hears only the changes.
-  if (over !== hovering) {
-    hovering = over;
-    current.onHover(over);
+/** The topmost registered target under `position`, if any. */
+function hit(position: { x: number; y: number }, pixelRatio: number): DropTarget | null {
+  for (let index = targets.length - 1; index >= 0; index -= 1) {
+    const candidate = targets[index];
+    if (candidate !== undefined && isOver(candidate.element, position, pixelRatio)) {
+      return candidate;
+    }
   }
+  return null;
 }
 
-/** Delivers one drag-drop event to the registered target, if it is hit. */
+function hover(next: DropTarget | null): void {
+  // The position arrives continuously while a drag sits over the window; a
+  // target hears only the changes.
+  if (next === hovered) {
+    return;
+  }
+  hovered?.onHover(false);
+  hovered = next;
+  next?.onHover(true);
+}
+
+/** Delivers one drag-drop event to the topmost target it hits. */
 export function routeFileDrop(event: DragDropEvent, pixelRatio: number): void {
-  const current = target;
-  if (current === null) {
-    return;
-  }
   if (event.type === "leave") {
-    hover(current, false);
+    hover(null);
     return;
   }
-  const over = isOver(current.element, event.position, pixelRatio);
+  const over = hit(event.position, pixelRatio);
   if (event.type === "drop") {
-    hover(current, false);
-    if (over) {
-      current.onDrop(event.paths);
-    }
+    hover(null);
+    over?.onDrop(event.paths);
     return;
   }
-  hover(current, over);
+  hover(over);
 }
 
 /**

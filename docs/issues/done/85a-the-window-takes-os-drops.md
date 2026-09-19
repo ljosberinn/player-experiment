@@ -2,7 +2,7 @@
 
 Flipping `dragDropEnabled` and keeping everything that already works, working.
 The artwork drop moves from an HTML5 handler to the native event on the same
-day the flag turns it off, and [85b](../upcoming/85b-drop-files-and-folders.md) is what
+day the flag turns it off, and [85b](85b-drop-files-and-folders.md) is what
 then does something with a dropped folder.
 
 Reopens [15, cut](15-ingest-ergonomics-cut.md). **Tauri is not what

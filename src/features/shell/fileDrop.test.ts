@@ -64,12 +64,8 @@ describe("isOver", () => {
   });
 });
 
-function dropTarget() {
-  return {
-    element: square({ left: 0, top: 0, width: 100, height: 100 }),
-    onHover: vi.fn(),
-    onDrop: vi.fn(),
-  };
+function dropTarget(box = { left: 0, top: 0, width: 100, height: 100 }) {
+  return { element: square(box), onHover: vi.fn(), onDrop: vi.fn() };
 }
 
 describe("routing a drag to the registered target", () => {
@@ -131,5 +127,69 @@ describe("routing a drag to the registered target", () => {
 
     expect(target.onHover).not.toHaveBeenCalled();
     expect(target.onDrop).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Two targets, one inside the other: the library pane is registered for as long
+ * as the window is open, and the tag editor's artwork block joins it while the
+ * dialog is. A stack of one would have the second silently take the first's
+ * drops away and not give them back.
+ */
+describe("routing to the topmost of two targets", () => {
+  let pane = dropTarget();
+  let block = dropTarget();
+
+  beforeEach(() => {
+    pane = dropTarget({ left: 0, top: 0, width: 500, height: 500 });
+    block = dropTarget({ left: 100, top: 100, width: 100, height: 100 });
+  });
+
+  it("gives the drop to the one on top where they overlap", () => {
+    const offPane = registerDropTarget(pane);
+    const offBlock = registerDropTarget(block);
+
+    routeFileDrop(drop(150, 150, ["C:/art/one.png"]), 1);
+
+    expect(block.onDrop).toHaveBeenCalledWith(["C:/art/one.png"]);
+    expect(pane.onDrop).not.toHaveBeenCalled();
+    offBlock();
+    offPane();
+  });
+
+  it("gives it to the one underneath where the top one is missed", () => {
+    const offPane = registerDropTarget(pane);
+    const offBlock = registerDropTarget(block);
+
+    routeFileDrop(drop(400, 400, ["C:/music/one.mp3"]), 1);
+
+    expect(pane.onDrop).toHaveBeenCalledWith(["C:/music/one.mp3"]);
+    expect(block.onDrop).not.toHaveBeenCalled();
+    offBlock();
+    offPane();
+  });
+
+  it("hands the hover over as the drag crosses from one to the other", () => {
+    const offPane = registerDropTarget(pane);
+    const offBlock = registerDropTarget(block);
+
+    routeFileDrop(enter(400, 400), 1);
+    routeFileDrop(over(150, 150), 1);
+
+    expect(pane.onHover.mock.calls).toEqual([[true], [false]]);
+    expect(block.onHover.mock.calls).toEqual([[true]]);
+    offBlock();
+    offPane();
+  });
+
+  it("gives the drops back when the one on top unmounts", () => {
+    const offPane = registerDropTarget(pane);
+    registerDropTarget(block)();
+
+    routeFileDrop(drop(150, 150, ["C:/music/one.mp3"]), 1);
+
+    expect(pane.onDrop).toHaveBeenCalledWith(["C:/music/one.mp3"]);
+    expect(block.onDrop).not.toHaveBeenCalled();
+    offPane();
   });
 });

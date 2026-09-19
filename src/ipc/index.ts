@@ -11,6 +11,7 @@ import type { Colour } from "./bindings/Colour";
 import type { Combinator } from "./bindings/Combinator";
 import type { CoverEdit } from "./bindings/CoverEdit";
 import type { CrashReport } from "./bindings/CrashReport";
+import type { DropSummary } from "./bindings/DropSummary";
 import type { ExportScope } from "./bindings/ExportScope";
 import type { FilterField } from "./bindings/FilterField";
 import type { FilterFieldKind } from "./bindings/FilterFieldKind";
@@ -77,6 +78,7 @@ export type {
   Combinator,
   CoverEdit,
   CrashReport,
+  DropSummary,
   ExportScope,
   FilterField,
   FilterFieldKind,
@@ -143,6 +145,16 @@ export function getAppInfo(): Promise<AppInfo> {
 
 export function addWatchFolder(path: string): Promise<void> {
   return invoke<void>("add_watch_folder", { path });
+}
+
+/**
+ * Takes the paths of one OS drop: folders watched, loose files housed.
+ *
+ * Makes no rows and runs no scan - the caller runs the scan, through the same
+ * store File > Add Folders... uses.
+ */
+export function ingestDroppedPaths(paths: string[]): Promise<DropSummary> {
+  return invoke<DropSummary>("ingest_dropped_paths", { paths });
 }
 
 export function listWatchFolders(): Promise<string[]> {
