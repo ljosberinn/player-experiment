@@ -320,6 +320,15 @@ absences are what nobody notices coming back — hence the guards in
   a skeleton on each range change makes the whole view flash. Nine panels would
   otherwise repeat the effect, and the one that forgot the cancel would draw
   the range the filter bar is not showing.
+- **A genre override refetches through a version, not through
+  `library://changed`.** It changes what every genre-filtered aggregate counts
+  and moves no track row, so announcing a library change would rebuild the song
+  table for a correction it cannot see. `statsStore.genreVersion` is bumped
+  after the write - a refused correction changed nothing - and **only
+  `useLibraryQuery` lists it**: it is the one place that builds the Library
+  tab's query, and fifteen panels listing it by hand is where one forgets. The
+  Listening tab needs it not at all, because Base UI unmounts the inactive tab
+  and its panels remount and re-query on their own.
 - **`listenTotalsOnce` holds exactly one answer.** The tile row and the genre
   panel's coverage caption want the same `listen_totals`, which is the dearest
   aggregate in the set; the promise is held rather than its result, so the

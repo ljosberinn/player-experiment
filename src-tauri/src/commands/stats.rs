@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use tauri::Manager;
 
 use super::{blocking, op};
-use crate::db::{stats, Db};
+use crate::db::{genres, stats, Db};
 use crate::error::AppResult;
 use crate::model::{
     AlbumBitrate, GenreBreakdown, HistogramBin, HistogramField, LibraryTotals, ListenDimension,
@@ -22,6 +22,23 @@ async fn read<T: Send + 'static>(
     work: impl FnOnce(&Connection) -> AppResult<T> + Send + 'static,
 ) -> AppResult<T> {
     let op = op(&app, name).quiet();
+    blocking(name, move || op.run(|| work(&app.state::<Db>().conn()?))).await
+}
+
+/// [`read`], for the one thing this view writes.
+///
+/// Not `quiet`: a read per panel per filter change would drown `main.log`,
+/// where a correction somebody made by hand is exactly the line 86 wants kept.
+///
+/// It does not announce either. No track row moves, so `library://changed`
+/// would rebuild the song table for a change it cannot see; the panels that
+/// have to re-read do it off a version in `statsStore`.
+async fn write(
+    app: tauri::AppHandle,
+    name: &'static str,
+    work: impl FnOnce(&Connection) -> AppResult<()> + Send + 'static,
+) -> AppResult<()> {
+    let op = op(&app, name);
     blocking(name, move || op.run(|| work(&app.state::<Db>().conn()?))).await
 }
 
@@ -165,6 +182,48 @@ pub async fn stats_added_over_time(
 pub async fn stats_tag_health(app: tauri::AppHandle, query: TrackQuery) -> AppResult<TagHealth> {
     read(app, "stats.tag_health", move |conn| {
         stats::tag_health(conn, &query)
+    })
+    .await
+}
+
+/// Genre labels for what has been typed, for the override editor's parent
+/// field.
+///
+/// Off the IPC thread like the aggregates: a `LIKE` over 6,575 rows with no
+/// index behind it, on every keystroke that survives the debounce.
+#[tauri::command]
+pub async fn genre_suggestions(app: tauri::AppHandle, query: String) -> AppResult<Vec<String>> {
+    read(app, "genres.suggest", move |conn| {
+        genres::suggest(conn, &query, genres::SUGGESTION_LIMIT)
+    })
+    .await
+}
+
+/// Records that `label` belongs under `parent`, or at the top of the tree when
+/// `parent` is null.
+///
+/// Both refusals - a cycle, and a parent no layer of the tree knows - are in
+/// `db::genres::set_override` rather than here, so no caller can skip them.
+#[tauri::command]
+pub async fn set_genre_override(
+    app: tauri::AppHandle,
+    label: String,
+    parent: Option<String>,
+) -> AppResult<()> {
+    write(app, "genres.set_override", move |conn| {
+        genres::set_override(conn, &label, parent.as_deref())
+    })
+    .await
+}
+
+/// Forgets `label`'s override, so it resolves the way it did before.
+///
+/// Not the same act as setting it to no parent: one drops a correction, the
+/// other is the correction "this genre is a root".
+#[tauri::command]
+pub async fn clear_genre_override(app: tauri::AppHandle, label: String) -> AppResult<()> {
+    write(app, "genres.clear_override", move |conn| {
+        genres::clear_override(conn, &label)
     })
     .await
 }

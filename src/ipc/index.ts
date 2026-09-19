@@ -409,6 +409,32 @@ export function statsTagHealth(query: TrackQuery): Promise<TagHealth> {
   return invoke<TagHealth>("stats_tag_health", { query });
 }
 
+/** Known genre labels for what has been typed, best match first. */
+export function genreSuggestions(query: string): Promise<string[]> {
+  return invoke<string[]>("genre_suggestions", { query });
+}
+
+/**
+ * Files `label` under `parent`, or at the top of the tree when null.
+ *
+ * Rejects on a cycle or a parent no layer of the tree knows, both refused in
+ * `db::genres::set_override` so that no caller can skip them. The message is
+ * written to be shown.
+ */
+export function setGenreOverride(label: string, parent: string | null): Promise<void> {
+  return invoke<void>("set_genre_override", { label, parent });
+}
+
+/**
+ * Forgets `label`'s override.
+ *
+ * Not the same as `setGenreOverride(label, null)`: one drops a correction, the
+ * other is the correction "this genre is a root".
+ */
+export function clearGenreOverride(label: string): Promise<void> {
+  return invoke<void>("clear_genre_override", { label });
+}
+
 /**
  * Whether the background takes its colours from the playing cover.
  *

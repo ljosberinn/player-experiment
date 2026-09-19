@@ -27,6 +27,10 @@ import { useStatsStore } from "./store";
  */
 export function useLibraryQuery(): { query: TrackQuery; deps: readonly unknown[] } {
   const filters = useStatsStore((s) => s.filters);
+  // Not in the query, only in the deps: an override changes what a genre
+  // *means* rather than what is being asked for, so there is nothing to send
+  // and everything to refetch.
+  const genreVersion = useStatsStore((s) => s.genreVersion);
   const search = useLibraryStore((s) => s.search);
   const playlistId = useLibraryStore((s) => s.playlistId);
   const browse = useLibraryStore((s) => s.browse);
@@ -42,5 +46,5 @@ export function useLibraryQuery(): { query: TrackQuery; deps: readonly unknown[]
     path,
   );
 
-  return { query, deps: [filters, search, playlistId, browse, path] };
+  return { query, deps: [filters, search, playlistId, browse, path, genreVersion] };
 }

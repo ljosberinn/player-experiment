@@ -49,7 +49,7 @@ pub enum ParentSource {
     /// the tree rather than one nothing was found for - which is the whole
     /// reason this is not a bare `Option`.
     Wikidata,
-    /// Guessed from the label's suffix. 84b shows this as derived.
+    /// Guessed from the label's suffix. 84d shows this as derived.
     Derived,
     /// The user's correction, which beats the other two.
     Override,
@@ -257,6 +257,50 @@ pub fn members(conn: &Connection, genre: &str) -> AppResult<String> {
         .map_err(|e| crate::error::AppError::Internal(format!("encoding genres: {e}")))
 }
 
+/// How many labels a lookup offers.
+///
+/// [`crate::db::tag_values::SUGGESTION_LIMIT`]'s number, for its reason: eight
+/// fits under a field without covering the rest of the dialog, and a longer
+/// list is one you read rather than glance at.
+pub const SUGGESTION_LIMIT: u32 = 8;
+
+/// Known genre labels for what someone has typed so far, best match first.
+///
+/// The same rule [`crate::db::tag_values::suggest`] applies to a band name:
+/// matched anywhere in the label, **ranked by prefix first**, with `%` and `_`
+/// escaped so a label containing either is not a wildcard. Typing `metal`
+/// offers `black metal`, and two autocompletes in one window that filter by
+/// different rules is a papercut.
+///
+/// `genres` has no `uses` column to break ties with, so the tie-break is the
+/// shorter label and then the label itself: `metal` is a better answer to
+/// `metal` than `metalcore` is.
+///
+/// Over `genres` alone rather than the aliases as well. `set_override`
+/// resolves an alias, so one still works if it is typed in full - but an
+/// aliases-in-the-list version would offer several names for one branch, and
+/// the field is asking which branch rather than what to call it.
+pub fn suggest(conn: &Connection, query: &str, limit: u32) -> AppResult<Vec<String>> {
+    let trimmed = normalize(query);
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let escaped = crate::smart::like_escape(&trimmed);
+    let escape = crate::smart::LIKE_ESCAPE;
+    let mut statement = conn.prepare(&format!(
+        "SELECT label FROM genres
+         WHERE label LIKE ?1 ESCAPE '{escape}'
+         ORDER BY (label LIKE ?2 ESCAPE '{escape}') DESC, length(label), label
+         LIMIT ?3"
+    ))?;
+    let rows = statement.query_map(
+        rusqlite::params![format!("%{escaped}%"), format!("{escaped}%"), limit],
+        |row| row.get(0),
+    )?;
+    Ok(rows.collect::<Result<Vec<String>, _>>()?)
+}
+
 /// Records that `label`'s parent is `parent`, replacing any earlier override.
 ///
 /// `None` is not "forget this override" but "this genre has no parent" - the
@@ -264,13 +308,51 @@ pub fn members(conn: &Connection, genre: &str) -> AppResult<String> {
 /// the tree. [`clear_override`] is what forgets one.
 ///
 /// Both are normalised here rather than at the call site, so an override typed
-/// as "Black Metal" is the same row as one typed as "black metal".
+/// as "Black Metal" is the same row as one typed as "black metal". **The parent
+/// is resolved rather than only normalised**: `genre_overrides.parent` points
+/// into `genres`, and an alias is a name the rest of the app accepts and that
+/// table does not.
+///
+/// # Refusals
+///
+/// Both are here rather than in the command, so no caller can skip them.
+///
+/// - A parent no layer of the tree knows. The foreign key would catch it, but
+///   a constraint violation names neither the genre nor what was typed.
+/// - A parent that is already at or below `label`, which would close a loop.
+///   [`Tree::lineage`] survives one by stopping at a label it has seen, but the
+///   donut would draw it and 84d's subtree filter would return the wrong
+///   members. `lineage` starts at the resolved label itself, so the same
+///   condition catches a genre named as its own parent.
 pub fn set_override(conn: &Connection, label: &str, parent: Option<&str>) -> AppResult<()> {
-    let parent = parent.map(normalize);
+    let label = normalize(label);
+    let parent = match parent {
+        None => None,
+        Some(parent) => {
+            let tree = Tree::load(conn)?;
+            let resolved = tree.resolve(parent);
+            if resolved.parent_source == ParentSource::Unknown
+                && !tree.parents.contains_key(&resolved.label)
+            {
+                return Err(crate::error::AppError::NotFound(format!(
+                    "no genre called \"{}\"",
+                    resolved.label
+                )));
+            }
+            if tree.lineage(&resolved.label).contains(&label) {
+                return Err(crate::error::AppError::Internal(format!(
+                    "\"{label}\" is at or above \"{}\", so this would make it its own parent",
+                    resolved.label
+                )));
+            }
+            Some(resolved.label)
+        }
+    };
+
     conn.execute(
         "INSERT INTO genre_overrides (label, parent) VALUES (?1, ?2)
          ON CONFLICT (label) DO UPDATE SET parent = excluded.parent",
-        rusqlite::params![normalize(label), parent],
+        rusqlite::params![label, parent],
     )?;
     Ok(())
 }
@@ -440,6 +522,93 @@ mod tests {
         assert_eq!(resolved.parent_source, ParentSource::Override);
     }
 
+    /// `lineage` survives a cycle by stopping at a label it has seen, so this
+    /// is not about hanging: the donut would draw a loop and 84d's subtree
+    /// filter would return the wrong members.
+    #[test]
+    fn an_override_that_makes_a_genre_its_own_ancestor_is_refused() {
+        let (_dir, conn) = open();
+
+        // `black metal` is under `extreme metal` in the seed, so filing
+        // `extreme metal` under it closes the loop.
+        let closed = set_override(&conn, "Extreme Metal", Some("Black Metal"));
+
+        assert!(closed.is_err(), "a cycle must not be stored");
+        assert_eq!(
+            Tree::load(&conn)
+                .unwrap()
+                .resolve("extreme metal")
+                .parent_source,
+            ParentSource::Wikidata,
+            "the tree is unchanged after the refusal"
+        );
+    }
+
+    #[test]
+    fn a_genre_cannot_be_its_own_parent() {
+        let (_dir, conn) = open();
+
+        // The degenerate case of the same rule, and the one somebody reaches
+        // by pressing Enter on a field they meant to clear.
+        assert!(set_override(&conn, "Black Metal", Some("black metal")).is_err());
+    }
+
+    #[test]
+    fn suggestions_rank_a_prefix_above_a_match_in_the_middle() {
+        let (_dir, conn) = open();
+
+        let found = suggest(&conn, "black metal", 20).unwrap();
+
+        assert_eq!(
+            found.first().map(String::as_str),
+            Some("black metal"),
+            "the exact label is the shortest prefix match, got: {found:?}"
+        );
+        let symphonic = found
+            .iter()
+            .position(|label| label == "symphonic black metal");
+        assert!(
+            symphonic.is_some(),
+            "a match in the middle is still offered"
+        );
+        assert!(
+            found.iter().position(|l| l == "black metal") < symphonic,
+            "prefix matches rank first, got: {found:?}"
+        );
+    }
+
+    #[test]
+    fn suggestions_honour_their_limit() {
+        let (_dir, conn) = open();
+
+        assert_eq!(suggest(&conn, "metal", 5).unwrap().len(), 5);
+    }
+
+    /// A label is allowed to contain `%` and `_`, and must not turn into a
+    /// wildcard - the treatment `tag_values::suggest` already gives a band
+    /// name for the same reason.
+    #[test]
+    fn a_wildcard_in_the_query_is_matched_literally() {
+        let (_dir, conn) = open();
+
+        assert!(suggest(&conn, "%metal%", 20).unwrap().is_empty());
+    }
+
+    /// An alias is a name the rest of the app accepts and `genres` does not,
+    /// so the parent is stored resolved. Normalising it alone wrote the alias
+    /// and hit the foreign key.
+    #[test]
+    fn an_alias_is_a_parent_the_tree_knows() {
+        let (_dir, conn) = open();
+
+        set_override(&conn, "windowlicker", Some("DSBM")).unwrap();
+
+        assert_eq!(
+            Tree::load(&conn).unwrap().resolve("windowlicker").parent,
+            Some("depressive black metal".to_owned())
+        );
+    }
+
     #[test]
     fn setting_an_override_twice_replaces_it_and_clearing_it_restores_wikidata() {
         let (_dir, conn) = open();
@@ -462,16 +631,26 @@ mod tests {
         );
     }
 
-    /// A parent nothing knows is a branch the donut cannot draw, so the foreign
-    /// key refuses it rather than storing a dead end.
+    /// A parent nothing knows is a branch the donut cannot draw, so it is
+    /// refused rather than stored as a dead end.
+    ///
+    /// The foreign key would catch it either way. What is asserted here is
+    /// that it does not get that far: a constraint violation names neither the
+    /// genre nor what was typed, and this is a message an editor shows someone
+    /// who mistyped a label.
     #[test]
     fn an_override_onto_an_unknown_parent_is_refused() {
         let (_dir, conn) = open();
 
-        let error = set_override(&conn, "black metal", Some("not a genre")).unwrap_err();
+        let error = set_override(&conn, "black metal", Some("Not A Genre")).unwrap_err();
+
         assert!(
-            error.to_string().to_lowercase().contains("foreign key"),
-            "unexpected error: {error}"
+            error.to_string().contains("not a genre"),
+            "the refusal has to name what was typed, got: {error}"
+        );
+        assert!(
+            !error.to_string().to_lowercase().contains("foreign key"),
+            "the write should not have reached the constraint, got: {error}"
         );
     }
 
@@ -493,10 +672,20 @@ mod tests {
         assert_eq!(tree.resolve(root).parent, None, "{lineage:?}");
     }
 
+    /// Written straight into the table rather than through [`set_override`],
+    /// which refuses to build one. The reader still has to survive a cycle: a
+    /// database written before that refusal existed, or edited by hand, is a
+    /// database this has to answer for, and `lineage` is what every genre
+    /// filter and the donut walk.
     #[test]
     fn a_lineage_through_a_cycle_of_overrides_ends() {
         let (_dir, conn) = open();
-        set_override(&conn, "black metal", Some("atmospheric black metal")).unwrap();
+        conn.execute(
+            "INSERT INTO genre_overrides (label, parent)
+             VALUES ('black metal', 'atmospheric black metal')",
+            [],
+        )
+        .unwrap();
         let tree = Tree::load(&conn).unwrap();
 
         assert_eq!(

@@ -1879,6 +1879,12 @@ th.status {
   color: var(--muted);
 }
 
+/* A refused write, beside the field it is about. `--danger` is the token for
+   text that says something went wrong; the dialog stays open behind it. */
+.modal-refusal {
+  color: var(--danger);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

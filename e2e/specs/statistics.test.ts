@@ -257,6 +257,29 @@ describe("the Statistics view", () => {
     await capture("statistics-library-genre-drilled");
   });
 
+  /**
+   * The Statistics view's only writer. Opened and photographed rather than
+   * driven: the fields are free text over 6,575 labels and both refusals are
+   * asserted in Rust, where they live - what no unit test can answer is what
+   * a two-field dialog looks like in this window.
+   */
+  it("opens the override editor on the genre it is drilled into", async () => {
+    const genres = panel("Genres");
+    await genres.$(".//button[normalize-space()='Fix a parent…']").click();
+
+    const dialog = browser.$(".modal");
+    await dialog.waitForExist({ timeout: 10_000 });
+    await expect(dialog.$("h2")).toHaveText("Where this genre belongs");
+    // Prefilled with the level the drill left the view on, not the first
+    // slice: a parent reads wrong from inside the genre it is wrong about.
+    await expect(dialog.$$("input")[0]).not.toHaveValue("");
+
+    await capture("statistics-genre-override");
+
+    await dialog.$(".//button[normalize-space()='Cancel']").click();
+    await expect(dialog).not.toBeExisting();
+  });
+
   it("goes back to Listening the way it goes back anywhere", async () => {
     // Two steps now: the genre crumb first, then the tab.
     await browser.$("button[aria-label='Back']").click();

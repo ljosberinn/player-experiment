@@ -64,6 +64,13 @@ vi.mock("../../ipc", () => ({
     trackNo: 0,
     cover: 0,
   })),
+  // The override dialog's two fields debounce a lookup 150ms after they
+  // mount, which lands after the test that opened them has finished. Absent
+  // from this mock it is an uncaught exception rather than a failed
+  // assertion, and one that only shows up when the timer wins the race.
+  genreSuggestions: vi.fn(async () => []),
+  setGenreOverride: vi.fn(async () => undefined),
+  clearGenreOverride: vi.fn(async () => undefined),
   statsGenreBreakdown: vi.fn(async (_query, parent: string | null) =>
     parent === null
       ? {
@@ -269,6 +276,20 @@ describe("LibraryPanels", () => {
     expect(genreMock.mock.calls.at(-1)?.[1]).toBe("metal");
     expect(genreMock.mock.calls.at(-1)?.[0].genre).toBeNull();
     expect(healthMock.mock.calls.at(-1)?.[0].genre).toBe("metal");
+  });
+
+  it("opens the override editor on the level it is looking at", async () => {
+    // The drilled genre, not the first slice: what a reader is looking at
+    // when a parent reads wrong is the level they drilled to.
+    const user = userEvent.setup();
+    useLibraryStore.setState({
+      statsPath: { tab: "library", crumbs: [{ kind: "genre", key: "metal" }] },
+    });
+    render(<LibraryPanels />);
+
+    await user.click(within(panel("Genres")).getByRole("button", { name: "Fix a parent…" }));
+
+    expect(await screen.findByLabelText("Genre")).toHaveProperty("value", "metal");
   });
 
   it("leaves a genre with nothing below it out of the drill", async () => {

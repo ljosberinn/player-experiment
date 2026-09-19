@@ -313,6 +313,16 @@ leaves for the next one's `from=`. It is not exportable.
   One function, `db::genres::members`, answers it for `ListenQuery` and
   `TrackQuery` alike, so the donut and the panels beside it cannot disagree
   about what is under a genre.
+- **`set_override` is where a correction is refused**, not the command over
+  it, so no caller can skip either check: a parent no layer of the tree knows,
+  and a parent already at or below the genre. `genre_overrides.parent` has a
+  foreign key that would catch the first, but a constraint violation names
+  neither the genre nor what was typed, and this message is shown to whoever
+  typed it. The parent is stored **resolved**, not merely normalised — an alias
+  is a name the rest of the app accepts and `genres` does not.
+- **`Tree::lineage` still has to survive a cycle.** The refusal stops one being
+  written; a database from before it, or edited by hand, can still hold one,
+  and `lineage` is what every genre filter and the donut walk.
 - **The donut takes its level as `parent`, not as `query.genre`.** The
   aggregate drops every tag not under `parent` on its own, so narrowing the
   query as well would resolve the tree twice for one answer. Every other panel
