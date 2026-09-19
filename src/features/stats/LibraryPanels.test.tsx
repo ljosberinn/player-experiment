@@ -64,6 +64,13 @@ vi.mock("../../ipc", () => ({
     trackNo: 0,
     cover: 0,
   })),
+  // The override dialog's two fields debounce a lookup 150ms after they
+  // mount, which lands after the test that opened them has finished. Absent
+  // from this mock it is an uncaught exception rather than a failed
+  // assertion, and one that only shows up when the timer wins the race.
+  genreSuggestions: vi.fn(async () => []),
+  setGenreOverride: vi.fn(async () => undefined),
+  clearGenreOverride: vi.fn(async () => undefined),
   statsGenreBreakdown: vi.fn(async (_query, parent: string | null) =>
     parent === null
       ? {
