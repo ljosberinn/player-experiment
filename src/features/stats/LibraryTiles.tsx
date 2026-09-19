@@ -1,48 +1,13 @@
-import { useEffect, useState } from "react";
 import { StatTile } from "../../components/charts/StatTile";
-import { type LibraryTotals, statsLibraryTotals } from "../../ipc";
+import { statsLibraryTotals } from "../../ipc";
 import { formatBytes, formatSpan } from "../../lib/format";
-import { useLibraryStore } from "../library/store";
-import { report } from "../shell/statusStore";
-import { libraryQuery } from "./filters";
-import { useStatsStore } from "./store";
+import { useLibraryQuery } from "./useLibraryQuery";
+import { usePanelQuery } from "./usePanelQuery";
 
-/**
- * What you own, as six numbers.
- *
- * The three view fields are subscribed one at a time rather than as a query
- * object: `queryFor` builds a fresh object per call, which as a selector would
- * be a new value on every store write.
- */
+/** What you own, as six numbers. */
 export function LibraryTiles() {
-  const filters = useStatsStore((s) => s.filters);
-  const search = useLibraryStore((s) => s.search);
-  const playlistId = useLibraryStore((s) => s.playlistId);
-  const browse = useLibraryStore((s) => s.browse);
-  const [totals, setTotals] = useState<LibraryTotals | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const query = libraryQuery(filters, {
-      search: search.trim() === "" ? null : search,
-      playlistId,
-      browse,
-    });
-    statsLibraryTotals(query)
-      .then((loaded) => {
-        if (!cancelled) {
-          setTotals(loaded);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          report(cause);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [filters, search, playlistId, browse]);
+  const { query, deps } = useLibraryQuery();
+  const { data: totals } = usePanelQuery(() => statsLibraryTotals(query), deps);
 
   return (
     <div className="stat-tiles">

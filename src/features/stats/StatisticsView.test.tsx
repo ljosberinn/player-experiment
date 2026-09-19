@@ -60,6 +60,19 @@ vi.mock("../../ipc", () => ({
     bytes: 750_000_000_000,
     missing: 3,
   })),
+  statsHistogram: vi.fn(async () => []),
+  statsWorstByBitrate: vi.fn(async () => []),
+  statsTagHealth: vi.fn(async () => ({
+    tracks: 0,
+    title: 0,
+    artist: 0,
+    album: 0,
+    albumArtist: 0,
+    genre: 0,
+    year: 0,
+    trackNo: 0,
+    cover: 0,
+  })),
 }));
 
 /** Formatted the way the tiles format it, so the assertion holds in any locale. */

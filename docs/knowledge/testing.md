@@ -182,6 +182,12 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   one play of. The plays seed resolves afterwards, because the seeder leaves
   `track_id` null and an unresolved log reads as nothing owned. It runs after
   `virtualization`, so two thirds of the plays match a synthetic track.
+- **A synthetic row's values repeat on coprime-ish cycles, and that includes
+  the ones nothing reads yet.** Bitrate, sample rate and `added_at` were left
+  NULL and zero until the Library panels drew them, which quietly made four of
+  the perf budgets a one-group scan over a column of NULLs — a budget met by
+  the query never running. The rule: a column a `tests/perf.rs` budget touches
+  has to have a distribution in it.
 - **The driver delivers neither `contextmenu` nor `dblclick`** through the
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;
