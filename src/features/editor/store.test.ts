@@ -70,6 +70,20 @@ beforeEach(() => {
   useStatusStore.setState({ message: null, notice: null });
 });
 
+/** Subscribes the store and hands back the channel's handler. */
+async function subscribe(): Promise<(progress: { done: number; total: number }) => void> {
+  let emit: ((progress: { done: number; total: number }) => void) | undefined;
+  vi.mocked(onTagWriteProgress).mockImplementation(async (handler) => {
+    emit = handler;
+    return () => {};
+  });
+  await useEditorStore.getState().watch();
+  if (emit === undefined) {
+    throw new Error("watch() did not subscribe");
+  }
+  return emit;
+}
+
 describe("editor store", () => {
   it("shows a fraction from the moment Save is pressed", async () => {
     vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2)]);
@@ -108,16 +122,51 @@ describe("editor store", () => {
   });
 
   it("records progress from tag write events", async () => {
-    let emit: ((progress: { done: number; total: number }) => void) | undefined;
-    vi.mocked(onTagWriteProgress).mockImplementation(async (handler) => {
-      emit = handler;
-      return () => {};
-    });
+    vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2)]);
+    await useEditorStore.getState().open([1, 2]);
+    let finish:
+      | ((summary: { written: number; failed: number; errors: string[] }) => void)
+      | undefined;
+    vi.mocked(writeTags).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const emit = await subscribe();
 
-    await useEditorStore.getState().watch();
-    emit?.({ done: 25, total: 500 });
+    const saving = useEditorStore.getState().save(edit);
+    emit({ done: 25, total: 500 });
 
     expect(useEditorStore.getState().progress).toEqual({ done: 25, total: 500 });
+
+    finish?.({ written: 500, failed: 0, errors: [] });
+    await saving;
+  });
+
+  it("ignores progress from a write it did not start", async () => {
+    const emit = await subscribe();
+
+    // `tags://progress` is one channel for every tag write, and the lookup's
+    // apply is the other sender on it. Nothing here would ever clear what it
+    // set, so the next dialog to open would find Save stuck at "Saving…".
+    emit({ done: 12, total: 12 });
+
+    expect(useEditorStore.getState().progress).toBeNull();
+  });
+
+  it("ignores an event that lands after its own save has returned", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([track(1)]);
+    await useEditorStore.getState().open([1]);
+    vi.mocked(writeTags).mockResolvedValue({ written: 1, failed: 0, errors: [] });
+    const emit = await subscribe();
+
+    await useEditorStore.getState().save(edit);
+    // The last event of a batch and the command's own reply are two messages
+    // over the same bridge, and nothing orders them.
+    emit({ done: 1, total: 1 });
+
+    expect(useEditorStore.getState().progress).toBeNull();
   });
 
   it("loads the rows behind a selection rather than trusting the cache", async () => {

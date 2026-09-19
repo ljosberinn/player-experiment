@@ -251,7 +251,21 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
     },
 
     close: () =>
-      set({ queue: null, tracks: [], candidates: [], detail: null, error: null, index: null }),
+      // The stage and the readout with it. An apply that empties the queue is
+      // what closes the dialog, and a stage left at "applying" comes back with
+      // it - the review queue opens without going through a release, so it
+      // would open on a table whose Cancel is disabled and whose Escape does
+      // nothing.
+      set({
+        queue: null,
+        tracks: [],
+        candidates: [],
+        detail: null,
+        error: null,
+        index: null,
+        stage: "opening",
+        progress: null,
+      }),
 
     skip: async () => {
       const { fromReview, index } = get();

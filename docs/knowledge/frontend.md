@@ -507,12 +507,18 @@ absences are what nobody notices coming back — hence the guards in
   store, which subscribes to `lastfm://import` itself, because the import's
   own pane is in Settings and may well be closed.
 - **`tags://progress` has two senders** — a tag save and a lookup's apply, each
-  reporting in a dialog that is already on screen. The lookup subscribes to it
-  separately and only records events while its own write is running.
-  `TaskProgress` owns the subscription that fills the editor store and draws
-  nothing from it: something mounted for the whole session has to subscribe,
-  and doing it in the dialog would mean subscribing as the write it reports on
-  is already starting.
+  reporting in a dialog that is already on screen. Both stores subscribe to it
+  separately and **both record only while their own write is in flight**: the
+  lookup on `stage === "applying"`, the editor on its own `progress` being
+  non-null, which `save` sets before it awaits. A store that took every event
+  was left holding a readout the other dialog's write had set and it had
+  nothing to clear, which is what disabled Save at "Saving…" for the rest of
+  the session. The guard also drops the last event of a batch when it lands
+  after the command's own reply — two messages over one bridge, in no fixed
+  order. `TaskProgress` owns the subscription that fills the editor store and
+  draws nothing from it: something mounted for the whole session has to
+  subscribe, and doing it in the dialog would mean subscribing as the write it
+  reports on is already starting.
 - OS file drops arrive as one window-wide event and are routed by
   `shell/fileDrop.ts`: targets register an element while they are mounted, the
   position is divided by `devicePixelRatio` to reach CSS pixels, and the hit is
