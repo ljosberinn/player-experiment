@@ -4,6 +4,8 @@ export interface StatsPanelProps {
   readonly title: string;
   /** A control belonging to this panel alone - an export, a toggle. */
   readonly action?: ReactNode;
+  /** What the figure covers, where that is less than everything. */
+  readonly caption?: string | null;
   readonly children: ReactNode;
 }
 
@@ -15,8 +17,11 @@ export interface StatsPanelProps {
  * document-structure decision rather than a per-panel one - the tab strip is
  * the view's heading, so every panel under it is one level down, and a panel
  * that picked its own would break the outline for a screen reader walking it.
+ *
+ * The caption is the panel's rather than a chart's: When you listen draws two
+ * charts over one coverage, and drops one of them once it is empty.
  */
-export function StatsPanel({ title, action, children }: StatsPanelProps) {
+export function StatsPanel({ title, action, caption, children }: StatsPanelProps) {
   return (
     <section className="stats-panel">
       <header>
@@ -24,6 +29,9 @@ export function StatsPanel({ title, action, children }: StatsPanelProps) {
         {action}
       </header>
       {children}
+      {caption !== undefined && caption !== null && (
+        <p className="stats-panel-caption">{caption}</p>
+      )}
     </section>
   );
 }
