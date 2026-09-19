@@ -21,6 +21,9 @@ Not in the command, so no caller can skip either.
   `foreign_keys` is ON, so without this the failure is a constraint violation
   naming neither the genre nor the label that was typed.
 
+The parent is stored resolved, not just normalised: an alias is a name the rest
+of the app accepts and `genres` does not.
+
 **The field stays free text, and the refusal is the guard.** The app already
 has this control — `TagCombobox` — and its doc comment is an argument for free
 text: a value the library has never seen has to be typeable, and nothing is
@@ -41,14 +44,15 @@ The genre labels take the same rule rather than the plain prefix query: typing
 `metal` should offer `black metal`, and two autocompletes in one window that
 filter by different rules is a papercut.
 
-`genres` has no `uses` column, so the rank is the prefix match and then the
-label. One command, `limit`ed, off the IPC thread like the aggregates.
+`genres` has no `uses` column, so the rank is the prefix match, then the
+shorter label, then the label. One command, `limit`ed, off the IPC thread like
+the aggregates.
 
 ## Where it opens from
 
 84d's donut has no control that opens one — a slice drills and that is all. It
 opens from the Genres panel's `StatsPanel` action, the slot `ReleaseYears` and
-`WorstByBitrate` already use.
+`WorstByBitrate` already use, prefilled with the drilled level.
 
 ## An override changes every genre-filtered aggregate
 

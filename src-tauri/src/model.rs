@@ -940,6 +940,28 @@ pub struct ScanSummary {
     pub unchanged: u32,
 }
 
+/// What a drop from the OS did, before the scan behind it runs.
+///
+/// No `added`: this makes no rows. The scan that follows is what inserts, and
+/// its own `ScanSummary` is where an added count would come from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DropSummary {
+    /// Folders now watched. A folder a root already covered is not one of
+    /// them: it was already being walked.
+    pub folders: u32,
+    /// Loose files moved under the Library folder.
+    pub moved: u32,
+    /// Files left where they lay, because a watch root already covers them.
+    pub adopted: u32,
+    /// Files with no root above them and nowhere to put them, because
+    /// organizing is off.
+    pub refused: u32,
+    /// Not audio, and so not an error either.
+    pub ignored: u32,
+}
+
 impl ScanSummary {
     /// Whether the library is different for this scan having run.
     ///

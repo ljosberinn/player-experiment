@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addWatchFolder, scanLibrary } from "../../ipc";
+import { addWatchFolder, ingestDroppedPaths, scanLibrary } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
 import { useScanStore } from "./scan";
 
 vi.mock("../../ipc", () => ({
   addWatchFolder: vi.fn(),
+  ingestDroppedPaths: vi.fn(),
   scanLibrary: vi.fn(),
   onScanProgress: vi.fn(async () => () => {}),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 const summary = { added: 0, updated: 0, missing: 0, returned: 0, unchanged: 0 };
+const drop = { folders: 0, moved: 0, adopted: 0, refused: 0, ignored: 0 };
 
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(scanLibrary).mockResolvedValue(summary);
+  vi.mocked(ingestDroppedPaths).mockResolvedValue(drop);
   const { open } = await import("@tauri-apps/plugin-dialog");
   vi.mocked(open).mockResolvedValue(null);
   useScanStore.setState({ progress: null, busy: false });
@@ -121,5 +124,69 @@ describe("the scan store", () => {
     await useScanStore.getState().rescan();
 
     expect(useStatusStore.getState().message).toBeNull();
+  });
+});
+
+/**
+ * What a drop from the OS does, on this side of it.
+ *
+ * The ingest command makes no rows: it leaves the filesystem and the
+ * tombstones in a state where the scan sees what was dropped, and the scan here
+ * is the one Add Folders… already runs.
+ */
+describe("dropping paths on the library", () => {
+  it("ingests the paths and scans behind them", async () => {
+    vi.mocked(ingestDroppedPaths).mockResolvedValue({ ...drop, folders: 2 });
+
+    await useScanStore.getState().drop(["D:/Music", "D:/Live"]);
+
+    expect(ingestDroppedPaths).toHaveBeenCalledWith(["D:/Music", "D:/Live"]);
+    expect(scanLibrary).toHaveBeenCalledOnce();
+  });
+
+  it("does not scan when nothing landed", async () => {
+    vi.mocked(ingestDroppedPaths).mockResolvedValue({ ...drop, refused: 1 });
+
+    await useScanStore.getState().drop(["C:/Downloads/one.mp3"]);
+
+    // A refused drop changed nothing on disk, and walking the library to be
+    // told so is the one cost this can avoid entirely.
+    expect(scanLibrary).not.toHaveBeenCalled();
+  });
+
+  it("says once why the files were refused, whatever their number", async () => {
+    vi.mocked(ingestDroppedPaths).mockResolvedValue({ ...drop, refused: 3 });
+
+    await useScanStore.getState().drop(["a.mp3", "b.mp3", "c.mp3"]);
+
+    expect(useStatusStore.getState().message).toContain("Those 3 files");
+    expect(useStatusStore.getState().message).toContain("Organise My Library");
+  });
+
+  it("keeps the refusal on screen through the scan a mixed drop runs", async () => {
+    vi.mocked(ingestDroppedPaths).mockResolvedValue({ ...drop, folders: 1, refused: 1 });
+
+    await useScanStore.getState().drop(["D:/Music", "C:/Downloads/one.mp3"]);
+
+    // `rescan` clears the popover as it starts, so the sentence has to be said
+    // after it rather than before.
+    expect(scanLibrary).toHaveBeenCalledOnce();
+    expect(useStatusStore.getState().message).toContain("That file is not in a watched folder");
+  });
+
+  it("refuses a drop while a scan is running", async () => {
+    useScanStore.setState({ busy: true });
+
+    await useScanStore.getState().drop(["D:/Music"]);
+
+    expect(ingestDroppedPaths).not.toHaveBeenCalled();
+  });
+
+  it("reports an ingest that failed", async () => {
+    vi.mocked(ingestDroppedPaths).mockRejectedValue("access denied");
+
+    await useScanStore.getState().drop(["D:/Music"]);
+
+    expect(useStatusStore.getState().message).toBe("access denied");
   });
 });

@@ -197,6 +197,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_app_info,
             commands::add_watch_folder,
+            commands::ingest_dropped_paths,
             commands::list_watch_folders,
             commands::remove_watch_folder,
             commands::scan_library,

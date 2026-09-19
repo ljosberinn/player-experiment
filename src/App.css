@@ -1203,6 +1203,16 @@ input[type="radio"] {
   background: var(--content-wash);
 }
 
+/* A file drag from the OS is over the pane. The cursor says "copy" over the
+   whole window whatever is under it - wry forces that and the return value of
+   the drag handler is discarded on Windows - so this outline is the only
+   honest signal that the drop will land somewhere. Same treatment as
+   `.sidebar-row.drop-target`, inset so it reads as the pane's own edge. */
+.content.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* The tab bar that used to head this pane is gone as of phase 35. Songs,
    Albums, Artists and Genres are sidebar entries now, beside the playlists -
    choosing between them is the same act as opening a playlist, and having two

@@ -208,7 +208,7 @@ pub fn move_release(
 
 /// Moves one file to `target`, creating the folders above it.
 ///
-/// The seam [85b](../../../docs/issues/upcoming/85b-drop-files-and-folders.md)
+/// The seam [85b](../../../docs/issues/done/85b-drop-files-and-folders.md)
 /// needs: the move without the row update, for a dropped file that has no row
 /// yet.
 ///

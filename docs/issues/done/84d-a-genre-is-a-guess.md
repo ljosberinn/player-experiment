@@ -2,7 +2,7 @@
 
 The genre donut and its drill-down. Split from
 [84b](../done/84b-what-you-own.md), which is the Library tab's reads. The
-override editor that makes the guess fixable is [84e](../upcoming/84e-correct-a-guess.md),
+override editor that makes the guess fixable is [84e](84e-correct-a-guess.md),
 which stacks on this.
 
 Stacks on [75](../done/75-the-genre-tree.md) for the tree and on
@@ -76,7 +76,7 @@ A slice drills to its children through [75](../done/75-the-genre-tree.md)'s
 `genres.parent`, which `genre_breakdown` already walks; the crumb is the level.
 A slice whose parent was guessed from the label's suffix is **labelled as
 derived** — `GenreSlice.parentSource` carries it — so a wrong guess is visible
-before [84e](../upcoming/84e-correct-a-guess.md) makes it fixable. The primary-parent rule
+before [84e](84e-correct-a-guess.md) makes it fixable. The primary-parent rule
 is arbitrary by construction.
 
 **Only a slice with `has_children` drills.** The field already ships and is

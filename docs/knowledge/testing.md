@@ -228,9 +228,13 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   `decorations: true`, or the embedded driver never sees the webview.
 - The OS half of a file drop — Explorer's drag loop, `wry`'s drop target, and
   the position it reports. Everything from the Tauri event on is covered:
-  `tag-editor.test.ts` emits `tauri://drag-enter` and `tauri://drag-drop` with a
-  real file on disk, and the app's own routing, staging and preview run against
-  it. Dragging *inside* the window stopped being part of this gap in phase 74:
+  `tag-editor.test.ts` and `library-drop.test.ts` emit `tauri://drag-enter` and
+  `tauri://drag-drop` with a real file on disk, and the app's own routing,
+  ingest, staging and preview run against it. What `library-drop.test.ts` drops
+  is only ever refused: one app process serves the whole run, and the specs
+  after it count what a scan found. The folder and in-place cases are
+  `library::ingest`'s own tests, over a library of their own.
+  Dragging *inside* the window stopped being part of this gap in phase 74:
   `row-drag.test.ts` dispatches a real `PointerEvent` sequence, and the app's own
   listeners run against it.
 - "Sound actually came out." Decoding is covered; output is manual.

@@ -28,7 +28,7 @@ src-tauri/src/
               function of a release and one of its tracks; `mover` puts one
               release there, files and rows in one transaction; `survey` is
               what the library still needs; `worker` is the thread that does
-              both steps
+              both steps; `ingest` is what an OS drop leaves behind
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
   log.rs      every operation, one line each, rotated
@@ -206,6 +206,17 @@ filing is on.** `scan::plan` marks missing every known row it did not walk, so a
 library organised into a folder nobody watches is a library marked missing in
 full on the next scan. Picking a root adds it to `watch_folders` and
 `scan::remove_watch_folder` refuses it until the switch goes off.
+
+**An OS drop makes no rows.** `library::ingest` watches the folders it was
+given, houses the loose files, lifts the tombstone each file ends on, and stops
+there; the scan the frontend runs behind it is what inserts, from tags it reads
+itself. So there is never a row pointing outside every watch root - the order is
+move, then scan, not insert then move. A file already under a root does not move
+at all, and one that is not needs the Library folder on, because there is
+nowhere else to put it. It lands at the root's **top level** rather than at
+83a's target: that layout is a function of a release, and a file with no row
+cannot answer it without giving a second answer to where a file goes.
+`library::worker` files it properly on its next sweep.
 
 **It also reports where it stands on `task://progress`**, per release attempted
 and `null` when the sweep ends, whatever ended it. Its own channel rather than

@@ -3,11 +3,11 @@
 Known, decided, and not scheduled. Anything with work attached lives in
 [issues/upcoming/](../issues/upcoming/) instead.
 
-- **No folder drag-and-drop ingest.** Adding music is a folder picker. What made
-  this a limitation rather than a task was that `dragDropEnabled` had to stay
-  `false` for in-app dragging to work at all; phase 74 removed that and 85a
-  turned the flag on, and the work now lives in
-  [85b](../issues/upcoming/85b-drop-files-and-folders.md).
+- **A loose file dropped from outside every watch folder needs the Library
+  folder on.** There is nowhere else to put it: the scanner is root-driven, and
+  adding the file's parent instead would pull the whole of Downloads into the
+  library. Such a drop is refused with the reason. A file *under* a watch folder
+  needs none of this, and a dropped folder becomes a watch folder.
 - **No crash reporting off the machine.** A local panic log covers the failure
   class; a network reporter contradicts the product.
 - **Installers are unsigned.** SmartScreen warns on first run of each version.

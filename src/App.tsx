@@ -15,6 +15,7 @@ import { useExportStore } from "./features/export/store";
 import { useLastfmStore } from "./features/lastfm/store";
 import { BrowseView } from "./features/library/BrowseView";
 import { HistoryNav } from "./features/library/HistoryNav";
+import { useLibraryDrop } from "./features/library/libraryDrop";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
@@ -190,6 +191,9 @@ export function App() {
   // Files dragged in from the OS arrive as one window-wide event; this routes
   // them, and holds no state of its own.
   useFileDrops();
+  // What a dropped folder or file then lands in. A ref and a class toggle, no
+  // subscription: the outline must not re-render the view with 150k rows in it.
+  const libraryPane = useLibraryDrop();
   useUpdater();
   useWindowGeometry();
   // Alt+Tab and the taskbar, which are the only places a decorationless
@@ -336,7 +340,7 @@ export function App() {
           <BackgroundTaskProgress />
         </Sidebar>
 
-        <main className="content">
+        <main className="content" ref={libraryPane}>
           {/* Returns null unless a scan is running, so this costs no space in
               the ordinary case - but it stays mounted either way, because it
               is what subscribes to the progress events. */}
