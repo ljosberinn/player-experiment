@@ -46,6 +46,9 @@ Where the theme lives: a `data-theme` attribute on `html`, defaulting to the OS
 via `prefers-color-scheme`, overridable in Settings → Appearance beside Interface
 Zoom, persisted like the other preferences. `color-scheme` follows it.
 
+Storybook gets the same attribute from a toolbar global, so the specimen sheet
+of [106](../done/106-storybook.md) draws on either ground.
+
 Good moment to split the sheet. `App.css` is 3345 lines and two token blocks
 make it longer; `src/styles/tokens.css`, `primitives.css` and the rest, imported
 from `App.css`, keeps the guard working if it reads the set rather than the one

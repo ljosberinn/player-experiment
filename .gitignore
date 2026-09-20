@@ -13,6 +13,7 @@ dist-ssr
 *.local
 coverage
 e2e/screenshots
+storybook-static
 
 # Editor directories and files
 .vscode/*

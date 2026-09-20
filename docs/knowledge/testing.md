@@ -154,6 +154,27 @@ defects shipped past 600 green tests for exactly that reason.
   vanish into their background and boxes in the wrong place; it would not catch
   a misaligned column.
 
+## Storybook is not a third suite
+
+`*.stories.tsx` under `src/`, config in `.storybook/`, `npm run storybook` to
+read them. It asserts nothing and runs no assertions: **`@storybook/addon-vitest`
+does not fit**, because it peers `vitest ^3 || ^4` against this repo's `^5`.
+Component behaviour stays in `*.test.tsx` and appearance stays in the wdio suite.
+
+What it is for is the one thing neither of those shows — a primitive drawn in
+every state, on both grounds, at once. Vitest runs in jsdom with no stylesheet;
+the wdio specs photograph whole screens of the running app.
+
+It is in CI all the same, as `npm run build-storybook` on the `frontend` job.
+Nothing is published from it. It is the only thing that *compiles* a story, and
+React Compiler runs over stories at `panicThreshold: "all_errors"` like any other
+`.tsx`, so a story that breaks the rules of React fails on the branch that wrote
+it rather than sitting broken until someone opens it.
+
+`.storybook/preview.ts` gives every story the app's stylesheet and font faces;
+see [106](../issues/done/106-storybook.md) for why `vite.config.ts` needs no
+`viteFinal` and what `preview.css` has to take back from Storybook's own styles.
+
 ## The e2e harness
 
 `@wdio/tauri-service` on its default **embedded** provider: the WebDriver server

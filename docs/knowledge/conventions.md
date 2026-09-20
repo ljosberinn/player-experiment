@@ -32,6 +32,10 @@
   by being forgotten; an unknown key is not exported.
 - `unsafe_code = "forbid"` in the Rust crate. An exception belongs in its own
   two-function module, so it stays visible and bounded.
+- **A story sits beside what it draws**, as `<Component>.stories.tsx`, and
+  styles itself inline. Story scaffolding is not app chrome and has no business
+  in `App.css`; the tokens it reaches for through `var()` are the point of the
+  exercise.
 - **CSS Modules were considered and declined.** They address collisions this
   project does not have, and they would weaken the cross-cutting `App.css.test.ts`
   guards that assert *absences* — jsdom applies no stylesheet under CSS Modules

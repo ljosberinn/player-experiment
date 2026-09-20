@@ -1,0 +1,15 @@
+/* The two rules `App.css` puts on `body` because the app is a window, neither
+   of which a specimen sheet is. Typography is not among them - the app states
+   that on `:root` and the frame inherits it, so a story is already drawn in the
+   app's faces without this file saying so. */
+body {
+  /* The document never scrolls in the app; rubber-banding at the end of the
+     song list is the webbiest thing a desktop list can do. A specimen taller
+     than the frame has to scroll, or its bottom cannot be read at all. */
+  overflow: auto;
+
+  /* A native window does not let you drag-select its chrome. A specimen sheet
+     exists to be quoted from - a token name that cannot be copied out of it is
+     a token name retyped by hand. */
+  user-select: text;
+}

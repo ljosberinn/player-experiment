@@ -49,6 +49,7 @@ attempts left `tauri-driver` hung and needing a manual kill.
 | `npm run typecheck` | `tsc --noEmit` for `src/` and `e2e/` |
 | `npm run lint` / `lint:fix` | Biome check |
 | `npm test` / `test:coverage` | Vitest unit + component tests |
+| `npm run storybook` / `build-storybook` | Component specimens on :6006; asserts nothing |
 | `npm run bindings` | Regenerate `src/ipc/bindings/` from the Rust types |
 | `npm run e2e` | WebDriver smoke suite (needs the instrumented build — see above) |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit + integration tests |
