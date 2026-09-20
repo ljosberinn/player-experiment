@@ -1234,6 +1234,47 @@ pub struct Play {
     pub track_id: Option<i64>,
 }
 
+/// One spelling of an album, and how often it was heard under it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AlbumSpelling {
+    /// The album as it was scrobbled, verbatim - which is how
+    /// `db::stats::pin_album` names the row to write.
+    pub album: String,
+    pub plays: u32,
+    /// Whether the user put this row where it is, rather than the fold.
+    pub pinned: bool,
+}
+
+/// Another of the artist's albums, and the spellings behind it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AlbumNeighbour {
+    pub heading: String,
+    pub plays: u32,
+    /// Every spelling reading under `heading`, so merging this group in is
+    /// the same write as the other two corrections.
+    pub albums: Vec<String>,
+}
+
+/// One album as the Statistics view groups it, for the dialog that corrects
+/// the grouping.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AlbumGroup {
+    /// The spelling the group reads under, which is also its identity.
+    pub heading: String,
+    /// The artist its biggest spelling was heard under.
+    pub artist: String,
+    /// The spellings folded into it, biggest first.
+    pub members: Vec<AlbumSpelling>,
+    /// What the artist's other albums are, biggest first.
+    pub others: Vec<AlbumNeighbour>,
+}
+
 /// Runs of consecutive local days with a play.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

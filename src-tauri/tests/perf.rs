@@ -515,6 +515,42 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
     });
 }
 
+/// `plays::regroup` reads the whole log too, and the claim the design rests
+/// on is that it is cheap anyway: a quarter of a million plays is some
+/// thirteen thousand distinct `(artist, album)` pairs, so the `GROUP BY` is
+/// what it costs and the fold runs once per pair rather than once per play.
+///
+/// Two budgets for `resolve`'s reason, and generous for it as well: what
+/// either catches is the shape changing - a fold moved per-play, or a
+/// statement per row.
+#[test]
+fn grouping_the_album_spellings_is_affordable_cold_and_cheap_warm() {
+    let shared = alongside_others();
+    let (_dir, db) = seeded_library();
+    let mut conn = db.conn().unwrap();
+    synthetic::seed_plays(&mut conn, PLAYS).unwrap();
+    drop(shared);
+
+    let _alone = alone();
+    let start = Instant::now();
+    let written = plays::regroup(&conn).unwrap();
+    let elapsed = start.elapsed().as_millis();
+    assert!(
+        written > 0,
+        "a cold regroup that wrote nothing measured nothing"
+    );
+    assert!(
+        elapsed <= 60_000,
+        "a first regroup over {PLAYS} plays took {elapsed}ms, budget is 60000ms"
+    );
+
+    // Warm: nothing moved, so nothing is written - which is what keeps the
+    // pass after every import from rewriting the whole table.
+    assert_under("plays::regroup over an unchanged log", 10_000, || {
+        assert_eq!(plays::regroup(&conn).unwrap(), 0);
+    });
+}
+
 /// Every Listening aggregate reads the whole log unless a range narrows it,
 /// and that is the design rather than a lapse: there are no rollups to keep in
 /// step. So each is one pass, and the budget is what catches it becoming more

@@ -1,10 +1,8 @@
 import { BarList } from "../../../components/charts/BarList";
 import { statsTop } from "../../../ipc";
-import { useLibraryStore } from "../../library/store";
 import { report } from "../../shell/statusStore";
 import { saveCsv, toCsv } from "../csv";
-import { listenQuery } from "../filters";
-import { useStatsStore } from "../store";
+import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
 import { StatsPanel } from "./StatsPanel";
 
@@ -25,15 +23,14 @@ const ROWS = 200;
  * that day.
  */
 export function HeardNeverOwned() {
-  const filters = useStatsStore((s) => s.filters);
-  const path = useLibraryStore((s) => s.statsPath);
+  const { query: scoped, deps } = useListenQuery();
 
   // `owned: false` overrides whatever the filter bar's Owned select says,
   // because this panel *is* the unowned view. Obeying the select would let it
   // be filtered to owned plays and draw nothing, which reads as "you own
   // everything" rather than as "you asked the wrong question".
-  const query = { ...listenQuery(filters, path, new Date()), owned: false };
-  const { data, loading } = usePanelQuery(() => statsTop(query, "track", ROWS), [filters, path]);
+  const query = { ...scoped, owned: false };
+  const { data, loading } = usePanelQuery(() => statsTop(query, "track", ROWS), deps);
 
   const entries = data ?? [];
 

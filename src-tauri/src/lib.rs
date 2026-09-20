@@ -146,6 +146,7 @@ pub fn run() {
             let lock = scan::ScanLock::default();
             normalize_covers(db.clone(), lock.clone(), log.clone());
             read_musicbrainz_tags(db.clone(), lock.clone(), log.clone());
+            regroup_albums(db.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -236,6 +237,8 @@ pub fn run() {
             commands::stats::genre_suggestions,
             commands::stats::set_genre_override,
             commands::stats::clear_genre_override,
+            commands::stats::stats_album_group,
+            commands::stats::stats_pin_album,
             commands::export_library,
             commands::save_text_file,
             commands::reveal_track,
@@ -448,6 +451,30 @@ fn read_musicbrainz_tags(db: Db, lock: scan::ScanLock, log: log::Log) {
                 // Every launch after the one that finished the pass.
                 Ok(None) => {}
                 Ok(Some(found)) => op.succeeded(log::Fields::new().add("found", found)),
+                Err(error) => op.failed(&error),
+            }
+        });
+}
+
+/// Folds the album spellings in the play log together once per fold version,
+/// off the setup path for the reason [`normalize_covers`] runs there.
+///
+/// No `ScanLock`: it reads `plays` and writes `album_groups`, and touches
+/// neither a file nor a track row. Nothing announces either - the Statistics
+/// view reads it when it next opens, and a library whose grouping moved
+/// between one launch and the next has no panel on screen to refresh.
+fn regroup_albums(db: Db, log: log::Log) {
+    let _ = std::thread::Builder::new()
+        .name("album-regroup".to_owned())
+        .spawn(move || {
+            let op = log.op("plays.regroup");
+            match db
+                .conn()
+                .and_then(|conn| db::plays::regroup_if_stale(&conn))
+            {
+                // Every launch after the one that ran the fold.
+                Ok(false) => {}
+                Ok(true) => op.succeeded(log::Fields::new()),
                 Err(error) => op.failed(&error),
             }
         });

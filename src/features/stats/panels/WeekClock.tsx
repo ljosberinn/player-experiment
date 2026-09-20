@@ -1,10 +1,8 @@
 import { Bar } from "../../../components/charts/Bar";
 import { Heatmap } from "../../../components/charts/Heatmap";
 import { statsWeekClock } from "../../../ipc";
-import { useLibraryStore } from "../../library/store";
-import { listenQuery } from "../filters";
 import { listenTotalsOnce } from "../listenTotals";
-import { useStatsStore } from "../store";
+import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
 import { StatsPanel } from "./StatsPanel";
 
@@ -27,12 +25,11 @@ const HOURS = Array.from({ length: 24 }, (_, hour) =>
  * cells.
  */
 export function WeekClock() {
-  const filters = useStatsStore((s) => s.filters);
-  const path = useLibraryStore((s) => s.statsPath);
-  const { data, loading } = usePanelQuery(() => {
-    const query = listenQuery(filters, path, new Date());
-    return Promise.all([statsWeekClock(query), listenTotalsOnce(query)]);
-  }, [filters, path]);
+  const { query, deps } = useListenQuery();
+  const { data, loading } = usePanelQuery(
+    () => Promise.all([statsWeekClock(query), listenTotalsOnce(query)]),
+    deps,
+  );
 
   // The clock is always 168 counts, so nothing played is all zeroes rather
   // than no rows; the charts are told it is empty.

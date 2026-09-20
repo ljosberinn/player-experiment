@@ -32,9 +32,9 @@ use crate::db::genres::{self, Tree};
 use crate::db::query::{self, GROUP_ALBUM, GROUP_ARTIST, MAX_LIMIT};
 use crate::error::AppResult;
 use crate::model::{
-    AlbumBitrate, GenreBreakdown, GenreSlice, HistogramBin, HistogramField, LibraryTotals,
-    ListenDimension, ListenQuery, ListenTotals, Play, Streaks, TagHealth, TimeBucket, TimeCount,
-    TopEntry, TrackQuery,
+    AlbumBitrate, AlbumGroup, AlbumNeighbour, AlbumSpelling, GenreBreakdown, GenreSlice,
+    HistogramBin, HistogramField, LibraryTotals, ListenDimension, ListenQuery, ListenTotals, Play,
+    Streaks, TagHealth, TimeBucket, TimeCount, TopEntry, TrackQuery,
 };
 
 /// The modifiers that turn a unix-seconds column into local time.
@@ -50,11 +50,20 @@ const DATED_FROM: i64 = 1_009_843_200;
 /// is a file whose length could not be read, not a zero-length song.
 const DURATION: &str = "coalesce(nullif(plays.duration_ms, 0), nullif(tracks.duration_ms, 0))";
 
+/// Which album a play belongs to, once the spellings of one record are folded
+/// together.
+///
+/// The play's own album where no pass has grouped it, which is what keeps the
+/// LEFT JOIN honest: a heading is a spelling out of the user's own history,
+/// so falling back to the spelling is falling back to the same kind of thing.
+/// See `db::plays::regroup`.
+const ALBUM: &str = "coalesce(album_groups.heading, plays.album)";
+
 /// The FROM/WHERE a [`ListenQuery`] narrows plays to.
 ///
-/// Always joins `tracks`: SQLite drops a LEFT JOIN on a primary key whose
-/// columns nothing reads, so the aggregates that never look at a file do not
-/// pay for it.
+/// Always joins `tracks` and `album_groups`: SQLite drops a LEFT JOIN on a
+/// primary key whose columns nothing reads, so the aggregates that never look
+/// at a file or at a heading do not pay for either.
 struct Plays {
     conditions: Vec<String>,
     params: Vec<Box<dyn ToSql>>,
@@ -75,7 +84,10 @@ impl Plays {
             params.push(Box::new(artist.clone()));
         }
         if let Some(album) = &query.album {
-            conditions.push("plays.album = ? COLLATE NOCASE".to_owned());
+            // The heading rather than the spelling, so drilling a folded
+            // album reaches every variant's plays. `StatsCrumb` still carries
+            // a title string: a heading is one of the spellings.
+            conditions.push(format!("{ALBUM} = ? COLLATE NOCASE"));
             params.push(Box::new(album.clone()));
         }
         if let Some(genre) = &query.genre {
@@ -99,7 +111,13 @@ impl Plays {
     }
 
     fn clause(&self, extra: &[&str]) -> String {
-        let mut sql = String::from("FROM plays LEFT JOIN tracks ON tracks.id = plays.track_id");
+        let mut sql = String::from(
+            "FROM plays
+             LEFT JOIN tracks ON tracks.id = plays.track_id
+             LEFT JOIN album_groups
+                    ON album_groups.artist = plays.artist
+                   AND album_groups.album = plays.album",
+        );
         let conditions: Vec<&str> = self
             .conditions
             .iter()
@@ -166,7 +184,7 @@ pub fn listen_totals(conn: &Connection, query: &ListenQuery) -> AppResult<Listen
     let sql = format!(
         "SELECT count(*),
                 count(DISTINCT lower(nullif(plays.artist, ''))),
-                count(DISTINCT lower(nullif(plays.album, '')) || char(31) || lower(plays.artist)),
+                count(DISTINCT lower(nullif({ALBUM}, '')) || char(31) || lower(plays.artist)),
                 count(DISTINCT nullif(plays.match_key, '')),
                 count(DISTINCT date({dated_at}, {LOCAL})),
                 coalesce(sum({DURATION}), 0),
@@ -239,7 +257,7 @@ pub fn recent_plays(
 /// spelling are one entry. A blank is never an entry: the untagged are not a
 /// band.
 ///
-/// An album here is the play's own `(album, artist)` and deliberately *not*
+/// An album here is the play's [`ALBUM`] and deliberately *not*
 /// `query::release_identity`, which the Library aggregates group by. A play
 /// outlives the file it came from and an imported scrobble never had one, so
 /// `plays.track_id` is NULL for a large share of these rows - and every one of
@@ -255,21 +273,21 @@ pub fn top(
     let (key, secondary, group, present) = match dimension {
         ListenDimension::Genre => return top_genres(conn, query, limit),
         ListenDimension::Artist => (
-            "min(plays.artist)",
+            "min(plays.artist)".to_owned(),
             "NULL",
-            "plays.artist COLLATE NOCASE",
+            "plays.artist COLLATE NOCASE".to_owned(),
             "plays.artist <> ''",
         ),
         ListenDimension::Album => (
-            "min(plays.album)",
+            format!("min({ALBUM})"),
             "min(plays.artist)",
-            "plays.album COLLATE NOCASE, plays.artist COLLATE NOCASE",
+            format!("{ALBUM} COLLATE NOCASE, plays.artist COLLATE NOCASE"),
             "plays.album <> ''",
         ),
         ListenDimension::Track => (
-            "min(plays.title)",
+            "min(plays.title)".to_owned(),
             "min(plays.artist)",
-            "plays.match_key",
+            "plays.match_key".to_owned(),
             "plays.match_key <> ''",
         ),
     };
@@ -698,6 +716,149 @@ pub fn tag_health(conn: &Connection, query: &TrackQuery) -> AppResult<TagHealth>
     Ok(health)
 }
 
+/// One album group as the correction dialog needs it: the spellings reading
+/// under `heading`, and the artist's other albums.
+///
+/// Asked by heading because a heading is the group's identity - the same
+/// string `StatsCrumb` carries and `ListenQuery::album` filters on. Read
+/// through [`ALBUM`] rather than off `album_groups`, so a log no pass has
+/// seen answers with the one spelling it has instead of with nothing.
+pub fn album_group(conn: &Connection, heading: &str) -> AppResult<AlbumGroup> {
+    let mut statement = conn.prepare(&format!(
+        "SELECT plays.artist, plays.album, count(*), coalesce(max(album_groups.pinned), 0)
+         {} AND {ALBUM} = ? COLLATE NOCASE
+          GROUP BY plays.artist, plays.album
+          ORDER BY count(*) DESC, plays.album",
+        Plays::new(conn, &ListenQuery::default())?.clause(&["plays.album <> ''"])
+    ))?;
+    let members = statement
+        .query_map([heading], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                AlbumSpelling {
+                    album: row.get(1)?,
+                    plays: row.get::<_, i64>(2)? as u32,
+                    pinned: row.get::<_, i64>(3)? != 0,
+                },
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let Some((artist, _)) = members.first() else {
+        return Ok(AlbumGroup {
+            heading: heading.to_owned(),
+            ..AlbumGroup::default()
+        });
+    };
+    let artist = artist.clone();
+
+    // Biggest first, and the spellings with it: merging a neighbour in is
+    // pinning its spellings with this heading, so the dialog needs them here
+    // rather than in a second round trip per row.
+    let mut statement = conn.prepare(&format!(
+        "SELECT {ALBUM}, plays.album, count(*)
+         FROM plays
+         LEFT JOIN album_groups
+                ON album_groups.artist = plays.artist
+               AND album_groups.album = plays.album
+         WHERE plays.artist = ?1 AND plays.album <> ''
+           AND {ALBUM} <> ?2 COLLATE NOCASE
+         GROUP BY {ALBUM}, plays.album"
+    ))?;
+    let mut others: Vec<AlbumNeighbour> = Vec::new();
+    let mut rows = statement.query(rusqlite::params![artist, heading])?;
+    while let Some(row) = rows.next()? {
+        let head: String = row.get(0)?;
+        let album: String = row.get(1)?;
+        let plays = row.get::<_, i64>(2)? as u32;
+        match others.iter_mut().find(|other| other.heading == head) {
+            Some(other) => {
+                other.plays += plays;
+                other.albums.push(album);
+            }
+            None => others.push(AlbumNeighbour {
+                heading: head,
+                plays,
+                albums: vec![album],
+            }),
+        }
+    }
+    others.sort_by(|a, b| {
+        b.plays
+            .cmp(&a.plays)
+            .then_with(|| a.heading.cmp(&b.heading))
+    });
+
+    Ok(AlbumGroup {
+        heading: heading.to_owned(),
+        artist,
+        members: members.into_iter().map(|(_, member)| member).collect(),
+        others,
+    })
+}
+
+/// Records that `spellings` read under `heading`, and reruns the fold.
+///
+/// **The dialog's three corrections are this one write.** Pin every spelling
+/// of a group with a new title and the group is retitled; pin one with its
+/// own spelling and it leaves the group; pin another album's spellings with
+/// this heading and it is merged in. `db::plays::regroup` is what each of
+/// those then means for the unpinned rows around them.
+///
+/// The pass runs here rather than on the next import, because the correction
+/// has to be visible in the panel it was made from. It is a full pass, so a
+/// group whose leader changed since the last one is re-headed with it - which
+/// is the same thing an import would have done, a moment earlier.
+///
+/// # Refusals
+///
+/// Both are here rather than in the command, so no caller can skip them.
+///
+/// - A blank heading. `coalesce` would hand it to every read site as the
+///   album's name, and an album called nothing is the one thing `top`
+///   deliberately never draws.
+/// - A spelling nothing was heard under. The row would be inert, pinned, and
+///   therefore immortal: [`crate::db::plays::regroup`] keeps pinned rows.
+pub fn pin_album(
+    conn: &Connection,
+    artist: &str,
+    spellings: &[String],
+    heading: &str,
+) -> AppResult<()> {
+    let heading = heading.trim();
+    if heading.is_empty() {
+        return Err(crate::error::AppError::Internal(
+            "An album group needs a heading.".to_owned(),
+        ));
+    }
+
+    let mut heard =
+        conn.prepare("SELECT EXISTS(SELECT 1 FROM plays WHERE artist = ?1 AND album = ?2)")?;
+    let mut pin = conn.prepare(
+        "INSERT INTO album_groups (artist, album, key, heading, pinned)
+         VALUES (?1, ?2, ?3, ?4, 1)
+         ON CONFLICT (artist, album) DO UPDATE SET heading = excluded.heading, pinned = 1",
+    )?;
+    for album in spellings {
+        if !heard.query_row(rusqlite::params![artist, album], |row| {
+            row.get::<_, bool>(0)
+        })? {
+            return Err(crate::error::AppError::NotFound(format!(
+                "\"{artist}\" was never heard on \"{album}\""
+            )));
+        }
+        pin.execute(rusqlite::params![
+            artist,
+            album,
+            crate::db::plays::album_key(artist, album),
+            heading
+        ])?;
+    }
+
+    crate::db::plays::regroup(conn)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1010,6 +1171,288 @@ mod tests {
             [("BLUE ROOM", 3)],
             "the limit applies"
         );
+    }
+
+    /// The four spellings one streaming service gave one record, in the
+    /// proportions the real log has them.
+    const ADDICTS: [(&str, i64); 4] = [
+        ("Addicts: Black Meddle Pt. 2", 9),
+        ("Addicts: Black Meddle Pt. II", 4),
+        ("Addicts: Black Meddle, Pt. II", 2),
+        ("Addicts: Black Meddle Part II", 1),
+    ];
+
+    fn add_addicts(conn: &Connection) {
+        let mut at = 0;
+        for (album, count) in ADDICTS {
+            for _ in 0..count {
+                at += 1;
+                add_play(
+                    conn,
+                    at,
+                    (
+                        "Nachtmystium",
+                        &format!("Every Last Drop {at}"),
+                        Some(album),
+                    ),
+                    None,
+                );
+            }
+        }
+    }
+
+    /// One record heard sixteen times, not four albums none of which reach
+    /// the list where the whole would.
+    #[test]
+    fn a_renamed_release_is_one_album_in_every_aggregate() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        crate::db::plays::regroup(&conn).unwrap();
+
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Album, 10).unwrap()),
+            [("Addicts: Black Meddle Pt. 2", 16)]
+        );
+        assert_eq!(listen_totals(&conn, &all()).unwrap().albums, 1);
+
+        // Drilling the group reaches every variant's plays, which is the
+        // whole reason the filter reads the heading rather than the spelling.
+        let drilled = ListenQuery {
+            album: Some("Addicts: Black Meddle Pt. 2".to_owned()),
+            ..ListenQuery::default()
+        };
+        assert_eq!(listen_totals(&conn, &drilled).unwrap().plays, 16);
+
+        // A play is a historical fact, so the log keeps what was scrobbled.
+        let spellings: Vec<Option<String>> = recent_plays(&conn, &drilled, 0, 50)
+            .unwrap()
+            .into_iter()
+            .map(|play| play.album)
+            .collect();
+        assert!(
+            spellings.contains(&Some("Addicts: Black Meddle Part II".to_owned())),
+            "{spellings:?}"
+        );
+    }
+
+    /// The correction the dialog writes, seen from the read side.
+    #[test]
+    fn a_pinned_heading_is_what_the_aggregates_group_under() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        add_play(
+            &conn,
+            99,
+            ("Nachtmystium", "Assassins", Some("Black Meddle Anthology")),
+            None,
+        );
+        crate::db::plays::regroup(&conn).unwrap();
+
+        conn.execute(
+            "UPDATE album_groups SET heading = 'Addicts: Black Meddle Pt. 2', pinned = 1
+              WHERE album = 'Black Meddle Anthology'",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Album, 10).unwrap()),
+            [("Addicts: Black Meddle Pt. 2", 17)],
+            "a merged album is one entry"
+        );
+    }
+
+    fn spellings(group: &AlbumGroup) -> Vec<(&str, u32, bool)> {
+        group
+            .members
+            .iter()
+            .map(|member| (member.album.as_str(), member.plays, member.pinned))
+            .collect()
+    }
+
+    /// What the dialog draws: every spelling that reads under this heading,
+    /// biggest first, and what else the artist has to merge with.
+    #[test]
+    fn a_group_reads_back_its_spellings_and_its_neighbours() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        add_play(
+            &conn,
+            99,
+            ("Nachtmystium", "Assassins", Some("Instinct: Decay")),
+            None,
+        );
+        crate::db::plays::regroup(&conn).unwrap();
+
+        let group = album_group(&conn, "Addicts: Black Meddle Pt. 2").unwrap();
+
+        assert_eq!(group.artist, "Nachtmystium");
+        assert_eq!(
+            spellings(&group),
+            [
+                ("Addicts: Black Meddle Pt. 2", 9, false),
+                ("Addicts: Black Meddle Pt. II", 4, false),
+                ("Addicts: Black Meddle, Pt. II", 2, false),
+                ("Addicts: Black Meddle Part II", 1, false),
+            ]
+        );
+        assert_eq!(
+            group
+                .others
+                .iter()
+                .map(|other| (other.heading.as_str(), other.plays))
+                .collect::<Vec<_>>(),
+            [("Instinct: Decay", 1)]
+        );
+        assert_eq!(group.others[0].albums, ["Instinct: Decay"]);
+    }
+
+    /// A log no pass has seen still answers: the identity the dialog asks
+    /// about is the one the aggregates drew, heading or spelling.
+    #[test]
+    fn a_group_nothing_has_folded_is_its_own_spelling() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+
+        let group = album_group(&conn, "Addicts: Black Meddle Part II").unwrap();
+
+        assert_eq!(
+            spellings(&group),
+            [("Addicts: Black Meddle Part II", 1, false)]
+        );
+    }
+
+    /// Retitling the group: every spelling pinned to a heading out of the
+    /// user's own history, and a later arrival joining them.
+    #[test]
+    fn pinning_every_spelling_retitles_the_group() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        crate::db::plays::regroup(&conn).unwrap();
+        let members: Vec<String> = album_group(&conn, "Addicts: Black Meddle Pt. 2")
+            .unwrap()
+            .members
+            .into_iter()
+            .map(|member| member.album)
+            .collect();
+
+        pin_album(
+            &conn,
+            "Nachtmystium",
+            &members,
+            "Addicts: Black Meddle Pt. II",
+        )
+        .unwrap();
+
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Album, 10).unwrap()),
+            [("Addicts: Black Meddle Pt. II", 16)]
+        );
+    }
+
+    /// Separating a spelling out: pinned to itself, and the rest keep the
+    /// group. The pass runs on the write, so the read side moves with it.
+    #[test]
+    fn pinning_one_spelling_to_itself_takes_it_out_of_the_group() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        crate::db::plays::regroup(&conn).unwrap();
+
+        pin_album(
+            &conn,
+            "Nachtmystium",
+            &["Addicts: Black Meddle Part II".to_owned()],
+            "Addicts: Black Meddle Part II",
+        )
+        .unwrap();
+
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Album, 10).unwrap()),
+            [
+                ("Addicts: Black Meddle Pt. 2", 15),
+                ("Addicts: Black Meddle Part II", 1),
+            ]
+        );
+    }
+
+    /// Merging a neighbour in: its spellings pinned with this heading, which
+    /// is the same write as the other two.
+    #[test]
+    fn pinning_a_neighbours_spellings_merges_it_in() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        add_play(
+            &conn,
+            99,
+            ("Nachtmystium", "Assassins", Some("Black Meddle Anthology")),
+            None,
+        );
+        crate::db::plays::regroup(&conn).unwrap();
+        let group = album_group(&conn, "Addicts: Black Meddle Pt. 2").unwrap();
+        let neighbour = &group.others[0];
+
+        pin_album(
+            &conn,
+            &group.artist,
+            &neighbour.albums,
+            "Addicts: Black Meddle Pt. 2",
+        )
+        .unwrap();
+
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Album, 10).unwrap()),
+            [("Addicts: Black Meddle Pt. 2", 17)]
+        );
+        let group = album_group(&conn, "Addicts: Black Meddle Pt. 2").unwrap();
+        assert!(group.others.is_empty(), "{:?}", group.others);
+        assert_eq!(
+            group
+                .members
+                .iter()
+                .find(|member| member.album == "Black Meddle Anthology")
+                .map(|member| member.pinned),
+            Some(true)
+        );
+    }
+
+    /// Both refusals are here rather than in the command, so no caller can
+    /// skip either: a heading has to be a spelling somebody heard, and so
+    /// does the row it is pinned on.
+    #[test]
+    fn a_pin_refuses_a_blank_heading_and_a_spelling_nothing_was_heard_under() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+        crate::db::plays::regroup(&conn).unwrap();
+        let members = ["Addicts: Black Meddle Pt. 2".to_owned()];
+
+        assert!(pin_album(&conn, "Nachtmystium", &members, "  ").is_err());
+        assert!(pin_album(
+            &conn,
+            "Nachtmystium",
+            &["Addicts: Black Meddle, Part Two".to_owned()],
+            "Addicts: Black Meddle Pt. 2",
+        )
+        .is_err());
+    }
+
+    /// An ungrouped log reads exactly as it did before the fold existed: the
+    /// join is unconditional, so every play with no row falls back to its own
+    /// spelling rather than to NULL.
+    #[test]
+    fn a_log_no_pass_has_seen_still_groups_by_spelling() {
+        let (_dir, conn) = open();
+        add_addicts(&conn);
+
+        assert_eq!(
+            keys(&top(&conn, &all(), ListenDimension::Album, 10).unwrap()),
+            [
+                ("Addicts: Black Meddle Pt. 2", 9),
+                ("Addicts: Black Meddle Pt. II", 4),
+                ("Addicts: Black Meddle, Pt. II", 2),
+                ("Addicts: Black Meddle Part II", 1),
+            ]
+        );
+        assert_eq!(listen_totals(&conn, &all()).unwrap().albums, 4);
     }
 
     #[test]

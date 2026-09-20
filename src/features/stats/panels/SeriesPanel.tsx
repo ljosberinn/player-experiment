@@ -1,10 +1,8 @@
 import { Bar } from "../../../components/charts/Bar";
 import type { ListenQuery, ListenTotals, TimeBucket, TimeCount, TimeRange } from "../../../ipc";
-import { useLibraryStore } from "../../library/store";
-import { listenQuery } from "../filters";
 import { listenTotalsOnce } from "../listenTotals";
 import { BUCKET_TITLES, bucketFor, bucketLabel, fillSeries } from "../series";
-import { useStatsStore } from "../store";
+import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
 import { StatsPanel } from "./StatsPanel";
 
@@ -41,11 +39,9 @@ const COVERAGE: Record<SeriesPanelProps["whole"], (share: number) => string> = {
  * bar counts.
  */
 export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps) {
-  const filters = useStatsStore((s) => s.filters);
-  const path = useLibraryStore((s) => s.statsPath);
+  const { query, deps } = useListenQuery();
 
   const { data, loading } = usePanelQuery(async (): Promise<Answer> => {
-    const query = listenQuery(filters, path, new Date());
     // Asked before the series rather than after it, so that under a range,
     // where the span needs no totals, the two are in flight together.
     const asked = listenTotalsOnce(query);
@@ -64,7 +60,7 @@ export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps)
         whole,
       ),
     };
-  }, [filters, path]);
+  }, deps);
 
   const bucket = data?.series?.bucket ?? "month";
 

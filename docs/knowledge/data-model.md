@@ -324,6 +324,51 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   probing a sample of them returned 404 for every entity type. So the columns
   stay as part of what a play was, and `resolve` is the key alone.
 
+## Album groups
+
+`album_groups` is one row per distinct `(artist, album)` in `plays`, carrying
+the fold it belongs to (`key`) and the spelling it reads under (`heading`).
+Only the play log needs it: `tracks` is tagged one way per release, so the
+Library tab and `query::release_identity` are already whole.
+
+The problem is that a play keeps the album as it was scrobbled and streaming
+services rename releases. `Addicts: Black Meddle Pt. 2` (929 plays),
+`… Pt. II` (132), `…, Pt. II` (50) and `… Part II` (1) are one record heard
+1,112 times, drawn as four albums none of which reach the top list where the
+whole would. Across 237,675 real plays that is 217 groups and 4,146 plays
+attributed away from their biggest spelling.
+
+- **`plays::album_key` is Rust-side**, for `match_key`'s reason and one more:
+  it needs NFKD, because `…` is one codepoint that only compatibility
+  decomposition turns into `...`. It folds the five causes the log actually
+  shows — a parenthesised or bracketed edition marker, punctuation,
+  `Pt.`/`Part` against a roman numeral, diacritics, non-ASCII case — and stops.
+  **`version` and `special` are deliberately out of the vocabulary**: a bare
+  `(… Version)` stripped would fold `(Live Version)` into the studio cut.
+- **`heading` is a spelling out of the user's own history**, never an invented
+  title. MusicBrainz calls the release above `Addicts: Black Meddle, Part 2`, a
+  fifth spelling none of the 1,112 plays carry — and its ids reach only 9% of
+  plays, because an imported scrobble with no file never has one. That is also
+  why `heading` doubles as the group's identity: `ListenQuery::album` stays a
+  title string and `StatsCrumb` does not change.
+- **`plays::regroup` recomputes the whole table**, in `resolve`'s shape and
+  for its reason. It runs at the end of an import and once after
+  `FOLD_VERSION` moves, which `settings.plays.albumFold` records; a local play
+  of an unseen spelling gets its own row from `plays::record`, taking the
+  group's heading where one exists. Headings are re-chosen only on a full
+  pass — a variant overtaking the leader mid-session would rename a row under
+  the cursor.
+- **A pinned row is the user's correction and survives every pass.** Pinned
+  with a heading that is not its own spelling it is a retitle or a merge, and
+  the unpinned rows of its key follow it; pinned with its own spelling it is a
+  separation, and they must not. `stats::pin_album` is all three writes, and
+  refuses a blank heading and a spelling the artist was never heard under.
+- **The join is unconditional**, like the `tracks` one, and album identity is
+  `coalesce(album_groups.heading, plays.album)` at the three sites that have
+  one: `top`'s album dimension, `listen_totals`' distinct album count, and
+  `ListenQuery::album`. `recent_plays` and the CSV export keep the play's own
+  spelling — a play is a historical fact, and only the aggregates group.
+
 ## The last.fm import
 
 `lastfm::import` pages `user.getRecentTracks` backwards by a `to=` cursor, never

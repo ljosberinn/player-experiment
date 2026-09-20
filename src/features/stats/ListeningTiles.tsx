@@ -1,9 +1,8 @@
 import { StatTile } from "../../components/charts/StatTile";
 import { formatSpan } from "../../lib/format";
-import { useLibraryStore } from "../library/store";
-import { listenQuery } from "./filters";
 import { listenTotalsOnce } from "./listenTotals";
 import { useStatsStore } from "./store";
+import { useListenQuery } from "./useListenQuery";
 import { usePanelQuery } from "./usePanelQuery";
 
 /**
@@ -14,11 +13,8 @@ import { usePanelQuery } from "./usePanelQuery";
  */
 export function ListeningTiles() {
   const filters = useStatsStore((s) => s.filters);
-  const path = useLibraryStore((s) => s.statsPath);
-  const { data: totals } = usePanelQuery(
-    () => listenTotalsOnce(listenQuery(filters, path, new Date())),
-    [filters, path],
-  );
+  const { query, deps } = useListenQuery();
+  const { data: totals } = usePanelQuery(() => listenTotalsOnce(query), deps);
 
   if (totals !== null && totals.plays === 0) {
     return (

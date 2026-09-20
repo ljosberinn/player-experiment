@@ -641,6 +641,49 @@ CREATE TABLE lastfm_loved (
     r#"
 DELETE FROM settings WHERE key IN ('tracks.mbidsRead', 'tracks.mbidsReadThrough');
 "#,
+    // 16 - which album spellings are one album
+    //
+    // A play keeps the album as it was scrobbled, and streaming services
+    // rename releases: `Addicts: Black Meddle Pt. 2`, `… Pt. II`, `…, Pt. II`
+    // and `… Part II` are one record heard 1,112 times, drawn as four albums
+    // none of which reach the top list where the whole would. Over a real log
+    // that is 217 groups and 4,146 plays attributed away from their biggest
+    // spelling.
+    //
+    // A table rather than a column on `plays`: the fold is `plays::album_key`,
+    // it will move as its vocabulary grows, and recomputing it means rewriting
+    // 13,708 rows here instead of a quarter of a million there. Rust-side for
+    // the reason `plays.rs` already gives - `lower()` and `COLLATE NOCASE` are
+    // ASCII-only, and the plays behind `Confessions D'Un Voleur D'Ames`
+    // against `Confessions d'un Voleur D'âmes` need diacritics folded.
+    //
+    // `(artist, album)` verbatim, so the join back onto `plays` under the
+    // binary collation covers every row: the pass enumerates the spellings as
+    // they are stored, and `COLLATE NOCASE` on the join would fold ASCII only
+    // anyway.
+    //
+    // `heading` is a spelling out of the user's own history and never an
+    // invented title - MusicBrainz calls this release `Addicts: Black Meddle,
+    // Part 2`, a fifth spelling none of the 1,112 plays carry. That is also
+    // why it doubles as the group's identity: `ListenQuery::album` stays a
+    // title string and `StatsCrumb` does not change.
+    //
+    // `pinned` is the user's correction, in the shape `genre_overrides` gives
+    // it: it survives a pass, and it claims the unpinned rows folding to the
+    // same key - otherwise a retitled group would revert the moment a new
+    // spelling arrived.
+    r#"
+CREATE TABLE album_groups (
+    artist  TEXT NOT NULL,
+    album   TEXT NOT NULL,
+    key     TEXT NOT NULL,
+    heading TEXT NOT NULL,
+    pinned  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (artist, album)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_album_groups_key ON album_groups(key);
+"#,
 ];
 
 #[cfg(test)]
@@ -858,6 +901,29 @@ mod tests {
             .unwrap();
         conn.execute(insert, rusqlite::params!["loveless", "my bloody valentine"])
             .expect_err("case is folded, so this is the same release");
+    }
+
+    /// The grouping the Statistics view folds album spellings with. One row
+    /// per distinct `(artist, album)` in `plays`, so the pair is the key.
+    #[test]
+    fn a_fresh_database_carries_the_album_grouping() {
+        let (_dir, conn) = open();
+        let insert = "INSERT INTO album_groups (artist, album, key, heading)
+                      VALUES (?1, ?2, 'k', 'Addicts: Black Meddle Pt. 2')";
+
+        conn.execute(insert, ["Nachtmystium", "Addicts: Black Meddle Pt. 2"])
+            .unwrap();
+        conn.execute(insert, ["Nachtmystium", "Addicts: Black Meddle Pt. II"])
+            .expect("a second spelling is a second row");
+        conn.execute(insert, ["Nachtmystium", "Addicts: Black Meddle Pt. 2"])
+            .expect_err("one spelling is one row");
+
+        let pinned: i64 = conn
+            .query_row("SELECT pinned FROM album_groups LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(pinned, 0, "a row the fold wrote is not a correction");
     }
 
     #[test]

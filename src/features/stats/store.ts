@@ -4,6 +4,7 @@ import {
   loadStatsFilters,
   saveStatsFilters,
   setGenreOverride,
+  statsPinAlbum,
 } from "../../ipc";
 import { DEFAULT_FILTERS, parseFilters, type StatsFilters, serializeFilters } from "./filters";
 
@@ -29,6 +30,16 @@ interface StatsState {
    * hand is where one of them forgets and keeps drawing the tree as it was.
    */
   genreVersion: number;
+  /**
+   * Bumped whenever an album grouping is corrected.
+   *
+   * `genreVersion`'s counterpart for the Listening tab, and separate from it
+   * for the reason that one is separate from `library://changed`: a pin moves
+   * no track row, and the two versions wake different halves of the view.
+   * `useListenQuery` lists this among its deps, which is the one place that
+   * has to.
+   */
+  groupVersion: number;
   /** Reads the stored filters. Called when the view mounts, not at startup. */
   load: () => Promise<void>;
   /** Applies a change and stores the whole set behind it. */
@@ -43,11 +54,20 @@ interface StatsState {
   setOverride: (label: string, parent: string | null) => Promise<void>;
   /** Drops `label`'s correction, so it resolves the way it did before. */
   clearOverride: (label: string) => Promise<void>;
+  /**
+   * Records that `spellings` read under `heading`.
+   *
+   * Rejects rather than reporting, for `setOverride`'s reason: the dialog
+   * that calls this has a field to put the message beside. Both refusals come
+   * from `pin_album` in Rust.
+   */
+  pinAlbum: (artist: string, spellings: readonly string[], heading: string) => Promise<void>;
 }
 
 export const useStatsStore = create<StatsState>((set, get) => ({
   filters: DEFAULT_FILTERS,
   genreVersion: 0,
+  groupVersion: 0,
 
   load: async () => {
     try {
@@ -78,5 +98,12 @@ export const useStatsStore = create<StatsState>((set, get) => ({
   clearOverride: async (label) => {
     await clearGenreOverride(label);
     set({ genreVersion: get().genreVersion + 1 });
+  },
+
+  pinAlbum: async (artist, spellings, heading) => {
+    // After the write, for the reason `setOverride` gives: a refused
+    // correction has changed nothing.
+    await statsPinAlbum(artist, spellings, heading);
+    set({ groupVersion: get().groupVersion + 1 });
   },
 }));

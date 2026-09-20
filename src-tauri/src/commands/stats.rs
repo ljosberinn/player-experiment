@@ -11,9 +11,9 @@ use super::{blocking, op};
 use crate::db::{genres, stats, Db};
 use crate::error::AppResult;
 use crate::model::{
-    AlbumBitrate, GenreBreakdown, HistogramBin, HistogramField, LibraryTotals, ListenDimension,
-    ListenQuery, ListenTotals, Play, Streaks, TagHealth, TimeBucket, TimeCount, TopEntry,
-    TrackQuery,
+    AlbumBitrate, AlbumGroup, GenreBreakdown, HistogramBin, HistogramField, LibraryTotals,
+    ListenDimension, ListenQuery, ListenTotals, Play, Streaks, TagHealth, TimeBucket, TimeCount,
+    TopEntry, TrackQuery,
 };
 
 async fn read<T: Send + 'static>(
@@ -182,6 +182,33 @@ pub async fn stats_added_over_time(
 pub async fn stats_tag_health(app: tauri::AppHandle, query: TrackQuery) -> AppResult<TagHealth> {
     read(app, "stats.tag_health", move |conn| {
         stats::tag_health(conn, &query)
+    })
+    .await
+}
+
+/// One album group, for the dialog that corrects the grouping.
+#[tauri::command]
+pub async fn stats_album_group(app: tauri::AppHandle, heading: String) -> AppResult<AlbumGroup> {
+    read(app, "stats.album_group", move |conn| {
+        stats::album_group(conn, &heading)
+    })
+    .await
+}
+
+/// Records that `spellings` read under `heading`, and reruns the fold.
+///
+/// The dialog's three corrections - retitle, separate, merge - are all this
+/// one write; which of them it is follows from what is passed. Both refusals
+/// are in `db::stats::pin_album` rather than here, so no caller can skip them.
+#[tauri::command]
+pub async fn stats_pin_album(
+    app: tauri::AppHandle,
+    artist: String,
+    spellings: Vec<String>,
+    heading: String,
+) -> AppResult<()> {
+    write(app, "stats.pin_album", move |conn| {
+        stats::pin_album(conn, &artist, &spellings, &heading)
     })
     .await
 }

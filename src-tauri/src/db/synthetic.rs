@@ -101,10 +101,18 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
 /// resolves is a property of the data rather than of the library it is run
 /// against.
 ///
-/// `track_id` is left null on purpose: it is what `resolve` computes, and a
-/// seed that pre-filled it would leave that function nothing to measure.
+/// **One play in eight names its album by an edition spelling** - the
+/// rename a streaming service does between one scrobble and the next, which
+/// is what [`regroup`] exists to fold back together. Without it the fold has
+/// nothing to do over a quarter of a million plays, and the dialog the e2e
+/// suite photographs is a list of one.
+///
+/// `track_id` and `album_groups` are left for their passes on purpose: both
+/// are derived, and a seed that pre-filled either would leave the function
+/// that computes it nothing to measure.
 ///
 /// [`resolve`]: crate::db::plays::resolve
+/// [`regroup`]: crate::db::plays::regroup
 pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
     /// Monday 2023-11-13, 00:00 UTC, far enough from zero that local-time
     /// bucketing has a real date to work with. A Monday so that cell 0 of
@@ -133,7 +141,7 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
 
         for index in existing..existing + count {
             let hit = tracks > 0 && !index.is_multiple_of(3);
-            let (artist, title, album) = if hit {
+            let (artist, title, mut album) = if hit {
                 let track = index % tracks;
                 (
                     format!("Artist{:03}", track % 250),
@@ -147,6 +155,12 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
                     format!("Elsewhere{:03}", index % 800),
                 )
             };
+            // The rename, on a slice small enough that the biggest spelling
+            // is still the plain one - which is what `regroup` names the
+            // group after.
+            if index.is_multiple_of(8) {
+                album = format!("{album} (Deluxe Edition)");
+            }
             stmt.execute(rusqlite::params![
                 EPOCH + i64::from(index / PER_WEEK) * WEEK + cells(index % PER_WEEK),
                 artist,
