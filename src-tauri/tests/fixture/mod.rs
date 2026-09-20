@@ -121,6 +121,54 @@ pub fn tag_release_type_as_picard(path: &Path, value: &str) {
         .expect("write tags");
 }
 
+/// An mp3 whose date frame lofty will read but refuse to write back.
+///
+/// Hand-built because no lofty call can produce one: an out-of-range month or
+/// day is accepted on the way in and rejected on the way out, which is what
+/// leaves such a file - and real taggers do emit them - permanently
+/// un-editable. `id` is `TDRC` or `TDOR`.
+pub fn write_mp3_with_unwritable_date(
+    path: &Path,
+    frames: usize,
+    title: &str,
+    id: &str,
+    date: &str,
+) {
+    /// An ID3v2.4 size: four bytes of seven bits each.
+    fn synchsafe(mut size: u32) -> [u8; 4] {
+        let mut out = [0u8; 4];
+        for byte in out.iter_mut().rev() {
+            *byte = (size & 0x7F) as u8;
+            size >>= 7;
+        }
+        out
+    }
+
+    /// One text frame, UTF-8 encoded and unflagged.
+    fn text_frame(id: &str, value: &str) -> Vec<u8> {
+        let mut body = vec![3u8];
+        body.extend_from_slice(value.as_bytes());
+
+        let mut frame = Vec::from(id.as_bytes());
+        frame.extend_from_slice(&synchsafe(body.len() as u32));
+        frame.extend_from_slice(&[0, 0]);
+        frame.extend_from_slice(&body);
+        frame
+    }
+
+    let body = [text_frame("TIT2", title), text_frame(id, date)].concat();
+    let mut bytes = Vec::from(&b"ID3"[..]);
+    bytes.extend_from_slice(&[4, 0, 0]);
+    bytes.extend_from_slice(&synchsafe(body.len() as u32));
+    bytes.extend_from_slice(&body);
+    bytes.extend_from_slice(&silent_mp3(frames));
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixture dir");
+    }
+    std::fs::write(path, bytes).expect("write fixture mp3");
+}
+
 /// `count` interchangeable mp3s under `root/bulk`, for the tests whose subject
 /// is the size of a batch rather than what is in it.
 ///

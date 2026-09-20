@@ -93,6 +93,16 @@ impl Log {
         self.line(&format(crate::now_seconds(), "ok", name, &fields));
     }
 
+    /// [`Log::note`], for something that already went *wrong* somewhere else.
+    ///
+    /// The outcome column is what a reader scans down, so a failure reported
+    /// after the fact has to say `err` there rather than borrow `note`'s `ok`.
+    /// No `Op` instead, because the work is over: its `error=` is one string
+    /// and what these lines carry is a whole set of fields.
+    pub fn problem(&self, name: &str, fields: Fields) {
+        self.line(&format(crate::now_seconds(), "err", name, &fields));
+    }
+
     /// Appends one line, rotating first if it would not fit.
     ///
     /// Failures are swallowed: nothing in the app is worth failing because it
@@ -189,7 +199,7 @@ impl Op {
 /// Values are written as they are, quotes and all: a path with a space in it
 /// is still readable, and quoting would only move the problem to the paths
 /// with quotes in them. Nothing parses this file.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Fields(String);
 
 impl Fields {
@@ -213,7 +223,9 @@ impl Fields {
         self
     }
 
-    fn merge(mut self, other: Fields) -> Self {
+    /// Appends another set, for a line assembled in two places - the caller
+    /// that knows where it was and the callee that knows what went wrong.
+    pub fn merge(mut self, other: Fields) -> Self {
         if other.0.is_empty() {
             return self;
         }
@@ -329,6 +341,18 @@ mod tests {
             line,
             "2023-11-14T22:13:20Z ok  scan            added=412 ms=8140\n"
         );
+    }
+
+    #[test]
+    fn something_that_went_wrong_elsewhere_still_reads_as_a_failure() {
+        let (_dir, log) = temp();
+
+        log.note("scan.finished", Fields::new().add("added", 1));
+        log.problem("tags.write.fail", Fields::new().add("stage", "save"));
+
+        let written = contents(&log);
+        assert!(written.contains("ok  scan.finished"), "{written}");
+        assert!(written.contains("err tags.write.fail"), "{written}");
     }
 
     #[test]
