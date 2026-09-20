@@ -158,16 +158,28 @@ describe("the Statistics view", () => {
    * Rust and in the component's own tests, and what neither can answer is
    * what a list of spellings looks like in this window.
    *
-   * `seed_plays` renames one play in eight to `… (Deluxe Edition)` and the
-   * seed command folds them back, so the list here has something in it.
+   * `seed_plays` renames one play in four of each album to
+   * `… (Deluxe Edition)` and the seed command folds them back, so the list
+   * here has something in it.
    */
   it("opens the grouping editor on the album it is drilled into", async () => {
     const bar = panel("Top albums").$("button.bar-list-row");
     await bar.waitForExist({ timeout: 30_000 });
-    const album = await bar.$(".bar-list-label").getText();
+    // An album row is the only top list whose label holds a second name: the
+    // artist is a nested span inside it, so the label's text is both.
+    const label = await bar.$(".bar-list-label").getText();
+    const artist = await bar.$(".bar-list-secondary").getText();
+    const album = label.slice(0, label.length - artist.length).trim();
 
     await bar.click();
-    await expect(browser.$(".stats-breadcrumb")).toHaveText(new RegExp(album));
+
+    // Compared rather than matched: an album title is free text and
+    // `(Deluxe Edition)` is a regular expression's idea of a group.
+    const crumbs = browser.$(".stats-breadcrumb");
+    await browser.waitUntil(async () => (await crumbs.getText()).includes(album), {
+      timeout: 10_000,
+      timeoutMsg: `the breadcrumb never named ${album}`,
+    });
 
     await panel("Top albums").$(".//button[normalize-space()='Fix the grouping…']").click();
     const dialog = browser.$(".modal");
