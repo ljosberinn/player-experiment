@@ -3,12 +3,31 @@
 The app's layout began as an echo of iTunes 11 and moved onto a design of its own
 in phases 32–39. The product is **Apex**; the identifier is `dev.ljosberinn.apex`.
 
-**The source is a Claude Design project**, "Modern music player design", whose
-single component is `Apex Music Player.dc.html` — sidebar navigation, a transport
-strip, a row context menu, a smart-playlist rule builder, a settings dialog and a
-mockup of the crash dialog, at 1440×900. Re-fetch it before relying on it; it has
-been amended (the contrast lift, the removal of the accent row border) and can be
-again. Reproduce the details it specifies, not only the structure.
+**The source is two Claude Design projects**, read with DesignSync `get_file`
+rather than WebFetch — the `/design/p/` URL returns 403 to a fetch. A gitignored
+mirror of both, plus the Modernist token sheet they are built on, sits in
+[`design/`](../../design/README.md); it is a copy to read and diff against, and
+the remote stays canonical.
+
+- "Modern music player design", `Apex Music Player.dc.html` — sidebar
+  navigation, a transport strip, a row context menu, a smart-playlist rule
+  builder, a settings dialog and a mockup of the crash dialog, at 1440×900.
+  **What the app is built from today.**
+- "Apex music player component library" (`e08e15f9-0d0f-4761-8efd-01bfa268fffc`),
+  `Apex Components.dc.html` — a specimen sheet of primitives on a light and a
+  dark ground, added 20.9.2026. **What the app is moving to**, one phase at a
+  time; see [plans/apex-components.md](../plans/apex-components.md). It does not
+  draw the sidebar, the transport strip, the playlist tree or the release grid,
+  so the shell stays with the older file until it does.
+
+Re-fetch before relying on either; both have been amended (the contrast lift,
+the removal of the accent row border) and can be again. Reproduce the details
+they specify, not only the structure.
+
+The component sheet settles four things the tokens below do not yet reflect:
+**Archivo** as the one face (study 7a, chosen over three alternatives), accent
+`#e8730f` light and `#f58a1f` dark, **radius 0 everywhere**, and a **light
+ground that ships** alongside the dark one.
 
 Where the design and the built app disagree on a detail the design has not
 thought about, the app wins. Where they disagree on how something *looks*, the
@@ -30,7 +49,9 @@ design wins.
 
 ## Tokens
 
-Dark only, one hue (55, warm orange-brown), everything in `oklch`.
+Dark only, one hue (55, warm orange-brown), everything in `oklch`. A second
+ground arrives with [issue 108](../issues/upcoming/108-two-grounds.md), which is
+what the indirection below was kept for.
 
 | Token | Value | Used for |
 | --- | --- | --- |
