@@ -25,8 +25,12 @@
   writes and the transport controls are the standing exceptions; see
   [architecture](architecture.md#what-is-written-down). A feature that is
   invisible when it goes wrong is how this file came to exist.
-- Every colour comes from a custom property. **No literal colour outside the
-  token block** in `App.css` — that is what keeps a light theme cheap to restore.
+- Every colour comes from a custom property. **No literal colour outside
+  `styles/tokens.css`** — that is what made the light ground a second column of
+  values rather than an audit of six hundred rules, and what would make a third
+  one cheap too. Every name is defined on *both* grounds; a token that exists on
+  one and not the other loses its colour when the theme flips, silently and only
+  for people using the other theme.
 - Allowlists, never denylists, for anything that leaves the machine.
   `settings::EXPORTABLE` is an allowlist so a credential added later cannot leak
   by being forgotten; an unknown key is not exported.
@@ -34,8 +38,9 @@
   two-function module, so it stays visible and bounded.
 - **A story sits beside what it draws**, as `<Component>.stories.tsx`, and
   styles itself inline. Story scaffolding is not app chrome and has no business
-  in `App.css`; the tokens it reaches for through `var()` are the point of the
-  exercise.
+  in the sheet; the tokens it reaches for through `var()` are the point of the
+  exercise. Storybook's Ground toolbar writes the same `data-theme` the app
+  does, so a specimen is drawn through the mechanism it documents.
 - **CSS Modules were considered and declined.** They address collisions this
   project does not have, and they would weaken the cross-cutting `App.css.test.ts`
   guards that assert *absences* — jsdom applies no stylesheet under CSS Modules

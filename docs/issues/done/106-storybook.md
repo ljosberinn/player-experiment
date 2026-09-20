@@ -54,8 +54,8 @@ inherit` here would be inert and would tell 107 there are two places to change.
 The ground needs nothing either: the window fill is on `html`, which the story
 frame inherits, and `body` stays transparent.
 
-No theme toolbar here — [108](../upcoming/108-two-grounds.md) brings the second
-ground and the switch with it.
+No theme toolbar here — [108](108-two-grounds.md) brought the second ground and
+the Ground switch with it.
 
 ## Four places outside `.storybook/`
 

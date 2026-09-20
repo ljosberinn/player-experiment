@@ -19,6 +19,13 @@ pub const WINDOW_GEOMETRY: &str = "window.geometry";
 pub const COLUMNS: &str = "library.columns";
 /// Webview zoom factor, applied before the window is shown.
 pub const ZOOM: &str = "window.zoom";
+/// Which ground the app draws on: `"system"`, `"light"` or `"dark"`.
+///
+/// Opaque here, like [`COLUMNS`] and [`SIDEBAR`]: only the frontend can ask
+/// the OS what `"system"` resolves to, so validating the string in Rust would
+/// be a second definition of the same three values to keep in step. Unset
+/// means `"system"`, which is why nothing here writes a default.
+pub const THEME: &str = "appearance.theme";
 /// Minutes between unattended library passes, or `"0"` for off.
 pub const WATCH_INTERVAL: &str = "library.watchInterval";
 /// Which sidebar sections the user has collapsed. Opaque JSON, like the column
@@ -122,7 +129,14 @@ pub const LASTFM_USERNAME: &str = "lastfm.username";
 /// list a new credential key on a denylist leaks it; forgetting to list a new
 /// preference here merely omits it from an export, which nobody loses sleep
 /// over. Every future secret is excluded by default rather than by memory.
-const EXPORTABLE: &[&str] = &[VOLUME, MUTED, WINDOW_GEOMETRY, ZOOM, DYNAMIC_BACKGROUND];
+const EXPORTABLE: &[&str] = &[
+    VOLUME,
+    MUTED,
+    WINDOW_GEOMETRY,
+    ZOOM,
+    DYNAMIC_BACKGROUND,
+    THEME,
+];
 
 pub fn is_exportable(key: &str) -> bool {
     EXPORTABLE.contains(&key)
@@ -323,8 +337,9 @@ mod tests {
         assert!(!is_exportable(COLUMNS));
         assert!(!is_exportable(STATS_FILTERS));
         // Taste rather than geometry, and so on the other side of that line -
-        // it travels with the library the way the volume and the zoom do.
+        // both travel with the library the way the volume and the zoom do.
         assert!(is_exportable(DYNAMIC_BACKGROUND));
+        assert!(is_exportable(THEME));
         // And the one that does not: opting a machine into outbound network is
         // a decision about that machine, not a preference an exported library
         // carries to the next one.

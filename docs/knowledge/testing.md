@@ -134,9 +134,21 @@ defects shipped past 600 green tests for exactly that reason.
 - **`src/App.css.test.ts`** reads the stylesheet as text and asserts *absences*:
   no hover background outside the allowlist, no `cursor: pointer`, no transition
   or animation outside `ANIMATION_ALLOWED` (whose exception must itself stand
-  down under `prefers-reduced-motion`), a `:focus-visible` outline, and that
-  colour tokens exist for every theme. Rules that are meaningless apart carry a
-  paired assertion — a `.statusbar-*` rule setting a column must also set a row.
+  down under `prefers-reduced-motion`), a `:focus-visible` outline, and no
+  literal colour outside `styles/tokens.css`. It reads all three sheets as a
+  set, not `App.css` — an absence guard is worth the fraction of the sheet it
+  can see, and the entry point is three `@import`s. Since phase 108 it also
+  iterates both grounds: every contrast pair is asserted twice, and the two
+  token blocks must declare identical name sets. Rules that are meaningless
+  apart carry a paired assertion — a `.statusbar-*` rule setting a column must
+  also set a row.
+  - **It composites, and that is the point.** Comparing one token to another
+    misses every surface that is not a token, and the chrome is a veil: what
+    sits behind the transport's rails is `--strip-veil` over `--surface`. Three
+    phase-108 defects passed the token pairs and failed in the engine. The
+    flattening arithmetic is deliberately the same as `e2e/contrast.ts`, because
+    the two disagreeing about what 4.5:1 means is the one failure a contrast
+    assertion cannot report on itself.
 - **`src/ipc/capabilities.test.ts`** maps each Tauri API the source calls to the
   permission it needs and asserts `capabilities/default.json` lists it. A lookup
   table, not an analysis, so an unknown call still slips through — but it has

@@ -286,6 +286,21 @@ export function saveZoom(factor: string): Promise<void> {
 }
 
 /**
+ * The stored theme preference, or null if it has never been set.
+ *
+ * A string rather than a resolved ground, because "system" is a third value
+ * the backend cannot resolve: only the webview can read
+ * `prefers-color-scheme`. See `features/shell/theme.ts`.
+ */
+export function loadTheme(): Promise<string | null> {
+  return invoke<string | null>("load_theme");
+}
+
+export function saveTheme(theme: string): Promise<void> {
+  return invoke<void>("save_theme", { theme });
+}
+
+/**
  * Minutes between unattended passes over the watch folders; zero means off.
  *
  * A number rather than the opaque strings around it, because Rust is what acts

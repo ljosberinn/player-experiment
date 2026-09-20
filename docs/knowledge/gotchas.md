@@ -102,6 +102,29 @@ Each of these cost real time once. They are here so they cost it once.
   scrollbar lie.
 - `oklch` steps are not binary-representable: round to one decimal or a label
   reads 100% while the value is 0.9999999999999999.
+- **A contrast ratio between two tokens is not the ratio on screen.** The chrome
+  is a veil, so what is behind a control in the transport is `--strip-veil`
+  composited onto `--surface`, which no token names. Three phase-108 defects
+  cleared the token pairs and failed in the engine. Flatten the stack —
+  `App.css.test.ts` and `e2e/contrast.ts` share the arithmetic.
+- **A mid-lightness accent cannot carry a mark on a light ground.** The design's
+  `#e8730f` peaks at 3.05:1 against pure white, so it fails WCAG 1.4.11 on every
+  surface there. A light theme generally needs two weights of the accent: the
+  brand colour for washes, a darker step for anything with a threshold.
+
+## WebDriver and WebView2
+
+- **`selectByAttribute` does not drive a native `<select>`.** A closed select
+  renders its option list as an OS popup rather than as DOM boxes, so clicking
+  the `<option>` hits nothing and the value never moves — green locally under
+  jsdom, a timeout in CI. Assert the React path in a component test and, where a
+  spec genuinely needs the value changed, assign through
+  `HTMLSelectElement.prototype`'s own setter (React tracks the last value it saw
+  on the node) and dispatch a bubbling `change`.
+- **A cleanup helper that only knows one dialog's way out poisons the suite.**
+  `closeDialog` clicked Cancel; Settings says Done. One failing test left its
+  dialog standing and three later tests measured it instead of their own — four
+  reported failures for one real defect.
 
 ## Toolchain
 

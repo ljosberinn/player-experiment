@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { loadWindowGeometry, saveWindowGeometry } from "../../ipc";
 import { debounce } from "../../lib/debounce";
 import { isOnScreen, parse, serialize } from "./geometry";
+import { useThemeStore } from "./themeStore";
 import { useZoomStore } from "./zoomStore";
 
 /**
@@ -77,14 +78,26 @@ export function useWindowGeometry(): void {
         // Leave the window where the OS put it.
       }
 
-      // Zoom is applied here rather than in its own effect because it has to
-      // happen before the window is shown: applying it afterwards means the
-      // user watches the whole app resize itself on every launch. The window
-      // is already hidden for the geometry restore, so this costs nothing.
+      // Zoom and theme are applied here rather than in their own effects
+      // because both have to happen before the window is shown: applying zoom
+      // afterwards means the user watches the whole app resize itself on every
+      // launch, and applying the theme afterwards means a dark-ground user
+      // watches it flash light. The window is already hidden for the geometry
+      // restore, so both cost nothing.
+      //
+      // Sequential rather than `Promise.all`: they share one SQLite
+      // connection, and two reads racing for it buys nothing on two rows.
       try {
         await useZoomStore.getState().load();
       } catch {
         // A failed zoom restore must not stop the window appearing.
+      }
+
+      try {
+        await useThemeStore.getState().load();
+      } catch {
+        // Nor must a failed theme restore. `tokens.css` draws light for a
+        // document with no `data-theme`, which is a legible app.
       }
 
       // The window starts hidden (`"visible": false` in tauri.conf.json) so

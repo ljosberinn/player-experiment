@@ -86,6 +86,11 @@ export const config: WebdriverIO.Config = {
     // dialog would add nothing to the photograph.
     "./specs/lastfm-import.test.ts",
     "./specs/library.test.ts",
+    // After `library`, because an empty table is not a photograph of this app:
+    // it only photographs the two grounds, and a reviewer cannot review a
+    // theme from a diff. It changes an attribute and puts it back, so the
+    // specs below see the library exactly as they would have.
+    "./specs/theme.test.ts",
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.
     "./specs/row-menu.test.ts",

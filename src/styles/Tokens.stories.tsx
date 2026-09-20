@@ -4,17 +4,23 @@ import { useEffect, useState } from "react";
 type Token = { name: string; value: string; isColor: boolean };
 
 /**
- * Every custom property declared on `:root`, in the order the sheet declares
- * them - which is the order the palette is commented in, so the groups come out
- * for free.
+ * Every custom property the sheet declares on a `:root`, in declaration order -
+ * which is the order the palette is commented in, so the groups come out free.
  *
- * Read from the live `CSSStyleSheet` rather than written out here on purpose. A
- * hand-kept list would prove the sheet reached the frame exactly once and then
- * go quietly stale; this one cannot, and it is what 107, 108 and 109 are read
- * against while they rewrite the block underneath it.
+ * The *names* come from the live `CSSStyleSheet` and the *values* from
+ * `getComputedStyle`, and the split is deliberate. Since phase 108 there are
+ * three `:root` blocks - one shared, one per ground - so a rule's own
+ * `style.getPropertyValue` reports whichever block it was read from rather
+ * than what is actually drawn. Resolving against `documentElement` instead
+ * gives the value in force on the ground the toolbar has selected, which is
+ * the only value worth putting on a specimen sheet.
+ *
+ * Read from the sheet rather than written out here for the same reason as
+ * before: a hand-kept list would prove the sheet reached the frame exactly
+ * once and then go quietly stale.
  */
 function readRootTokens(): Token[] {
-  const seen = new Map<string, string>();
+  const names = new Set<string>();
   for (const sheet of Array.from(document.styleSheets)) {
     let rules: CSSRuleList;
     try {
@@ -25,7 +31,9 @@ function readRootTokens(): Token[] {
       continue;
     }
     for (const rule of Array.from(rules)) {
-      if (!(rule instanceof CSSStyleRule) || rule.selectorText !== ":root") {
+      // `includes` rather than equality: the two ground blocks are
+      // `:root[data-theme="…"]`, and the light one is a selector list.
+      if (!(rule instanceof CSSStyleRule) || !rule.selectorText.includes(":root")) {
         continue;
       }
       for (const name of Array.from(rule.style)) {
@@ -35,16 +43,17 @@ function readRootTokens(): Token[] {
         // does not and `storybook dev` does not show - and one of them,
         // `initial`, passes for a colour and would be drawn as a swatch.
         if (name.startsWith("--") && !name.startsWith("--lightningcss-")) {
-          seen.set(name, rule.style.getPropertyValue(name).trim());
+          names.add(name);
         }
       }
     }
   }
-  return Array.from(seen, ([name, value]) => ({
-    name,
-    value,
-    isColor: CSS.supports("color", value),
-  }));
+
+  const resolved = getComputedStyle(document.documentElement);
+  return Array.from(names, (name) => {
+    const value = resolved.getPropertyValue(name).trim();
+    return { name, value, isColor: CSS.supports("color", value) };
+  });
 }
 
 /** Two grounds and an ink behind each swatch, so an alpha token reads as one. */
@@ -74,6 +83,22 @@ function TokenSheet() {
   const [tokens, setTokens] = useState<Token[]>([]);
   useEffect(() => {
     setTokens(readRootTokens());
+
+    // Re-read when the toolbar flips the ground. Watching the attribute rather
+    // than taking the Storybook global as an argument keeps the story ignorant
+    // of how the ground got set: it is the same `data-theme` the app's own
+    // `themeStore` writes, so this specimen reflects the mechanism it
+    // documents rather than a parallel one.
+    const observer = new MutationObserver(() => {
+      setTokens(readRootTokens());
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   return (
@@ -101,7 +126,7 @@ function TokenSheet() {
           >
             {token.isColor ? <Swatch token={token} /> : <span />}
             <span>{token.name}</span>
-            <span style={{ color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
+            <span style={{ color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
               {token.value}
             </span>
           </div>

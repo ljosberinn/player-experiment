@@ -1146,6 +1146,24 @@ pub fn save_zoom(db: State<'_, Db>, factor: String) -> AppResult<()> {
     settings::set(&conn, settings::ZOOM, &factor)
 }
 
+/// Which ground the app draws on: `"system"`, `"light"` or `"dark"`.
+///
+/// Opaque to Rust, like the column layout: what the three values mean, and how
+/// `"system"` resolves, is the frontend's business - it is the only half that
+/// can ask the OS. Applied before the window is shown for the zoom's reason,
+/// so nobody watches the app change colour on every launch.
+#[tauri::command]
+pub fn load_theme(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::THEME)
+}
+
+#[tauri::command]
+pub fn save_theme(db: State<'_, Db>, theme: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::THEME, &theme)
+}
+
 /// Minutes between unattended library passes; zero means off.
 ///
 /// A number rather than the opaque strings above, because Rust is what reads

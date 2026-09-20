@@ -1,9 +1,11 @@
 # Frontend
 
 React 19 + TypeScript + Vite, Zustand stores, TanStack Virtual, Base UI for
-menus, dialogs, sliders, tabs and toolbars. No CSS framework: `src/App.css`
-holds tokens, density and the native-feel rules, and Base UI parts are handed
-classes that already exist.
+menus, dialogs, sliders, tabs and toolbars. No CSS framework. `src/App.css` is
+three `@import`s in cascade order — `styles/tokens.css` (the palette, on both
+grounds), `styles/primitives.css` (reset, window, focus, the blob layer) and
+`styles/app.css` (every region from the title bar down) — and Base UI parts are
+handed classes that already exist.
 
 ## The table
 
@@ -279,7 +281,7 @@ absences are what nobody notices coming back — hence the guards in
   - Every icon is decorative: each sits beside its own label or inside a button
     with an `aria-label`, so a name here would be announced twice.
   - **The caption buttons are the exception** and stay Segoe MDL2 (see
-    `.window-buttons` in `App.css`). Those are the OS glyphs; a library X in the
+    `.window-buttons` in `styles/app.css`). Those are the OS glyphs; a library X in the
     corner of a Windows title bar reads as a web page.
 - **A dialog that outlives its own content states does not resize.** `.modal` on
   its own is a scroller with a `max-height`, which is right for a dialog asked
