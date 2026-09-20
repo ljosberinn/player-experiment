@@ -121,6 +121,47 @@ pub fn tag_release_type_as_picard(path: &Path, value: &str) {
         .expect("write tags");
 }
 
+/// An ID3v2.4 size: four bytes of seven bits each.
+fn synchsafe(mut size: u32) -> [u8; 4] {
+    let mut out = [0u8; 4];
+    for byte in out.iter_mut().rev() {
+        *byte = (size & 0x7F) as u8;
+        size >>= 7;
+    }
+    out
+}
+
+/// One frame with `body` already encoded, unflagged.
+fn raw_frame(id: &str, body: &[u8]) -> Vec<u8> {
+    let mut frame = Vec::from(id.as_bytes());
+    frame.extend_from_slice(&synchsafe(body.len() as u32));
+    frame.extend_from_slice(&[0, 0]);
+    frame.extend_from_slice(body);
+    frame
+}
+
+/// One text frame, UTF-8 encoded.
+fn text_frame(id: &str, value: &str) -> Vec<u8> {
+    let mut body = vec![3u8];
+    body.extend_from_slice(value.as_bytes());
+    raw_frame(id, &body)
+}
+
+/// An mp3 carrying `frames` of ID3v2.4 in front of `audio_frames` of silence.
+fn write_hand_built_mp3(path: &Path, audio_frames: usize, frames: &[Vec<u8>]) {
+    let body = frames.concat();
+    let mut bytes = Vec::from(&b"ID3"[..]);
+    bytes.extend_from_slice(&[4, 0, 0]);
+    bytes.extend_from_slice(&synchsafe(body.len() as u32));
+    bytes.extend_from_slice(&body);
+    bytes.extend_from_slice(&silent_mp3(audio_frames));
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixture dir");
+    }
+    std::fs::write(path, bytes).expect("write fixture mp3");
+}
+
 /// An mp3 whose date frame lofty will read but refuse to write back.
 ///
 /// Hand-built because no lofty call can produce one: an out-of-range month or
@@ -134,39 +175,53 @@ pub fn write_mp3_with_unwritable_date(
     id: &str,
     date: &str,
 ) {
-    /// An ID3v2.4 size: four bytes of seven bits each.
-    fn synchsafe(mut size: u32) -> [u8; 4] {
-        let mut out = [0u8; 4];
-        for byte in out.iter_mut().rev() {
-            *byte = (size & 0x7F) as u8;
-            size >>= 7;
-        }
-        out
-    }
+    write_hand_built_mp3(
+        path,
+        frames,
+        &[text_frame("TIT2", title), text_frame(id, date)],
+    );
+}
 
-    /// One text frame, UTF-8 encoded and unflagged.
-    fn text_frame(id: &str, value: &str) -> Vec<u8> {
-        let mut body = vec![3u8];
-        body.extend_from_slice(value.as_bytes());
+/// An mp3 whose `COMM` frame declares `language`, whatever those three bytes
+/// are.
+///
+/// Hand-built for the same reason as [`write_mp3_with_unwritable_date`]:
+/// `LanguageFrame::parse` takes the bytes as they come and only the encoder
+/// insists they be ASCII letters, so the ones that matter here - `\0\0\xB0` is
+/// what the wild produced - are exactly the ones no lofty call would write.
+pub fn write_mp3_with_comment_language(
+    path: &Path,
+    frames: usize,
+    title: &str,
+    language: [u8; 3],
+    comment: &str,
+) {
+    // Encoding, language, an empty description terminated by its null, then
+    // the text: the COMM layout of ID3v2.4 section 4.10.
+    let mut body = vec![3u8];
+    body.extend_from_slice(&language);
+    body.push(0);
+    body.extend_from_slice(comment.as_bytes());
 
-        let mut frame = Vec::from(id.as_bytes());
-        frame.extend_from_slice(&synchsafe(body.len() as u32));
-        frame.extend_from_slice(&[0, 0]);
-        frame.extend_from_slice(&body);
-        frame
-    }
+    write_hand_built_mp3(
+        path,
+        frames,
+        &[text_frame("TIT2", title), raw_frame("COMM", &body)],
+    );
+}
 
-    let body = [text_frame("TIT2", title), text_frame(id, date)].concat();
-    let mut bytes = Vec::from(&b"ID3"[..]);
-    bytes.extend_from_slice(&[4, 0, 0]);
-    bytes.extend_from_slice(&synchsafe(body.len() as u32));
-    bytes.extend_from_slice(&body);
-    bytes.extend_from_slice(&silent_mp3(frames));
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("create fixture dir");
-    }
-    std::fs::write(path, bytes).expect("write fixture mp3");
+/// The language declared by the first `COMM` frame of the mp3 at `path`.
+pub fn comment_language(path: &Path) -> [u8; 3] {
+    let mut file = std::fs::File::open(path).expect("open mp3");
+    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).expect("read mp3");
+    let language = mpeg
+        .id3v2()
+        .expect("an ID3v2 tag")
+        .comments()
+        .next()
+        .expect("a COMM frame")
+        .language;
+    language
 }
 
 /// `count` interchangeable mp3s under `root/bulk`, for the tests whose subject

@@ -14,6 +14,7 @@ use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::probe::Probe;
+use lofty::tag::items::UNKNOWN_LANGUAGE;
 use lofty::tag::{Tag, TagType};
 use rusqlite::{Connection, OptionalExtension};
 
@@ -473,6 +474,35 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
     Ok(())
 }
 
+/// Replaces a `COMM` or `USLT` language lofty would refuse to write with
+/// `XXX`.
+///
+/// lofty reads the three bytes as they come and only checks them on the way
+/// out, so a tagger that put junk there (`\0\0\xB0` is what the wild produced)
+/// leaves a file whose every later save is refused, whatever the edit was
+/// about. The text is the user's and stays; only the claim about what language
+/// it is in goes, and `XXX` is what ID3v2.4 4.10 says to write when that is
+/// unknown.
+///
+/// Repairing rather than reporting, unlike the unwritable dates of [`shape`]:
+/// the language carries no information a user could want back, so there is
+/// nothing to lose by dropping it and a file to rescue by doing so.
+fn repair_languages(id3: &mut Id3v2Tag) {
+    // `retain_mut` keeps every frame; it is the only mutable view of the list
+    // lofty exposes.
+    id3.retain_mut(|frame| {
+        let language = match frame {
+            Frame::Comment(comment) => &mut comment.language,
+            Frame::UnsynchronizedText(lyrics) => &mut lyrics.language,
+            _ => return true,
+        };
+        if language.iter().any(|byte| !byte.is_ascii_alphabetic()) {
+            *language = UNKNOWN_LANGUAGE;
+        }
+        true
+    });
+}
+
 /// Saves `tag`, carrying the MusicBrainz ids lofty would drop on the way.
 ///
 /// See [`MUSICBRAINZ_TXXX`]. The values are taken off the generic tag before
@@ -503,6 +533,7 @@ fn save_tag(path: &Path, tag: Tag) -> Result<(), Refused> {
         .collect();
 
     let mut id3 = Id3v2Tag::from(tag);
+    repair_languages(&mut id3);
     for (_, description) in MUSICBRAINZ_TXXX {
         id3.remove_user_text(description);
     }
