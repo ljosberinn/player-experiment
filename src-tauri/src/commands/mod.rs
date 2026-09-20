@@ -1536,6 +1536,61 @@ pub async fn lastfm_import(
     .await
 }
 
+/// Every library track last.fm holds a love for.
+///
+/// The whole set in one answer, because the window holds it as a set: the
+/// right-click menu has to say `Love` or `Unlove` the instant it opens, and a
+/// round trip per row under the pointer is not that. Measured at 53 ms over a
+/// 237,675-play log, which is a startup cost and a per-toggle one, not a
+/// per-row one.
+#[tauri::command]
+pub fn lastfm_loved_tracks(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Vec<i64>> {
+    log.op("lastfm.loved_tracks")
+        .quiet()
+        .run(|| crate::db::loved::tracks(&db.conn()?))
+}
+
+/// Loves or unloves a selection, and answers with the set as it now stands.
+///
+/// The set rather than nothing, so the window never has to guess: two library
+/// rows can share one `match_key`, and loving either loves both. Returned on
+/// the way out of the same call the user pressed, so the menu's optimistic
+/// answer is replaced by the truth rather than merely left standing.
+///
+/// Off the IPC thread: this is one signed request per song, over the network.
+#[tauri::command]
+pub async fn lastfm_love(
+    app: tauri::AppHandle,
+    track_ids: Vec<i64>,
+    loved: bool,
+) -> AppResult<Vec<i64>> {
+    blocking("last.fm love", move || {
+        let (transport, credentials) = lastfm_ready()?;
+        let conn = app.state::<Db>().conn()?;
+
+        let was_connected = lastfm::auth::stored_session(&conn)?.is_some();
+        let outcome = op(&app, "lastfm.love")
+            .add("tracks", track_ids.len())
+            .add("loved", loved)
+            .run(|| lastfm::love::set(transport, &credentials, &conn, &track_ids, loved));
+
+        // An account that went away during the call: `love::set` forgets a
+        // key last.fm rejected, and the Account menu would go on claiming it
+        // until the next launch. Read back rather than matched on the error,
+        // because the fact worth reporting is that the session is gone.
+        if outcome.is_err() && was_connected && lastfm::auth::stored_session(&conn)?.is_none() {
+            let _ = app.emit("lastfm://disconnected", ());
+        }
+        outcome?;
+
+        // A Loved rule is a smart playlist's membership, so a love changes
+        // what one holds.
+        invalidate::announce(&app);
+        crate::db::loved::tracks(&conn)
+    })
+    .await
+}
+
 /// The transport and credentials, or a message saying which is missing.
 ///
 /// A build compiled without an API key is the ordinary case for every local

@@ -193,20 +193,6 @@ fn compile_rule(
     }
 }
 
-/// The tracks last.fm holds in the loved set, as a subquery over `tracks.id`.
-///
-/// The set is keyed by [`crate::db::plays::match_key`] and nothing maps a key
-/// to a track except `plays.track_id`, so membership goes through the play
-/// log. Measured at 53 ms over 237,675 plays, which is why no covering index
-/// on `plays(match_key, track_id)` was bought for it; see issue 101.
-///
-/// `track_id IS NOT NULL` sits *inside* the subquery, so the list `NOT IN`
-/// reads can never hold a NULL to swallow the comparison with. That is why
-/// this needs none of the `IS NULL OR …` shape every text `IsNot` carries.
-const LOVED_TRACKS: &str = "SELECT track_id FROM plays \
-                            WHERE track_id IS NOT NULL \
-                            AND match_key IN (SELECT match_key FROM lastfm_loved)";
-
 /// A field that is a fact about the row rather than a column on it.
 ///
 /// Valueless on purpose: a `FilterValue::Bool` would be a second way to spell
@@ -217,7 +203,7 @@ fn compile_boolean(rule: &crate::model::FilterRule) -> AppResult<String> {
         return Err(mismatch(rule, "no value"));
     }
     let members = match rule.field {
-        crate::model::FilterField::Loved => LOVED_TRACKS,
+        crate::model::FilterField::Loved => crate::db::loved::MEMBERS,
         field => {
             return Err(AppError::Internal(format!(
                 "{field:?} has no membership test."

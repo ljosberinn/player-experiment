@@ -19,6 +19,14 @@ export type MenuItem =
       onSelect?: (() => void) | undefined;
       /** Shown greyed and skipped by the keyboard, rather than hidden. */
       disabled?: boolean | undefined;
+      /**
+       * Why this entry is greyed, in a few words.
+       *
+       * Real text in the item rather than a tooltip, so a screen reader reads
+       * it with the label and a disabled entry never leaves the user guessing
+       * what would un-grey it. Short: it shares the row with the label.
+       */
+      hint?: string | undefined;
       submenu?: MenuItem[] | undefined;
     };
 
@@ -136,9 +144,14 @@ export function renderMenuItem(item: MenuItem, index: number) {
       key={item.label}
       className="context-item"
       disabled={item.disabled}
+      // Spelled out rather than left to the two text nodes: the accessible
+      // name is their concatenation with no separator, so a hinted entry would
+      // otherwise be announced as "LoveNeeds a last.fm account".
+      aria-label={item.hint === undefined ? undefined : `${item.label}. ${item.hint}`}
       onClick={() => item.onSelect?.()}
     >
       {item.label}
+      {item.hint === undefined ? null : <span className="context-hint">{item.hint}</span>}
     </Base.Item>
   );
 }

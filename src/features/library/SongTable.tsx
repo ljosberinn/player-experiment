@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "../../components/ui/ContextMenu";
 import { revealTrack } from "../../ipc";
 import { useEditorStore } from "../editor/store";
+import { useLoveEntry } from "../lastfm/loveEntry";
 import { isTypingTarget } from "../player/shortcuts";
 import { nudgeTarget } from "../playlists/reorder";
 import { usePlaylistsStore } from "../playlists/store";
@@ -101,6 +102,8 @@ export function SongTable({
   const direction = useLibraryStore((s) => s.direction);
   const selection = useLibraryStore((s) => s.selection);
   const rowAt = useLibraryStore((s) => s.rowAt);
+  // For the Love entry, which is handed a selection by id rather than by row.
+  const trackById = useLibraryStore((s) => s.trackById);
   const ensureRange = useLibraryStore((s) => s.ensureRange);
   const toggleSort = useLibraryStore((s) => s.toggleSort);
   // Subscribing to `pages` is what re-renders rows when a page lands; `rowAt`
@@ -132,6 +135,10 @@ export function SongTable({
    * opens.
    */
   const [menu, setMenu] = useState<{ trackIds: number[]; rowIndex: number } | null>(null);
+
+  // Built here rather than inside the items expression below: it subscribes,
+  // and a hook cannot live in a branch that only runs while a menu is open.
+  const loving = useLoveEntry(menu?.trackIds ?? [], trackById);
 
   const virtualizer = useVirtualizer({
     count: total,
@@ -419,6 +426,7 @@ export function SongTable({
                   onRemoveFromLibrary: onRemoveFromLibrary
                     ? () => onRemoveFromLibrary(menu.trackIds)
                     : undefined,
+                  loving,
                   onExport: () => onExport?.(menu.trackIds),
                   // One id: the menu disables this entry unless exactly one row
                   // is selected, so there is no question of which file to show.

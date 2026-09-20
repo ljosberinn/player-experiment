@@ -59,7 +59,9 @@ fn assert_under(label: &str, budget_ms: u128, mut work: impl FnMut()) {
 
 /// Held shared by every test, and exclusively by a measurement that is a
 /// single sample and so cannot shrug off a neighbour the way `assert_under`
-/// does.
+/// does. A single sample over a write the size of the library needs it too,
+/// not only the cold resolve: `marking_a_vanished_library` failed on the
+/// runner beside a play-log seed without it.
 ///
 /// Every test has to take it, because the one left out is the neighbour: the
 /// cold resolve took 78s on the runner beside the library aggregates, where
@@ -319,13 +321,18 @@ fn asking_how_many_files_are_missing_is_free() {
 
 #[test]
 fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
-    let _shared = alongside_others();
+    let shared = alongside_others();
     // The change phase 16 makes to a scan: what used to be one DELETE per
     // vanished row is now one UPDATE per vanished row. The worst case is every
     // file at once - an unplugged drive - so that is what is measured.
     let (_dir, db) = seeded_library();
     let mut conn = db.conn().unwrap();
+    drop(shared);
 
+    // Both budgets below are a single sample, so this takes the runner alone
+    // for the same reason the cold resolve does: run beside the play-log
+    // seeds the first one measured 2449ms against a 2000ms budget.
+    let _alone = alone();
     let start = Instant::now();
     // No watch folders are configured, so every row is a file the walk cannot
     // find, which is exactly the unplugged-drive shape.

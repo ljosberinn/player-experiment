@@ -243,6 +243,16 @@ describe("the row menu", () => {
     await expect(browser.$("tr.song-row")).toBeExisting();
   });
 
+  it("offers no Love on a build with no last.fm key", async () => {
+    // Every CI build is compiled without one, so this is the state the suite
+    // can actually reach - and it is the property the whole feature rests on:
+    // no key, nothing on offer. Absent rather than greyed, because there is no
+    // account to connect and no question the entry would answer.
+    await openRowMenu();
+
+    expect(await itemsOf("Song actions")).not.toContain("Love");
+  });
+
   it("opens the tag editor on Edit, titled the same as the entry", async () => {
     // The one entry it is safe to follow: the lookups open a browser on the
     // runner, and this opens a dialog. Cancel puts it back.

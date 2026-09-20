@@ -14,6 +14,7 @@
 
 pub mod auth;
 pub mod import;
+pub mod love;
 pub mod queue;
 pub mod rules;
 pub mod sign;
