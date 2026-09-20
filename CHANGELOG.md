@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.1](https://github.com/ljosberinn/player-experiment/compare/v0.17.0...v0.17.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* a comment lofty will not write back ([#228](https://github.com/ljosberinn/player-experiment/issues/228)) ([faf0d93](https://github.com/ljosberinn/player-experiment/commit/faf0d935c3cbcb02b9aeb932103b108bd4ee828c))
+* a lookup that could not write no longer says it did ([#230](https://github.com/ljosberinn/player-experiment/issues/230)) ([fa773fd](https://github.com/ljosberinn/player-experiment/commit/fa773fdde8f6518e90275ea4122256cabd5b5218))
+
 ## [0.17.0](https://github.com/ljosberinn/player-experiment/compare/v0.16.0...v0.17.0) (2026-09-20)
 
 
