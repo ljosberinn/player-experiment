@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.16.0](https://github.com/ljosberinn/player-experiment/compare/v0.15.0...v0.16.0) (2026-09-20)
+
+
+### Features
+
+* a compilation is one lookup, not twelve ([#219](https://github.com/ljosberinn/player-experiment/issues/219)) ([b695ac4](https://github.com/ljosberinn/player-experiment/commit/b695ac4e165914bf6c6422623a4886d7308f6eae))
+* a smart playlist opens on its releases ([#221](https://github.com/ljosberinn/player-experiment/issues/221)) ([148c7f5](https://github.com/ljosberinn/player-experiment/commit/148c7f5e747b88f2d892498b0d826f1473f8b1c7))
+* love a track from the app ([#223](https://github.com/ljosberinn/player-experiment/issues/223)) ([18e5567](https://github.com/ljosberinn/player-experiment/commit/18e55679833666fdd6b5097986abf56ab920c8d7))
+* loved is a smart-playlist field ([#222](https://github.com/ljosberinn/player-experiment/issues/222)) ([ff522d1](https://github.com/ljosberinn/player-experiment/commit/ff522d1022a1dd9ab07d7c9495dd3ba3af7ac81b))
+* one album, many spellings ([#224](https://github.com/ljosberinn/player-experiment/issues/224)) ([7aeb2b5](https://github.com/ljosberinn/player-experiment/commit/7aeb2b5ea11985c2deac97bff28272551aa329fe))
+
 ## [0.15.0](https://github.com/ljosberinn/player-experiment/compare/v0.14.0...v0.15.0) (2026-09-19)
 
 
