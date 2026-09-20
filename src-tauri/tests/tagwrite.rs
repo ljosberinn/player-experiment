@@ -161,7 +161,8 @@ fn a_write_round_trips_through_the_file_and_into_the_library() {
         },
         |_| {},
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!((summary.written, summary.failed), (1, 0));
 
@@ -246,7 +247,8 @@ fn one_edit_covers_a_whole_selection() {
         },
         |_| {},
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!(summary.written, 2);
     for track in tracks {
@@ -292,7 +294,8 @@ fn a_batch_of_per_track_edits_writes_each_one() {
         ],
         |_| {},
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!((summary.written, summary.failed), (2, 0));
     let one = tags::read(&path_of(&h.db, first)).unwrap();
@@ -661,7 +664,8 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
         },
         |_| {},
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!((summary.written, summary.failed), (1, 1));
     assert_eq!(summary.errors.len(), 1);
@@ -670,6 +674,84 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
         Some("Mixed"),
         "one bad file must not cost the good ones"
     );
+}
+
+#[test]
+fn a_failure_leaves_the_log_the_detail_the_message_does_not_carry() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let doomed = id_of(&h.db, "Sleeping Ute");
+    let path = path_of(&h.db, doomed);
+    std::fs::remove_file(&path).unwrap();
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[doomed],
+        &TagEdit {
+            genre: set("Mixed"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    let line = written
+        .diagnostics
+        .first()
+        .expect("a failure, a line")
+        .to_string();
+    assert!(line.contains(&path.display().to_string()), "{line}");
+    // Which step it was, and the OS's own number for why: between them they
+    // are the difference between a file that is gone, one another process
+    // holds, and a disk with no room left.
+    assert!(line.contains("stage=copy"), "{line}");
+    assert!(line.contains("os="), "{line}");
+}
+
+#[test]
+fn a_date_that_cannot_be_written_back_is_named_rather_than_hidden() {
+    let h = harness();
+    fixture::write_mp3_with_unwritable_date(
+        &h.music.join("loose/bad-date.mp3"),
+        10,
+        "Bad Date",
+        "TDRC",
+        "2012-13",
+    );
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Bad Date");
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Shoegaze"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 1);
+    // All the user gets, and the whole reason for the line below: the same
+    // sentence covers a full disk, a locked file and this.
+    assert!(
+        written.summary.errors[0].contains("failed to write Mpeg file"),
+        "{:?}",
+        written.summary.errors
+    );
+
+    let line = written
+        .diagnostics
+        .first()
+        .expect("a failure, a line")
+        .to_string();
+    assert!(line.contains("stage=save"), "{line}");
+    // The frame is in the tag's companion rather than its items, so this is
+    // the only place it is visible at all.
+    assert!(line.contains("dates=TDRC=2012-13"), "{line}");
+    assert!(line.contains("Month"), "{line}");
 }
 
 #[test]
@@ -799,7 +881,8 @@ fn editing_a_track_the_library_no_longer_has_is_skipped_not_fatal() {
         },
         |_| {},
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!((summary.written, summary.failed), (1, 0));
 }
@@ -823,7 +906,8 @@ fn progress_starts_at_zero_and_lands_on_the_count_it_was_asked_for() {
         },
         |p| seen.push(p),
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!(summary.written, 1);
     assert_eq!(seen.first().unwrap().done, 0);
@@ -878,7 +962,8 @@ fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
         },
         |p| seen.push(p),
     )
-    .unwrap();
+    .unwrap()
+    .summary;
 
     assert_eq!((summary.written, summary.failed), (BULK as u32, 0));
     assert_reports_as_it_goes(&seen, BULK as u32);

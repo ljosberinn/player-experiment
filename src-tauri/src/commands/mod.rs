@@ -561,7 +561,7 @@ pub async fn write_tags(
         let db = app.state::<Db>();
         let mut conn = db.conn()?;
         // Once, when the batch returns. `TAG_PROGRESS` stays per track.
-        announcing_with(
+        let written = announcing_with(
             &app,
             op,
             || {
@@ -571,7 +571,8 @@ pub async fn write_tags(
                 })
             },
             written_fields,
-        )
+        )?;
+        Ok(noting_failures(&app, written))
     })
     .await
 }
@@ -580,10 +581,26 @@ pub async fn write_tags(
 ///
 /// `failed` is always written, zero included: "17 written" and "17 written, 3
 /// refused" are different outcomes and the line has to distinguish them.
-fn written_fields(summary: &TagWriteSummary) -> Fields {
+fn written_fields(written: &tags::write::Written) -> Fields {
     Fields::new()
-        .add("written", summary.written)
-        .add("failed", summary.failed)
+        .add("written", written.summary.written)
+        .add("failed", written.summary.failed)
+}
+
+/// One line per file that refused the write, on top of the batch's own.
+///
+/// The batch line says how many failed, which is the wrong grain for the only
+/// question worth asking afterwards. The failures that brought this about are
+/// intermittent and the user-facing string is the same every time - lofty
+/// reports a full disk, a locked file and a frame it cannot encode all as
+/// "failed to write Mpeg file" - so the per-file detail is the whole of the
+/// evidence. See `tags::write::causes`.
+fn noting_failures(app: &tauri::AppHandle, written: tags::write::Written) -> TagWriteSummary {
+    let log = app.state::<Log>();
+    for fields in written.diagnostics {
+        log.problem("tags.write.fail", fields);
+    }
+    written.summary
 }
 
 /// The staged cover's file name, minus the extension the sniff decides.
@@ -914,7 +931,8 @@ pub async fn tagsource_apply(
                 })
             },
             written_fields,
-        )?;
+        )
+        .map(|written| noting_failures(&app, written))?;
 
         // The key that was just written, recorded as settled. Two things need
         // it. A release reviewed out of 82c's queue leaves that queue on this

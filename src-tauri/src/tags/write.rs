@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use lofty::config::WriteOptions;
 use lofty::file::TaggedFileExt;
-use lofty::id3::v2::Id3v2Tag;
+use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
 use lofty::probe::Probe;
@@ -18,6 +18,7 @@ use lofty::tag::{Tag, TagType};
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::{AppError, AppResult};
+use crate::log::Fields;
 use crate::model::{CoverEdit, TagEdit, TagWriteSummary, WriteProgress};
 use crate::tags::{hash_bytes, Cover};
 
@@ -52,6 +53,13 @@ const MUSICBRAINZ_TXXX: [(ItemKey, &str); 2] = [
 /// to move a readout by a pixel. `scan` chunks at 200 for the same reason and
 /// is doing much cheaper work per item.
 const PROGRESS_INTERVAL: usize = 25;
+
+/// The frames lofty stores as a timestamp rather than as text.
+///
+/// Listed so [`shape`] can report the ones that arrived as text too: a value
+/// lofty could not parse into a timestamp is kept as a text frame, and which
+/// of the two a date ended up as is half of why a write was refused.
+const DATE_IDS: [&str; 5] = ["TDEN", "TDOR", "TDRC", "TDRL", "TDTG"];
 
 /// Which fields an edit touches, resolved from the request's strings.
 ///
@@ -269,21 +277,151 @@ fn mutate(tag: &mut Tag, resolved: &Resolved) {
     }
 }
 
+/// A file that refused the write: what the person is told, and what the log
+/// gets instead.
+///
+/// Two audiences, and they want opposite things. `error` is one line in a
+/// toast, so it says what lofty said. `fields` never leaves the backend and
+/// carries everything that line cannot - see [`causes`].
+struct Failure {
+    error: AppError,
+    fields: Fields,
+}
+
+/// Everything under `error` that its own `Display` leaves out.
+///
+/// The reason this module logs at all. lofty's `FileEncodingError` prints the
+/// format and nothing else, so a full disk, a file another process holds open
+/// and a frame it cannot encode all reach the user as "failed to write Mpeg
+/// file", and only the chain underneath tells them apart.
+fn causes(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut chain = Vec::new();
+    let mut current = error.source();
+    while let Some(cause) = current {
+        chain.push(cause.to_string());
+        current = cause.source();
+    }
+    if chain.is_empty() {
+        return "-".to_owned();
+    }
+    chain.join(" <- ")
+}
+
+/// The OS error code from anywhere in `error`'s chain, or `-` if it carries
+/// none.
+///
+/// The number is what separates the causes that read alike: on Windows 112 is
+/// a full disk, 32 a file another process has open, 5 a permission.
+fn os_code(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut current = Some(error);
+    while let Some(error) = current {
+        if let Some(io) = error.downcast_ref::<std::io::Error>() {
+            return io
+                .raw_os_error()
+                .map_or_else(|| "-".to_owned(), |code| code.to_string());
+        }
+        current = error.source();
+    }
+    "-".to_owned()
+}
+
+/// The tag lofty was handed, in the terms a refusal is usually about.
+///
+/// `dates` is the reason for the rest. lofty reads an out-of-range `TDRC` or
+/// `TDOR` - `2012-13`, `2012-06-45` - without complaint and then refuses to
+/// write it back, and the frame rides in the tag's *companion* rather than in
+/// its items, so nothing on this side can see it: not [`mutate`], and not the
+/// editor, which is why clearing Year does not rescue such a file.
+fn shape(id3: &Id3v2Tag) -> Fields {
+    let mut dates: Vec<String> = Vec::new();
+    let mut frames = 0usize;
+    let mut pictures = 0usize;
+    let mut picture_bytes = 0usize;
+
+    for frame in id3.iter() {
+        frames += 1;
+        match frame {
+            Frame::Timestamp(value) => {
+                dates.push(format!("{}={}", frame.id_str(), value.timestamp))
+            }
+            Frame::Text(value) if DATE_IDS.contains(&frame.id_str()) => {
+                dates.push(format!("{}~{}", frame.id_str(), value.value));
+            }
+            Frame::Picture(value) => {
+                pictures += 1;
+                picture_bytes += value.picture.data().len();
+            }
+            _ => {}
+        }
+    }
+
+    Fields::new()
+        .add("frames", frames)
+        .add("pics", pictures)
+        .add("picbytes", picture_bytes)
+        .add(
+            "dates",
+            if dates.is_empty() {
+                "-".to_owned()
+            } else {
+                dates.join(",")
+            },
+        )
+}
+
 /// Writes `resolved` into the file at `path`, atomically.
 ///
 /// The tags go onto a copy beside the original, which then replaces it in one
 /// rename. A crash mid-write therefore leaves either the old file or the new
 /// one, never a truncated mp3 - and the copy is in the same directory so the
 /// rename stays on one filesystem and stays atomic.
-fn write_file(path: &Path, resolved: &Resolved) -> AppResult<()> {
+fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
     let temp = temp_beside(path);
-    std::fs::copy(path, &temp).map_err(|e| AppError::io(temp.display(), e))?;
+    let size = std::fs::metadata(path).map_or(0, |meta| meta.len());
+    // `stage` is not derivable after the fact: the copy, the read-back and the
+    // rewrite all arrive as one string, and which of them it was narrows the
+    // cause more than anything else on the line.
+    let here = |stage: &'static str| {
+        Fields::new()
+            .add("path", path.display())
+            .add("stage", stage)
+            .add("size", size)
+    };
 
-    let result = (|| -> AppResult<()> {
-        let tagged = Probe::open(&temp)
-            .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?
-            .read()
-            .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
+    if let Err(error) = std::fs::copy(path, &temp) {
+        let fields = here("copy")
+            .add("cause", causes(&error))
+            .add("os", os_code(&error));
+        return Err(Failure {
+            error: AppError::io(temp.display(), error),
+            fields,
+        });
+    }
+
+    let result = (|| -> Result<(), Failure> {
+        let tagged = match Probe::open(&temp).and_then(|probe| probe.read()) {
+            Ok(tagged) => tagged,
+            Err(error) => {
+                let fields = here("probe")
+                    .add("cause", causes(&error))
+                    .add("os", os_code(&error));
+                return Err(Failure {
+                    error: AppError::Internal(format!("{}: {error}", path.display())),
+                    fields,
+                });
+            }
+        };
+
+        // Which tag the edit is about to be built on. A file whose only tag is
+        // ID3v1 takes a different branch through `save_tag`, and one with no
+        // tag at all has nothing carried over from disk to blame.
+        let source = if tagged.primary_tag().is_some() {
+            "primary"
+        } else if tagged.first_tag().is_some() {
+            "first"
+        } else {
+            "new"
+        };
 
         let mut tag = tagged
             .primary_tag()
@@ -293,18 +431,45 @@ fn write_file(path: &Path, resolved: &Resolved) -> AppResult<()> {
             .unwrap_or_else(|| Tag::new(TagType::Id3v2));
 
         mutate(&mut tag, resolved);
-        save_tag(&temp, tag).map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))
+        let kind = tag.tag_type();
+
+        save_tag(&temp, tag).map_err(|refused| {
+            let fields = here("save")
+                .add("tag", format!("{kind:?}/{source}"))
+                .add("cause", causes(&refused.error))
+                .add("os", os_code(&refused.error))
+                // How far the rewrite got. lofty truncates the copy before it
+                // writes it back, so a `temp` far short of `size` is a write
+                // that ran out of room rather than a tag it would not encode.
+                .add(
+                    "temp",
+                    std::fs::metadata(&temp).map_or(0, |meta| meta.len()),
+                )
+                .merge(refused.shape);
+            Failure {
+                error: AppError::Internal(format!("{}: {}", path.display(), refused.error)),
+                fields,
+            }
+        })
     })();
 
-    if result.is_err() {
+    if let Err(failure) = result {
         // The original is untouched, so the copy is just litter.
         let _ = std::fs::remove_file(&temp);
-        return result;
+        return Err(failure);
     }
 
     // On Windows this is MoveFileEx with MOVEFILE_REPLACE_EXISTING, so it
     // replaces the original rather than failing on it.
-    std::fs::rename(&temp, path).map_err(|e| AppError::io(path.display(), e))?;
+    if let Err(error) = std::fs::rename(&temp, path) {
+        let fields = here("rename")
+            .add("cause", causes(&error))
+            .add("os", os_code(&error));
+        return Err(Failure {
+            error: AppError::io(path.display(), error),
+            fields,
+        });
+    }
     Ok(())
 }
 
@@ -319,9 +484,14 @@ fn write_file(path: &Path, resolved: &Resolved) -> AppResult<()> {
 /// Only ID3v2 gets this. An mp3 carrying nothing but an ID3v1 tag has no frame
 /// to put a MusicBrainz id in, and turning it into an ID3v2 file would be a
 /// larger change to make silently than the ids are worth.
-fn save_tag(path: &Path, tag: Tag) -> Result<(), lofty::error::FileEncodingError> {
+fn save_tag(path: &Path, tag: Tag) -> Result<(), Refused> {
     if tag.tag_type() != TagType::Id3v2 {
-        return tag.save_to_path(path, WriteOptions::default());
+        return tag
+            .save_to_path(path, WriteOptions::default())
+            .map_err(|error| Refused {
+                error,
+                shape: Fields::new(),
+            });
     }
 
     let carried: Vec<(&str, String)> = MUSICBRAINZ_TXXX
@@ -340,6 +510,20 @@ fn save_tag(path: &Path, tag: Tag) -> Result<(), lofty::error::FileEncodingError
         id3.insert_user_text(description.to_owned(), value);
     }
     id3.save_to_path(path, WriteOptions::default())
+        .map_err(|error| Refused {
+            error,
+            shape: shape(&id3),
+        })
+}
+
+/// A save lofty would not perform, and the tag it would not perform it on.
+///
+/// The tag has to come back with the error because it is gone by the time the
+/// caller sees one: [`save_tag`] builds the `Id3v2Tag` it hands over, and the
+/// frame that was refused is only describable from there.
+struct Refused {
+    error: lofty::error::FileEncodingError,
+    shape: Fields,
 }
 
 /// A sibling of `path`, so the rename never crosses a filesystem boundary.
@@ -411,7 +595,7 @@ pub fn apply_to_each(
     track_ids: &[i64],
     edit: &TagEdit,
     on_progress: impl FnMut(WriteProgress),
-) -> AppResult<TagWriteSummary> {
+) -> AppResult<Written> {
     let edits: Vec<(i64, TagEdit)> = track_ids.iter().map(|&id| (id, edit.clone())).collect();
     apply(conn, &edits, on_progress)
 }
@@ -426,11 +610,23 @@ pub fn apply_to_each(
 /// survives this application. A file that cannot be written is reported and
 /// skipped rather than failing the batch - a locked file in the middle of 500
 /// should not stop the other 499.
+/// What a batch wrote, and what the log needs about what it did not.
+///
+/// The two are deliberately apart. `summary` crosses the IPC boundary and its
+/// `errors` are what a person is shown; `diagnostics` stays in the backend and
+/// holds one [`Fields`] per failed file, because the string that fits in a
+/// toast is exactly the string that cannot be investigated from.
+#[derive(Debug)]
+pub struct Written {
+    pub summary: TagWriteSummary,
+    pub diagnostics: Vec<Fields>,
+}
+
 pub fn apply(
     conn: &mut Connection,
     edits: &[(i64, TagEdit)],
     mut on_progress: impl FnMut(WriteProgress),
-) -> AppResult<TagWriteSummary> {
+) -> AppResult<Written> {
     // Every edit is resolved before any file is opened, so an unparseable
     // number in the last one refuses the batch rather than half-writing it.
     let mut covers: HashMap<String, Arc<Cover>> = HashMap::new();
@@ -445,6 +641,7 @@ pub fn apply(
 
     let mut written: Vec<(i64, PathBuf)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
+    let mut diagnostics: Vec<Fields> = Vec::new();
 
     for (index, (track_id, resolved)) in resolved.iter().enumerate() {
         let track_id = *track_id;
@@ -457,7 +654,10 @@ pub fn apply(
         if let Some(path) = path.map(PathBuf::from) {
             match write_file(&path, resolved) {
                 Ok(()) => written.push((track_id, path)),
-                Err(error) => failures.push(error.to_string()),
+                Err(failure) => {
+                    failures.push(failure.error.to_string());
+                    diagnostics.push(failure.fields);
+                }
             }
         }
 
@@ -485,10 +685,13 @@ pub fn apply(
     crate::db::plays::resolve(&tx)?;
     tx.commit()?;
 
-    Ok(TagWriteSummary {
-        written: written.len() as u32,
-        failed: failures.len() as u32,
-        errors: failures,
+    Ok(Written {
+        summary: TagWriteSummary {
+            written: written.len() as u32,
+            failed: failures.len() as u32,
+            errors: failures,
+        },
+        diagnostics,
     })
 }
 

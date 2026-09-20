@@ -139,6 +139,25 @@ description. `write::save_tag` puts both back as TXXX frames after the
 conversion. It also has to re-add ids the *file* already had, because they take
 the same path out.
 
+**"failed to write Mpeg file" names the format and nothing else.** lofty's
+`FileEncodingError` prints only the `FileType`, so a full disk (OS error 112), a
+file another process holds open (32) and a frame it cannot encode all reach the
+user as the same sentence; everything that distinguishes them is in `source()`.
+`write::causes` walks the chain and `write::os_code` pulls the number out, and
+`apply` hands one `Fields` per failed file back to the command layer, which
+writes it as a `tags.write.fail` line. Nothing reaches that line from the
+unattended pass, which discards its failures.
+
+**lofty will read a date it cannot write back.** An out-of-range `TDRC` or
+`TDOR` — `2012-13`, `2012-06-45`, anything past hour 23 or minute 59 — parses
+without complaint and is then refused by `Timestamp::verify` on the way out, so
+a file some other tagger wrote can never be edited again. Worse, the frame rides
+in the `Tag`'s *companion* rather than in its items: `mutate` cannot see it,
+`remove_key(ItemKey::RecordingDate)` does not remove it, and clearing Year in
+the editor does not rescue the file. `write::shape` reports such frames as
+`dates=TDRC=2012-13` so the log says which value it was. Month `00` and day `00`
+are fine, as are `20120603` and a space instead of the `T`.
+
 ## Moving files
 
 **A tombstone is a hazard at the target, not at the source.** `scan::plan` skips
