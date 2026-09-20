@@ -35,10 +35,10 @@ CSP should not phone home from its component library.
 
 ## Three globals every story inherits
 
-`.storybook/preview.ts` imports `App.css` **and** the two
-`@fontsource/space-grotesk` faces. The sheet alone is not the app's typography —
-those imports live in `main.tsx`, and without them `--font-numeric` falls back
-to a system monospace. 107 changes this list to Archivo.
+`.storybook/preview.ts` imports `App.css` **and** the faces — two
+`@fontsource/space-grotesk` weights when this landed, the three Archivo weights
+since 107. The sheet alone is not the app's typography: those imports live in
+`main.tsx`, and without them a specimen is drawn in a system fallback.
 
 `.storybook/preview.css`, last, for the two rules `App.css` puts on `body`
 because the app is a window and a specimen sheet is not: `overflow: hidden`,

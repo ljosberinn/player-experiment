@@ -642,20 +642,44 @@ describe("the stylesheet", () => {
     expect(fields?.body).toMatch(/border:[^;]*var\(--field-border\)/);
   });
 
-  it("uses the numeral face for numbers and not for prose", () => {
-    // Space Grotesk is the design's one typographic signature and its whole job
-    // is figures. Set on `body` it would turn the entire app into a poster, so
-    // the guard is that the token exists, that the places numbers are read use
-    // it, and that the UI font is still what everything else inherits.
-    expect(token("font-numeric")).toMatch(/Space Grotesk/);
+  it("draws everything in one face, and figures in tabular ones", () => {
+    // The inverse of the guard phases 33-106 carried. Study 7a is one face
+    // doing all of it, so a second *text* family reappearing anywhere is the
+    // regression. Two stacks are not text and are not the old split coming
+    // back: a backtrace is code and stays monospaced, and the caption buttons
+    // draw OS glyphs rather than letters.
+    const families = all
+      .flatMap((rule) => [...rule.body.matchAll(/font-family:\s*([^;]+)/g)])
+      .map((match) => (match[1] ?? "").trim())
+      .filter((family) => !family.startsWith("ui-monospace"))
+      .filter((family) => !family.startsWith('"Segoe MDL2 Assets"'));
+
+    expect(families.length).toBeGreaterThan(0);
+
+    for (const family of families) {
+      expect(family, "only Archivo draws text").toMatch(/^Archivo,/);
+    }
 
     const root = all.find((rule) => rule.selector.trim().endsWith(":root"));
-    expect(root?.body).toMatch(/font-family:\s*"Segoe UI"/);
 
-    for (const selector of [".scrubber-time", ".song-cell.right", ".statusbar-zoom-value"]) {
+    expect(root?.body).toMatch(/font-family:\s*Archivo,/);
+    expect(css, "--font-numeric went with Space Grotesk").not.toMatch(/--font-numeric/);
+
+    // Figures are the prose face now, so the only thing keeping a column of
+    // them from shifting is the numeric variant. Every element drawing one has
+    // to ask for it.
+    for (const selector of [
+      ".titlebar-version",
+      ".scrubber-time",
+      ".sidebar-count",
+      ".song-cell.right",
+      ".statusbar-zoom-value",
+      ".stat-tile-value",
+    ]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
-      expect(rule?.body, `${selector} should set the numeral face`).toMatch(
-        /font-family:\s*var\(--font-numeric\)/,
+
+      expect(rule?.body, `${selector} draws figures and should set tabular-nums`).toMatch(
+        /font-variant-numeric:\s*tabular-nums/,
       );
     }
   });

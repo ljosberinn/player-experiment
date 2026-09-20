@@ -1,9 +1,10 @@
 // The globals a story inherits from the app, in the order `main.tsx` has them.
-// The sheet alone is not the app's typography - the faces are imported there
-// rather than from `App.css`, and without them `--font-numeric` falls back to a
-// system monospace and every specimen is drawn in the wrong figures.
-import "@fontsource/space-grotesk/latin-400.css";
-import "@fontsource/space-grotesk/latin-700.css";
+// The sheet alone is not the app's typography - the face is imported there
+// rather than from `App.css`, and without it every specimen falls back to a
+// system sans and is drawn in the wrong figures.
+import "@fontsource/archivo/latin-400.css";
+import "@fontsource/archivo/latin-600.css";
+import "@fontsource/archivo/latin-800.css";
 import "../src/App.css";
 // After `App.css`, which is the only reason its one rule wins.
 import "./preview.css";

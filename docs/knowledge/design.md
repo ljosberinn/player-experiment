@@ -24,10 +24,10 @@ Re-fetch before relying on either; both have been amended (the contrast lift,
 the removal of the accent row border) and can be again. Reproduce the details
 they specify, not only the structure.
 
-The component sheet settles four things the tokens below do not yet reflect:
-**Archivo** as the one face (study 7a, chosen over three alternatives), accent
-`#e8730f` light and `#f58a1f` dark, **radius 0 everywhere**, and a **light
-ground that ships** alongside the dark one.
+The component sheet settles four things. **Archivo** as the one face (study 7a,
+chosen over three alternatives) is in, phase 107. Still ahead of the tokens
+below: accent `#e8730f` light and `#f58a1f` dark, **radius 0 everywhere**, and a
+**light ground that ships** alongside the dark one.
 
 Where the design and the built app disagree on a detail the design has not
 thought about, the app wins. Where they disagree on how something *looks*, the
@@ -73,9 +73,36 @@ Chrome is translucent — `backdrop-filter: blur(18px)` over a surface at 55–7
 opacity — which is what makes the dynamic background visible through the sidebar
 and transport rather than only behind the table.
 
-**Space Grotesk** (via `@fontsource/space-grotesk`, weights 400 and 700) is the
-numeral face: durations, the playhead, the backtrace block. Nothing is fetched
-from a font CDN — the app is offline-first and the CSP forbids it.
+## Type
+
+**Archivo** (via `@fontsource/archivo`, latin subset, weights 400, 600 and 800)
+draws everything, prose and figures alike — the Segoe UI / Space Grotesk split
+went with phase 107. Nothing is fetched from a font CDN: the app is
+offline-first and the CSP forbids it. Two stacks in `App.css` are not text and
+are not the split: `ui-monospace` for the panic message and the backtrace, and
+Segoe MDL2 for the caption glyphs.
+
+Figures carry `font-variant-numeric: tabular-nums` wherever they line up against
+each other, which is the only thing holding a column still now that they are set
+in the prose face. `App.css.test.ts` asserts both halves.
+
+The sheet's scale, which the component issues apply role by role:
+
+| Role | Value |
+| --- | --- |
+| Section heading | `800 26px/1.1`, `-.02em` |
+| Release header | `800 24px/1.05`, `-.02em` |
+| Dialog title | `800 17px/1.1`; paned dialog `800 16px` |
+| Stat figure | `800 28px/1`, tabular; tile figure `800 24px/1` |
+| Row text | `400 12.5px/1` |
+| Duration, count | `400 12px/1`, tabular |
+| Button label | `800 13px/1.2`, centred; small `800 12px/1` |
+| Field label | `400 11px/1` or `11.5px/1` |
+| Eyebrow | `800 9.5–10px/1`, `.11–.14em`, uppercase |
+| Badge | `800 10.5px/1`, `.06em`, uppercase |
+
+Centred button labels are the sheet's one departure from flush-left: "a desktop
+action reads as a target rather than a line of text".
 
 ## Layout
 
