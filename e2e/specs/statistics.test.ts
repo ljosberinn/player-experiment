@@ -151,6 +151,58 @@ describe("the Statistics view", () => {
     await capture("statistics-listening-artist");
   });
 
+  /**
+   * The Listening tab's writer, opened the way the genre one is: from the
+   * panel's own action, on the album the view is drilled into. Photographed
+   * rather than driven - the three corrections are one write, asserted in
+   * Rust and in the component's own tests, and what neither can answer is
+   * what a list of spellings looks like in this window.
+   *
+   * `seed_plays` renames one play in four of each album to
+   * `… (Deluxe Edition)` and the seed command folds them back, so the list
+   * here has something in it.
+   */
+  it("opens the grouping editor on the album it is drilled into", async () => {
+    const bar = panel("Top albums").$("button.bar-list-row");
+    await bar.waitForExist({ timeout: 30_000 });
+    // An album row is the only top list whose label holds a second name: the
+    // artist is a nested span inside it, so the label's text is both.
+    const label = await bar.$(".bar-list-label").getText();
+    const artist = await bar.$(".bar-list-secondary").getText();
+    const album = label.slice(0, label.length - artist.length).trim();
+
+    await bar.click();
+
+    // Compared rather than matched: an album title is free text and
+    // `(Deluxe Edition)` is a regular expression's idea of a group.
+    const crumbs = browser.$(".stats-breadcrumb");
+    await browser.waitUntil(async () => (await crumbs.getText()).includes(album), {
+      timeout: 10_000,
+      timeoutMsg: `the breadcrumb never named ${album}`,
+    });
+
+    await panel("Top albums").$(".//button[normalize-space()='Fix the grouping…']").click();
+    const dialog = browser.$(".modal");
+    await dialog.waitForExist({ timeout: 10_000 });
+    await expect(dialog.$("h2")).toHaveText("How this album is grouped");
+    // The spellings the fold put under this heading, which is what the
+    // dialog is for and what the screenshot is of.
+    await browser.waitUntil(async () => (await dialog.$$(".modal-list li").length) > 1, {
+      timeout: 10_000,
+      timeoutMsg: "the group's spellings never arrived",
+    });
+
+    await capture("statistics-album-grouping");
+
+    await dialog.$(".//button[normalize-space()='Cancel']").click();
+    await expect(dialog).not.toBeExisting();
+
+    // Out of the album again, so the specs below find the tab where the
+    // artist drill left it.
+    await browser.$("button[aria-label='Back']").click();
+    await expect(panel("Top albums").$("button.bar-list-row")).toBeExisting();
+  });
+
   it("counts the library on the other tab", async () => {
     await browser.$("//button[@role='tab'][normalize-space()='Library']").click();
 

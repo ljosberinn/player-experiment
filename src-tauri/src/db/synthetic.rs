@@ -101,10 +101,18 @@ pub fn seed(conn: &mut Connection, count: u32) -> AppResult<u32> {
 /// resolves is a property of the data rather than of the library it is run
 /// against.
 ///
-/// `track_id` is left null on purpose: it is what `resolve` computes, and a
-/// seed that pre-filled it would leave that function nothing to measure.
+/// **One play in four of each album names it by an edition spelling** - the
+/// rename a streaming service does between one scrobble and the next, which
+/// is what [`regroup`] exists to fold back together. Without it the fold has
+/// nothing to do over a quarter of a million plays, and the dialog the e2e
+/// suite photographs is a list of one.
+///
+/// `track_id` and `album_groups` are left for their passes on purpose: both
+/// are derived, and a seed that pre-filled either would leave the function
+/// that computes it nothing to measure.
 ///
 /// [`resolve`]: crate::db::plays::resolve
+/// [`regroup`]: crate::db::plays::regroup
 pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
     /// Monday 2023-11-13, 00:00 UTC, far enough from zero that local-time
     /// bucketing has a real date to work with. A Monday so that cell 0 of
@@ -113,6 +121,10 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
     /// 250,000 plays then span nearly five years.
     const PER_WEEK: u32 = 1_000;
     const WEEK: i64 = 7 * 86_400;
+    /// How many albums the plays are spread over.
+    const ALBUMS: u32 = 800;
+    /// One play in this many names its album by an edition spelling.
+    const RENAMED: u32 = 4;
 
     let cells = week_cells(PER_WEEK);
 
@@ -122,6 +134,7 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
         |row| row.get(0),
     )?;
     let existing: u32 = conn.query_row("SELECT count(*) FROM plays", [], |row| row.get(0))?;
+    let mut renamed: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
 
     let tx = conn.transaction()?;
     {
@@ -133,20 +146,37 @@ pub fn seed_plays(conn: &mut Connection, count: u32) -> AppResult<u32> {
 
         for index in existing..existing + count {
             let hit = tracks > 0 && !index.is_multiple_of(3);
-            let (artist, title, album) = if hit {
+            let (artist, title, mut album) = if hit {
                 let track = index % tracks;
                 (
                     format!("Artist{:03}", track % 250),
                     format!("Track{track:08}"),
-                    format!("Album{:03}", track % 800),
+                    format!("Album{:03}", track % ALBUMS),
                 )
             } else {
                 (
                     format!("Nobody{:03}", index % 250),
                     format!("Unheard{index:08}"),
-                    format!("Elsewhere{:03}", index % 800),
+                    format!("Elsewhere{:03}", index % ALBUMS),
                 )
             };
+            // **Counted per album, not off the index.** A share taken as
+            // `index % n` aliases with whatever stride puts two plays on one
+            // album - `ALBUMS` here, the library's track count where that is
+            // smaller - and renames every play of some albums and none of the
+            // rest, which leaves the fold groups of one spelling rather than
+            // groups of two. Counting the album's own plays cannot alias with
+            // anything, and the second of every four is the one renamed, so
+            // the plain spelling stays the majority `regroup` names the group
+            // after.
+            // Keyed by the pair, not by the title: an album title is shared
+            // by several artists here, and a counter over the title alone
+            // hands one artist every rename and the next none.
+            let nth = renamed.entry(format!("{artist}/{album}")).or_insert(0);
+            *nth += 1;
+            if *nth % RENAMED == 2 {
+                album = format!("{album} (Deluxe Edition)");
+            }
             stmt.execute(rusqlite::params![
                 EPOCH + i64::from(index / PER_WEEK) * WEEK + cells(index % PER_WEEK),
                 artist,
@@ -270,6 +300,49 @@ mod tests {
         // make `coverage` untestable and `resolve` look fast for the wrong
         // reason.
         assert_eq!(matched, 200);
+    }
+
+    /// The defect this guards: a rename taken as `index % n` aliases with the
+    /// 800-album stride, so every play of some albums is renamed and none of
+    /// the rest - which is a fold with nothing to fold and a correction
+    /// dialog listing one spelling.
+    #[test]
+    fn every_seeded_album_is_heard_under_both_of_its_spellings() {
+        let (_dir, db) = temp_db();
+        let mut conn = db.conn().unwrap();
+        seed(&mut conn, 1_000).unwrap();
+        seed_plays(&mut conn, 5_000).unwrap();
+        crate::db::plays::regroup(&conn).unwrap();
+
+        let count = |where_clause: &str| -> u32 {
+            conn.query_row(
+                &format!("SELECT count(*) FROM album_groups WHERE {where_clause}"),
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        // An album whose every play was renamed is a group of one, headed by
+        // the edition - which is exactly what the aliasing produced.
+        assert_eq!(
+            count("heading LIKE '%(Deluxe Edition)'"),
+            0,
+            "an edition spelling headed a group"
+        );
+        let editions = count("album LIKE '%(Deluxe Edition)'");
+        assert!(editions > 0, "nothing was renamed, so nothing was folded");
+        assert_eq!(
+            count("album LIKE '%(Deluxe Edition)' AND heading || ' (Deluxe Edition)' <> album"),
+            0,
+            "an edition read under something other than its own plain title"
+        );
+        // And the plain spellings outnumber them, since the heading is the
+        // most played member and a tie would be decided by the spelling.
+        assert!(
+            count("album NOT LIKE '%(Deluxe Edition)'") > editions,
+            "{editions} editions is not the minority share"
+        );
     }
 
     #[test]

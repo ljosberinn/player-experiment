@@ -2,6 +2,9 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { DragDropEvent } from "@tauri-apps/api/webview";
 import type { AlbumBitrate } from "./bindings/AlbumBitrate";
+import type { AlbumGroup } from "./bindings/AlbumGroup";
+import type { AlbumNeighbour } from "./bindings/AlbumNeighbour";
+import type { AlbumSpelling } from "./bindings/AlbumSpelling";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { BackgroundTask } from "./bindings/BackgroundTask";
 import type { BrowseFilter } from "./bindings/BrowseFilter";
@@ -69,6 +72,9 @@ import type { WriteProgress } from "./bindings/WriteProgress";
 
 export type {
   AlbumBitrate,
+  AlbumGroup,
+  AlbumNeighbour,
+  AlbumSpelling,
   AppInfo,
   BackgroundTask,
   BrowseFilter,
@@ -420,6 +426,34 @@ export function statsGenreBreakdown(
 /** How many tracks are missing each tag, over one scan. */
 export function statsTagHealth(query: TrackQuery): Promise<TagHealth> {
   return invoke<TagHealth>("stats_tag_health", { query });
+}
+
+/**
+ * One album group: the spellings reading under `heading`, and what else the
+ * artist has.
+ *
+ * Asked by heading because a heading is the group's identity - the same
+ * string a `StatsCrumb` carries and `ListenQuery.album` filters on.
+ */
+export function statsAlbumGroup(heading: string): Promise<AlbumGroup> {
+  return invoke<AlbumGroup>("stats_album_group", { heading });
+}
+
+/**
+ * Records that `spellings` read under `heading`, and reruns the fold.
+ *
+ * The dialog's three corrections are this one write: every spelling with a
+ * new title retitles the group, one spelling with its own takes it out, and
+ * another album's spellings with this heading merge it in. Rejects a blank
+ * heading and a spelling the artist was never heard under, both refused in
+ * `db::stats::pin_album` so that no caller can skip them.
+ */
+export function statsPinAlbum(
+  artist: string,
+  spellings: readonly string[],
+  heading: string,
+): Promise<void> {
+  return invoke<void>("stats_pin_album", { artist, spellings, heading });
 }
 
 /** Known genre labels for what has been typed, best match first. */

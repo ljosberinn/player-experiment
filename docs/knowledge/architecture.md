@@ -351,8 +351,8 @@ What gets a line:
 - **Every mutation and every long job** — roughly what already goes through
   `commands::announcing` and `commands::blocking`, plus the background work
   that goes through neither: the watch-folder pass (`scan.watch`, including the
-  passes that found nothing), the cover-normalize and MusicBrainz-id passes, and
-  each scrobble and now-playing submission.
+  passes that found nothing), the cover-normalize, MusicBrainz-id and
+  album-regroup passes, and each scrobble and now-playing submission.
 - **One line per release the pass resolves or queues** (`lookup.release`, with
   the score), one per release it moves (`library.place`, with the counts), and
   one per sweep (`pass.sweep`). **Silence for a release
@@ -446,6 +446,15 @@ ids and the release type off every file once, for the reason
 time, so a scan or a move cannot rewrite a row between the read and the write.
 Nothing announces: the columns it fills are read by the lookup pass and the
 mover rather than drawn anywhere.
+
+The `album-regroup` thread is the third of these, and the smallest: it folds
+the play log's album spellings together once per `plays::FOLD_VERSION`, off a
+`settings` marker in the same shape. No scan lock — it reads `plays` and
+writes `album_groups`, and touches neither a file nor a track row — and
+nothing announces, because the Statistics view reads the grouping when it next
+opens. The fold itself is in [the data model](data-model.md); what matters
+here is that a library which has already imported its history would otherwise
+never run the pass again, so the fold carries a version rather than a flag.
 
 A replacement cover travels to the backend as a **path** (`CoverEdit::Replace`),
 whichever way it was chosen, and either way **stages**: `stage_picked_cover`

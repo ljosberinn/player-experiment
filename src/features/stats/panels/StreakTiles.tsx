@@ -1,8 +1,6 @@
 import { StatTile } from "../../../components/charts/StatTile";
 import { statsStreaks } from "../../../ipc";
-import { useLibraryStore } from "../../library/store";
-import { listenQuery } from "../filters";
-import { useStatsStore } from "../store";
+import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
 import { StatsPanel } from "./StatsPanel";
 
@@ -14,12 +12,8 @@ import { StatsPanel } from "./StatsPanel";
  * backend decides - today is not over.
  */
 export function StreakTiles() {
-  const filters = useStatsStore((s) => s.filters);
-  const path = useLibraryStore((s) => s.statsPath);
-  const { data } = usePanelQuery(
-    () => statsStreaks(listenQuery(filters, path, new Date())),
-    [filters, path],
-  );
+  const { query, deps } = useListenQuery();
+  const { data } = usePanelQuery(() => statsStreaks(query), deps);
 
   return (
     <StatsPanel title="Streaks">

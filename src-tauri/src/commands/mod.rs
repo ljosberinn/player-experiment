@@ -1421,15 +1421,18 @@ pub async fn seed_synthetic_tracks(app: tauri::AppHandle, count: u32) -> AppResu
     seeded
 }
 
-/// Writes `count` synthetic plays into the log and resolves them. **Test-only.**
+/// Writes `count` synthetic plays into the log, resolves and groups them.
+/// **Test-only.**
 ///
 /// The e2e suite's only real play is the second of Anchor the library spec
 /// plays, which is one bar on every panel the Listening tab draws - so the
 /// screenshots would photograph an empty tab rather than a populated one.
 ///
-/// `seed_plays` leaves `track_id` null, so the resolve is not optional:
-/// without it every play reads as unowned, which is both the owned share and
-/// the heard-never-owned list wrong in opposite directions.
+/// `seed_plays` leaves `track_id` null and writes no `album_groups` rows, for
+/// the reason that function gives: both are derived, and a seed that filled
+/// them would leave their passes nothing to do. So neither call here is
+/// optional - without the resolve every play reads as unowned, and without
+/// the regroup the seeded edition spellings draw as albums of their own.
 #[tauri::command]
 pub async fn seed_synthetic_plays(app: tauri::AppHandle, count: u32) -> AppResult<u32> {
     crate::e2e_only("seed_synthetic_plays")?;
@@ -1439,6 +1442,7 @@ pub async fn seed_synthetic_plays(app: tauri::AppHandle, count: u32) -> AppResul
         let mut conn = db.conn()?;
         let seeded = crate::db::synthetic::seed_plays(&mut conn, count)?;
         crate::db::plays::resolve(&conn)?;
+        crate::db::plays::regroup(&conn)?;
         invalidate::announce(&app);
         Ok(seeded)
     })

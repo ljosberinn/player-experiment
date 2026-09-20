@@ -107,6 +107,28 @@ beforeEach(() => {
 });
 
 describe("ListeningPanels", () => {
+  /**
+   * The album panel's correction opens on the drilled album, the way the
+   * genre donut's opens on the drilled genre: a grouping that reads wrong is
+   * noticed from inside the album it is wrong about, and the row already
+   * spends its click on getting there.
+   */
+  it("offers the album grouping correction only once drilled into one", async () => {
+    render(<ListeningPanels />);
+
+    expect(
+      within(panel("Top albums")).queryByRole("button", { name: "Fix the grouping…" }),
+    ).toBeNull();
+
+    useLibraryStore.setState({
+      statsPath: { tab: "listening", crumbs: [{ kind: "album", key: "Geogaddi" }] },
+    });
+
+    expect(
+      await within(panel("Top albums")).findByRole("button", { name: "Fix the grouping…" }),
+    ).toBeInTheDocument();
+  });
+
   it("asks for each dimension once", async () => {
     render(<ListeningPanels />);
 

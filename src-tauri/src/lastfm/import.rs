@@ -120,9 +120,10 @@ impl Import<'_> {
     /// from the top, which is how scrobbles deleted on last.fm leave; local
     /// plays stay.
     ///
-    /// `plays::resolve` runs when the run ends, finished or not: the pages
-    /// already committed are plays like any other, and unlinked until it does.
-    /// The loved set is fetched only once the history is complete.
+    /// `plays::resolve` and `plays::regroup` run when the run ends, finished
+    /// or not: the pages already committed are plays like any other, and
+    /// until both have run they are unlinked and ungrouped. The loved set is
+    /// fetched only once the history is complete.
     pub fn run(
         &self,
         conn: &mut Connection,
@@ -153,6 +154,7 @@ impl Import<'_> {
 
         let tx = conn.transaction()?;
         plays::resolve(&tx)?;
+        plays::regroup(&tx)?;
         tx.commit()?;
 
         let imported = history?;
@@ -776,6 +778,25 @@ mod tests {
             (artist_mbid.as_deref(), track_mbid.as_deref()),
             (Some("a-1"), Some("r-1"))
         );
+    }
+
+    /// Beside the link rebuild, and for its reason: the run changed the log
+    /// wholesale, and until the fold has seen the new spellings the
+    /// Statistics view draws one record as several.
+    #[test]
+    fn imported_plays_are_grouped_when_the_run_ends() {
+        let (_dir, mut conn) = open();
+        let transport = FakeTransport::scripted(vec![
+            Ok(page(1, 1, &array(&[entry(100, "Blue Room", "Harbour")]))),
+            Ok(NO_LOVED.to_owned()),
+        ]);
+
+        import(&mut conn, &transport, false).0.unwrap();
+
+        let heading: String = conn
+            .query_row("SELECT heading FROM album_groups", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(heading, "Tide");
     }
 
     #[test]

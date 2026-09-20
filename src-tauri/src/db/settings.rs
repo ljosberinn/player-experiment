@@ -79,6 +79,13 @@ pub const COVERS_NORMALIZED_THROUGH: &str = "covers.normalizedThrough";
 pub const MUSICBRAINZ_READ: &str = "tracks.musicbrainzRead";
 /// The last track id that pass finished, so a quit resumes it.
 pub const MUSICBRAINZ_READ_THROUGH: &str = "tracks.musicbrainzReadThrough";
+/// Which version of `db::plays::album_key` `album_groups` was built with.
+///
+/// A version rather than a flag, because this fold will grow: an edition word
+/// added to its vocabulary changes what folds together, and every library has
+/// to be told once. A library that has already imported its history never
+/// runs the pass again otherwise.
+pub const ALBUM_FOLD: &str = "plays.albumFold";
 /// Where the last.fm import stands, as `lastfm::import::State` JSON.
 ///
 /// Not exportable: it names an account and describes this library's copy of

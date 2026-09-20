@@ -356,6 +356,19 @@ absences are what nobody notices coming back — hence the guards in
   tab's query, and fifteen panels listing it by hand is where one forgets. The
   Listening tab needs it not at all, because Base UI unmounts the inactive tab
   and its panels remount and re-query on their own.
+- **An album-grouping correction has the same shape, through
+  `useListenQuery`.** `statsStore.groupVersion` is the Listening tab's
+  counterpart, and `useListenQuery` is the hook that reaches all seven of its
+  panels - added for that reason, since a pin changes which plays are one
+  album everywhere the drilled album filter reaches, not only in the two
+  panels that draw an album by name.
+- **`AlbumLinkDialog` opens from the Top albums panel's action, on the drilled
+  album**, the way `GenreOverrideDialog` opens on the drilled genre: a row
+  already spends its click on getting there, and a grouping that reads wrong
+  is noticed from inside the album it is wrong about. Its three corrections -
+  retitle, separate, merge - are one write, `statsPinAlbum`, and a retitle
+  reports back so the crumb follows the group rather than pointing at a
+  heading nothing reads under.
 - **`listenTotalsOnce` holds exactly one answer.** The tile row, the series'
   all-time span and every coverage caption want the same `listen_totals`, which
   is the dearest aggregate in the set; the promise is held rather than its

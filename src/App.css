@@ -1984,6 +1984,46 @@ th.status {
   outline-offset: -1px;
 }
 
+/* The spellings one album group folds together, in `AlbumLinkDialog`. A list
+   rather than a field: which of them the group is named after is a fact to
+   read off, and each one carries an action of its own. */
+.modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.modal-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-list-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.modal-list-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small enough to sit inside a row, rather than sized like the dialog's own
+   actions at the foot of it. */
+.modal-list button {
+  height: 21px;
+  padding: 0 8px;
+}
+
 .modal-summary {
   margin: 0;
   color: var(--muted);

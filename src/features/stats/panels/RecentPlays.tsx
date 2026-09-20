@@ -1,10 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useRef, useState } from "react";
 import { type Play, statsRecentPlays } from "../../../ipc";
-import { useLibraryStore } from "../../library/store";
 import { report } from "../../shell/statusStore";
-import { listenQuery } from "../filters";
-import { useStatsStore } from "../store";
+import { useListenQuery } from "../useListenQuery";
 import { StatsPanel } from "./StatsPanel";
 
 /** How many plays one fetch brings back. */
@@ -32,8 +30,7 @@ export function RecentPlays() {
   // `SongTable` states at length.
   "use no memo";
 
-  const filters = useStatsStore((s) => s.filters);
-  const path = useLibraryStore((s) => s.statsPath);
+  const { query, deps } = useListenQuery();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [rows, setRows] = useState<Play[]>([]);
@@ -42,9 +39,7 @@ export function RecentPlays() {
   // would otherwise start again, and a re-render is not what it is for.
   const loading = useRef(false);
 
-  const query = listenQuery(filters, path, new Date());
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `query` is rebuilt every render out of exactly these two
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `query` is rebuilt every render out of exactly `deps`
   useEffect(() => {
     let cancelled = false;
     loading.current = true;
@@ -70,7 +65,9 @@ export function RecentPlays() {
     return () => {
       cancelled = true;
     };
-  }, [filters, path]);
+    // Spread rather than passed whole: the rule refuses to reason about a
+    // dependency list that is not an array literal.
+  }, [...deps]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -84,7 +81,7 @@ export function RecentPlays() {
 
   // The index alone: a virtual item is a new object on every scroll frame, and
   // depending on it would ask for the next page sixty times a second.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `query` is rebuilt every render out of the filters and the path
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `query` is rebuilt every render out of exactly `deps`
   useEffect(() => {
     if (done || loading.current || lastIndex === undefined) {
       return;
@@ -109,7 +106,7 @@ export function RecentPlays() {
         loading.current = false;
         report(cause);
       });
-  }, [lastIndex, rows.length, done, filters, path]);
+  }, [lastIndex, rows.length, done, ...deps]);
 
   return (
     <StatsPanel title="Recent plays">
