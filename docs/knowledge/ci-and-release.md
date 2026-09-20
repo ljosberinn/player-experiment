@@ -8,7 +8,7 @@ are required before merge:
 | Job | Runs |
 | --- | --- |
 | `changes` | path filter that decides which jobs are needed |
-| `frontend` (ubuntu) | `npm run tauri:parity`, `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build` |
+| `frontend` (ubuntu) | `npm run tauri:parity`, `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build`, `npm run build-storybook` |
 | `rust` (windows) | `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test` under `TZ=EST5EDT`, and a check that committed bindings match the Rust types |
 | `cargo-deny` (ubuntu) | advisories, licences, sources, bans |
 | `notices` | the third-party notices can still be generated |

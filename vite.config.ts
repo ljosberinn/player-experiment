@@ -118,6 +118,9 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/**/*.test.{ts,tsx}",
+        // Stories are drawn in Storybook, never imported by a Vitest run. Left
+        // in, each one is an uncovered file dragging on an 80% threshold.
+        "src/**/*.stories.tsx",
         "src/test/**",
         "src/main.tsx",
         "src/vite-env.d.ts",

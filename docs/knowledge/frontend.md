@@ -246,7 +246,8 @@ the compiler holds still simply does not light up, and the two components behind
 
 Enabled in `vite.config.ts` through `@vitejs/plugin-react`'s own oxc port, over
 every component and hook. Vitest shares that config, so the unit run and the
-build compile the same code.
+build compile the same code. So does Storybook — the builder merges the plugin
+list, so `*.stories.tsx` is held to the same bar as the components it draws.
 
 - **A bailout fails the build** (`panicThreshold: "all_errors"`). Biome has no
   react-compiler rule and there is no ESLint, so nothing in `npm run lint` would

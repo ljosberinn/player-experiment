@@ -99,6 +99,12 @@ jobs:
       - name: Production build
         if: needs.changes.outputs.code == 'true'
         run: npm run build
+      # Nothing is published from this. It is the only thing that compiles a
+      # story: Vitest never imports one and the wdio suite photographs the app,
+      # so without this step a story that does not build reaches main.
+      - name: Storybook build
+        if: needs.changes.outputs.code == 'true'
+        run: npm run build-storybook
 
   rust:
     name: rust
