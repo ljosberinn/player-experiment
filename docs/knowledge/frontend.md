@@ -507,7 +507,7 @@ absences are what nobody notices coming back — hence the guards in
   and clicking it opens the lookup on a table of those releases, sorted by the
   score the pass decided on (`index: null` in the store). A row opens that
   release with the candidates the pass already found, so it lands on the
-  results step rather than spending a rate-limited twenty seconds an entry.
+  results step rather than spending a rate-limited second and a half an entry.
   They are a cache: every result list carries Search again. Apply and Set Aside
   take the row out of the table and return to it, and the last one closes the
   dialog. Back to Queue means "not now" and leaves the row where it was. Set

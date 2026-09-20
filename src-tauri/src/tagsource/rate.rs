@@ -17,28 +17,27 @@ use std::time::{Duration, Instant};
 
 /// How long the process waits between MusicBrainz requests.
 ///
-/// Twenty seconds against a documented one per second per address, and the gap
-/// is not caution about our own rate. [Their
+/// A little over the one request a second per address [their
 /// documentation](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting)
-/// declines with a 503 from three separate buckets - per user agent, per
-/// address, and a global 300 a second - so a client well inside its own
-/// allowance still meets 503s when theirs is full, and the status code cannot
-/// tell the two apart.
+/// asks for. That page also declines with a 503 from three separate buckets -
+/// per user agent, per address, and a global 300 a second - so a client well
+/// inside its own allowance still meets 503s when theirs is full, and the
+/// status code cannot tell the two apart.
 ///
 /// **Slowing down bought nothing between 1.1s and 5s.** Releases reached
 /// before the first fatal 503 were 72 at 1.1s, 26 at 3s and 35 at 5s - no
 /// relationship, which is the evidence that the declines are theirs rather
-/// than ours. Ten seconds was settled on from that, as the least the pass
-/// could ask rather than a rate expected to work, and a pass over the real
-/// library then spent the evening dying: every sweep ended on a release whose
-/// three attempts were all declined, several of them on the same release four
-/// and five sweeps running.
+/// than ours. Ten and then twenty seconds were picked past the end of that
+/// measurement anyway, as the least the pass could ask rather than a rate
+/// expected to work; neither was ever measured, and ten spent an evening
+/// dying all the same.
 ///
-/// So twenty is the same argument carried one step further, over a range the
-/// measurement never covered. A pass this slow is bounded by the interval
-/// either way and loses only time by taking more of it; a sweep that runs is
-/// worth more than one that is quick to stop.
-const INTERVAL: Duration = Duration::from_secs(20);
+/// So the interval is back to what the documented rate asks for, and the 503s
+/// it cannot prevent are left to the retry in
+/// [`crate::tagsource::pass`]. What that buys is not a sweep that fails less
+/// often but a pass measured in hours rather than days, which is the only
+/// number the interval actually controls.
+const INTERVAL: Duration = Duration::from_millis(1_500);
 
 /// The interval the shared limiter runs at in this build.
 ///

@@ -627,7 +627,8 @@ const RELEASE_ORDER: &str = "coalesce(tracks.disc_no, 1), tracks.track_no, track
 /// Splits a selection into the releases it covers.
 ///
 /// A release is the unit a lookup is worth doing at - 65,535 tracks are some
-/// 8,000 releases, and the limiter lets one request out every twenty seconds -
+/// 8,000 releases, and the limiter lets one request out every second and a
+/// half -
 /// so this is what decides how many lookups a selection costs.
 ///
 /// Grouped by the release key, empty strings and all, so that a release is the

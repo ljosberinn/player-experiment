@@ -368,7 +368,7 @@ fn library_pass(app: tauri::AppHandle, db: Db, lock: scan::ScanLock, log: log::L
         move || crate::commands::announce_library_changed(&app),
         move |task| {
             // A dropped progress event is not worth anything: the next release
-            // sends another one twenty seconds later.
+            // sends another one a second and a half later.
             let _ = progress.emit(crate::commands::TASK_PROGRESS, task);
         },
     );

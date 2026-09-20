@@ -92,12 +92,12 @@ the component hears it exactly as it hears the real thing. What that leaves to
 - and the arithmetic behind the numbers is asserted on `Pace` in
 `library::worker`.
 
-The rate limiter is asserted at its real twenty seconds, from **two** callers at
-once, and again for a slow request not shortening the gap after it: the limit
-is enforced at the IP address, so a limiter that serialized only within one
-client, or only the gaps between request *starts*, would be no limiter at all.
-That test costs twenty seconds of wall clock and is the slowest in the suite,
-deliberately - a scaled-down imitation would not be asserting the rule that
+The rate limiter is asserted at its real second and a half, from **two**
+callers at once, and again for a slow request not shortening the gap after it:
+the limit is enforced at the IP address, so a limiter that serialized only
+within one client, or only the gaps between request *starts*, would be no
+limiter at all. That test pays the shipping interval in wall clock rather than
+a scaled-down imitation of it, which would not be asserting the rule that
 ships.
 
 **The gate every other test passes through is scaled down**, to ten
