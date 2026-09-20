@@ -1262,7 +1262,7 @@ mod tests {
     /// A release the lookup renames stops answering to the key the survey
     /// found it by, so a run that remembered only that key would be handed the
     /// same release in the next batch - and search it again, on a pass that
-    /// spends twenty seconds a request.
+    /// pays the rate limiter for every request.
     #[test]
     fn a_release_the_lookup_renamed_is_not_surveyed_again() {
         // A name MusicBrainz replaces: the write lands as "Loveless" by

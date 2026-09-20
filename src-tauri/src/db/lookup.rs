@@ -209,8 +209,8 @@ pub struct Queued {
     pub track_ids: Vec<i64>,
     /// The search results the pass had in hand when it queued this.
     ///
-    /// A cache, not a record: it saves the user a rate-limited twenty seconds per
-    /// entry, and the dialog offers Search Again beside it.
+    /// A cache, not a record: it saves the user a rate-limited second and a half
+    /// per entry, and the dialog offers Search Again beside it.
     pub candidates_json: Option<String>,
 }
 
