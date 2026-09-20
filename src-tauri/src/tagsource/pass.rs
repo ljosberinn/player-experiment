@@ -93,6 +93,24 @@ pub enum Verdict {
         /// broken.
         sole: bool,
     },
+    /// Certain, and the files would not take it: a frame lofty will not
+    /// encode, a lock, a full disk. Recorded as
+    /// [`lookup::Status::Unwritable`] - the answer is known and asking
+    /// MusicBrainz again would only be told it a second time.
+    Unwritable {
+        mbid: String,
+        score: f32,
+        /// Files that refused. Against `written`, so a partial write - the
+        /// release split across two identities - reads as one.
+        refused: u32,
+        written: u32,
+    },
+    /// Certain, and the files were not there to write: an unplugged drive, a
+    /// folder moved since the scan. **No row**, so the next sweep asks again
+    /// and finds them.
+    Unreachable {
+        files: u32,
+    },
     Queued {
         score: f32,
         candidates: usize,
@@ -217,28 +235,64 @@ pub fn look_up(
     };
 
     let edits = edits_for(&members, &detail, staged.as_deref());
-    {
+    let written = {
         // Behind the same lock as a scan, because this rewrites the files a
         // scan reads its (mtime, size) from - and per write rather than for the
         // pass, because holding it for the whole pass would block every scan
         // for the best part of a day.
         let _guard = lock.acquire();
-        tags::write::apply(conn, &edits, |_| {})?;
-    }
+        tags::write::apply(conn, &edits, |_| {})?
+    };
     if let Some(path) = staged {
         // One at a time, rather than 8,044 of them left in the cache.
         let _ = std::fs::remove_file(path);
     }
 
+    // **What `apply` returns is a verdict, not a receipt.** It errors only on a
+    // batch it refused outright; a batch whose every file failed comes back
+    // `Ok` with the count in it, and reading past that is what recorded 344
+    // releases as resolved over an unplugged drive. See
+    // `docs/issues/100-a-write-nobody-checked.md`.
+    //
+    // Unreachable first, and not merely because it is the transient one: a
+    // sweep over a library that is not mounted is *every* release, and
+    // recording each as unwritable would cost the library its whole lookup
+    // rather than the evening the drive was out.
+    if written.unreachable > 0 {
+        return Ok(Outcome {
+            verdict: Verdict::Unreachable {
+                files: written.unreachable,
+            },
+            retries,
+        });
+    }
+
+    let refused = written.summary.failed;
     lookup::record(
         conn,
         release,
-        lookup::Status::Resolved,
+        if refused > 0 {
+            lookup::Status::Unwritable
+        } else {
+            lookup::Status::Resolved
+        },
         Some(&detail.candidate.mbid),
         Some(score),
         None,
         now,
     )?;
+
+    if refused > 0 {
+        return Ok(Outcome {
+            verdict: Verdict::Unwritable {
+                mbid: detail.candidate.mbid,
+                score,
+                refused,
+                written: written.summary.written,
+            },
+            retries,
+        });
+    }
 
     Ok(Outcome {
         verdict: Verdict::Written {
@@ -541,6 +595,27 @@ pub(crate) mod tests {
             .unwrap()
     }
 
+    fn paths(conn: &Connection) -> Vec<PathBuf> {
+        conn.prepare("SELECT path FROM tracks ORDER BY track_no")
+            .unwrap()
+            .query_map([], |row| Ok(PathBuf::from(row.get::<_, String>(0)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    }
+
+    fn rows(conn: &Connection) -> i64 {
+        conn.query_row("SELECT count(*) FROM release_lookup", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    fn status(conn: &Connection) -> Option<String> {
+        use rusqlite::OptionalExtension;
+        conn.query_row("SELECT status FROM release_lookup", [], |row| row.get(0))
+            .optional()
+            .unwrap()
+    }
+
     fn untitled(conn: &Connection) -> i64 {
         conn.query_row(
             "SELECT count(*) FROM tracks WHERE title IS NOT NULL",
@@ -587,6 +662,111 @@ pub(crate) mod tests {
             Some("Album"),
             "the write carries the whole identity, type included"
         );
+    }
+
+    /// The bug of 100: an unplugged drive answered every write with "no such
+    /// path", and the pass recorded the release resolved and moved on - so no
+    /// later sweep ever came back for it.
+    #[test]
+    fn a_release_whose_files_are_gone_keeps_no_row() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        for path in paths(&conn) {
+            std::fs::remove_file(path).unwrap();
+        }
+
+        let verdict = look_up(
+            &mut conn,
+            &musicbrainz(),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(verdict.verdict, Verdict::Unreachable { files: 11 }),
+            "{verdict:?}"
+        );
+        assert_eq!(
+            rows(&conn),
+            0,
+            "no row, so the next sweep looks it up again"
+        );
+    }
+
+    /// Present, reachable, and not something lofty will write a tag into. The
+    /// answer does not change between sweeps, so the release is recorded -
+    /// just not as one the library carries.
+    #[test]
+    fn a_release_the_files_refuse_is_recorded_unwritable_rather_than_resolved() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        for path in paths(&conn) {
+            std::fs::write(path, b"not an mp3").unwrap();
+        }
+
+        let verdict = look_up(
+            &mut conn,
+            &musicbrainz(),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(
+                verdict.verdict,
+                Verdict::Unwritable {
+                    refused: 11,
+                    written: 0,
+                    ..
+                }
+            ),
+            "{verdict:?}"
+        );
+        assert_eq!(status(&conn).as_deref(), Some("unwritable"));
+        assert_eq!(untitled(&conn), 0, "nothing was written, so nothing synced");
+    }
+
+    /// The half-written release, which is the case `resolved` would be most
+    /// tempting for and least true of: ten files carry the identity and one
+    /// does not.
+    #[test]
+    fn a_write_that_only_some_files_took_is_not_resolved_either() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
+        let mut conn = db.conn().unwrap();
+        std::fs::write(&paths(&conn)[0], b"not an mp3").unwrap();
+
+        let verdict = look_up(
+            &mut conn,
+            &musicbrainz(),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(
+                verdict.verdict,
+                Verdict::Unwritable {
+                    refused: 1,
+                    written: 10,
+                    ..
+                }
+            ),
+            "{verdict:?}"
+        );
+        assert_eq!(status(&conn).as_deref(), Some("unwritable"));
+        assert_eq!(untitled(&conn), 10);
     }
 
     /// Three candidates, so the lone-candidate rule has nothing to say and the

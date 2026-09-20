@@ -287,6 +287,36 @@ fn mutate(tag: &mut Tag, resolved: &Resolved) {
 struct Failure {
     error: AppError,
     fields: Fields,
+    kind: Cause,
+}
+
+/// Whether the file could not be reached, or was reached and refused the tag.
+///
+/// The distinction is the caller's, not this module's: a write is a write
+/// either way and both are reported the same. `tagsource::pass` is the one
+/// that has to tell them apart, because one of them will work tomorrow and the
+/// other will not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Cause {
+    /// The path is not there to be written - an unplugged drive, a folder
+    /// moved since the scan.
+    Unreachable,
+    /// The file is there and the write did not take: a frame lofty will not
+    /// encode, a lock, a full disk.
+    Refused,
+}
+
+/// Whether `error` says the path itself was not reachable.
+///
+/// `NotFound` covers both of Windows' missing-path codes, 2 and 3, which is
+/// what an unplugged drive letter gives. 21 is the letter still being there
+/// with no volume behind it, and `io::ErrorKind` has no name for it.
+fn unreachable(error: &std::io::Error) -> Cause {
+    if error.kind() == std::io::ErrorKind::NotFound || error.raw_os_error() == Some(21) {
+        Cause::Unreachable
+    } else {
+        Cause::Refused
+    }
 }
 
 /// Everything under `error` that its own `Display` leaves out.
@@ -393,9 +423,11 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
         let fields = here("copy")
             .add("cause", causes(&error))
             .add("os", os_code(&error));
+        let kind = unreachable(&error);
         return Err(Failure {
             error: AppError::io(temp.display(), error),
             fields,
+            kind,
         });
     }
 
@@ -409,6 +441,10 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
                 return Err(Failure {
                     error: AppError::Internal(format!("{}: {error}", path.display())),
                     fields,
+                    // The copy that this reads back is one this function just
+                    // made, so a probe that fails is about the file's
+                    // contents rather than about reaching it.
+                    kind: Cause::Refused,
                 });
             }
         };
@@ -450,6 +486,7 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
             Failure {
                 error: AppError::Internal(format!("{}: {}", path.display(), refused.error)),
                 fields,
+                kind: Cause::Refused,
             }
         })
     })();
@@ -466,9 +503,13 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
         let fields = here("rename")
             .add("cause", causes(&error))
             .add("os", os_code(&error));
+        // A drive pulled between the copy and the rename lands here rather
+        // than on the copy, and it is the same transient failure.
+        let kind = unreachable(&error);
         return Err(Failure {
             error: AppError::io(path.display(), error),
             fields,
+            kind,
         });
     }
     Ok(())
@@ -651,6 +692,14 @@ pub fn apply_to_each(
 pub struct Written {
     pub summary: TagWriteSummary,
     pub diagnostics: Vec<Fields>,
+    /// How many of `summary.failed` were files the write could not reach.
+    ///
+    /// The one thing about a failure that is worth deciding on rather than
+    /// reporting: a file that is not there is a file that will be there when
+    /// the drive is plugged back in, and the unattended pass has to know that
+    /// before it records what became of the release. See
+    /// `docs/issues/100-a-write-nobody-checked.md`.
+    pub unreachable: u32,
 }
 
 pub fn apply(
@@ -673,6 +722,7 @@ pub fn apply(
     let mut written: Vec<(i64, PathBuf)> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
     let mut diagnostics: Vec<Fields> = Vec::new();
+    let mut unreachable = 0;
 
     for (index, (track_id, resolved)) in resolved.iter().enumerate() {
         let track_id = *track_id;
@@ -686,6 +736,9 @@ pub fn apply(
             match write_file(&path, resolved) {
                 Ok(()) => written.push((track_id, path)),
                 Err(failure) => {
+                    if failure.kind == Cause::Unreachable {
+                        unreachable += 1;
+                    }
                     failures.push(failure.error.to_string());
                     diagnostics.push(failure.fields);
                 }
@@ -723,6 +776,7 @@ pub fn apply(
             errors: failures,
         },
         diagnostics,
+        unreachable,
     })
 }
 

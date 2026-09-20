@@ -21,6 +21,8 @@ edit a shipped one.
 | 13 | `plays` — one row per play, with the artist and title as they were heard. `track_id` is the one derived column and the one foreign key; `idx_plays_identity` over `(started_at, match_key)` is the dedupe rule within a source |
 | 14 | `lastfm_loved` — the loved set the last import fetched |
 | 15 | no schema: deletes the MusicBrainz id backfill's two `settings` flags, retired by the pass that reads the release type too |
+| 16 | `album_groups` — which album spellings are one album |
+| 17 | a fifth `release_lookup.status`, `unwritable` — matched with certainty, and the files would not take it. Another whole-table rebuild for 10's reason, plus a **repair**: every `resolved` row whose `release_mbid` is on no track is deleted, because it records a write that never happened |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -209,6 +211,13 @@ be the best part of a day that finds nothing, forever.
   call**, so a re-install or a rescan of an already-tagged library pays nothing.
   Files that name two different pressings are left pending — that disagreement
   is what the lookup is for.
+- **`resolved` means the files took the write, and nothing weaker.** A release
+  the pass matched and could not write is `unwritable` if the files refused —
+  the answer will not change, so asking again buys nothing — and gets **no row
+  at all** if they could not be reached, because an unplugged drive comes back.
+  `tags::write::apply` reports both in what it returns rather than by failing,
+  and reading past it recorded 344 releases as resolved over one evening's
+  absent drive. See `docs/issues/done/100-a-write-nobody-checked.md`.
 
 ### A compilation is one release, not one per artist
 

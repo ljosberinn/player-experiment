@@ -249,6 +249,20 @@ pub struct Summary {
     pub resolved: usize,
     pub queued: usize,
     pub missed: usize,
+    /// Releases matched with certainty whose files would not take the write.
+    ///
+    /// Apart from `resolved` because they are the opposite outcome wearing its
+    /// clothes: the pass knows what the release is and the library does not
+    /// say so. Expected at zero; anything else is a batch of files worth
+    /// looking at the `tags.write.fail` lines for.
+    pub unwritable: usize,
+    /// Releases whose files were not there to write.
+    ///
+    /// One per release, and a run of [`OUTAGE`] of them parks the lookup step
+    /// for the rest of the sweep: a library that is not mounted is every
+    /// release, and the pass has nothing to learn by asking MusicBrainz about
+    /// eight thousand of them.
+    pub unreachable: usize,
     /// Releases moved to where they go.
     pub placed: usize,
     /// Releases left where they are because the player had a file of one open.
@@ -340,6 +354,12 @@ enum Visit {
     /// the step - the *step*, not the sweep, because a network that is down
     /// says nothing about moving files.
     LookupFailed,
+    /// The release was matched and its files were not there to write to.
+    ///
+    /// Counted against the same run as a failed lookup and parking the same
+    /// step, because the answer is the same one: carry on and ask again later.
+    /// Not placed either - a file that cannot be written cannot be moved.
+    Unreachable,
 }
 
 /// Whether a failed lookup is MusicBrainz declining rather than a failure to
@@ -494,7 +514,7 @@ pub fn sweep(
                 // about the next release - the run is left exactly where it
                 // stood rather than advanced or cleared.
                 Visit::Declined => declined.push(pending),
-                Visit::LookupFailed => {
+                Visit::LookupFailed | Visit::Unreachable => {
                     plan.failures += 1;
                     summary.run = summary.run.max(plan.failures);
                     hobbled = plan.failures >= OUTAGE;
@@ -682,6 +702,26 @@ fn visit(
                     }
                 }
             }
+            // The identity is on some of the files or none of them, and the
+            // release is recorded as such, so the key may have moved exactly
+            // as far as the write got.
+            Ok(Verdict::Unwritable { written, .. }) => {
+                summary.unwritable += 1;
+                attempted = true;
+                changed = !plan.dry_run && written > 0;
+                if changed {
+                    if let Ok(Some((album, artist))) = query::release_of(conn, pending.track) {
+                        release = lookup::Release { album, artist };
+                    }
+                }
+            }
+            // Not counted in `visited`, for the reason a failed lookup is not:
+            // nothing was written, and the next sweep has the same release to
+            // get through again.
+            Ok(Verdict::Unreachable { .. }) => {
+                summary.unreachable += 1;
+                visit = Visit::Unreachable;
+            }
             Ok(Verdict::Queued { .. }) => {
                 summary.queued += 1;
                 attempted = true;
@@ -849,6 +889,23 @@ fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
                 fields
             }
         }
+        // `written` beside `refused` because the two readings are different
+        // problems: a whole release refused is one file's fault repeated
+        // twelve times, and eleven of twelve is a single file worth naming.
+        Verdict::Unwritable {
+            mbid,
+            score,
+            refused,
+            written,
+        } => Fields::new()
+            .add("status", "unwritable")
+            .add("mbid", mbid)
+            .add("score", format!("{score:.3}"))
+            .add("written", written)
+            .add("refused", refused),
+        Verdict::Unreachable { files } => Fields::new()
+            .add("status", "unreachable")
+            .add("files", files),
         Verdict::Queued { score, candidates } => Fields::new()
             .add("status", if dry_run { "would-queue" } else { "queued" })
             .add("score", format!("{score:.3}"))
@@ -967,6 +1024,8 @@ pub fn spawn(
                             .add("resolved", summary.resolved)
                             .add("queued", summary.queued)
                             .add("missed", summary.missed)
+                            .add("unwritable", summary.unwritable)
+                            .add("unreachable", summary.unreachable)
                             .add("placed", summary.placed)
                             .add("deferred", summary.deferred)
                             .add("unmovable", summary.unmovable)

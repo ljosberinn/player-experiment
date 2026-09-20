@@ -36,6 +36,16 @@ pub enum Status {
     /// MusicBrainz has nothing. Recorded so it is not searched again, and not
     /// queued - there is nothing for the user to decide.
     NotFound,
+    /// Certain enough to write, and the files would not take it.
+    ///
+    /// Not `Resolved`, which would say the release carries the identity it
+    /// does not, and not `Review`, which offers a choice nobody has to make -
+    /// the match was never in doubt. Recorded rather than left rowless for the
+    /// reason `NotFound` is: nothing about the release or the answer changes
+    /// between sweeps, so searching it again buys two requests and the same
+    /// refusal. A file the pass could not *reach* is the other case and keeps
+    /// no row at all - see `tagsource::pass`.
+    Unwritable,
     /// Queued, and the user has said to leave it alone. Out of the queue and
     /// out of the count, and only [`restore_aside`] brings it back.
     ///
@@ -52,6 +62,7 @@ impl Status {
             Self::Resolved => "resolved",
             Self::Review => "review",
             Self::NotFound => "none",
+            Self::Unwritable => "unwritable",
             Self::Aside => "aside",
         }
     }
