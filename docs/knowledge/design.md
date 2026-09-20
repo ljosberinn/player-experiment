@@ -68,6 +68,8 @@ and type), one per ground.
 | `--muted` | `#696562`\* | `#948b81` | secondary columns, section headings |
 | `--accent` | `#ab4c00`\* | `#f58a1f` | play button, active nav, focus, the playing marker |
 | `--accent-tint` | `#e8730f` / .13 | `#f58a1f` / .17 | selection, highlight — the brand amber, as a wash |
+| `--accent-hover` / `-active` | `#983c00`\* / `#862b00`\* | `#ffa040` / `#d97410` | a primary button under the pointer and under the press |
+| `--accent-deep` | `#9d4000`\* | `#f58a1f` | the accent as a *label on one of its own washes* |
 | `--chrome-border` | ink / .125 | white / .07 | every hairline |
 
 The stack inverts rather than repeating: on dark, coming forward is lighter; on
@@ -77,7 +79,8 @@ window is shown — **not** a `@media (prefers-color-scheme:)` block, which woul
 need a third copy of every dark value. `color-scheme` follows it, so scrollbars
 and native popups follow too.
 
-Four departures from the sheet, all recorded in `tokens.css` beside the value:
+The departures from the sheet, all recorded in `tokens.css` beside the value.
+The first is why most of the others exist:
 
 - **`--accent` on light** is the largest. The sheet's `#e8730f` cannot carry
   contrast on a light ground at all: 2.73:1 on the content pane, 2.45:1 on the
@@ -90,6 +93,21 @@ Four departures from the sheet, all recorded in `tokens.css` beside the value:
   sidebar and still short of AA.
 - **`--on-accent` on light** is white, following from the above: the ink that
   reads on the sheet's bright amber is 2.98:1 on the deeper one.
+- **A primary button's states move the other way on light**, phase 110. The
+  sheet lightens under the pointer and darkens under the press on both grounds;
+  ours has no room above it — the sheet's own hover puts white at 4.43:1 — so
+  light steps 0.055 of lightness *down* for hover and further down for the
+  press. It is the inversion the surfaces already make, and the one the
+  secondary and ghost kinds make anyway: their veils are ink here and white
+  there.
+- **`--accent-deep` on light** is a further step down again, for the accent
+  drawn as *text on a wash of itself* — a ghost button's label, a
+  selection-filled tag, a toggled icon button's glyph. A wash over a light
+  ground moves the surface toward the ink on it, so the step that clears 4.5:1
+  on the bare ground does not clear it on its own highlight; the design is not
+  AA there either. Dark needs no such step and declares `--accent`'s own value
+  under the name, so the rules can share one. The strongest of those washes is
+  ours at 18% rather than the sheet's 22%, for the same reason.
 - **`--muted` on light** is the sheet's `#6e6a67` darkened by 0.016 of
   lightness. The sheet's own value is 4.22:1 on its own field and fails AA; the
   amendment is under a JND and is the same one the design already took once for
@@ -136,7 +154,9 @@ Figures carry `font-variant-numeric: tabular-nums` wherever they line up against
 each other, which is the only thing holding a column still now that they are set
 in the prose face. `App.css.test.ts` asserts both halves.
 
-The sheet's scale, which the component issues apply role by role:
+The sheet's scale, which the component issues apply role by role. Button label
+and Badge landed with the primitives in phase 110; the rest arrive with the
+sections that draw them.
 
 | Role | Value |
 | --- | --- |

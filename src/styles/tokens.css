@@ -5,10 +5,10 @@
    names. Two rules hold this file together:
 
    **Every colour in the app is defined here and nowhere else.** No rule in
-   `primitives.css` or `app.css` writes a literal. That is not tidiness: it is
-   the only reason a second ground is a second column of values rather than an
-   audit of six hundred declarations. `App.css.test.ts` fails the build if a
-   literal appears outside this file.
+   `primitives.css`, `library.css` or `app.css` writes a literal. That is not
+   tidiness: it is the only reason a second ground is a second column of values
+   rather than an audit of six hundred declarations. `App.css.test.ts` fails
+   the build if a literal appears outside this file.
 
    **Every name is defined on both grounds.** A token that exists on one and
    not the other is a rule that silently loses its colour when the theme
@@ -173,6 +173,38 @@
      `e2e/contrast.ts` flattens the stack before measuring. */
   --accent: oklch(0.53 0.144 50); /* the sheet's #e8730f, darkened to carry a mark */
   --accent-tint: oklch(0.68 0.172 52 / 0.13);
+  /* The primary button under the pointer and under the press, and the second
+     departure that follows from the first.
+
+     The sheet lightens on both grounds - #e8730f to #f58a1f to #d0650c - which
+     works there because its light amber is a mid tone with room above it.
+     Ours has none: `--accent` is already dark enough to carry white, and
+     lifting it to the sheet's hover puts `--on-accent` at 4.43:1.
+
+     So light moves the other way, which is the inversion the surfaces above
+     already make - forward is darker on light and lighter on dark - and is
+     what the secondary and ghost kinds do on this ground anyway, their veils
+     being ink here and white there. Hue and chroma are `--accent`'s; only
+     lightness steps, by 0.055 each way, which is the step the sheet itself
+     takes. 7.05:1 and 8.90:1 under white. */
+  --accent-hover: oklch(0.475 0.144 50);
+  --accent-active: oklch(0.42 0.144 50);
+  /* The accent as a *label on one of its own washes* - a ghost button's text,
+     a selection-filled tag, a toggled icon button's glyph. The sheet's second
+     accent by name, and deeper than `--accent` here for the reason every wash
+     on this ground needs one: a wash over a light ground moves the surface
+     toward the ink drawn on it, so a label that clears 4.5:1 on the bare
+     ground does not clear it on its own highlight. 4.54:1 at the worst of the
+     nine pairs (the strongest wash, on the sidebar). */
+  --accent-deep: oklch(0.49 0.144 50);
+  /* The ghost kind's hover and press, as a wash rather than a fill - the one
+     button that has no border to thicken and no fill to darken.
+
+     The sheet states 12% and 22% on this ground. The press is ours at 18%:
+     at 22% the label is 4.37:1 on the sidebar, and the design is not AA there
+     either. The hover is the sheet's unchanged. */
+  --accent-veil: oklch(0.68 0.172 52 / 0.12);
+  --accent-veil-strong: oklch(0.68 0.172 52 / 0.18);
   /* The tail of the strip along the top of the window, which fades out rather
      than stopping. */
   --accent-fade: oklch(0.68 0.172 52 / 0.2);
@@ -252,6 +284,14 @@
      or a popup, so the sheet's second, heavier dialog shadow has no consumer
      and is not declared. */
   --hover-veil: oklch(0.237 0.004 49 / 0.06);
+  /* The same veil under the press, roughly doubled - the sheet's own step for
+     a secondary button and for an icon button, which are the two controls
+     whose whole state is how much of the ground they have darkened. */
+  --active-veil: oklch(0.237 0.004 49 / 0.13);
+  /* A chip that is saying nothing in particular: a missing-file badge, a count
+     that is not a link. The same ink as the veils above at the sheet's 9%,
+     which is the weight that reads as a filled shape rather than as a smudge. */
+  --neutral-veil: oklch(0.237 0.004 49 / 0.09);
   --scrim: oklch(0 0 0 / 0.32);
   --shadow: 0 3px 10px oklch(0.237 0.004 49 / 0.16);
 }
@@ -292,6 +332,19 @@
      which is exactly why the rule is a token and not a habit. */
   --accent: oklch(0.735 0.167 58); /* #f58a1f */
   --accent-tint: oklch(0.735 0.167 58 / 0.17);
+  /* The sheet's own two, unamended: this ground is where its amber was drawn
+     to work. Lighter under the pointer and deeper under the press, which is
+     the direction light had to reverse. */
+  --accent-hover: oklch(0.787 0.155 62); /* #ffa040 */
+  --accent-active: oklch(0.661 0.158 56); /* #d97410 */
+  /* `--accent` itself here, and a second name rather than a second colour.
+     Light needs a deeper step to stay legible on its own washes; this ground
+     does not - the wash lightens away from nothing, and the amber is 4.60:1
+     at the worst of the nine pairs as it stands. The name is what the rules
+     share, so the one ground that has to differ can. */
+  --accent-deep: oklch(0.735 0.167 58);
+  --accent-veil: oklch(0.735 0.167 58 / 0.14);
+  --accent-veil-strong: oklch(0.735 0.167 58 / 0.24);
   --accent-fade: oklch(0.735 0.167 58 / 0.2);
   --accent-wash: oklch(0.735 0.167 58 / 0.08);
   --on-accent: oklch(0.165 0.007 78);
@@ -324,6 +377,8 @@
   --close-hover: oklch(0.58 0.21 27);
 
   --hover-veil: oklch(1 0 0 / 0.06);
+  --active-veil: oklch(1 0 0 / 0.14);
+  --neutral-veil: oklch(1 0 0 / 0.09);
   --scrim: oklch(0 0 0 / 0.6);
   --shadow: 0 3px 14px oklch(0 0 0 / 0.5);
 }
