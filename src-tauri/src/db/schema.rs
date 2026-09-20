@@ -684,6 +684,55 @@ CREATE TABLE album_groups (
 
 CREATE INDEX idx_album_groups_key ON album_groups(key);
 "#,
+    // 17 - a fifth status, and the rows the missing one made wrong
+    //
+    // `unwritable`: matched with certainty, and the files would not take it.
+    // Until now the pass read past what `tags::write::apply` returned and
+    // recorded such a release `resolved`, which is the one lie this table
+    // cannot recover from on its own - no row is ever cleared and `pending`
+    // returns only releases with none, so the release was never looked at
+    // again. See `docs/issues/100-a-write-nobody-checked.md`.
+    //
+    // The rebuild is migration 10's, for migration 10's reason.
+    //
+    // The DELETE is the repair. A resolved row whose `release_mbid` is on no
+    // track is a write that never landed: `sync_row` runs only over files that
+    // were written, so a release the pass really did write carries its mbid on
+    // at least one row. Deleted rather than restated as `unwritable`, because
+    // which of the two it was is not knowable from here - the drive that was
+    // out for an evening and the file that will refuse forever look identical
+    // in this table. One more lookup apiece settles it, and this time the
+    // answer is recorded honestly.
+    r#"
+CREATE TABLE release_lookup_new (
+    id              INTEGER PRIMARY KEY,
+    album           TEXT,
+    artist          TEXT,
+    status          TEXT NOT NULL CHECK (status IN ('resolved', 'review', 'none', 'aside', 'unwritable')),
+    release_mbid    TEXT,
+    score           REAL,
+    candidates_json TEXT,
+    attempted_at    INTEGER NOT NULL
+);
+
+INSERT INTO release_lookup_new
+    (id, album, artist, status, release_mbid, score, candidates_json, attempted_at)
+SELECT id, album, artist, status, release_mbid, score, candidates_json, attempted_at
+  FROM release_lookup;
+
+DROP TABLE release_lookup;
+ALTER TABLE release_lookup_new RENAME TO release_lookup;
+
+CREATE UNIQUE INDEX idx_release_lookup_key ON release_lookup(
+    coalesce(album,  '') COLLATE NOCASE,
+    coalesce(artist, '') COLLATE NOCASE
+);
+
+DELETE FROM release_lookup
+ WHERE status = 'resolved'
+   AND release_mbid IS NOT NULL
+   AND release_mbid NOT IN (SELECT release_mbid FROM tracks WHERE release_mbid IS NOT NULL);
+"#,
 ];
 
 #[cfg(test)]
@@ -935,7 +984,7 @@ mod tests {
              VALUES ('Loveless', 'MBV', 'maybe', 0)",
             [],
         )
-        .expect_err("the four statuses are the whole vocabulary");
+        .expect_err("the five statuses are the whole vocabulary");
     }
 
     /// Migration 10 rebuilds the table to widen the CHECK. A rebuild that
@@ -951,5 +1000,50 @@ mod tests {
             .expect("a release can be set aside");
         conn.execute(insert, rusqlite::params!["loveless", "mbv", "review"])
             .expect_err("the unique index survived the rebuild");
+    }
+
+    /// Migration 17's repair. A resolved row whose mbid reached no file is a
+    /// write that never happened, and leaving it costs the release every later
+    /// sweep - nothing clears a row and `pending` skips a release that has one.
+    #[test]
+    fn a_resolved_release_the_files_never_took_is_cleared_and_the_rest_stay() {
+        let (_dir, conn) = open();
+        let insert =
+            "INSERT INTO release_lookup (album, artist, status, release_mbid, attempted_at)
+                      VALUES (?1, ?2, ?3, ?4, 0)";
+        let track = "INSERT INTO tracks (path, mtime, size, added_at, release_mbid)
+                     VALUES (?1, 0, 0, 0, ?2)";
+
+        conn.execute(track, rusqlite::params!["a.mp3", "landed-mbid"])
+            .unwrap();
+        conn.execute(
+            insert,
+            rusqlite::params!["Loveless", "MBV", "resolved", "landed-mbid"],
+        )
+        .unwrap();
+        conn.execute(
+            insert,
+            rusqlite::params!["Isn't Anything", "MBV", "resolved", "lost-mbid"],
+        )
+        .unwrap();
+        // The statuses that never claimed a write are not this repair's
+        // business, whatever their mbid.
+        conn.execute(
+            insert,
+            rusqlite::params!["Tremolo", "MBV", "review", "lost-mbid"],
+        )
+        .unwrap();
+
+        conn.execute_batch(super::MIGRATIONS.last().unwrap())
+            .unwrap();
+
+        let left: Vec<String> = conn
+            .prepare("SELECT album FROM release_lookup ORDER BY album")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(left, vec!["Loveless".to_owned(), "Tremolo".to_owned()]);
     }
 }

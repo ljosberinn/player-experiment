@@ -676,6 +676,35 @@ fn a_file_that_cannot_be_written_is_reported_and_the_rest_still_go() {
     );
 }
 
+/// The distinction `tagsource::pass` decides on: one of these two files will
+/// take the tag once the drive is plugged back in, and the other never will.
+#[test]
+fn a_file_that_is_gone_is_told_apart_from_one_that_refuses_the_tag() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    let missing = id_of(&h.db, "Sleeping Ute");
+    let refuses = id_of(&h.db, "Maki");
+
+    std::fs::remove_file(path_of(&h.db, missing)).unwrap();
+    // There to be copied and not something lofty will parse, so the write
+    // reaches the file and the file is what turns it down.
+    std::fs::write(path_of(&h.db, refuses), b"not an mp3").unwrap();
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[missing, refuses],
+        &TagEdit {
+            genre: set("Mixed"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!((written.summary.written, written.summary.failed), (0, 2));
+    assert_eq!(written.unreachable, 1, "{:?}", written.diagnostics);
+}
+
 #[test]
 fn a_failure_leaves_the_log_the_detail_the_message_does_not_carry() {
     let h = harness();
