@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/ljosberinn/player-experiment/compare/v0.16.0...v0.17.0) (2026-09-20)
+
+
+### Features
+
+* say why a tag write failed ([#225](https://github.com/ljosberinn/player-experiment/issues/225)) ([ad1fd90](https://github.com/ljosberinn/player-experiment/commit/ad1fd9025e2c96ae31a2393fea728924c3cdc03a))
+
+
+### Performance
+
+* the MusicBrainz limiter goes back to the documented rate ([#227](https://github.com/ljosberinn/player-experiment/issues/227)) ([ab2d65f](https://github.com/ljosberinn/player-experiment/commit/ab2d65f9bfbe0be65c1b9ef7764ca22a00c42877))
+
 ## [0.16.0](https://github.com/ljosberinn/player-experiment/compare/v0.15.0...v0.16.0) (2026-09-20)
 
 
