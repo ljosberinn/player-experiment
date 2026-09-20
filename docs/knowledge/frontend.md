@@ -2,10 +2,13 @@
 
 React 19 + TypeScript + Vite, Zustand stores, TanStack Virtual, Base UI for
 menus, dialogs, sliders, tabs and toolbars. No CSS framework. `src/App.css` is
-three `@import`s in cascade order — `styles/tokens.css` (the palette, on both
-grounds), `styles/primitives.css` (reset, window, focus, the blob layer) and
-`styles/app.css` (every region from the title bar down) — and Base UI parts are
-handed classes that already exist.
+four `@import`s in cascade order — `styles/tokens.css` (the palette, on both
+grounds), `styles/primitives.css` (reset, window, focus, the blob layer),
+`styles/library.css` (the component library, drawn in
+`components/primitives/`) and `styles/app.css` (every region from the title bar
+down) — and Base UI parts are handed classes that already exist. The order is
+the cascade: a region has to be able to overrule a primitive it wraps, so
+`library.css` comes before `app.css` rather than after it.
 
 ## The table
 
@@ -298,7 +301,20 @@ absences are what nobody notices coming back — hence the guards in
     are both its children, and switching category mounts a fresh pane at the
     top. `SettingsDialog` takes the category to open on: Account ▸ Connect to
     last.fm… opens it on Online.
-- No hover backgrounds, except window caption buttons and menu items.
+- **The component library is `components/primitives/`**, one file per
+  component, drawn by `styles/library.css`. What the sheet specifies rather
+  than what a caller wanted: `Button` has three kinds and **at most one
+  primary per surface**, `IconButton` has three sizes named for the three
+  places they belong (32px toolbar, 36px dialog, 20px nudge), and `Tag` has
+  four tones with `Count` beside it. The design names a tag and a badge
+  separately and draws them identically, so this is one component — the same
+  reasoning that folded `--dim` into `--muted`.
+  - Regions migrate onto them one issue at a time; `.modal button` and the
+    rest are still their own rules until theirs lands. See
+    [plans/apex-components.md](../plans/apex-components.md).
+- No hover backgrounds, except window caption buttons, menu items and the two
+  button primitives — a row lighting up under a passing pointer reads as a web
+  page, a target reporting that it can be pressed reads as the platform.
 - No transitions or animations, except the playing-row speaker, which **is** the
   state — and it stands down under `prefers-reduced-motion`.
 - `cursor: default` everywhere but text fields. No focus ring on click

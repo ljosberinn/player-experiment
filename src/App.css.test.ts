@@ -18,13 +18,17 @@ const root = process.cwd().replaceAll("\\", "/");
 /**
  * The sheet, in cascade order.
  *
- * Three files since phase 108, and read as a set rather than through
+ * Four files since phase 110, and read as a set rather than through
  * `App.css`: every guard below that asserts an *absence* - no literal colour,
  * no hover highlight, no transition - is worth exactly as much as the fraction
- * of the sheet it can see. Reading the entry point alone would have seen three
+ * of the sheet it can see. Reading the entry point alone would have seen four
  * `@import` lines and passed everything.
+ *
+ * A sheet added here and forgotten in this list is the one way a primitive
+ * leaves every absence guard at once, which is why the component library is
+ * one file rather than one per component.
  */
-const SHEETS = ["tokens", "primitives", "app"] as const;
+const SHEETS = ["tokens", "primitives", "library", "app"] as const;
 const sources = SHEETS.map((name) => readFileSync(`${root}/src/styles/${name}.css`, "utf8"));
 const css = sources.join("\n");
 const entry = readFileSync(`${root}/src/App.css`, "utf8");
@@ -53,6 +57,15 @@ const HOVER_ALLOWED = [
   // Every Windows title bar highlights these; not doing so reads as broken
   // rather than as native. Called out in phase 13.
   ".window-buttons",
+  // The two button primitives, phase 110. The rule this list guards is about
+  // rows, cells and list items - a surface you are reading, lighting up under
+  // a pointer that is only passing over it. A button is the opposite: it is a
+  // target, and every native one on this platform reports that it can be
+  // pressed. The specimen sheet draws a hover and a press for all four kinds.
+  //
+  // Both spellings, because `.icon-button` does not contain `.button`.
+  ".button",
+  ".icon-button",
   // `.context-item` used to be here: a menu's active entry follows the
   // pointer by definition. Phase 24 removed the need for the exception rather
   // than the behaviour - Base UI sets `data-highlighted` for the pointer and
@@ -442,13 +455,16 @@ describe("the stylesheet", () => {
     expect(literals).toEqual([]);
   });
 
-  it("imports the three sheets, in the order the cascade needs", () => {
-    // The split is load-bearing twice over. `primitives.css` is bare element
-    // selectors that a component rule of equal specificity would win over, so
-    // it has to precede `app.css`; `tokens.css` has to precede both or every
-    // `var()` in them resolves against nothing. An import reordered by a
-    // tidying pass would break the sheet in ways that look like a component
-    // bug, so the order is asserted rather than remembered.
+  it("imports the four sheets, in the order the cascade needs", () => {
+    // The split is load-bearing three times over. `primitives.css` is bare
+    // element selectors that a component rule of equal specificity would win
+    // over, so it has to precede the other two; `library.css` is the
+    // primitives, which a region in `app.css` has to be able to overrule at
+    // equal specificity - `.modal button` knows something `.button` cannot;
+    // and `tokens.css` has to precede all of them or every `var()` resolves
+    // against nothing. An import reordered by a tidying pass would break the
+    // sheet in ways that look like a component bug, so the order is asserted
+    // rather than remembered.
     const imported = [...entry.matchAll(/@import\s+"\.\/styles\/([\w-]+)\.css"/g)].map(
       ([, name]) => name,
     );
@@ -633,21 +649,78 @@ describe("the stylesheet", () => {
     // that actually holds on both grounds is the one asserted here - the
     // named token is legible - and the structural check below is what stops
     // anything else being used in its place.
+    // All three weights of fill since phase 110: the primary button changes
+    // colour under the pointer and under the press, and a hover state that
+    // took the label below AA would be a defect nobody screenshots.
     for (const ground of GROUNDS) {
-      expect(
-        contrast(token("on-accent", ground), token("accent", ground)),
-        `on-accent on ${ground}`,
-      ).toBeGreaterThan(4.5);
+      for (const fill of ["accent", "accent-hover", "accent-active"]) {
+        expect(
+          contrast(token("on-accent", ground), token(fill, ground)),
+          `on-accent on ${fill} (${ground})`,
+        ).toBeGreaterThan(4.5);
+      }
     }
 
     const fills = all
-      .filter((rule) => /background:\s*var\(--accent\)/.test(rule.body))
+      .filter((rule) => /background:\s*var\(--accent(?:-hover|-active)?\)/.test(rule.body))
       // Anchored, or `border-color: var(--accent)` reads as a foreground and
       // every accent-bordered button is a false positive.
       .filter((rule) => /(?:^|[;{\s])color:\s*var\(--(?!on-accent)/.test(rule.body))
       .map((rule) => rule.selector);
 
     expect(fills).toEqual([]);
+  });
+
+  it("keeps a label on one of the accent's own washes readable", () => {
+    // The other half of the pair above, and the reason `--accent-deep`
+    // exists. A ghost button, a selection-filled tag and a toggled icon
+    // button all draw the accent as *text on a wash of itself*, and a wash
+    // over a light ground moves the surface toward the ink on it - so the
+    // step that clears 4.5:1 on the bare ground does not clear it on its own
+    // highlight. Light needs a deeper accent for this; dark does not, and
+    // declares the same value under the shared name.
+    //
+    // Nine pairs per ground: three washes over the three surfaces a button or
+    // a tag is drawn on. `--field` is not one of them - it is an inset
+    // control, and nothing puts a button inside one.
+    const washes = ["accent-tint", "accent-veil", "accent-veil-strong"];
+    const behind = ["surface", "chrome", "sidebar"];
+
+    // Guards the guard. A name misspelt here resolves to the empty string,
+    // which `linearSrgb` reads as black - and black on a light wash passes
+    // every assertion below while measuring nothing.
+    for (const name of ["accent-deep", ...washes, ...behind]) {
+      for (const ground of GROUNDS) {
+        expect(token(name, ground), `--${name} on ${ground}`).not.toBe("");
+      }
+    }
+
+    for (const ground of GROUNDS) {
+      for (const wash of washes) {
+        for (const under of behind) {
+          expect(
+            contrastOver(token("accent-deep", ground), [token(wash, ground), token(under, ground)]),
+            `accent-deep on ${wash} over ${under} (${ground})`,
+          ).toBeGreaterThan(4.5);
+        }
+      }
+    }
+  });
+
+  it("takes the focus ring back on the one fill it is invisible on", () => {
+    // `:focus-visible` is `outline: 2px solid var(--accent)` at
+    // `outline-offset: -2px`, which is inside the box - so on a primary
+    // button it is the accent drawn on the accent. Every other control in the
+    // app has a ring that contrasts with what it sits on; this is the one
+    // that has to say otherwise, and it is invisible rather than merely
+    // subtle, which is why it is asserted rather than left to a screenshot.
+    const primary = all.find((one) =>
+      one.selector.trim().endsWith(".button.primary:focus-visible"),
+    );
+
+    expect(primary?.body, "a primary button's ring must not be its own fill").toMatch(
+      /outline-color:\s*var\(--on-accent\)/,
+    );
   });
 
   it("keeps every status bar child on one row", () => {
@@ -965,6 +1038,7 @@ describe("the stylesheet", () => {
       ".song-cell.right",
       ".statusbar-zoom-value",
       ".stat-tile-value",
+      ".count",
     ]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
 

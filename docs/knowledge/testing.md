@@ -135,9 +135,11 @@ defects shipped past 600 green tests for exactly that reason.
   no hover background outside the allowlist, no `cursor: pointer`, no transition
   or animation outside `ANIMATION_ALLOWED` (whose exception must itself stand
   down under `prefers-reduced-motion`), a `:focus-visible` outline, and no
-  literal colour outside `styles/tokens.css`. It reads all three sheets as a
+  literal colour outside `styles/tokens.css`. It reads all four sheets as a
   set, not `App.css` — an absence guard is worth the fraction of the sheet it
-  can see, and the entry point is three `@import`s. Since phase 108 it also
+  can see, and the entry point is four `@import`s. A sheet added to `styles/`
+  and forgotten in `SHEETS` leaves every absence guard at once, which is why
+  the component library is one file rather than one per component. Since phase 108 it also
   iterates both grounds: every contrast pair is asserted twice, and the two
   token blocks must declare identical name sets. Rules that are meaningless
   apart carry a paired assertion — a `.statusbar-*` rule setting a column must
@@ -176,6 +178,11 @@ Component behaviour stays in `*.test.tsx` and appearance stays in the wdio suite
 What it is for is the one thing neither of those shows — a primitive drawn in
 every state, on both grounds, at once. Vitest runs in jsdom with no stylesheet;
 the wdio specs photograph whole screens of the running app.
+
+Hover and press are the exception: a story shows them live rather than beside
+the rest state. Drawing them would need a story-only class in `library.css`,
+and story scaffolding does not belong in the sheet — a specimen that stopped
+matching the rule it documents is worse than one you have to point at.
 
 It is in CI all the same, as `npm run build-storybook` on the `frontend` job.
 Nothing is published from it. It is the only thing that *compiles* a story, and

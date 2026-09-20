@@ -1,19 +1,23 @@
-/* The app's stylesheet, in three parts.
+/* The app's stylesheet, in four parts.
    =========================================================================
    Split in phase 108, when a second ground would otherwise have pushed one
    file past three and a half thousand lines. Nothing was reordered in the
    move: `primitives.css` and `app.css` hold what stood here, in the order it
    stood in, and `tokens.css` is the old `:root` block grown a second column.
+   `library.css` joined them in phase 110, for the component library the
+   design's specimen sheet specifies.
 
    The order is the cascade, so it is not arbitrary. Tokens first because
    everything below resolves against them; primitives second because they are
    bare element selectors that a component rule of equal specificity would
-   otherwise win over; the app's own regions last.
+   otherwise win over; the library third, because a region has to be able to
+   overrule a primitive it wraps; the app's own regions last.
 
-   `App.css.test.ts` reads all three as text rather than this file alone - the
+   `App.css.test.ts` reads all four as text rather than this file alone - the
    guards that assert *absences* (no literal colour, no hover highlight, no
    transition) only mean anything if they see every rule there is. */
 
 @import "./styles/tokens.css";
 @import "./styles/primitives.css";
+@import "./styles/library.css";
 @import "./styles/app.css";

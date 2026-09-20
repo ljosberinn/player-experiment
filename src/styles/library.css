@@ -1,0 +1,246 @@
+/* The component library, in the order the specimen sheet draws it.
+   =========================================================================
+   The classes behind `src/components/primitives/`. Added in phase 110 with
+   the first three; the sheet has seven sections and they land one issue at a
+   time, each as its own block below.
+
+   Third of four, and the position is the cascade rather than a filing
+   decision. `primitives.css` above is bare element selectors, which a class
+   here would win over at equal specificity - so it has to come first.
+   `app.css` below is the app's own regions, which have to win over a
+   primitive they wrap: `.modal button` is two components deep and knows
+   something `.button` cannot. A primitive states the drawing; a region
+   states the exception.
+
+   One file rather than one per primitive. The classes are global - CSS
+   Modules were declined, see conventions - so a file boundary buys no
+   scoping, and `App.css.test.ts` reads a fixed list of sheets: every extra
+   file is another entry that, forgotten, drops that primitive out of every
+   guard that asserts an absence. It splits the way `app.css` did, by size,
+   when there is a size to split.
+
+   Nothing here may write a colour literal; see `tokens.css`. */
+
+/* ---------- 01 · buttons ---------- */
+
+/* Four kinds and one box. The label is centred, which is the sheet's single
+   departure from its own flush-left rule - "a desktop action reads as a
+   target rather than a line of text" - and the only place in this app where
+   text is.
+
+   `cursor: default` rather than the sheet's `pointer`: a hand cursor is the
+   one thing that would give the whole window away as a web page, and the
+   sheet is drawn in a browser. The app wins on a detail the design did not
+   think about; see docs/knowledge/design.md.
+
+   No `height`. The sheet states padding rather than a box, so a button grows
+   with the zoom step the way its label does. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  cursor: default;
+}
+
+/* At most one per surface. Nothing can enforce that in CSS; it is in the
+   component's own documentation and in the story that draws the row. */
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.button.primary:active {
+  background: var(--accent-active);
+  border-color: var(--accent-active);
+}
+
+/* The focus ring is `--accent` at `outline-offset: -2px`, which on an accent
+   fill is the accent drawn on itself. This is the one control in the app
+   whose ring has to be taken back. */
+.button.primary:focus-visible {
+  outline-color: var(--on-accent);
+}
+
+.button.secondary {
+  border-color: var(--menu-border);
+}
+
+/* Two signals rather than one: the ground darkens and the edge comes forward.
+   `--field-border` is the sheet's own heavier line and lands within a JND of
+   the hover border it draws on both grounds. */
+.button.secondary:hover {
+  background: var(--hover-veil);
+  border-color: var(--field-border);
+}
+
+.button.secondary:active {
+  background: var(--active-veil);
+  border-color: var(--field-border);
+}
+
+/* Narrower padding than the other two: it has no edge, so the label is the
+   whole control and 14px either side would read as a gap rather than as a
+   target. */
+.button.ghost {
+  padding: 8px 6px;
+  color: var(--accent-deep);
+}
+
+.button.ghost:hover {
+  background: var(--accent-veil);
+}
+
+.button.ghost:active {
+  background: var(--accent-veil-strong);
+}
+
+/* Drawn as a secondary whatever kind it was asked for, which is what the
+   sheet's own row shows: a disabled primary that kept its fill still reads as
+   the one thing on the surface you are meant to press. */
+.button:disabled {
+  background: transparent;
+  border-color: var(--menu-border);
+  color: var(--text);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 01 · icon buttons ---------- */
+
+/* Square, bordered, one glyph. Three sizes, and each is a place rather than a
+   preference: 32px in a toolbar, 36px in a dialog, 20px for the pair that
+   nudges a row up or down inside a mapping table.
+
+   `position: relative` is for the 20px one's hit area below, and is stated
+   here so the two sizes cannot disagree about what `inset` resolves against. */
+.icon-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--menu-border);
+  background: transparent;
+  color: var(--text);
+  cursor: default;
+}
+
+.icon-button.dialog {
+  width: 36px;
+  height: 36px;
+}
+
+/* Recessive, because it sits inside a row of data rather than on the chrome:
+   two arrows at full ink beside every line would read as the content. */
+.icon-button.nudge {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+/* 20px drawn, 24px pressable. The mark is what the row has space for; the
+   target is what a pointer needs, and the two do not have to be the same
+   rectangle. `::after` rather than padding, which would grow the mark. */
+.icon-button.nudge::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+}
+
+.icon-button:hover {
+  background: var(--hover-veil);
+}
+
+.icon-button:active {
+  background: var(--active-veil);
+}
+
+/* Toggled is a state, not a hover: the fill stays when the pointer leaves.
+   All three of fill, edge and glyph move, so the state survives a screenshot
+   in greyscale. */
+.icon-button[aria-pressed="true"] {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+
+.icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 01 · tags, badges and counts ---------- */
+
+/* One drawing in four tones. The sheet names two of them - a tag is a genre,
+   a badge is a state - but draws them identically, and two names for one
+   thing is what `--dim` was folded into `--muted` to avoid. The tone says
+   what it means; `Tag` is the only component.
+
+   `display: inline-flex` rather than `inline-block`: the box is 10.5px text
+   at 800 with a letter-spaced tail, and the trailing space of `.06em` would
+   otherwise sit inside the fill and push the glyph off centre. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tag.accent {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.tag.selection {
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+}
+
+.tag.neutral {
+  background: var(--neutral-veil);
+  color: var(--label);
+}
+
+.tag.outline {
+  border-color: var(--menu-border);
+  color: var(--text);
+}
+
+/* A figure rather than a word, so it drops the two things that make the tags
+   above read as labels - the uppercasing and the letter-spacing - and takes
+   the one that makes a column of numbers hold still. `min-width` so that 7
+   and 242 are the same shape of mark in a list of them. */
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 3px 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}

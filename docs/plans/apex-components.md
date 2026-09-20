@@ -41,13 +41,19 @@ shell stays governed by the old file until the library covers it.
   that changed shape rather than softness — three abutting squares reading as a
   segmented block. See [design.md](../knowledge/design.md#geometry).
 - **Type.** Done in 107: Archivo alone, the guard inverted, the sheet's sizes
-  still to be applied role by role as each primitive lands.
+  still to be applied role by role as each primitive lands. Button label and
+  Badge landed with 110.
+- **Section 01 is in.** Done in 110: `Button`, `IconButton` and `Tag` in
+  `src/components/primitives/`, drawn by a fourth sheet, `styles/library.css`,
+  imported between the reset and the app's regions so a region can still
+  overrule a primitive it wraps. Nothing calls them yet.
 - **Controls are native.** `input[type=checkbox|radio]` and `select` are
   browser widgets with light styling. The design draws all four itself, plus a
   switch the app does not have.
-- **No button primitive.** Every region styles its own; `.window-buttons`,
-  `.repeat-button`, `.link-button`, `.history-button`, `.modal button` are
-  unrelated rules.
+- **The button primitive exists but nothing uses it.** Every region still
+  styles its own; `.window-buttons`, `.repeat-button`, `.link-button`,
+  `.history-button`, `.modal button` are unrelated rules until their own issue
+  migrates them.
 - **Track list.** 3f (grouped by release, 168px art gutter, footer total row) is
   marked *Selected* and is a layout the Releases view does not have.
 - **Titlebar.** `decorations: false` and a drawn 36px bar. The design assumes
@@ -56,17 +62,22 @@ shell stays governed by the old file until the library covers it.
 ## How the components come out
 
 New primitives land in **`src/components/primitives/`** — one file per
-component, global classes in the sheet as everywhere else (CSS Modules were
-declined, see conventions). `src/components/ui/` keeps the app chrome it holds
-today; a file moves only when its own issue touches it.
+component, drawn by **`src/styles/library.css`**, one file for all of them
+(CSS Modules were declined, see conventions). The classes are global, so a
+sheet per component would buy no scoping and would cost a guard: every sheet
+is an entry in `App.css.test.ts`'s list, and one forgotten there drops that
+primitive out of every check that asserts an absence.
+
+`src/components/ui/` keeps the app chrome it holds today; a file moves only
+when its own issue touches it.
 
 Primitives the sheet specifies, against what exists:
 
 | Primitive | Today |
 | --- | --- |
-| `Button` (primary / secondary / ghost / disabled) | nothing shared |
-| `IconButton` (32px toolbar, 36px dialog, toggled) | nothing shared |
-| `Tag`, `Badge`, `Count` | nothing shared |
+| `Button` (primary / secondary / ghost / disabled) | **done, 110** |
+| `IconButton` (32px toolbar, 36px dialog, toggled) | **done, 110** |
+| `Tag` (four tones), `Count` | **done, 110** — the sheet's tag and badge are one drawing, so one component |
 | `Checkbox`, `Radio`, `Switch` | native elements |
 | `Select`, `SearchField`, `SegmentedControl` | native `select`, ad-hoc inputs |
 | `Slider`, `ProgressBar` | `Scrubber`, `VolumeControl` (Base UI) |
@@ -109,5 +120,9 @@ Foundation first, then primitives, then the surfaces built out of them.
 
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
-All three have landed, so 110 and 111 branch from main.
+All three have landed, and 110 with them.
 113 through 117 are independent of each other once 112 has landed.
+
+**111 now stacks on 110 rather than branching from main.** Both write
+`library.css` and both add tokens, which is the same two files 107–109 were
+stacked for.

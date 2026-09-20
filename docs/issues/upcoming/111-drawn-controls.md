@@ -27,4 +27,8 @@ in one dialog.
 `Scrubber` and `VolumeControl` are the playhead and the volume rail; they wear
 the design's transport treatment, not this slider, and stay as they are.
 
+Stacks on 110 rather than branching from main: both write `styles/library.css`
+and both add tokens. The `#9b9694` / `#5b5147` border above is `--field-border`,
+already there.
+
 Part of the [component library sweep](../../plans/apex-components.md).

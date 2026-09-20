@@ -1,3 +1,5 @@
+import { CaretDownIcon } from "@phosphor-icons/react/CaretDown";
+import { CaretUpIcon } from "@phosphor-icons/react/CaretUp";
 import { ChartBarIcon } from "@phosphor-icons/react/ChartBar";
 import { GearSixIcon } from "@phosphor-icons/react/GearSix";
 import { ListChecksIcon } from "@phosphor-icons/react/ListChecks";
@@ -52,7 +54,9 @@ export type IconName =
   | "artists"
   | "genres"
   | "stats"
-  | "review";
+  | "review"
+  | "move-up"
+  | "move-down";
 
 /**
  * Filled for the transport, outlined everywhere else.
@@ -81,4 +85,8 @@ export const ICONS: Record<IconName, Glyph> = {
   genres: (props) => <TagIcon {...props} />,
   stats: (props) => <ChartBarIcon {...props} />,
   review: (props) => <ListChecksIcon {...props} />,
+  // Bold, and the one pair here that needs saying: they are drawn at 9px
+  // inside a 20px nudge button, where a regular-weight caret is a smudge.
+  "move-up": (props) => <CaretUpIcon weight="bold" {...props} />,
+  "move-down": (props) => <CaretDownIcon weight="bold" {...props} />,
 };
