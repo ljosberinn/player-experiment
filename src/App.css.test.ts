@@ -14,7 +14,20 @@ import { describe, expect, it } from "vitest";
  * docs/knowledge/frontend.md remain the real specification.
  */
 const root = process.cwd().replaceAll("\\", "/");
-const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+/**
+ * The sheet, in cascade order.
+ *
+ * Three files since phase 108, and read as a set rather than through
+ * `App.css`: every guard below that asserts an *absence* - no literal colour,
+ * no hover highlight, no transition - is worth exactly as much as the fraction
+ * of the sheet it can see. Reading the entry point alone would have seen three
+ * `@import` lines and passed everything.
+ */
+const SHEETS = ["tokens", "primitives", "app"] as const;
+const sources = SHEETS.map((name) => readFileSync(`${root}/src/styles/${name}.css`, "utf8"));
+const css = sources.join("\n");
+const entry = readFileSync(`${root}/src/App.css`, "utf8");
 
 interface Rule {
   selector: string;
@@ -95,13 +108,60 @@ function contrast(a: string, b: string): number {
   return (high + 0.05) / (low + 0.05);
 }
 
-/** The `:root` block, which is the only place a colour may be written. */
-const tokenBlock = css.slice(css.indexOf(":root {"), css.indexOf("\n}", css.indexOf(":root {")));
+/** The two grounds `tokens.css` defines, and which every pair is asserted on. */
+const GROUNDS = ["light", "dark"] as const;
+type Ground = (typeof GROUNDS)[number];
 
-/** One token's value, by name. */
-function token(name: string): string {
-  return new RegExp(`--${name}:\\s*([^;]+)`).exec(tokenBlock)?.[1]?.trim() ?? "";
+/** `tokens.css`, which is the only file a colour may be written in. */
+const tokensSheet = sources[0] ?? "";
+
+/**
+ * Comments out.
+ *
+ * Not cosmetic: `rules()` sweeps everything since the previous brace into the
+ * selector, and the comment at the top of `tokens.css` explains the cascade by
+ * naming both `[data-theme="light"]` and `[data-theme="dark"]`. Matching a
+ * block by its raw selector would therefore find the *shared* `:root` block
+ * for either ground, and every pair below would be asserted twice against the
+ * same empty set of tokens - a guard that passes whatever it is given.
+ */
+function uncommented(text: string): string {
+  return text.replaceAll(/\/\*[\s\S]*?\*\//g, "");
 }
+
+const tokenRules = rules(tokensSheet);
+
+/**
+ * One ground's block of definitions.
+ *
+ * Found by the `[data-theme="…"]` in its selector rather than by position, so
+ * that reordering the two, or adding a third, cannot silently point this at
+ * the wrong one.
+ */
+function groundBlock(ground: Ground): string {
+  return (
+    tokenRules.find((one) => uncommented(one.selector).includes(`[data-theme="${ground}"]`))
+      ?.body ?? ""
+  );
+}
+
+const blocks = Object.fromEntries(GROUNDS.map((g) => [g, groundBlock(g)])) as Record<
+  Ground,
+  string
+>;
+
+/** One token's value on one ground, by name. */
+function token(name: string, ground: Ground): string {
+  return new RegExp(`--${name}:\\s*([^;]+)`).exec(blocks[ground])?.[1]?.trim() ?? "";
+}
+
+/** The names one block declares. */
+function names(block: string): string[] {
+  return [...uncommented(block).matchAll(/(--[\w-]+)\s*:/g)].map(([, name]) => name as string);
+}
+
+/** Every custom property `tokens.css` declares, shared or per ground. */
+const declaredTokens = new Set(names(tokensSheet));
 
 describe("the stylesheet", () => {
   it("parses into rules", () => {
@@ -198,8 +258,14 @@ describe("the stylesheet", () => {
       }
 
       // A veil carries an alpha; `oklch(L C H / A)` is how the token block
-      // writes one. An opaque token here is the defect.
-      expect(token(String(declared[1]).replace(/^--/, "")), `${pane} is opaque`).toContain("/");
+      // writes one. An opaque token here is the defect - on either ground,
+      // because the blob layer is behind both of them.
+      for (const ground of GROUNDS) {
+        expect(
+          token(String(declared[1]).replace(/^--/, ""), ground),
+          `${pane} is opaque on ${ground}`,
+        ).toContain("/");
+      }
     }
   });
 
@@ -309,30 +375,45 @@ describe("the stylesheet", () => {
     expect(inputs?.body).toMatch(/cursor:\s*text/);
   });
 
-  it("writes every colour in one block and nowhere else", () => {
-    // The reason a light theme stays cheap to restore. With the light and
-    // `prefers-color-scheme` blocks gone (phase 33), nothing structural stops a
-    // literal being written straight into a component rule - and every one that
-    // is written there is a colour that would have to be found by hand later.
+  it("writes every colour in one file and nowhere else", () => {
+    // The reason a second ground was a second column of values rather than an
+    // audit of six hundred declarations - and the reason a third would be too.
+    // Nothing structural stops a literal being written straight into a
+    // component rule, and every one that is written there is a colour that
+    // does not change when the ground does: it is how an app grows a theme
+    // that is correct everywhere except four places nobody looks at.
     //
-    // The token block is exempt by definition; it is where they belong.
-    const outside = css.slice(css.indexOf("\n}", css.indexOf(":root {")));
-    const literals = [
-      ...outside.matchAll(/(?:#[0-9a-f]{3,8}|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\()/gi),
-    ].map((match) => {
-      const line = outside.slice(0, match.index).split("\n").length;
-      return `${match[0]} (roughly line ${line} after :root)`;
+    // `tokens.css` is exempt by definition; it is where they belong.
+    const literals = SHEETS.slice(1).flatMap((name, index) => {
+      const sheet = sources[index + 1] ?? "";
+      return [
+        ...sheet.matchAll(/(?:#[0-9a-f]{3,8}|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\()/gi),
+      ].map(
+        (match) => `${match[0]} at ${name}.css:${sheet.slice(0, match.index).split("\n").length}`,
+      );
     });
 
     expect(literals).toEqual([]);
   });
 
+  it("imports the three sheets, in the order the cascade needs", () => {
+    // The split is load-bearing twice over. `primitives.css` is bare element
+    // selectors that a component rule of equal specificity would win over, so
+    // it has to precede `app.css`; `tokens.css` has to precede both or every
+    // `var()` in them resolves against nothing. An import reordered by a
+    // tidying pass would break the sheet in ways that look like a component
+    // bug, so the order is asserted rather than remembered.
+    const imported = [...entry.matchAll(/@import\s+"\.\/styles\/([\w-]+)\.css"/g)].map(
+      ([, name]) => name,
+    );
+
+    expect(imported).toEqual([...SHEETS]);
+  });
+
   it("defines the tokens the rest of the sheet asks for", () => {
     // The other half of the rule above: a rule may only use `var()`, so a
     // `var(--typo)` would silently resolve to nothing rather than to a colour.
-    const declared = new Set(
-      [...tokenBlock.matchAll(/(--[\w-]+):/g)].map(([, name]) => name as string),
-    );
+    const declared = new Set(declaredTokens);
     // The blob colours are the one exception, and a deliberate one: they hold
     // whatever the playing cover turned out to be, so their value comes from
     // React and their *declaration* is the `@property` block that makes them
@@ -347,11 +428,46 @@ describe("the stylesheet", () => {
     expect([...used].filter((name) => !declared.has(name) && !name.startsWith("--a"))).toEqual([]);
   });
 
-  it("keeps text readable on every surface it is drawn on", () => {
-    // The palette is one hue at eight lightnesses, so a surface added a step
-    // too close to the text above it is an easy and invisible mistake. WCAG AA
-    // for body text is 4.5:1; these are the pairings the app actually makes.
-    const failures = [
+  it("declares every token on both grounds", () => {
+    // The failure this exists for is silent in exactly one direction. A token
+    // defined on dark and forgotten on light does not throw, does not warn and
+    // does not show up in a dark screenshot: the rule simply resolves to
+    // nothing on the other ground and the element loses its colour. Nobody
+    // reviewing the theme they use would ever see it.
+    //
+    // Sorted rather than compared as sets, so the failure message names the
+    // token instead of saying two sets differ.
+    const [light = [], dark = []] = GROUNDS.map((g) => names(blocks[g]).sort());
+
+    // Guards the guard, twice. A selector that matched nothing would compare
+    // two empty lists and pass; a selector that matched the *same* block for
+    // both grounds would compare a list to itself and pass just as quietly,
+    // which is the failure the comment-stripping above exists to prevent.
+    expect(light.length).toBeGreaterThan(30);
+    expect(token("surface", "light")).not.toBe(token("surface", "dark"));
+
+    expect(light).toEqual(dark);
+  });
+
+  it("gives each ground its own colour-scheme", () => {
+    // What makes the native widgets - a scrollbar, a native `select`'s popup,
+    // a caret - follow the theme. Without it a light app keeps dark
+    // scrollbars, which is the one part of the window the app does not paint
+    // itself and therefore the one part that gives the whole thing away.
+    for (const ground of GROUNDS) {
+      expect(blocks[ground], `${ground} sets color-scheme`).toMatch(
+        new RegExp(`color-scheme:\\s*${ground}`),
+      );
+    }
+  });
+
+  it("keeps text readable on every surface it is drawn on, on both grounds", () => {
+    // A surface added a step too close to the text above it is an easy and
+    // invisible mistake, and a second ground doubles the chances of making
+    // one: the ramps run in opposite directions, so a value that is safely
+    // recessive on dark can be the brightest thing in the room on light.
+    // WCAG AA for body text is 4.5:1; these are the pairings the app makes.
+    const PAIRS = [
       ["text", "surface"],
       ["text", "chrome"],
       ["text", "field"],
@@ -360,26 +476,64 @@ describe("the stylesheet", () => {
       ["muted", "chrome"],
       ["muted", "field"],
       ["muted", "sidebar"],
+      ["muted", "pill"],
+      ["sidebar-text", "sidebar"],
+      ["label", "chrome"],
+      ["label", "sidebar"],
       ["danger", "surface"],
       ["on-accent", "accent"],
       ["on-danger", "destructive"],
-    ]
-      .map(([fore, back]) => ({
-        pair: `${fore} on ${back}`,
-        ratio: contrast(token(fore as string), token(back as string)),
+    ];
+
+    const failures = GROUNDS.flatMap((ground) =>
+      PAIRS.map(([fore, back]) => ({
+        pair: `${fore} on ${back} (${ground})`,
+        ratio: contrast(token(fore as string, ground), token(back as string, ground)),
       }))
-      .filter((one) => one.ratio < 4.5)
-      .map((one) => `${one.pair} = ${one.ratio.toFixed(2)}:1`);
+        .filter((one) => one.ratio < 4.5)
+        .map((one) => `${one.pair} = ${one.ratio.toFixed(2)}:1`),
+    );
 
     expect(failures).toEqual([]);
   });
 
-  it("never fills with the accent under light text", () => {
-    // This is the pairing the redesign had to correct: white on the amber is
-    // 2.60:1, and it was the fill behind the *selected row* - the surface a
-    // library is read on. Selection uses `--accent-tint` instead, and a solid
-    // accent fill may only carry `--on-accent`.
-    expect(contrast(token("text"), token("accent"))).toBeLessThan(4.5);
+  it("keeps the search field's clear affordance legible on both grounds", () => {
+    // Its own assertion at its own threshold, and the comment is the point.
+    // `.search-clear` is the only text the app draws on `--skeleton`, and on
+    // the light ground `--muted` on it is 4.22:1 - short of AA for body text.
+    // Nothing can fix that here: lifting `--skeleton` to reach 4.5 puts it
+    // within 1.02:1 of the field it sits inside, which is the invisible-border
+    // defect in a different place.
+    //
+    // It is a glyph on a button rather than prose, so WCAG 1.4.11 at 3:1 is
+    // the bar it is actually held to. Stated explicitly so that the number is
+    // a decision rather than an oversight.
+    for (const ground of GROUNDS) {
+      expect(
+        contrast(token("muted", ground), token("skeleton", ground)),
+        `search-clear on ${ground}`,
+      ).toBeGreaterThan(3);
+    }
+  });
+
+  it("never fills with the accent under anything but its own ink", () => {
+    // This is the pairing the redesign had to correct: white on the dark
+    // ground's amber is 2.46:1, and it was the fill behind the *selected row* -
+    // the surface a library is read on. Selection uses `--accent-tint`
+    // instead, and a solid accent fill may only carry `--on-accent`.
+    //
+    // The numeric half of this used to read `text on accent < 4.5`, which was
+    // true only by coincidence of the dark ground: light's ink *does* read on
+    // its accent, at 5.45:1, and `--on-accent` is that same ink. So the rule
+    // that actually holds on both grounds is the one asserted here - the
+    // named token is legible - and the structural check below is what stops
+    // anything else being used in its place.
+    for (const ground of GROUNDS) {
+      expect(
+        contrast(token("on-accent", ground), token("accent", ground)),
+        `on-accent on ${ground}`,
+      ).toBeGreaterThan(4.5);
+    }
 
     const fills = all
       .filter((rule) => /background:\s*var\(--accent\)/.test(rule.body))
@@ -633,9 +787,23 @@ describe("the stylesheet", () => {
     // arithmetic.
     //
     // Against the field's own fill, and against the panel behind it: a border
-    // that only clears one of the two still leaves an edge missing.
-    expect(contrast(token("field-border"), token("field")), "border vs field").toBeGreaterThan(2);
-    expect(contrast(token("field-border"), token("chrome")), "border vs dialog").toBeGreaterThan(2);
+    // that only clears one of the two still leaves an edge missing. Both
+    // grounds, because this is exactly the kind of value that is tuned on the
+    // theme its author uses and left to chance on the other.
+    for (const ground of GROUNDS) {
+      expect(
+        contrast(token("field-border", ground), token("field", ground)),
+        `border vs field (${ground})`,
+      ).toBeGreaterThan(2);
+      expect(
+        contrast(token("field-border", ground), token("chrome", ground)),
+        `border vs dialog (${ground})`,
+      ).toBeGreaterThan(2);
+      expect(
+        contrast(token("track-border", ground), token("track", ground)),
+        `border vs track (${ground})`,
+      ).toBeGreaterThan(2);
+    }
 
     // And the fields must actually use it rather than the chrome divider.
     const fields = all.find((rule) => /\.modal input,\s*\.modal select/.test(rule.selector));

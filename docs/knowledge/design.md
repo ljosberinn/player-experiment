@@ -25,9 +25,10 @@ the removal of the accent row border) and can be again. Reproduce the details
 they specify, not only the structure.
 
 The component sheet settles four things. **Archivo** as the one face (study 7a,
-chosen over three alternatives) is in, phase 107. Still ahead of the tokens
-below: accent `#e8730f` light and `#f58a1f` dark, **radius 0 everywhere**, and a
-**light ground that ships** alongside the dark one.
+chosen over three alternatives) is in, phase 107. The **two grounds** and the
+accents that go with them — `#e8730f` light, `#f58a1f` dark — are in, phase 108,
+which also re-based the dark palette onto the sheet's own column. Still ahead:
+**radius 0 everywhere**.
 
 Where the design and the built app disagree on a detail the design has not
 thought about, the app wins. Where they disagree on how something *looks*, the
@@ -49,29 +50,53 @@ design wins.
 
 ## Tokens
 
-Dark only, one hue (55, warm orange-brown), everything in `oklch`. A second
-ground arrives with [issue 108](../issues/upcoming/108-two-grounds.md), which is
-what the indirection below was kept for.
+**Two grounds, one set of names**, since [issue 108](../issues/done/108-two-grounds.md)
+— which is what the indirection was kept for. Everything is in `oklch`, stated
+from the component sheet's study 7a with the design's own hex in a comment
+beside each; all of them round-trip to within 0.001 of oklab distance, far
+inside a JND. `src/styles/tokens.css` holds three blocks: one shared (density
+and type), one per ground.
 
-| Token | Value | Used for |
-| --- | --- | --- |
-| `--accent` | `oklch(0.72 0.16 55)` | play button, selection tint, active nav, focus |
-| `--surface-0` | `oklch(0.09 0.004 55)` | the page behind the window |
-| `--surface-1` | `oklch(0.14 0.008 55)` | sidebar |
-| `--surface-2` | `oklch(0.15 0.008 55)` | transport strip, dialogs |
-| `--surface-3` | `oklch(0.17 0.008 55)` | content |
-| `--text` | `oklch(0.94 0.005 55)` | body |
-| `--text-dim` | `oklch(0.72 0.01 55)` | secondary columns, section headings |
-| `--hairline` | `oklch(1 0 0 / 0.06)` | every border |
+| Token | Light | Dark | Used for |
+| --- | --- | --- | --- |
+| `--surface` | `#f3f2f2` | `#17140f` | the window and the content pane |
+| `--sidebar` | `#e9e7e6` | `#100e0b` | the sidebar, which recedes on both |
+| `--chrome` | `#f8f7f7` | `#1d1915` | transport strip, dialogs — forward on both |
+| `--field` | `#e6e4e2` | `#221d17` | an inset control |
+| `--text` | `#201e1d` | `#f0ece7` | body |
+| `--muted` | `#696562`\* | `#948b81` | secondary columns, section headings |
+| `--accent` | `#e8730f` | `#f58a1f` | play button, selection tint, active nav, focus |
+| `--chrome-border` | ink / .125 | white / .07 | every hairline |
 
-Light is not shipped, but the **indirection is kept**: no literal colour outside
-the token block, so restoring a light theme is one more block of definitions
-rather than an audit of six hundred rules. Dim text sits at `0.72` because
-`e2e/contrast.ts` requires 4.5:1 and the design was amended to meet it.
+The stack inverts rather than repeating: on dark, coming forward is lighter; on
+light it is darker, and the sidebar is darker than the content on both. Which
+ground is drawn is `data-theme` on `<html>`, written by `themeStore` before the
+window is shown — **not** a `@media (prefers-color-scheme:)` block, which would
+need a third copy of every dark value. `color-scheme` follows it, so scrollbars
+and native popups follow too.
 
-Chrome is translucent — `backdrop-filter: blur(18px)` over a surface at 55–70%
-opacity — which is what makes the dynamic background visible through the sidebar
-and transport rather than only behind the table.
+Three departures from the sheet, all recorded in `tokens.css` beside the value:
+
+- **`--muted` on light** is the sheet's `#6e6a67` darkened by 0.016 of
+  lightness. The sheet's own value is 4.22:1 on its own field and fails AA; the
+  amendment is under a JND and is the same one the design already took once for
+  dim text.
+- **`--dim` is gone**, folded into `--muted`. The re-based grounds put the
+  sheet's muted close to the AA floor, so a third recessive step that is still
+  AA cannot exist: on light the best it can do is L 0.515 against muted's 0.511.
+  Two names for one colour is worse than one name.
+- **`--field-border` is ours**, above the sheet's `line` (a 1.5:1 hairline). A
+  field border at 1.02:1 shipped once; this is 2.3:1 on both grounds.
+
+Chrome is translucent — `backdrop-filter: blur(18px)` over a surface — which is
+what makes the dynamic background visible through the sidebar and transport
+rather than only behind the table. **The opacities are ours; the sheet has no
+opinion.** Light's are higher (0.80–0.86 against dark's 0.55–0.70) and its
+`--blob-opacity` is half dark's, because a translucent panel over a blob moves
+*toward* dark ink and *away* from light ink: the same blob costs a light ground
+far more contrast. The worst composited case — `--muted` over the sidebar veil
+over a black blob — is 4.68:1, measured in the appearance suite rather than
+computed from a token.
 
 ## Type
 
@@ -125,7 +150,7 @@ action reads as a target rather than a line of text".
 - A 27px translucent status bar: zoom stepper left, view summary centred, version
   right.
 - **Settings is a rail and a pane**, at one size whichever category is open:
-  Appearance (Interface Zoom, Colour From Album Art), Library (Library Folder,
+  Appearance (Interface Zoom, Theme, Colour From Album Art), Library (Library Folder,
   Music Folders), Online (Look Up Releases Online, last.fm) and About (Activity
   Log). The rail items wear the sidebar's navigation look. Issue 91 built it on
   the app's tokens while the design could not be fetched, so the design's own

@@ -17,6 +17,46 @@ const preview: Preview = {
     // specimen by a rem that the app never applies.
     layout: "fullscreen",
   },
+
+  /**
+   * The ground, as a toolbar switch.
+   *
+   * This is the thing neither test suite shows. The wdio suite measures one
+   * running app, and a Vitest run applies no stylesheet at all; drawing a
+   * primitive in every state on both grounds at once is what Storybook is here
+   * for, and it only earns that if the ground can be flipped without a
+   * restart.
+   *
+   * No "system" here, unlike Settings: a specimen sheet is read to compare the
+   * two, so the useful control names them rather than deferring to whatever
+   * the reviewer's machine happens to be set to.
+   */
+  globalTypes: {
+    theme: {
+      description: "Which ground the specimens are drawn on",
+      toolbar: {
+        title: "Ground",
+        icon: "mirror",
+        items: [
+          { value: "light", title: "Light" },
+          { value: "dark", title: "Dark" },
+        ],
+        dynamicTitle: true,
+      },
+    },
+  },
+  initialGlobals: { theme: "light" },
+
+  decorators: [
+    (Story, context) => {
+      // The same attribute `themeStore` writes in the app, on the same
+      // element - the preview iframe's own `<html>`. Anything else would be
+      // drawing the specimens through a mechanism the app does not use, which
+      // is how a sheet comes to disagree with the thing it documents.
+      document.documentElement.setAttribute("data-theme", String(context.globals.theme));
+      return Story();
+    },
+  ],
 };
 
 export default preview;

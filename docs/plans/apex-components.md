@@ -26,13 +26,16 @@ shell stays governed by the old file until the library covers it.
 
 ## Where the app stands against it
 
-- **Tokens.** One `:root` block in `App.css`, dark only, everything in `oklch`
-  on hue 55. The design states hex. Convert to `oklch` rather than adopting the
-  hex: `App.css.test.ts` computes every contrast ratio from the oklch channels,
-  and hex would cost that guard. Record the design's hex beside each token.
-- **Two grounds is the structural change.** The guard slices the *first*
-  `:root {` block and reads tokens out of it by name; a second theme needs the
-  guard to iterate themes and assert the contrast pairs twice.
+- **Tokens.** Done in 108: `src/styles/tokens.css`, both grounds, everything in
+  `oklch` with the design's hex beside it. The dark column was re-based onto the
+  sheet at the same time, so both grounds come from one source. `--dim` was
+  folded into `--muted` — the re-based grounds leave no room for a third
+  recessive step that is still AA — and the veil and blob opacities are ours,
+  higher on light. See [design.md](../knowledge/design.md#tokens).
+- **Two grounds was the structural change.** The guard now iterates both,
+  asserts every contrast pair twice, and requires the two blocks to declare
+  identical name sets. The appearance suite loops the same way, against the
+  composited stack rather than the token values.
 - **Radius.** 48 `border-radius` declarations, from `2px` to `50%` (the play
   button, the cover ring, the transport pill). All go.
 - **Type.** Done in 107: Archivo alone, the guard inverted, the sheet's sizes
@@ -104,4 +107,10 @@ Foundation first, then primitives, then the surfaces built out of them.
 
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
+107 and 108 have landed; 109 branches from main.
 113 through 117 are independent of each other once 112 has landed.
+
+109 inherits a sheet already split into `styles/tokens.css`,
+`styles/primitives.css` and `styles/app.css`, and a guard that reads the set
+rather than `App.css`. The 48 `border-radius` declarations it removes are all
+in `styles/app.css`.

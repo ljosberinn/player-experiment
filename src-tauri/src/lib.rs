@@ -246,6 +246,8 @@ pub fn run() {
             commands::save_column_config,
             commands::load_zoom,
             commands::save_zoom,
+            commands::load_theme,
+            commands::save_theme,
             commands::load_watch_interval,
             commands::save_watch_interval,
             commands::load_sidebar_sections,

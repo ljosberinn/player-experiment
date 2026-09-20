@@ -134,9 +134,14 @@ defects shipped past 600 green tests for exactly that reason.
 - **`src/App.css.test.ts`** reads the stylesheet as text and asserts *absences*:
   no hover background outside the allowlist, no `cursor: pointer`, no transition
   or animation outside `ANIMATION_ALLOWED` (whose exception must itself stand
-  down under `prefers-reduced-motion`), a `:focus-visible` outline, and that
-  colour tokens exist for every theme. Rules that are meaningless apart carry a
-  paired assertion — a `.statusbar-*` rule setting a column must also set a row.
+  down under `prefers-reduced-motion`), a `:focus-visible` outline, and no
+  literal colour outside `styles/tokens.css`. It reads all three sheets as a
+  set, not `App.css` — an absence guard is worth the fraction of the sheet it
+  can see, and the entry point is three `@import`s. Since phase 108 it also
+  iterates both grounds: every contrast pair is asserted twice, and the two
+  token blocks must declare identical name sets. Rules that are meaningless
+  apart carry a paired assertion — a `.statusbar-*` rule setting a column must
+  also set a row.
 - **`src/ipc/capabilities.test.ts`** maps each Tauri API the source calls to the
   permission it needs and asserts `capabilities/default.json` lists it. A lookup
   table, not an analysis, so an unknown call still slips through — but it has

@@ -8,6 +8,8 @@ import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
 import { report } from "./statusStore";
+import { THEME_LABELS, THEME_PREFERENCES, type ThemePreference } from "./theme";
+import { useThemeStore } from "./themeStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
 
@@ -58,6 +60,8 @@ export function SettingsDialog({
 }) {
   const factor = useZoomStore((s) => s.factor);
   const step = useZoomStore((s) => s.step);
+  const themePreference = useThemeStore((s) => s.preference);
+  const setTheme = useThemeStore((s) => s.set);
   const dynamicBackground = useDynamicBackgroundStore((s) => s.enabled);
   const setDynamicBackground = useDynamicBackgroundStore((s) => s.set);
   const unattendedLookup = useLookupStore((s) => s.enabled);
@@ -140,6 +144,26 @@ export function SettingsDialog({
                   +
                 </button>
               </span>
+            </div>
+
+            {/* Three values rather than a switch, because "System" is one of
+                them: a two-state control could not say "follow the OS" and
+                would have no way back to it once touched. Native `<select>`,
+                like the smart-playlist editor's - the design's own Select is
+                still ahead of us. */}
+            <div className="settings-row">
+              <label htmlFor="theme">Theme</label>
+              <select
+                id="theme"
+                value={themePreference}
+                onChange={(event) => void setTheme(event.target.value as ThemePreference)}
+              >
+                {THEME_PREFERENCES.map((preference) => (
+                  <option key={preference} value={preference}>
+                    {THEME_LABELS[preference]}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* A native checkbox rather than a Base UI switch: it is a plain

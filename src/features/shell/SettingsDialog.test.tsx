@@ -6,12 +6,15 @@ import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
 import { type SettingsCategory, SettingsDialog } from "./SettingsDialog";
 import { useStatusStore } from "./statusStore";
+import { useThemeStore } from "./themeStore";
 
 vi.mock("../../ipc", () => ({
   loadDynamicBackground: vi.fn(async () => true),
   saveDynamicBackground: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
+  loadTheme: vi.fn(async () => null),
+  saveTheme: vi.fn(async () => undefined),
   listWatchFolders: vi.fn(async () => []),
   loadWatchInterval: vi.fn(async () => 15),
   removeWatchFolder: vi.fn(async () => undefined),
@@ -59,6 +62,37 @@ describe("the Settings dialog", () => {
   beforeEach(() => {
     useDynamicBackgroundStore.setState({ enabled: true });
     useLookupStore.setState({ enabled: false });
+    useThemeStore.setState({ preference: "system", ground: "light" });
+  });
+
+  it("offers the three theme choices and reports the stored one", () => {
+    useThemeStore.setState({ preference: "dark", ground: "dark" });
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    const select = screen.getByRole("combobox", { name: "Theme" });
+
+    expect(select).toHaveValue("dark");
+    // "System" is one of them: a two-state control could not say "follow the
+    // OS", and there would be no way back to it once the user had chosen.
+    expect([...(select as HTMLSelectElement).options].map((option) => option.value)).toEqual([
+      "system",
+      "light",
+      "dark",
+    ]);
+  });
+
+  it("changes the ground without waiting for the write", async () => {
+    const user = userEvent.setup();
+    const applied: string[] = [];
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    // The real port writes `data-theme` on `<html>`; what matters here is that
+    // the choice reaches the store, which is what the stylesheet keys off.
+    await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "light");
+    applied.push(useThemeStore.getState().ground);
+
+    expect(useThemeStore.getState().preference).toBe("light");
+    expect(applied).toEqual(["light"]);
   });
 
   it("offers four categories, and opens on Appearance", () => {

@@ -1,0 +1,304 @@
+/* The palette, on two grounds.
+   =========================================================================
+   From the Apex component library's study 7a (docs/knowledge/design.md),
+   which draws every specimen on a light and a dark ground from one set of
+   names. Two rules hold this file together:
+
+   **Every colour in the app is defined here and nowhere else.** No rule in
+   `primitives.css` or `app.css` writes a literal. That is not tidiness: it is
+   the only reason a second ground is a second column of values rather than an
+   audit of six hundred declarations. `App.css.test.ts` fails the build if a
+   literal appears outside this file.
+
+   **Every name is defined on both grounds.** A token that exists on one and
+   not the other is a rule that silently loses its colour when the theme
+   flips, which is the one failure a screenshot of the other theme would never
+   show. The guard asserts the two blocks declare identical name sets, and
+   asserts every contrast pair twice.
+
+   `oklch` rather than the sheet's hex because lightness is perceptual there,
+   so the ramp can be reasoned about arithmetically - and because
+   `App.css.test.ts` converts oklch channels to WCAG luminance to compute every
+   ratio it asserts. Hex would cost that guard. The design's own hex is in a
+   comment beside each token it names; all of them round-trip to within 0.001
+   of oklab distance, far inside a just-noticeable difference. Where a value is
+   ours rather than the sheet's, or the sheet's amended, the comment says so.
+
+   How the cascade picks a ground
+   -------------------------------------------------------------------------
+   `data-theme` on `<html>`, written by `themeStore` before the window is
+   shown. The light block carries two selectors and the dark block one:
+
+     :root, :root[data-theme="light"]   light   (0,1,0) and (0,2,0)
+     :root[data-theme="dark"]           dark    (0,2,0), later in source
+
+   With `data-theme="dark"` both blocks match - the light one through its bare
+   `:root` - and dark wins on specificity. With `light` or with no attribute at
+   all, only the light block applies. So light is also what an attribute-less
+   document gets, which is what Storybook's frame and the first frame of a
+   cold start would otherwise draw with no tokens at all.
+
+   There is deliberately no `@media (prefers-color-scheme: dark)` block. The OS
+   preference is resolved in `themeStore` and written to the attribute, because
+   a media block would need a third copy of every dark value and three copies
+   is how two of them drift. */
+
+/* The part that is not a colour and does not change with the ground. */
+:root {
+  /* The one density value that repeats. Row height is deliberately NOT here:
+     the virtualizer measures it, so it lives in SongTable.tsx as the single
+     source both the estimate and the rendered row read from. A CSS copy would
+     be a second number to keep in step, and the two drifting is what makes
+     rows overlap. */
+  --control-height: 26px;
+
+  /* One face for everything, vendored through `@fontsource` rather than
+     fetched from Google Fonts, which an offline app cannot do and the CSP
+     forbids. Figures are this face too, set `tabular-nums` wherever a number
+     is read against another one. */
+  font-family: Archivo, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  /* Resolves against whichever block below won; custom properties are
+     substituted at computed-value time, so this does not need repeating. */
+  color: var(--text);
+}
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces. The stack is the same on both grounds and inverts between them:
+     the sidebar recedes from the content, the chrome in front of it comes
+     forward. On light "forward" is lighter and "back" is darker; on dark it is
+     the other way about. The sheet's own three ground tones are exactly this,
+     which is why they map on without invention. */
+  --sidebar: oklch(0.929 0.003 49); /* #e9e7e6, the sheet's "behind dialog" */
+  --chrome: oklch(0.977 0.001 17); /* #f8f7f7, the sheet's "dialog" */
+  --surface: oklch(0.962 0.001 17); /* #f3f2f2, the sheet's "ground" */
+  /* Barely a stripe - 0.025 of lightness, darker here where dark lifts. The
+     design has no zebra at all, and at 150k rows something has to help the eye
+     track across a wide row; this is the least that still does. */
+  --row-odd: oklch(0.937 0.002 40);
+  --field: oklch(0.92 0.003 68); /* #e6e4e2, the sheet's "surface" */
+  /* Ours. A placeholder block, and the one surface that carries text: the
+     search field's clear affordance. `--muted` on it is 4.22:1, which clears
+     1.4.11's 3:1 for a control but not 4.5:1 - and nothing can fix that on
+     this ground, because lifting it to 4.5 puts it within 1.02:1 of the field
+     it sits inside. It is a 19px glyph on a button, so 1.4.11 is the bar it is
+     held to; see the guard. */
+  --skeleton: oklch(0.895 0.004 60);
+  --track: oklch(0.881 0.006 60); /* #dbd7d4, the sheet's "separator" */
+  /* The capsule the three transport buttons sit in - opaque, because it is a
+     control rather than a panel. Ours; the sheet draws no transport. */
+  --pill: oklch(0.925 0.003 60);
+
+  /* The translucent half of the same stack.
+
+     Every panel of chrome in the design is a veil rather than a fill, over a
+     `backdrop-filter: blur(18px)`, so the extracted cover colours drift behind
+     the whole app and each panel lets a different amount of them through.
+
+     **The opacities are ours, and light's are higher than dark's.** The sheet
+     has no opinion on either. Light needs more because its ink is dark: a
+     translucent panel over a dark blob darkens toward the text on it, and
+     contrast falls away far faster than it does on a dark ground, where a
+     blob lightens a panel *away* from its light ink. At these values the
+     worst case - `--muted` over the sidebar veil over a black blob - is
+     4.68:1, measured in `e2e/contrast.ts` against the real composited stack.
+
+     Because these composite, a contrast ratio computed against the token's own
+     colour is meaningless. `e2e/contrast.ts` flattens the real stack in the
+     running app, which is what the appearance suite measures. */
+  --chrome-veil: oklch(0.977 0.001 17 / 0.86);
+  --strip-veil: oklch(0.977 0.001 17 / 0.82);
+  --sidebar-veil: oklch(0.929 0.003 49 / 0.8);
+  /* Not one of the blurred panels: the content pane is a wash over the window
+     rather than a sheet of frosted glass, which is what keeps the table the
+     flattest surface in the app. */
+  --content-wash: oklch(0.962 0.001 17 / 0.4);
+  /* How much of the cover's colours reach the window at all. Not a colour, so
+     the literal-colour guard ignores it. Half of dark's, for the veils'
+     reason: the same blob costs a light ground more contrast than a dark one. */
+  --blob-opacity: 0.05;
+
+  /* Text. `--muted` clears 4.5:1 on every surface it is drawn on: 5.17 on
+     surface, 5.40 on chrome, 4.55 on a field, 4.68 on the sidebar. */
+  --text: oklch(0.237 0.004 49); /* #201e1d, the sheet's "ink" */
+  --sidebar-text: oklch(0.3 0.005 55);
+  /* The sheet states #6e6a67, which is 4.22:1 on its own field and fails AA.
+     Darkened by 0.016 of lightness - under a JND, and the same amendment the
+     design already took once for dim text. Ours, therefore, not the sheet's. */
+  --muted: oklch(0.511 0.007 60);
+  /* A step *more* prominent than muted, for the menu bar's labels and the
+     sidebar's counts - which on a light ground means darker, not lighter. */
+  --label: oklch(0.47 0.007 60);
+  /* Quieter than anything else, and only for two things the design draws this
+     way: the version string on the title bar and a disabled sidebar item.
+     2.32:1 - below AA for body text, which neither of these is. A disabled
+     control is exempt by WCAG 1.4.3, and the version is incidental. */
+  --faint: oklch(0.708 0.006 60); /* #a4a09d, the sheet's disabled text */
+
+  /* The accent, and the two ways it is allowed to be used.
+
+     **A fill takes `--on-accent`.** On this ground that happens to be the same
+     ink as `--text`, because a light ground's ink reads on the amber too
+     (5.45:1) - white does not, at 3.05:1. On dark the two diverge sharply,
+     which is why the rule is stated as a token rather than left to judgement.
+
+     **Selection and highlight use the tint**, a wash over whatever is behind
+     it rather than a fill, so a selected row stays as readable as an
+     unselected one. 13.04:1 for ordinary text over the content pane. The alpha
+     is the one whose result over the ground lands on the sheet's own selection
+     swatch (#f7e3cf) - 0.0119 of oklab distance, inside a JND.
+
+     Note the compositing happens in sRGB, not linear light - which is why a
+     ratio computed against the tint's own colour is meaningless and why
+     `e2e/contrast.ts` flattens the stack before measuring. */
+  --accent: oklch(0.68 0.172 52); /* #e8730f */
+  --accent-tint: oklch(0.68 0.172 52 / 0.13);
+  /* The tail of the strip along the top of the window, which fades out rather
+     than stopping. */
+  --accent-fade: oklch(0.68 0.172 52 / 0.2);
+  --accent-wash: oklch(0.68 0.172 52 / 0.08);
+  --on-accent: oklch(0.237 0.004 49);
+  /* The halo around the play button and the hairline ring around the cover
+     thumbnail - the accent as an edge rather than as a fill or a wash. */
+  --accent-halo: oklch(0.68 0.172 52 / 0.14);
+  --accent-ring: oklch(0.68 0.172 52 / 0.35);
+  /* The tallest bar of the speaker glyph, which the design draws half-lit. */
+  --accent-half: oklch(0.68 0.172 52 / 0.5);
+  /* The volume rail's fill, which the design draws quieter than the playhead's:
+     one is where you are in a song, the other is a setting. */
+  --accent-soft: oklch(0.68 0.172 52 / 0.7);
+
+  /* Borders. Three weights, because they do three different jobs: a hairline
+     between panels, a visible edge on a menu, and an edge on a field that has
+     to be found by eye.
+
+     The first two are an alpha of the ink rather than an opaque tone, so they
+     hold their weight over a veil with a blob behind it. The alphas are chosen
+     so that over the ground they land on the sheet's own "separator" and
+     "line" - 0.0045 of oklab distance each, well inside a JND. On dark the
+     same two are an alpha of white; that inversion is the whole reason they
+     are tokens.
+
+     `--field-border` is ours and is deliberately above the sheet's "line",
+     which is a 1.5:1 hairline. A field border at 1.02:1 shipped once, and this
+     indirection was born from it. 2.28:1 against the field's own fill and
+     2.71:1 against the chrome behind it. */
+  --chrome-border: oklch(0.237 0.004 49 / 0.125); /* -> #dbd7d4 */
+  --menu-border: oklch(0.237 0.004 49 / 0.2); /* -> #cbc7c4 */
+  --field-border: oklch(0.68 0.006 60);
+  --track-border: oklch(0.64 0.006 60);
+
+  /* A chart's gridlines. Its own token rather than `--chrome-border`: a grid
+     is behind data rather than between panels, and the two want to move in
+     opposite directions the moment either is tuned. Axis *text* is not here -
+     it is text, and wears `--muted` like every other recessive label. */
+  --chart-grid: oklch(0.237 0.004 49 / 0.16);
+  /* The sequential ramp, for a magnitude drawn as colour: an empty cell, then
+     four steps up to the accent, evenly spaced in lightness so each step reads
+     as the same distance. Opaque, so a step is the same colour over any
+     backdrop, and quantized rather than continuous, so the smallest count
+     still stands apart from none. Descending in lightness here and ascending
+     on dark, because on both grounds "more" has to move away from the page. */
+  --chart-ramp-0: oklch(0.9 0.004 60);
+  --chart-ramp-1: oklch(0.845 0.047 55);
+  --chart-ramp-2: oklch(0.79 0.089 54);
+  --chart-ramp-3: oklch(0.735 0.131 53);
+  --chart-ramp-4: oklch(0.68 0.172 52);
+
+  /* Red, and the two surfaces it appears on. Ours on both grounds - the sheet
+     draws no destructive state. `--danger` is text: 5.15:1 on surface.
+     `--destructive` is a fill under `--on-danger` at 4.77:1 - a darker red,
+     because a fill and a label are opposite problems. The fill and its label
+     are the same on both grounds: a warning that changed colour with the theme
+     would be a third red to keep in step for nothing. */
+  --danger: oklch(0.531 0.17 25);
+  --destructive: oklch(0.58 0.21 25);
+  --on-danger: oklch(1 0 0);
+  --close-hover: oklch(0.58 0.21 27);
+
+  /* The veil a title-bar button lifts under the pointer, the scrim behind a
+     dialog, and the shadow every popup casts. Stated once so a second popup
+     cannot invent its own.
+
+     The hover veil is the sheet's, which states an ink wash on light against a
+     white one on dark. The scrim is ours: the sheet's "behind dialog" is a
+     swatch for a panel, not a modal backdrop, and at the 0.04 it works out to
+     a dialog would not separate from the window at all. The shadow is the
+     sheet's menu shadow - every `--shadow` in the app is on a menu, a tooltip
+     or a popup, so the sheet's second, heavier dialog shadow has no consumer
+     and is not declared. */
+  --hover-veil: oklch(0.237 0.004 49 / 0.06);
+  --scrim: oklch(0 0 0 / 0.32);
+  --shadow: 0 3px 10px oklch(0.237 0.004 49 / 0.16);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* The same stack, inverted: the sidebar is the darkest panel and the chrome
+     in front of the content is lighter than it. */
+  --sidebar: oklch(0.165 0.007 78); /* #100e0b, the sheet's "behind dialog" */
+  --chrome: oklch(0.217 0.01 67); /* #1d1915, the sheet's "dialog" */
+  --surface: oklch(0.193 0.011 81); /* #17140f, the sheet's "ground" */
+  --row-odd: oklch(0.218 0.011 75);
+  --field: oklch(0.234 0.014 72); /* #221d17, the sheet's "surface" */
+  --skeleton: oklch(0.262 0.016 67); /* #2a231c, the sheet's "separator" */
+  --track: oklch(0.29 0.017 70);
+  --pill: oklch(0.228 0.012 70);
+
+  --chrome-veil: oklch(0.217 0.01 67 / 0.7);
+  --strip-veil: oklch(0.217 0.01 67 / 0.6);
+  --sidebar-veil: oklch(0.165 0.007 78 / 0.55);
+  --content-wash: oklch(0.193 0.011 81 / 0.25);
+  --blob-opacity: 0.1;
+
+  /* `--muted` is the sheet's own value, unamended: it clears 4.5:1 on every
+     surface here - 5.48 on surface, 5.22 on chrome, 4.99 on a field, 5.75 on
+     the sidebar. Light's had to be darkened; this one did not. */
+  --text: oklch(0.945 0.008 74); /* #f0ece7, the sheet's "ink" */
+  --sidebar-text: oklch(0.88 0.008 74);
+  --muted: oklch(0.642 0.018 70); /* #948b81 */
+  --label: oklch(0.675 0.018 70);
+  --faint: oklch(0.502 0.018 67); /* #6b6259, the sheet's disabled text */
+
+  /* **Never as a fill under `--text`.** The sheet's ink on this amber is
+     2.09:1 - unreadable, and it is what the selected row used to be. A fill
+     takes `--on-accent`, which is 7.84:1 the other way round. This is the
+     pairing the whole rule exists for; on light the two happen to coincide,
+     which is exactly why the rule is a token and not a habit. */
+  --accent: oklch(0.735 0.167 58); /* #f58a1f */
+  --accent-tint: oklch(0.735 0.167 58 / 0.17);
+  --accent-fade: oklch(0.735 0.167 58 / 0.2);
+  --accent-wash: oklch(0.735 0.167 58 / 0.08);
+  --on-accent: oklch(0.165 0.007 78);
+  --accent-halo: oklch(0.735 0.167 58 / 0.14);
+  --accent-ring: oklch(0.735 0.167 58 / 0.35);
+  --accent-half: oklch(0.735 0.167 58 / 0.5);
+  --accent-soft: oklch(0.735 0.167 58 / 0.7);
+
+  /* White where light wears ink, at the alphas that land on the sheet's own
+     "separator" and "line" over this ground. */
+  --chrome-border: oklch(1 0 0 / 0.07); /* -> #2a231c */
+  --menu-border: oklch(1 0 0 / 0.135); /* -> #3a332b */
+  --field-border: oklch(0.46 0.017 67);
+  --track-border: oklch(0.5 0.017 67);
+
+  --chart-grid: oklch(1 0 0 / 0.08);
+  --chart-ramp-0: oklch(0.245 0.013 72);
+  --chart-ramp-1: oklch(0.367 0.052 68);
+  --chart-ramp-2: oklch(0.49 0.09 64);
+  --chart-ramp-3: oklch(0.612 0.129 61);
+  --chart-ramp-4: oklch(0.735 0.167 58);
+
+  --danger: oklch(0.635 0.17 25);
+  --destructive: oklch(0.58 0.21 25);
+  --on-danger: oklch(1 0 0);
+  --close-hover: oklch(0.58 0.21 27);
+
+  --hover-veil: oklch(1 0 0 / 0.06);
+  --scrim: oklch(0 0 0 / 0.6);
+  --shadow: 0 3px 14px oklch(0 0 0 / 0.5);
+}
