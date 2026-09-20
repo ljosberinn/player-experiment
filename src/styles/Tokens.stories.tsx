@@ -80,12 +80,11 @@ function TokenSheet() {
     <div style={{ padding: 24, color: "var(--text)" }}>
       <h1 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 600 }}>Tokens</h1>
       <p style={{ margin: "0 0 20px", color: "var(--muted)" }}>
-        {/* Bold on purpose: `main.tsx` imports two faces and the app draws both,
-            so a specimen that only ever sets 400 would pass with one of them
-            missing. */}
-        <span style={{ fontFamily: "var(--font-numeric)", fontWeight: 700 }}>{tokens.length}</span>{" "}
-        custom properties on <code style={{ fontFamily: "var(--font-numeric)" }}>:root</code>. This
-        line is the UI face; the count and the values are the numeral face.
+        {/* Every weight `main.tsx` imports is drawn here on purpose: a specimen
+            that only ever set 400 would pass with the other two missing. */}
+        <span style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{tokens.length}</span>{" "}
+        custom properties on <code style={{ fontWeight: 600 }}>:root</code>. One face draws all of
+        it; figures are tabular wherever they line up against each other.
       </p>
       <div style={{ display: "grid", gap: 1, background: "var(--chrome-border)" }}>
         {tokens.map((token) => (
@@ -101,8 +100,8 @@ function TokenSheet() {
             }}
           >
             {token.isColor ? <Swatch token={token} /> : <span />}
-            <span style={{ fontFamily: "var(--font-numeric)" }}>{token.name}</span>
-            <span style={{ fontFamily: "var(--font-numeric)", color: "var(--dim)" }}>
+            <span>{token.name}</span>
+            <span style={{ color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
               {token.value}
             </span>
           </div>

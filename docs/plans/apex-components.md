@@ -35,8 +35,8 @@ shell stays governed by the old file until the library covers it.
   guard to iterate themes and assert the contrast pairs twice.
 - **Radius.** 48 `border-radius` declarations, from `2px` to `50%` (the play
   button, the cover ring, the transport pill). All go.
-- **Type.** Segoe UI for prose, Space Grotesk for numerals, and a guard that
-  asserts exactly that split. 7a is one face, so the guard inverts.
+- **Type.** Done in 107: Archivo alone, the guard inverted, the sheet's sizes
+  still to be applied role by role as each primitive lands.
 - **Controls are native.** `input[type=checkbox|radio]` and `select` are
   browser widgets with light styling. The design draws all four itself, plus a
   switch the app does not have.

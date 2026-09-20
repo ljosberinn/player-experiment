@@ -511,12 +511,28 @@ describe("appearance, in the engine that actually lays it out", () => {
     expect(luminance(background)).toBeLessThan(0.05);
   });
 
-  it("renders numerals in the face the design asks for", async () => {
-    // Vendored through @fontsource and imported in main.tsx. A missing woff2
-    // falls back silently to the UI font, which looks fine and is wrong - the
-    // whole point of the token is that figures are set in Space Grotesk.
+  it("renders in the face the design asks for, at every weight it imports", async () => {
+    // Vendored through @fontsource and imported in main.tsx. The computed
+    // family says Archivo whether or not the woff2 arrived, so the useful
+    // question is what actually loaded: a missing file falls back to the
+    // system sans silently, which looks fine and is wrong.
     const family = await computed(".statusbar-zoom-value", "font-family");
 
-    expect(family).toContain("Space Grotesk");
+    expect(family).toContain("Archivo");
+
+    // Registered faces rather than loaded ones: a weight the visible screen
+    // never sets stays unloaded, so `check()` would only ever prove the one
+    // the status bar happens to draw. The sheet asks for three.
+    const faces = await browser.execute(() => ({
+      weights: [...document.fonts]
+        .filter((face) => face.family === "Archivo")
+        .map((face) => face.weight)
+        .sort(),
+      prose: document.fonts.check("400 12px Archivo"),
+    }));
+
+    expect(faces.weights).toEqual(["400", "600", "800"]);
+    // False here means the woff2 never arrived and the screen is a system sans.
+    expect(faces.prose).toBe(true);
   });
 });
