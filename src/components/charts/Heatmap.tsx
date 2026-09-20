@@ -92,7 +92,6 @@ export function Heatmap({
                 y={r * (plot.height / rows.length)}
                 width={width}
                 height={height}
-                rx={2}
               >
                 <title>{`${row} ${column}: ${format(value)}`}</title>
               </rect>

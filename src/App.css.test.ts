@@ -915,6 +915,23 @@ describe("the stylesheet", () => {
     expect(fields?.body).toMatch(/border:[^;]*var\(--field-border\)/);
   });
 
+  it("rounds no corner anywhere in the sheet", () => {
+    // Phase 109 took out all 48 of them, from 2px on a badge to 50% on the
+    // play button. The rule the library states is "radius 0 everywhere, no
+    // exceptions" - structure is carried by rules and alignment - and the way
+    // that rule dies is one control at a time, each with a reason of its own.
+    //
+    // The raw source rather than the parsed rules: a radius reintroduced
+    // inside a nested block is the same regression, and `rules()` cannot see
+    // in there. `border-radius: 0` stays legal - it is how a UA style gets
+    // reset, which is the opposite of the thing being guarded.
+    const rounded = [...css.matchAll(/border-radius:\s*([^;}]+)/g)]
+      .map((match) => (match[1] ?? "").trim())
+      .filter((value) => !/^0[a-z%]*$/.test(value));
+
+    expect(rounded, "radius 0 everywhere, no exceptions").toEqual([]);
+  });
+
   it("draws everything in one face, and figures in tabular ones", () => {
     // The inverse of the guard phases 33-106 carried. Study 7a is one face
     // doing all of it, so a second *text* family reappearing anywhere is the
