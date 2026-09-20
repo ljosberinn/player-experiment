@@ -755,6 +755,64 @@ fn a_date_that_cannot_be_written_back_is_named_rather_than_hidden() {
 }
 
 #[test]
+fn a_comment_language_that_cannot_be_written_back_is_replaced_rather_than_fatal() {
+    let h = harness();
+    let path = h.music.join("loose/bad-language.mp3");
+    fixture::write_mp3_with_comment_language(
+        &path,
+        10,
+        "Bad Language",
+        [0x00, 0x00, 0xB0],
+        "ripped by me",
+    );
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Bad Language");
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Shoegaze"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+    let on_disk = tags::read(&path).unwrap();
+    assert_eq!(on_disk.genre.as_deref(), Some("Shoegaze"));
+    // The comment is the user's; only the three bytes claiming what language
+    // it is in were unusable.
+    assert_eq!(on_disk.comment.as_deref(), Some("ripped by me"));
+    assert_eq!(&fixture::comment_language(&path), b"XXX");
+}
+
+#[test]
+fn a_comment_language_that_can_be_written_back_is_left_alone() {
+    let h = harness();
+    let path = h.music.join("loose/german.mp3");
+    fixture::write_mp3_with_comment_language(&path, 10, "German", *b"deu", "aufgenommen von mir");
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "German");
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Shoegaze"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(&fixture::comment_language(&path), b"deu");
+}
+
+#[test]
 fn a_write_leaves_no_temporary_files_behind() {
     let h = harness();
     let mut conn = h.db.conn().unwrap();

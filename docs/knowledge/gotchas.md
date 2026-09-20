@@ -158,6 +158,16 @@ the editor does not rescue the file. `write::shape` reports such frames as
 `dates=TDRC=2012-13` so the log says which value it was. Month `00` and day `00`
 are fine, as are `20120603` and a space instead of the `T`.
 
+**A `COMM` language is read as three raw bytes and written as three ASCII
+letters.** `LanguageFrame::parse` takes whatever is in those bytes; only
+`as_bytes` insists they be `a-zA-Z`, so a `COMM` or `USLT` frame carrying
+something else — `\0\0\xB0` came out of a real library — is refused on the way
+out and every later save of that file fails, whatever the edit was about. Unlike
+the dates above, the language rides on the `TagItem` rather than in the
+companion, so it survives the split and merge and comes back unchanged even when
+the edit never mentioned the comment. `write::repair_languages` rewrites an
+unusable one to `XXX` before the save; the comment text itself is untouched.
+
 ## Moving files
 
 **A tombstone is a hazard at the target, not at the source.** `scan::plan` skips
