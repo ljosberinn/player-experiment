@@ -83,16 +83,15 @@ describe("the Settings dialog", () => {
 
   it("changes the ground without waiting for the write", async () => {
     const user = userEvent.setup();
-    const applied: string[] = [];
     render(<SettingsDialog onClose={vi.fn()} />);
 
-    // The real port writes `data-theme` on `<html>`; what matters here is that
-    // the choice reaches the store, which is what the stylesheet keys off.
     await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "light");
-    applied.push(useThemeStore.getState().ground);
 
     expect(useThemeStore.getState().preference).toBe("light");
-    expect(applied).toEqual(["light"]);
+    // Through the real port, all the way to the attribute the stylesheet keys
+    // off. Asserting the store alone would have left the last hop untested,
+    // and that hop is the whole mechanism: nothing in React reads the ground.
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 
   it("offers four categories, and opens on Appearance", () => {

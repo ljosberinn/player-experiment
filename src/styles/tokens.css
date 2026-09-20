@@ -138,12 +138,29 @@
      control is exempt by WCAG 1.4.3, and the version is incidental. */
   --faint: oklch(0.708 0.006 60); /* #a4a09d, the sheet's disabled text */
 
-  /* The accent, and the two ways it is allowed to be used.
+  /* The accent, at two weights, and this is the largest departure on this
+     ground.
 
-     **A fill takes `--on-accent`.** On this ground that happens to be the same
-     ink as `--text`, because a light ground's ink reads on the amber too
-     (5.45:1) - white does not, at 3.05:1. On dark the two diverge sharply,
-     which is why the rule is stated as a token rather than left to judgement.
+     **The sheet's `#e8730f` cannot carry contrast on a light ground.** Every
+     one of the 28 rules that reaches for `--accent` uses it in a role with a
+     threshold - a solid fill, a focus ring, the playing marker, a link - and
+     the design's amber clears none of them here: 2.73:1 on the content pane,
+     2.45:1 on the transport pill, and 3.05:1 even against pure white, which is
+     the ceiling. There is no surface on this ground that it can be drawn on.
+     The decoration is fine; it is the *marks* that fail.
+
+     So the brand amber stays, as the wash it is good at - every alpha below is
+     still `#e8730f` - and `--accent` itself is a darker step of the same hue,
+     between the sheet's own "accent" and its "accent deep". Two lightnesses of
+     one colour, which is what a light ground normally needs and what the sheet
+     supplies two accents for. It is darker than the sheet's `#b4550a` because
+     that one is 4.01:1 as text on the sidebar and 4.43:1 on the ground, both
+     short of AA; this clears 4.5:1 everywhere it is drawn and 3:1 as a mark.
+
+     **A fill takes `--on-accent`**, which is white here: the ink that reads on
+     the sheet's bright amber is 2.98:1 on this deeper one, and white is
+     5.58:1. On dark the pair is the other way round, which is exactly why both
+     are tokens rather than judgement calls.
 
      **Selection and highlight use the tint**, a wash over whatever is behind
      it rather than a fill, so a selected row stays as readable as an
@@ -154,13 +171,13 @@
      Note the compositing happens in sRGB, not linear light - which is why a
      ratio computed against the tint's own colour is meaningless and why
      `e2e/contrast.ts` flattens the stack before measuring. */
-  --accent: oklch(0.68 0.172 52); /* #e8730f */
+  --accent: oklch(0.53 0.144 50); /* the sheet's #e8730f, darkened to carry a mark */
   --accent-tint: oklch(0.68 0.172 52 / 0.13);
   /* The tail of the strip along the top of the window, which fades out rather
      than stopping. */
   --accent-fade: oklch(0.68 0.172 52 / 0.2);
   --accent-wash: oklch(0.68 0.172 52 / 0.08);
-  --on-accent: oklch(0.237 0.004 49);
+  --on-accent: oklch(1 0 0);
   /* The halo around the play button and the hairline ring around the cover
      thumbnail - the accent as an edge rather than as a fill or a wash. */
   --accent-halo: oklch(0.68 0.172 52 / 0.14);
@@ -189,7 +206,11 @@
   --chrome-border: oklch(0.237 0.004 49 / 0.125); /* -> #dbd7d4 */
   --menu-border: oklch(0.237 0.004 49 / 0.2); /* -> #cbc7c4 */
   --field-border: oklch(0.68 0.006 60);
-  --track-border: oklch(0.64 0.006 60);
+  /* Lighter than a field's edge rather than darker, and measured against a
+     different thing: a rail is a *graphic*, so WCAG 1.4.11 asks 3:1 of it
+     against what it sits on - which is the transport strip's veil over the
+     window, not the rail's own fill. 3.99:1 there, 3.01:1 against the fill. */
+  --track-border: oklch(0.58 0.006 60);
 
   /* A chart's gridlines. Its own token rather than `--chrome-border`: a grid
      is behind data rather than between panels, and the two want to move in
@@ -284,7 +305,11 @@
   --chrome-border: oklch(1 0 0 / 0.07); /* -> #2a231c */
   --menu-border: oklch(1 0 0 / 0.135); /* -> #3a332b */
   --field-border: oklch(0.46 0.017 67);
-  --track-border: oklch(0.5 0.017 67);
+  /* 3.83:1 against the strip it sits on; see the light ground's note. At the
+     0.5 this first shipped at it was 2.97:1 - the e2e suite measures the rail
+     against the composited strip rather than against its own fill, and that
+     is the number that matters for a control you have to see the extent of. */
+  --track-border: oklch(0.56 0.017 67);
 
   --chart-grid: oklch(1 0 0 / 0.08);
   --chart-ramp-0: oklch(0.245 0.013 72);

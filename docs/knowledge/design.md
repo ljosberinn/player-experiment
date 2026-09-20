@@ -25,10 +25,11 @@ the removal of the accent row border) and can be again. Reproduce the details
 they specify, not only the structure.
 
 The component sheet settles four things. **Archivo** as the one face (study 7a,
-chosen over three alternatives) is in, phase 107. The **two grounds** and the
-accents that go with them — `#e8730f` light, `#f58a1f` dark — are in, phase 108,
-which also re-based the dark palette onto the sheet's own column. Still ahead:
-**radius 0 everywhere**.
+chosen over three alternatives) is in, phase 107. The **two grounds** are in,
+phase 108, which also re-based the dark palette onto the sheet's own column —
+though the light accent had to be darkened to carry a mark at all, which is the
+one place the sheet and WCAG disagree outright. Still ahead: **radius 0
+everywhere**.
 
 Where the design and the built app disagree on a detail the design has not
 thought about, the app wins. Where they disagree on how something *looks*, the
@@ -65,7 +66,8 @@ and type), one per ground.
 | `--field` | `#e6e4e2` | `#221d17` | an inset control |
 | `--text` | `#201e1d` | `#f0ece7` | body |
 | `--muted` | `#696562`\* | `#948b81` | secondary columns, section headings |
-| `--accent` | `#e8730f` | `#f58a1f` | play button, selection tint, active nav, focus |
+| `--accent` | `#ab4c00`\* | `#f58a1f` | play button, active nav, focus, the playing marker |
+| `--accent-tint` | `#e8730f` / .13 | `#f58a1f` / .17 | selection, highlight — the brand amber, as a wash |
 | `--chrome-border` | ink / .125 | white / .07 | every hairline |
 
 The stack inverts rather than repeating: on dark, coming forward is lighter; on
@@ -75,8 +77,19 @@ window is shown — **not** a `@media (prefers-color-scheme:)` block, which woul
 need a third copy of every dark value. `color-scheme` follows it, so scrollbars
 and native popups follow too.
 
-Three departures from the sheet, all recorded in `tokens.css` beside the value:
+Four departures from the sheet, all recorded in `tokens.css` beside the value:
 
+- **`--accent` on light** is the largest. The sheet's `#e8730f` cannot carry
+  contrast on a light ground at all: 2.73:1 on the content pane, 2.45:1 on the
+  transport pill, and 3.05:1 against pure white, which is the ceiling — there is
+  no surface here it can be drawn on. Every rule that reaches for `--accent`
+  uses it in a role with a threshold (a fill, a focus ring, the playing marker,
+  a link); the washes are their own tokens. So the brand amber stays as the
+  wash it is good at, and `--accent` is a darker step of the same hue. Darker
+  than the sheet's own `accent deep` `#b4550a`, which is 4.01:1 as text on the
+  sidebar and still short of AA.
+- **`--on-accent` on light** is white, following from the above: the ink that
+  reads on the sheet's bright amber is 2.98:1 on the deeper one.
 - **`--muted` on light** is the sheet's `#6e6a67` darkened by 0.016 of
   lightness. The sheet's own value is 4.22:1 on its own field and fails AA; the
   amendment is under a JND and is the same one the design already took once for

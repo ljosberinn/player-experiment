@@ -51,11 +51,24 @@ async function openFilterDialog(): Promise<void> {
   await browser.$("[role='dialog']").waitForExist({ timeout: 10_000 });
 }
 
+/**
+ * Shuts whatever dialog is open, whichever way out it offers.
+ *
+ * Both buttons, because the two dialogs this spec opens do not agree: the
+ * filter editor says Cancel and Settings says Done. While this only knew about
+ * Cancel, one failing test inside Settings left its dialog standing, and every
+ * later test that opened another one measured the wrong one - four failures
+ * reported against three tests that were not broken. A cleanup that only works
+ * for some of the dialogs is how one red test becomes five.
+ */
 async function closeDialog(): Promise<void> {
-  const cancel = browser.$("//button[text()='Cancel']");
-  if (await cancel.isExisting()) {
-    await cancel.click();
-    await browser.$("[role='dialog']").waitForExist({ timeout: 10_000, reverse: true });
+  for (const label of ["Cancel", "Done"]) {
+    const button = browser.$(`//button[text()='${label}']`);
+    if (await button.isExisting()) {
+      await button.click();
+      await browser.$("[role='dialog']").waitForExist({ timeout: 10_000, reverse: true });
+      return;
+    }
   }
 }
 
@@ -74,6 +87,37 @@ async function openSettings(): Promise<void> {
 async function closeSettings(): Promise<void> {
   await browser.$("//button[text()='Done']").click();
   await browser.$("[role='dialog']").waitForExist({ timeout: 10_000, reverse: true });
+}
+
+/**
+ * Picks a theme in Settings, by driving the change React actually listens for.
+ *
+ * `selectByAttribute` is the obvious call and does not work here: it clicks the
+ * `<option>`, and inside WebView2 a closed native `<select>` draws its list as
+ * an OS popup rather than as DOM boxes, so the click lands on nothing and the
+ * value never moves. No other spec in this suite drives a native select, so
+ * there was no working example to copy - it shipped green locally and timed out
+ * in CI.
+ *
+ * The React path itself is covered where it can be covered honestly:
+ * `SettingsDialog.test.tsx` selects the option with `userEvent` and asserts the
+ * attribute on `<html>`, which is the whole chain minus the driver. What is
+ * left for this spec is the half jsdom cannot reach - the write to SQLite and
+ * the value coming back - so it sets the value through the prototype's own
+ * setter (React tracks the last value it saw on the node, and assigning the
+ * property directly is what defeats that) and dispatches the event the change
+ * handler is bound to.
+ */
+function choose(value: string): Promise<void> {
+  return browser.execute((wanted: string) => {
+    const select = document.querySelector<HTMLSelectElement>("#theme");
+    if (select === null) {
+      return;
+    }
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    setter?.call(select, wanted);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
 }
 
 /** The computed value of one property, for the first element matching. */
@@ -570,17 +614,14 @@ describe("appearance, in the engine that actually lays it out", () => {
       browser.execute(() => document.documentElement.getAttribute("data-theme"));
 
     await openSettings();
-    await browser.$("#theme").selectByAttribute("value", "dark");
-    await browser.waitUntil(async () => (await attribute()) === "dark", {
-      timeout: 5000,
-      timeoutMsg: "choosing Dark did not change the ground",
-    });
 
-    await browser.$("#theme").selectByAttribute("value", "light");
-    await browser.waitUntil(async () => (await attribute()) === "light", {
-      timeout: 5000,
-      timeoutMsg: "choosing Light did not change the ground",
-    });
+    for (const choice of ["dark", "light"]) {
+      await choose(choice);
+      await browser.waitUntil(async () => (await attribute()) === choice, {
+        timeout: 5000,
+        timeoutMsg: `choosing ${choice} left the ground at ${await attribute()} with the control reading ${await browser.$("#theme").getValue()}`,
+      });
+    }
 
     // Reopened rather than read from the store: the point is that the choice
     // survived the write and comes back as the selected option, which is what

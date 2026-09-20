@@ -108,6 +108,52 @@ function contrast(a: string, b: string): number {
   return (high + 0.05) / (low + 0.05);
 }
 
+/** The alpha an `oklch(L C H / A)` carries, or 1 for an opaque one. */
+function alphaOf(colour: string): number {
+  return colour.includes("/") ? Number((colour.match(/[\d.]+/g) ?? []).at(-1)) : 1;
+}
+
+const toGamma = (channel: number) =>
+  channel <= 0.0031308 ? 12.92 * channel : 1.055 * channel ** (1 / 2.4) - 0.055;
+const toLinear = (channel: number) =>
+  channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+/**
+ * The luminance of a stack of token values, flattened as a browser would.
+ *
+ * Phase 108 shipped three defects past this file because it only ever compared
+ * one token to another, and half this app's surfaces are not tokens: the
+ * chrome is a veil, so the colour behind the transport's rails is
+ * `--strip-veil` composited onto `--surface` and is written down nowhere. All
+ * three looked fine here and failed in the engine nine minutes later.
+ *
+ * `layers` runs front to back, as painting order sees it. Compositing happens
+ * in *gamma-encoded* sRGB rather than in linear light, because that is where a
+ * browser does it - the same arithmetic as `e2e/contrast.ts`, deliberately, so
+ * that the two cannot disagree about what 4.5:1 means.
+ */
+function stackLuminance(layers: string[]): number {
+  let [r, g, b] = [0, 0, 0];
+  for (const layer of [...layers].reverse()) {
+    const alpha = alphaOf(layer);
+    const [lr, lg, lb] = linearSrgb(layer).map(toGamma) as [number, number, number];
+    r = lr * alpha + r * (1 - alpha);
+    g = lg * alpha + g * (1 - alpha);
+    b = lb * alpha + b * (1 - alpha);
+  }
+  const [lr, lg, lb] = [r, g, b].map(toLinear) as [number, number, number];
+  return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+}
+
+/** The ratio between one token and whatever stack is painted behind it. */
+function contrastOver(fore: string, layers: string[]): number {
+  const [high, low] = [luminance(fore), stackLuminance(layers)].sort((x, y) => y - x) as [
+    number,
+    number,
+  ];
+  return (high + 0.05) / (low + 0.05);
+}
+
 /** The two grounds `tokens.css` defines, and which every pair is asserted on. */
 const GROUNDS = ["light", "dark"] as const;
 type Ground = (typeof GROUNDS)[number];
@@ -495,6 +541,65 @@ describe("the stylesheet", () => {
     );
 
     expect(failures).toEqual([]);
+  });
+
+  it("keeps the accent usable as a mark on both grounds", () => {
+    // Three defects in phase 108 were one fact: the design's light amber
+    // (#e8730f) cannot carry contrast on a light ground. It is 2.73:1 on the
+    // content pane, 2.45:1 on the transport pill and 3.05:1 against pure
+    // white, which is the ceiling - there is no surface here it can be drawn
+    // on. The playing marker and the play button both shipped invisible.
+    //
+    // Every rule that reaches for `--accent` uses it in a role with a
+    // threshold; the washes are their own tokens. So the bar is: 3:1 as a mark
+    // (WCAG 1.4.11) on every surface it is drawn on, and 4.5:1 where it is
+    // text. The strip is a veil, so it is composited rather than named.
+    const failures: string[] = [];
+    for (const ground of GROUNDS) {
+      const accent = token("accent", ground);
+      const strip = [token("strip-veil", ground), token("surface", ground)];
+
+      for (const [role, behind, minimum] of [
+        // `.row-status.playing`, and the accent bar on an active nav item.
+        ["marker on the content pane", [token("surface", ground)], 3],
+        ["marker on a striped row", [token("row-odd", ground)], 3],
+        // `.volume-mark`, `.repeat-button[aria-pressed]`.
+        ["glyph on the transport strip", strip, 3],
+        // The one solid accent fill in the chrome, inside its capsule.
+        ["play button on the pill", [token("pill", ground)], 3],
+        // `.link-button`, `.statusbar-update`, `.sidebar-dropzone.drop-target`.
+        ["link on the content pane", [token("surface", ground)], 4.5],
+        ["link in a dialog", [token("chrome", ground)], 4.5],
+        ["link on the sidebar", [token("sidebar", ground)], 4.5],
+      ] as [string, string[], number][]) {
+        const ratio = contrastOver(accent, behind);
+        if (ratio < minimum) {
+          failures.push(`${role} (${ground}) = ${ratio.toFixed(2)}:1, wanted ${minimum}`);
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+
+  it("keeps a slider's rail visible against the strip it sits on", () => {
+    // WCAG 1.4.11 asks 3:1 of the parts of a control needed to understand it,
+    // and a slider whose extent you cannot see is exactly that. Measured
+    // against the *composited strip* rather than against the rail's own fill:
+    // the rail shipped at 2.97:1 there while clearing 2.36:1 against its fill,
+    // which is the pair this file used to check and the wrong one.
+    //
+    // Either edge may carry it, as in the e2e suite: a rail can be legible
+    // through its fill or through the border drawn around it.
+    for (const ground of GROUNDS) {
+      const behind = [token("strip-veil", ground), token("surface", ground)];
+      const best = Math.max(
+        contrastOver(token("track", ground), behind),
+        contrastOver(token("track-border", ground), behind),
+      );
+
+      expect(best, `the rail on ${ground}`).toBeGreaterThan(3);
+    }
   });
 
   it("keeps the search field's clear affordance legible on both grounds", () => {
