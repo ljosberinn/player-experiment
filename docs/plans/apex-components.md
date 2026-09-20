@@ -36,8 +36,10 @@ shell stays governed by the old file until the library covers it.
   asserts every contrast pair twice, and requires the two blocks to declare
   identical name sets. The appearance suite loops the same way, against the
   composited stack rather than the token values.
-- **Radius.** 48 `border-radius` declarations, from `2px` to `50%` (the play
-  button, the cover ring, the transport pill). All go.
+- **Radius.** Done in 109: all 48 `border-radius` declarations gone, with a
+  guard against a non-zero one coming back. The transport is the one control
+  that changed shape rather than softness — three abutting squares reading as a
+  segmented block. See [design.md](../knowledge/design.md#geometry).
 - **Type.** Done in 107: Archivo alone, the guard inverted, the sheet's sizes
   still to be applied role by role as each primitive lands.
 - **Controls are native.** `input[type=checkbox|radio]` and `select` are
@@ -107,10 +109,5 @@ Foundation first, then primitives, then the surfaces built out of them.
 
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
-107 and 108 have landed; 109 branches from main.
+All three have landed, so 110 and 111 branch from main.
 113 through 117 are independent of each other once 112 has landed.
-
-109 inherits a sheet already split into `styles/tokens.css`,
-`styles/primitives.css` and `styles/app.css`, and a guard that reads the set
-rather than `App.css`. The 48 `border-radius` declarations it removes are all
-in `styles/app.css`.

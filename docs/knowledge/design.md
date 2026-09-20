@@ -28,8 +28,8 @@ The component sheet settles four things. **Archivo** as the one face (study 7a,
 chosen over three alternatives) is in, phase 107. The **two grounds** are in,
 phase 108, which also re-based the dark palette onto the sheet's own column —
 though the light accent had to be darkened to carry a mark at all, which is the
-one place the sheet and WCAG disagree outright. Still ahead: **radius 0
-everywhere**.
+one place the sheet and WCAG disagree outright. **Radius 0 everywhere** is in,
+phase 109.
 
 Where the design and the built app disagree on a detail the design has not
 thought about, the app wins. Where they disagree on how something *looks*, the
@@ -111,6 +111,18 @@ far more contrast. The worst composited case — `--muted` over the sidebar veil
 over a black blob — is 4.68:1, measured in the appearance suite rather than
 computed from a token.
 
+## Geometry
+
+Radius 0 everywhere, no exceptions: structure is carried by rules and alignment,
+never by cards or shadow. Phase 109 took out all 48 `border-radius` declarations
+and `App.css.test.ts` asserts no rule declares a non-zero one, because the way
+that rule dies is one control at a time. `border-radius: 0` stays legal — it is
+how a UA style gets reset.
+
+Shadow still draws two things the sheet has no quarrel with: the play button's
+halo and the cover art's hairline ring, both now square. What the rule reaches
+is corners, not depth.
+
 ## Type
 
 **Archivo** (via `@fontsource/archivo`, latin subset, weights 400, 600 and 800)
@@ -146,8 +158,8 @@ action reads as a target rather than a line of text".
 
 - A 36px title bar: the mark, the menus, the version, the window buttons. It
   keeps the drag and double-click-to-maximize behaviour and carries nothing else.
-- A 78px transport strip: prev/play/next pill, playhead with elapsed and total,
-  cover art and track text, mute and volume, repeat, search.
+- A 78px transport strip: prev/play/next as one segmented block, playhead with
+  elapsed and total, cover art and track text, mute and volume, repeat, search.
 - The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and
   a dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
   sections with counts. There is no tab bar and no library toolbar.

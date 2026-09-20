@@ -493,7 +493,7 @@ describe("appearance, in the engine that actually lays it out", () => {
     // Painted at all, first: a transparent fill is what the defect looked like.
     expect(fill).not.toBe("rgba(0, 0, 0, 0)");
     expect(fill).not.toBe("transparent");
-    // And it has to stand out from the capsule it sits in, which is the whole
+    // And it has to stand out from the band it sits in, which is the whole
     // job of the one solid accent fill in the chrome.
     expect(contrast(fill, behind)).toBeGreaterThan(3);
     // The glyph on top of it stays readable, which is what `--on-accent` is
