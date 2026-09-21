@@ -60,7 +60,7 @@ const ROWS = 150_000;
  * The most rows the table may ever have in the DOM at once.
  *
  * The virtualizer renders what fits plus twelve rows of overscan on each side;
- * at 26px per row a maximised window on a 4K runner is under a hundred. Two
+ * at 32px per row a maximised window on a 4K runner is under a hundred. Two
  * hundred is far above that and still four orders of magnitude below the
  * library, so it fails only if virtualization has actually stopped happening -
  * which is exactly the regression worth catching, and the one a `key` change
@@ -195,7 +195,7 @@ describe("a library too big to put in the DOM", () => {
   it("knows how many rows it has without holding them", async () => {
     expect(await rowCount()).toBe(existing + ROWS);
     // The scrollbar is driven by the count, so the scroll extent is the other
-    // half of the same claim: 150k rows at 26px is about 3.9 million pixels,
+    // half of the same claim: 150k rows at 32px is about 4.8 million pixels,
     // and a table that had materialised them would not have got this far.
     const extent = await browser.execute(
       () => document.querySelector("[data-testid='song-scroll']")?.scrollHeight ?? 0,
@@ -292,7 +292,14 @@ describe("a library too big to put in the DOM", () => {
     // and a number that fast in a perf log is worse than no number, because it
     // reads as evidence.
     const target = Math.floor((existing + ROWS) / 2);
-    await scrollTo(target * 26);
+    // Measured rather than written down: `ROW_HEIGHT` lives in `SongRow.tsx`
+    // and this suite compiles against its own tsconfig, so a copy here would
+    // be a second number to keep in step - and its drifting would land this
+    // scroll on a row nobody asked for, which reads as a page-cache failure.
+    const rowHeight = await browser.execute(
+      () => document.querySelector("tr.song-row")?.getBoundingClientRect().height ?? 0,
+    );
+    await scrollTo(target * rowHeight);
 
     await timed("middle page, cold", () => waitForRealRow(target, 30_000));
     expect(await renderedRows()).toBeLessThan(MAX_RENDERED);

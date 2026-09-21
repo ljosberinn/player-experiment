@@ -12,7 +12,14 @@ import { RowStatusCell } from "./RowStatusCell";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
 
-export const ROW_HEIGHT = 26;
+/**
+ * The sheet's row, and the pitch the virtualizer estimates by.
+ *
+ * The 1px separator is drawn inside it rather than under it, so this stays one
+ * number: a border below a 32px row would put the rows 33px apart and every
+ * offset the virtualizer computed would drift by one per row.
+ */
+export const ROW_HEIGHT = 32;
 
 /** Where a reorder drop would land relative to this row, if it would. */
 export type DropEdge = "before" | "after" | null;
@@ -104,7 +111,6 @@ export function SongRow({
       tabIndex={0}
       className={[
         "song-row",
-        rowIndex % 2 === 1 ? "odd" : "",
         selected ? "selected" : "",
         playing ? "playing" : "",
         track ? "" : "placeholder",

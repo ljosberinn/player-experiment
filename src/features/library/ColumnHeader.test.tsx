@@ -165,11 +165,11 @@ describe("resizing a column", () => {
 
     fireEvent.doubleClick(screen.getByTestId("resize-title"));
 
-    // 27 characters at ten pixels, plus the 24px of padding a cell carries.
+    // 27 characters at ten pixels, plus the 10px of padding a cell carries.
     // The header, "Title", is narrower and does not decide it.
     expect(resizeColumn).toHaveBeenCalledWith(
       "title",
-      "the longest title on screen".length * 10 + 24,
+      "the longest title on screen".length * 10 + 10,
     );
   });
 

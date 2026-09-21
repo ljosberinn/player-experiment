@@ -36,11 +36,15 @@ vi.mock("../../ipc", () => ({
 /** The five columns the table opens with, so the arithmetic below is the real one. */
 const COLUMN_IDS: SortField[] = ["title", "durationMs", "artist", "album", "genre"];
 const ROWS = 500;
-/** Tall enough that the window plus overscan is the ~47 rows the issue measured. */
 const BODY_HEIGHT = 900;
-const ROW_HEIGHT = 26;
-/** The window plus overscan at `BODY_HEIGHT`, which is what the counts are per. */
-const WINDOW_ROWS = 47;
+const ROW_HEIGHT = 32;
+/**
+ * The window plus overscan at `BODY_HEIGHT`, which is what the counts are per.
+ *
+ * 47 until 114 took the row from 26px to 32px. The counts below are per row
+ * crossed rather than per window, so they did not move with it.
+ */
+const WINDOW_ROWS = 41;
 
 function track(id: number): Track {
   return {
@@ -140,8 +144,8 @@ describe("what a click costs", () => {
   it("touches no cell at all", async () => {
     await settled();
     const rows = document.querySelectorAll<HTMLTableRowElement>("tr.song-row");
-    // The window the numbers below are against: the same 47 rows the issue
-    // measured, so a change in either is a change in the comparison.
+    // The window the numbers below are against, so a change in either is a
+    // change in the comparison.
     expect(rows.length).toBe(WINDOW_ROWS);
 
     // Two rows change - the one gaining the selection and the one losing it -
@@ -188,7 +192,7 @@ describe("what a scroll costs", () => {
     scroll.scrollTop = crossed * ROW_HEIGHT;
     fireEvent.scroll(scroll);
 
-    // Exactly the six that arrived. The forty-one that stayed keep their
+    // Exactly the six that arrived. The thirty-five that stayed keep their
     // cached cells; before the split this was 3265, which is the whole body
     // roughly twice per row crossed.
     expect(cellRenders).toBe(crossed * COLUMN_IDS.length);

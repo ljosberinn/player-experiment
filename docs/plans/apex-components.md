@@ -68,8 +68,11 @@ shell stays governed by the old file until the library covers it.
   region still styles its own; `.window-buttons`, `.repeat-button`,
   `.link-button` and `.history-button` are unrelated rules until their own
   issue migrates them.
-- **Track list.** 3f (grouped by release, 168px art gutter, footer total row) is
-  marked *Selected* and is a layout the Releases view does not have.
+- **Track list.** Section 03 holds one drawing, 3f, and the row treatment 114
+  applies comes from **7a** instead — the type specimen is the only place the
+  sheet draws a playing row. 3f itself is 120, and it replaces the drill-in
+  rather than the cover grid: the Releases view is a tile grid, so "grouped by
+  release" was never a restyling of it.
 - **Titlebar.** `decorations: false` and a drawn 36px bar. The design assumes
   the OS draws it.
 
@@ -126,7 +129,7 @@ Foundation first, then primitives, then the surfaces built out of them.
 107 Archivo ─┐
 108 Grounds ─┼─→ 110 Buttons ─┐
 109 Radius ──┘   111 Controls ┴─→ 113 Dialog chrome ─→ 113b Smart playlist editor
-                                                       114 Track list
+                                                       114 Track list row ─→ 120 Grouped release
                                                        115 Stat tiles
                                                        116 Streaks etc.
                                                        117 Menu + task line
@@ -138,6 +141,11 @@ the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 and 111 with them.
 113b through 118 are independent of each other once 113 has landed. 113b has
 landed too, off main rather than stacked — 113 was in by the time it started.
+
+**120 is stacked on 114 and is not ready to start.** Both draw a track row, so
+the group's 28px row is the 32px row with two metrics changed rather than a
+second drawing. 120 also has two unanswered questions of its own, which its
+issue records.
 
 **113 is the chrome and 113b is what one dialog holds.** Section 06 draws both
 in one picture, but the rule grid and the disabled sort row touch nothing the
