@@ -1,4 +1,4 @@
-# 112 — Dialog chrome
+# 113 — Dialog chrome
 
 Section 06's shell, pulled out before the two dialogs that use it.
 

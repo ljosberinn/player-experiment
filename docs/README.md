@@ -7,13 +7,14 @@
 | [issues/done/](issues/done/) | Closed work, one file per phase — what shipped and the decisions that still bind the code. |
 | [plans/](plans/) | Drafts for work too large to state as an issue. |
 
-Phases are numbered 1–87 and the numbers are permanent: pull requests, commit
-messages and code comments refer to them. New work continues the sequence.
-Everything in `upcoming/` carries the number it will keep, in the order it is
-meant to happen: dependencies first, then simplest first, so the numbers are
-workable top to bottom and neighbours with no dependency between them can run in
-parallel worktrees. Numbers a plan in [plans/](plans/) holds leave gaps in the
-folder. An `xx-` prefix is work with no place in that order yet.
+A phase's number is permanent once it lands: pull requests, commit messages and
+code comments refer to them. New work continues the sequence. Everything in
+`upcoming/` carries the number it will keep unless work is inserted ahead of
+it, in the order it is meant to happen: dependencies first, then simplest
+first, so the numbers are workable top to bottom and neighbours with no
+dependency between them can run in parallel worktrees. Numbers a plan in
+[plans/](plans/) holds leave gaps in the folder. An `xx-` prefix is work with
+no place in that order yet.
 
 `done/` records merged and cut phases alike — a phase that was cut carries the
 reasoning that killed it, which is the part worth keeping.

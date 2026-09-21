@@ -1,4 +1,4 @@
-# 115 — Streaks, heatmap, leaderboard
+# 116 — Streaks, heatmap, leaderboard
 
 Sections 4c, 4d and 4e. "Charts carry no gridline chrome beyond a single
 baseline, and the accent is the only fill."

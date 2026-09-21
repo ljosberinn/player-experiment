@@ -1,4 +1,4 @@
-# 114 — Stat tiles and the filter bar
+# 115 — Stat tiles and the filter bar
 
 Sections 4a and 4b. "Figures are the loudest thing on the page; labels stay
 small and flush left above them."

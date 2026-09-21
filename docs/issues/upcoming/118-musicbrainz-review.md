@@ -1,9 +1,9 @@
-# 117 — MusicBrainz review, queue and detail
+# 118 — MusicBrainz review, queue and detail
 
 Sections 6e and 6f, both marked *Selected*. Full width, not paired — "the layout
 needs the room".
 
-**6e.** Header is the paned form from [112](112-dialog-chrome.md): title, then a
+**6e.** Header is the paned form from [113](113-dialog-chrome.md): title, then a
 muted caption "243 releases to review". Body is `212px 1fr`.
 
 - **Queue** column, `1px` right border. A `QUEUE` eyebrow row at `7px 12px`
