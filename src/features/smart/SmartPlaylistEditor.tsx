@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogStatus,
 } from "../../components/primitives/Dialog";
+import { IconButton } from "../../components/primitives/IconButton";
 import { Select } from "../../components/primitives/Select";
 import { TagCombobox } from "../../components/ui/TagCombobox";
 import type {
@@ -137,8 +138,10 @@ export function SmartPlaylistEditor({
       <DialogHeader title={title} />
 
       <DialogBody>
-        <label className="dialog-field" htmlFor={nameId}>
-          Name
+        <label className="dialog-field filter-name" htmlFor={nameId}>
+          {/* A span rather than a bare text node: the sheet gives the caption a
+              column of its own, and only an element can be given a width. */}
+          <span className="filter-name-label">Name</span>
           <input
             id={nameId}
             value={draftName}
@@ -318,7 +321,9 @@ function GroupEditor({
 
   return (
     <div className={root ? "filter-group root" : "filter-group"}>
-      <div className="filter-row">
+      {/* Not a rule row. It spans the grid rather than taking its columns, so
+          the selects below it start at the box's own left edge. */}
+      <div className="filter-head">
         <span>{label}</span>
         <Select
           label={root ? "Match rules" : "Match rules in this group"}
@@ -331,22 +336,14 @@ function GroupEditor({
         />
         <span>of the following:</span>
         <span className="filter-spacer" />
-        <button
-          type="button"
-          onClick={() => onChange(addNode(group, [], { type: "rule", ...newRule() }))}
-        >
+        <Button onClick={() => onChange(addNode(group, [], { type: "rule", ...newRule() }))}>
           + Rule
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange(addNode(group, [], { type: "group", ...newGroup() }))}
-        >
+        </Button>
+        <Button onClick={() => onChange(addNode(group, [], { type: "group", ...newGroup() }))}>
           + Group
-        </button>
+        </Button>
         {onRemove ? (
-          <button type="button" aria-label="Remove group" onClick={onRemove}>
-            ✕
-          </button>
+          <IconButton icon="remove" label="Remove group" place="rule" onClick={onRemove} />
         ) : null}
       </div>
 
@@ -417,7 +414,11 @@ function RuleEditor({
   };
 
   return (
-    <div className="filter-row filter-rule">
+    // `display: contents`, so these four are the group's own grid cells rather
+    // than a row packing its own flex. The third is a box rather than the
+    // control itself because two of the four value shapes put more than one
+    // thing in it, and an empty box is what `kind: "none"` leaves behind.
+    <div className="filter-rule">
       <Select
         label={`Field for condition ${position}`}
         value={rule.field}
@@ -439,19 +440,23 @@ function RuleEditor({
         onChange={(op) => onChange({ ...rule, op, value: valueFor(rule.field, op, rule.value) })}
       />
 
-      <ValueEditor
-        value={rule.value}
-        position={position}
-        vocabulary={vocabularyFor(rule.field)}
-        onChange={(value) => onChange({ ...rule, value })}
+      <div className="filter-value">
+        <ValueEditor
+          value={rule.value}
+          position={position}
+          vocabulary={vocabularyFor(rule.field)}
+          onChange={(value) => onChange({ ...rule, value })}
+        />
+
+        {rule.op === "inLast" ? <span>days</span> : null}
+      </div>
+
+      <IconButton
+        icon="remove"
+        label={`Remove condition ${position}`}
+        place="rule"
+        onClick={onRemove}
       />
-
-      {rule.op === "inLast" ? <span>days</span> : null}
-
-      <span className="filter-spacer" />
-      <button type="button" aria-label={`Remove condition ${position}`} onClick={onRemove}>
-        ✕
-      </button>
     </div>
   );
 }

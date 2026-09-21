@@ -4,15 +4,15 @@ import type { IconName } from "../icons/registry";
 /**
  * Where the button is, not how big someone wanted it.
  *
- * The sheet states three sizes and ties each to a place: 32px square in a
- * toolbar, 36px in a dialog, 20px for the pair that nudges a row up or down
- * inside a mapping table. A fourth size would be a fourth place, which is a
- * design decision rather than a prop.
+ * The sheet states four sizes and ties each to a place: 32px square in a
+ * toolbar, 36px in a dialog, 30px in the smart playlist's rule grid, 20px for
+ * the pair that nudges a row up or down inside a mapping table. A fifth size
+ * would be a fifth place, which is a design decision rather than a prop.
  */
-export type IconButtonPlace = "toolbar" | "dialog" | "nudge";
+export type IconButtonPlace = "toolbar" | "dialog" | "rule" | "nudge";
 
-/** The glyph each place draws, from the sheet. The 20px box gets 9px. */
-const GLYPH: Record<IconButtonPlace, number> = { toolbar: 14, dialog: 14, nudge: 9 };
+/** The glyph each place draws, from the sheet. The 30px box gets 11px, the 20px one 9px. */
+const GLYPH: Record<IconButtonPlace, number> = { toolbar: 14, dialog: 14, rule: 11, nudge: 9 };
 
 /**
  * `in-dialog` rather than `dialog`, which is the box this button sits in.
@@ -23,6 +23,7 @@ const GLYPH: Record<IconButtonPlace, number> = { toolbar: 14, dialog: 14, nudge:
 const CLASS: Record<IconButtonPlace, string> = {
   toolbar: "icon-button",
   dialog: "icon-button in-dialog",
+  rule: "icon-button in-rule",
   nudge: "icon-button nudge",
 };
 

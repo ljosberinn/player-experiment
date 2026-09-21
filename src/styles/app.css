@@ -1449,6 +1449,17 @@ th.status {
   flex: 1;
 }
 
+/* A caption in a column of its own, so the field starts at a fixed inset
+   rather than wherever the word ends. Only the smart playlist editor's name
+   row: the other two `.dialog-field` callers label several fields each, and
+   44px would clip the longer captions. */
+.filter-name-label {
+  width: 44px;
+  flex: none;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 /* Text fields. A drawn control's own input is transparent and absolutely
    placed, so this reaches it too - harmlessly, because everything here is
    paint on something with no opacity - but `library.css` is what sizes it. */
@@ -1469,6 +1480,17 @@ th.status {
   border-color: var(--accent);
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   outline-offset: -1px;
+}
+
+/* The field the dialog opened on. `--accent` as a standing edge rather than as
+   the focus ring, so it says which field the dialog is about before anything
+   has been focused; the ring above still lands on top when one is.
+
+   Below `.dialog input` rather than beside `.filter-name-label`, which is where
+   it reads: the two selectors weigh the same, so the later one is the one that
+   draws the edge. */
+.filter-name input {
+  border-color: var(--accent);
 }
 
 /* The spellings one album group folds together, in `AlbumLinkDialog`. A list
@@ -1522,20 +1544,55 @@ th.status {
   color: var(--danger);
 }
 
-/* Nested groups are indented and ruled, so which rules belong to which
-   combinator is readable without tracing brackets. */
+/* One grid for the whole box, so the field and operator selects line up down
+   the column instead of each row packing its own flex and landing wherever its
+   own contents end. `--menu-border` and no fill: the box is a boundary around
+   the rules, not a second surface inside the dialog.
+
+   Nested groups are indented and ruled on top of that, so which rules belong to
+   which combinator is readable without tracing brackets. */
 .filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 7px 10px;
-  border: 1px solid var(--chrome-border);
-  background: var(--surface);
+  display: grid;
+  grid-template-columns: 130px 130px 1fr 30px;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--menu-border);
 }
 
 .filter-group .filter-group {
   margin-left: 17px;
   border-left: 3px solid var(--accent);
+}
+
+.filter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* A nested group's header carries one control more than the root's inside a
+     box 30px narrower, and it is the last line that gives way rather than the
+     buttons all losing a few pixels each. */
+  flex-wrap: wrap;
+  /* 6px from the grid plus 4px here, which is the sheet's 10px. The header
+     carries the gap because it is the one row that is not a rule. */
+  margin-bottom: 4px;
+}
+
+/* Square, whatever the line it is on has left. */
+.filter-head .icon-button {
+  flex: none;
+}
+
+/* The combinator, which is a word rather than a column: `.select` is full-width
+   for the grid cells below, and here that would stretch "any" across the row. */
+.filter-head .select {
+  width: auto;
+}
+
+/* Small, because they add a line to a box rather than finish the dialog. The
+   region overruling the primitive it wraps, as `.dialog-list .button` does. */
+.filter-head .button {
+  padding: 6px 11px;
+  font-size: 12px;
 }
 
 .filter-row {
@@ -1545,8 +1602,41 @@ th.status {
   flex-wrap: wrap;
 }
 
+/* The four cells are the grid's, not this element's. */
+.filter-rule {
+  display: contents;
+}
+
+/* The value cell. `inLast` puts its unit here and `between` puts a second
+   bound and the word joining them, so the cell is a box even where one control
+   fills it - and an empty one where `kind: "none"` draws nothing at all. */
+.filter-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* `.dialog input` states a height and `.select` states its padding, so the two
+   primitives disagree by a few pixels. Stretching the field to the row is what
+   keeps the grid's promise: every box in a rule shares a top and a bottom edge
+   with the ones beside it. */
+.filter-value input {
+  height: auto;
+  align-self: stretch;
+}
+
 .filter-rule input {
   min-width: 0;
+}
+
+/* The 30px place is the grid's fourth column, so in a rule the button takes the
+   cell rather than its own square: the height is then the row's, and the button
+   and the selects beside it share an edge. The header's own remove button keeps
+   the primitive's square, having no row to match. */
+.filter-rule .icon-button {
+  width: 100%;
+  height: auto;
 }
 
 .filter-spacer {
@@ -1556,6 +1646,16 @@ th.status {
 .filter-empty {
   margin: 0;
   color: var(--muted);
+}
+
+/* Everything in the box that is not a rule row. A nested group is a sibling of
+   the rules rather than a cell among them - its own rules are a grid of its
+   own, which is what keeps them aligned with each other rather than with the
+   outer group's columns. Last, so it outranks the three rules above it. */
+.filter-group > .filter-head,
+.filter-group > .filter-empty,
+.filter-group > .filter-group {
+  grid-column: 1 / -1;
 }
 
 /* Why a field in the dropdown above is greyed out. Muted rather than
@@ -1574,19 +1674,27 @@ th.status {
   padding-left: 10px;
 }
 
-/* Wide enough for a five-digit cutoff and no wider - a number box that
-   stretches to fill the row reads as a text field. */
+/* The sheet's box, and no wider - a number box that stretches to fill the row
+   reads as a text field. */
 .filter-order input[type="number"] {
-  width: 72px;
+  width: 62px;
 }
 
-/* A disabled half of the row still has to be readable. WCAG 1.4.3 exempts
-   disabled controls, but the label beside them is not disabled and the row has
-   to be legible enough to know what ticking the box would do - so `--muted`,
-   which the rest of the app already uses for de-emphasised text, rather than
-   an opacity that would take it somewhere unmeasured. */
+/* A control disabled in place to be read, which is not the same as one disabled
+   because it cannot be used yet. These two rows are rendered whatever the
+   checkboxes say, so the row has to stay legible enough to know what ticking
+   one would do - and `.select[data-disabled]`'s `opacity: 0.45` takes it
+   somewhere unmeasured. The opacity stays the primitive's default; the sheet
+   draws the state here as a filled box with its own edge and text instead.
+
+   WCAG 1.4.3 exempts disabled controls, so `--faint` is allowed to be below
+   4.5:1 - the label beside them is not disabled and carries the row. */
+.filter-order .select[data-disabled],
 .filter-order input:disabled {
-  color: var(--muted);
+  opacity: 1;
+  border-color: var(--chrome-border);
+  background: var(--field-disabled);
+  color: var(--faint);
 }
 
 /* A rail of categories beside a pane that keeps the ~420px column the dialog

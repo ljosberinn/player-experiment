@@ -177,6 +177,15 @@
   height: 36px;
 }
 
+/* Recessive for the same reason the nudge pair is: it removes one line of a
+   filter rather than answering the dialog, and a column of full-ink crosses
+   down the right of the rule grid would read as the content. */
+.icon-button.in-rule {
+  width: 30px;
+  height: 30px;
+  color: var(--muted);
+}
+
 /* Recessive, because it sits inside a row of data rather than on the chrome:
    two arrows at full ink beside every line would read as the content. */
 .icon-button.nudge {
