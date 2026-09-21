@@ -235,22 +235,26 @@ describe("appearance, in the engine that actually lays it out", () => {
           if (dialogElement === null) {
             return null;
           }
-          const read = (selector: string, side: "Bottom" | "Top") => {
+          // Kebab-case both times. `getPropertyValue` takes a CSS property
+          // name, not the camelCase alias on the style object, and the camel
+          // spelling returns "" rather than throwing - which reads downstream
+          // as a colour of black and a ratio that looks plausible.
+          const read = (selector: string, side: "bottom" | "top") => {
             const found = dialogElement.querySelector<HTMLElement>(selector);
             if (found === null) {
               return null;
             }
             const style = getComputedStyle(found);
             return {
-              width: style.getPropertyValue(`border-${side.toLowerCase()}-width`),
-              colour: style.getPropertyValue(`border${side}Color`),
+              width: style.getPropertyValue(`border-${side}-width`),
+              colour: style.getPropertyValue(`border-${side}-color`),
             };
           };
           return {
             fill: getComputedStyle(dialogElement).backgroundColor,
             shadow: getComputedStyle(dialogElement).boxShadow,
-            header: read(".dialog-header", "Bottom"),
-            footer: read(".dialog-footer", "Top"),
+            header: read(".dialog-header", "bottom"),
+            footer: read(".dialog-footer", "top"),
           };
         });
 
@@ -265,13 +269,19 @@ describe("appearance, in the engine that actually lays it out", () => {
             if (rule === null) {
               return [`${name}: no rule drawn at all`];
             }
-            const ratio = contrast(rule.colour, regions?.fill ?? "");
             if (rule.width !== "2px") {
               return [`${name}: rule is ${rule.width}, not the sheet's 2px`];
             }
+            // Flattened first: `--rule` is a translucent ink on light and a
+            // translucent white on dark, and `contrast` reads a colour as
+            // opaque. Measured this way it is 2.43:1 on light and 1.50:1 on
+            // dark, so the bar below is what still fails a rule that has been
+            // thinned to nothing rather than one the sheet drew.
+            const fill = regions?.fill ?? "";
+            const ratio = contrast(flatten([rule.colour, fill]), fill);
             return ratio > 1.3
               ? []
-              : [`${name}: rule ${rule.colour} on ${regions?.fill} = ${ratio.toFixed(2)}:1`];
+              : [`${name}: rule ${rule.colour} on ${fill} = ${ratio.toFixed(2)}:1`];
           });
 
         expect(wrong).toEqual([]);
