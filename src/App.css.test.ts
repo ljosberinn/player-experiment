@@ -915,18 +915,22 @@ describe("the stylesheet", () => {
     expect(art?.body).toMatch(/object-fit:\s*cover/);
   });
 
-  it("gives a paned dialog one size and one scroller", () => {
+  it("gives a paned dialog one size, and every scroller inside it a floor", () => {
     // The lookup passed through six heights - 154px reading the files, 695px
     // confirming eleven - and it is centred, so every one of them moved both
-    // edges under the pointer resting on Skip. The box states a height and
-    // only `.dialog-body` scrolls; a second `overflow` anywhere inside is the
-    // regression, because then the buttons travel again.
+    // edges under the pointer resting on the actions. What fixed it was the
+    // box stating a height, not the count of scroll areas inside it: a column
+    // that scrolls within a fixed track moves nothing.
+    //
+    // So the rule this asserts is the one that was always the point. The box
+    // states a height, `.dialog-body` is the default scroller, and anything
+    // that scrolls in its place states `min-height: 0` - without which a grid
+    // or flex child's automatic minimum is its content, the column grows to
+    // fit and the footer is on the move again.
     const paned = all.find((one) => /(^|\s)\.dialog\.paned$/.test(one.selector));
     const body = all.find((one) => /(^|\s)\.dialog\.paned > \.dialog-body$/.test(one.selector));
 
     expect(paned?.body).toMatch(/overflow:\s*hidden/);
-    // A flex item's automatic minimum is its content, which is what makes an
-    // `overflow-y: auto` child of a column flex refuse to shrink.
     expect(body?.body).toMatch(/overflow-y:\s*auto/);
     expect(body?.body).toMatch(/min-height:\s*0/);
     expect(body?.body).toMatch(/flex:\s*1/);
@@ -935,6 +939,17 @@ describe("the stylesheet", () => {
 
     expect(lookup?.body, ".dialog.lookup should state a height").toMatch(/[^-]height:\s*min\(/);
 
+    // 118 put the queue in a column beside the pane, so the body hands the
+    // scroll to its two children rather than keeping it. Deliberate, and
+    // stated here so that a third region quietly taking it is not.
+    const lookupBody = all.find((one) =>
+      /(^|\s)\.dialog\.lookup > \.dialog-body$/.test(one.selector),
+    );
+
+    expect(lookupBody?.body, "the lookup's body hands the scroll to its columns").toMatch(
+      /overflow:\s*hidden/,
+    );
+
     const inside = all.filter(
       (one) => /(^|\s)\.lookup[\w-]*$/.test(one.selector) && !one.selector.includes(".dialog"),
     );
@@ -942,8 +957,25 @@ describe("the stylesheet", () => {
     // Counted, so that a selector this stops matching fails here rather than
     // quietly emptying the loop below.
     expect(inside.length).toBeGreaterThan(8);
+    const scrollers = inside.filter((one) => /overflow(-y)?:\s*(auto|scroll)/.test(one.body));
+
+    // The queue's list and the pane, and nothing else: the two columns the
+    // body gave the scroll to.
+    // `uncommented`, because `rules()` sweeps whatever precedes the brace -
+    // comments included - into the selector.
+    expect(scrollers.map((one) => uncommented(one.selector).trim())).toEqual([
+      ".lookup-queue-list",
+      ".lookup-pane",
+    ]);
+    for (const rule of scrollers) {
+      expect(rule.body, `${rule.selector} scrolls without a floor`).toMatch(/min-height:\s*0/);
+    }
+    // `overflow: hidden` for truncation is how the queue's album and the
+    // mapping's titles ellipsise, so it stays allowed; a scroller is not.
     for (const rule of inside) {
-      expect(rule.body, `${rule.selector} would be a second scroller`).not.toMatch(/overflow/);
+      expect(rule.body, `${rule.selector} scrolls sideways`).not.toMatch(
+        /overflow-x:\s*(auto|scroll)/,
+      );
     }
   });
 

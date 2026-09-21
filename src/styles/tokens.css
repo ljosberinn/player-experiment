@@ -245,6 +245,13 @@
   --chrome-border: oklch(0.237 0.004 49 / 0.125); /* -> #dbd7d4 */
   --menu-border: oklch(0.237 0.004 49 / 0.2); /* -> #cbc7c4 */
   --field-border: oklch(0.68 0.006 60);
+  /* A fourth and lightest weight: the line between two rows of a list, which
+     the sheet draws a step under the hairline that frames the list. Both
+     weights appear in one picture in 6e - the queue's column edge and its
+     eyebrow are `--chrome-border`, the line between two queue rows is this -
+     and the difference is what makes a run of rows read as one block inside a
+     frame rather than as a stack of panels. */
+  --row-line: oklch(0.237 0.004 49 / 0.065); /* -> #eae7e5 */
   /* A dialog's section rules, above its footer and below its header. Heavier
      than any other line in the app and deliberately so: the sheet builds
      structure out of rules and alignment rather than cards, and 2px of this is
@@ -417,6 +424,7 @@
   --chrome-border: oklch(1 0 0 / 0.07); /* -> #2a231c */
   --menu-border: oklch(1 0 0 / 0.135); /* -> #3a332b */
   --field-border: oklch(0.46 0.017 67);
+  --row-line: oklch(1 0 0 / 0.026); /* -> #241e18 */
   /* The sheet draws the dialog's rules and its edge at one colour here and at
      two on light, which is why this is a name of its own rather than a second
      use of the line above. */

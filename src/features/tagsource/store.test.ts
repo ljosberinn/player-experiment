@@ -150,7 +150,7 @@ describe("opening", () => {
   });
 });
 
-/** A selection's queue, which has no table behind it and is walked in order. */
+/** A selection's queue, which the column on the left is drawn from. */
 describe("the queue", () => {
   beforeEach(async () => {
     vi.mocked(tagsourceGroups).mockResolvedValue([
@@ -160,18 +160,11 @@ describe("the queue", () => {
     await useTagsourceStore.getState().open([1, 2, 3]);
   });
 
-  it("moves to the next release on a skip", async () => {
-    await useTagsourceStore.getState().skip();
+  it("searches the release a row is chosen on", async () => {
+    await useTagsourceStore.getState().choose(1);
 
     expect(useTagsourceStore.getState().index).toBe(1);
     expect(tagsourceSearch).toHaveBeenLastCalledWith("Shields", "Grizzly Bear");
-  });
-
-  it("closes once the last release is past", async () => {
-    await useTagsourceStore.getState().skip();
-    await useTagsourceStore.getState().skip();
-
-    expect(useTagsourceStore.getState().queue).toBeNull();
   });
 
   it("goes on to the next release after an apply", async () => {
@@ -184,7 +177,7 @@ describe("the queue", () => {
   });
 
   it("leaves nothing applying behind when the last release closes the dialog", async () => {
-    await useTagsourceStore.getState().skip();
+    await useTagsourceStore.getState().choose(1);
     await useTagsourceStore.getState().pick(candidate.mbid);
 
     await useTagsourceStore.getState().apply([]);
@@ -287,10 +280,13 @@ describe("going back", () => {
 
 describe("the review queue", () => {
   /**
-   * The point of 92: four hundred releases is a list to pick from, not a
-   * stack to be handed the top of. Nothing is read until a row is chosen.
+   * The point of 92 stands - four hundred releases is a list to pick from, not
+   * a stack to be handed the top of - and 118 put that list in a column beside
+   * the pane, so opening on its first release picks nothing for the user. What
+   * it must not do is spend a request: the pass's candidates come with the
+   * entry, so the release is read from disk and the dialog stops there.
    */
-  it("opens on the table rather than on a release", async () => {
+  it("opens on the first release without asking MusicBrainz", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
       queued("Loveless", "My Bloody Valentine", [1, 2], [candidate]),
     ]);
@@ -298,8 +294,10 @@ describe("the review queue", () => {
     await useTagsourceStore.getState().openReview();
 
     expect(useTagsourceStore.getState().queue).toHaveLength(1);
-    expect(useTagsourceStore.getState().index).toBeNull();
-    expect(tracksByIds).not.toHaveBeenCalled();
+    expect(useTagsourceStore.getState().index).toBe(0);
+    expect(tracksByIds).toHaveBeenCalledWith([1, 2]);
+    expect(tagsourceSearch).not.toHaveBeenCalled();
+    expect(tagsourceFetch).not.toHaveBeenCalled();
   });
 
   /**
@@ -409,18 +407,17 @@ describe("the review queue", () => {
     expect(useTagsourceStore.getState().queue).toBeNull();
   });
 
-  /** Back to Queue is "not now": the release keeps its place in the table. */
-  it("leaves the release in the table on a skip", async () => {
+  /** Leaving a release alone is choosing another one; nothing is decided. */
+  it("leaves a release in the queue when the selection moves off it", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([
       queued("Loveless", "My Bloody Valentine", [1]),
       queued("Spiderland", "Slint", [2]),
     ]);
     await useTagsourceStore.getState().openReview();
-    await useTagsourceStore.getState().choose(0);
 
-    await useTagsourceStore.getState().skip();
+    await useTagsourceStore.getState().choose(1);
 
-    expect(useTagsourceStore.getState().index).toBeNull();
+    expect(useTagsourceStore.getState().index).toBe(1);
     expect(useTagsourceStore.getState().queue).toHaveLength(2);
   });
 
