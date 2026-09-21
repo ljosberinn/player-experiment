@@ -957,6 +957,110 @@
   background: var(--accent);
 }
 
+/* ---------- 4d · heatmap ---------- */
+
+/* Every length in this block is stated by the sheet and none of them is a
+   share of the panel, which is the whole reason the grid is HTML and the
+   chart around it is `.chart-intrinsic`: seven 13px rows come to about 117px
+   whatever room the view had, and an svg scaled into a 180px box would draw
+   them at nearly twice that. */
+.heatmap-row {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.heatmap-day {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* The count is the only thing the component sets, and it sets it as a count:
+   a template built in the component would be this rule living in two files.
+
+   Registered rather than merely used, like the blob colours and for the
+   second of their two reasons: the value comes from React, and the initial
+   value is what the grid falls back to for the frame before it arrives -
+   `repeat()` over an unset property is not a template at all, and the row
+   would lay out as one long cell. */
+@property --heatmap-columns {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 1;
+}
+
+.heatmap-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--heatmap-columns), minmax(0, 1fr));
+  gap: 2px;
+}
+
+.heatmap-cell {
+  height: 13px;
+}
+
+/* A row of the same grid, so the labels start where the cells do rather than
+   under the day names. */
+.heatmap-axis {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+/* Spread rather than placed: `space-between` puts the first and the last hard
+   against the ends, which is what keeps the last hour on the panel. The bands
+   they name are not quite evenly spaced as a result, and the sheet draws it
+   that way. */
+.heatmap-ticks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.heatmap-cell[data-step="0"] {
+  background: var(--chart-ramp-0);
+}
+
+.heatmap-cell[data-step="1"] {
+  background: var(--chart-ramp-1);
+}
+
+.heatmap-cell[data-step="2"] {
+  background: var(--chart-ramp-2);
+}
+
+.heatmap-cell[data-step="3"] {
+  background: var(--chart-ramp-3);
+}
+
+.heatmap-cell[data-step="4"] {
+  background: var(--chart-ramp-4);
+}
+
+.heatmap-cell[data-step="5"] {
+  background: var(--chart-ramp-5);
+}
+
+.heatmap-cell[data-step="6"] {
+  background: var(--chart-ramp-6);
+}
+
+.heatmap-cell[data-step="7"] {
+  background: var(--chart-ramp-7);
+}
+
+/* No shimmer, like `.chart-skeleton`: a grid that has not landed yet is a held
+   space rather than a thing pretending to load. */
+.heatmap-skeleton .heatmap-cell {
+  background: var(--skeleton);
+}
+
 /* ---------- 06 · dialogs ---------- */
 
 /* Only the dim layer. It used to centre the dialog as its flex child, which

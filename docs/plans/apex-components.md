@@ -76,6 +76,19 @@ shell stays governed by the old file until the library covers it.
   4e's two draw the same five rows twice. Same grammar, and what settles it is
   whether the lower drawing says anything new. Done in 116a for 4c: the
   figures, the track and the week are one panel, `StreakTiles` redrawn.
+- **Section 4d is in, and it is the first drawing that did not fit the chart
+  frame.** Done in 116b. Seven 13px rows come to ~117px whatever room the view
+  had, and `.chart` is a fixed 180px box `ChartFrame` measures — so the grid is
+  HTML, and `ChartFrame` split: `ChartShell` is the label, the empty and
+  loading states and the show-as-table toggle, and `ChartFrame` is that plus
+  the svg, the margins and the axes. The alternative was a second toggle
+  mechanism in the app. The ramp grew to eight steps derived from one
+  `color-mix` formula, which regraded `Donut` too, since `rampStep` is shared.
+  `Heatmap` itself stays in `charts/` rather than moving to `primitives/`:
+  `rampStep` and the shell are chart infrastructure, and splitting it from
+  `Donut` across two directories to satisfy a row of this table buys nothing.
+  Its *drawing* did move, to `library.css`, and the guard that keeps 4a and
+  4c out of `app.css` now covers it.
 - **Section 4b is two alternatives, and that is the asymmetry.** Its selects
   read `All time` / `Either` / `Either` while its tokens read `last 12 months` /
   `owned only`. Two forms of one control drawn in one frame contradict each
@@ -120,7 +133,8 @@ Primitives the sheet specifies, against what exists:
 | `StatRow`, `StatTiles` | **done, 115** — `charts/StatTile` retired into the two |
 | `FilterBar` | **done, 115** — `.stats-filters`. `FilterToken` is 122 |
 | `Streak` | **done, 116a** — with `Streaks.last_seven` behind its week |
-| `Leaderboard`, `Heatmap` | `charts/BarList`, `charts/Heatmap` |
+| `Heatmap` | **done, 116b** — stays in `charts/`, drawn by `library.css` |
+| `Leaderboard` | `charts/BarList` |
 | `Menu`, `MenuItem`, `MenuSeparator` | `ui/ContextMenu` (Base UI, close) |
 | `Dialog` header / body / footer | **done, 113** — all eight dialogs |
 | `TaskLine`, `Skeleton` | `.sidebar-task`, ad-hoc |
@@ -171,7 +185,8 @@ backend field, 116b the ramp — which `rampStep` shares with `Donut` — and 11
 whether the numbered list is a variant or a toggle. The only file two of them
 would both write is `library.css`, which is what 110 and 111 stacked for; here
 the blocks are three separate sections, so they run off main in parallel.
-116a has landed.
+116a and 116b have landed; 116b took the ramp with it, so 116c starts from an
+eight-step one.
 
 **122 comes after 115 rather than beside it.** Both are section 4b, and the
 question 122 opens — whether the view wears the selects or the tokens — is only

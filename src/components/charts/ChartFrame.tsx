@@ -1,5 +1,7 @@
 import { type ReactNode, useCallback, useState } from "react";
 
+import { ChartShell } from "./ChartShell";
+
 /**
  * Room for the axis labels around the plot.
  *
@@ -64,7 +66,7 @@ export interface ChartFrameProps {
    * The same numbers as a table, shown in place of the chart on request.
    *
    * A panel supplies the markup because only it knows what its columns are
-   * called; what the frame owns is the toggle, so that a panel cannot ship
+   * called; what the shell owns is the toggle, so that a panel cannot ship
    * without one.
    */
   readonly table?: ReactNode;
@@ -81,10 +83,14 @@ export interface ChartFrameProps {
 }
 
 /**
- * The box every chart is drawn in: it measures, and hands down a plot rect.
+ * The box an svg chart is drawn in: it measures, and hands down a plot rect.
  *
  * A chart primitive is then a pure function of its data and that rect, with no
  * measurement, no `ResizeObserver` and no opinion about margins of its own.
+ *
+ * Everything that is not the svg - the label, the empty and loading states,
+ * the show-as-table toggle - is {@link ChartShell}, which a chart that draws
+ * no svg uses on its own.
  */
 export function ChartFrame({
   label,
@@ -98,12 +104,11 @@ export function ChartFrame({
   children,
 }: ChartFrameProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [showTable, setShowTable] = useState(false);
 
-  // The `<section>` is measured, not a scroll container around it, and into
-  // state rather than out of a ref during render - `BrowseView`'s rule, for
-  // the reason it paid for. A callback ref rather than an effect because the
-  // element is not in the DOM on mount of an empty view.
+  // The `<section>`'s plot box is measured, not a scroll container around it,
+  // and into state rather than out of a ref during render - `BrowseView`'s
+  // rule, for the reason it paid for. A callback ref rather than an effect
+  // because the element is not in the DOM on mount of an empty view.
   const attach = useCallback((element: HTMLElement | null) => {
     if (element === null) {
       return;
@@ -122,93 +127,44 @@ export function ChartFrame({
   const xTicks = typeof xSource === "function" ? xSource(plot) : xSource;
   const yTicks = typeof ySource === "function" ? ySource(plot) : ySource;
 
-  // Loading outranks empty: an aggregate that has not landed is not an
-  // aggregate of nothing, and saying there are no plays and correcting it a
-  // frame later is worse than saying nothing yet. The table's skeleton rows
-  // make the same argument.
-  if (loading) {
-    return (
-      <section className="chart chart-loading">
-        <div className="chart-plot" ref={attach}>
-          <div className="chart-skeleton" data-testid="chart-skeleton" />
-        </div>
-      </section>
-    );
-  }
-
-  // Still measured while empty, so the chart that arrives when the filter
-  // widens is drawn at the right size on its first frame rather than at zero
-  // and then again.
-  if (empty !== undefined) {
-    return (
-      <section className="chart chart-empty">
-        <div className="chart-plot" ref={attach}>
-          <p>{empty}</p>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section className="chart">
-      {/* The measured box is this, not the section, and the toggle is outside
-          it. Measuring a box that contains the button would make the svg as
-          tall as the section, the section as tall as the svg plus the button,
-          and every frame a little taller than the last. */}
-      {/* Scrollable only while the table is up. With the svg in it, the svg
-          is exactly the box's client size, so a scrollbar would narrow the
-          box, which would narrow the svg, which would take the scrollbar
-          away again - a measurement that never settles. */}
-      <div className={showTable ? "chart-plot chart-plot-table" : "chart-plot"} ref={attach}>
-        {showTable ? (
-          table
-        ) : (
-          <svg role="img" aria-label={label} width={size.width} height={size.height}>
-            <g transform={`translate(${margin.left}, ${margin.top})`}>
-              {/* Nothing inside carries an `aria-hidden`: `role="img"` already
-                makes the whole subtree presentational, and the label plus the
-                table toggle are what a reader gets instead. */}
-              {grid && (
-                <g className="chart-grid">
-                  {yTicks.map((tick) => (
-                    <line
-                      key={tick.label}
-                      x1={0}
-                      x2={plot.width}
-                      y1={tick.offset}
-                      y2={tick.offset}
-                    />
-                  ))}
-                </g>
-              )}
-              <g className="chart-axis chart-axis-x">
-                {xTicks.map((tick) => (
-                  <text key={tick.label} x={tick.offset} y={plot.height + margin.bottom - 6}>
-                    {tick.label}
-                  </text>
-                ))}
-              </g>
-              <g className="chart-axis chart-axis-y">
-                {yTicks.map((tick) => (
-                  <text key={tick.label} x={-6} y={tick.offset}>
-                    {tick.label}
-                  </text>
-                ))}
-              </g>
-              {children(plot)}
+    <ChartShell
+      label={label}
+      {...(empty === undefined ? {} : { empty })}
+      loading={loading}
+      {...(table === undefined ? {} : { table })}
+      plotRef={attach}
+    >
+      {/* Presentational, because the shell's box around it is what carries
+          `role="img"` and the label since 116b - a grid of `<div>`s needed the
+          same bargain an svg gets, so it was made once on the box both sit in.
+          A second `role="img"` here would be a picture inside a picture. */}
+      <svg role="presentation" width={size.width} height={size.height}>
+        <g transform={`translate(${margin.left}, ${margin.top})`}>
+          {grid && (
+            <g className="chart-grid">
+              {yTicks.map((tick) => (
+                <line key={tick.label} x1={0} x2={plot.width} y1={tick.offset} y2={tick.offset} />
+              ))}
             </g>
-          </svg>
-        )}
-      </div>
-      {table !== undefined && (
-        <button
-          type="button"
-          className="chart-toggle"
-          onClick={() => setShowTable((shown) => !shown)}
-        >
-          {showTable ? "Show as chart" : "Show as table"}
-        </button>
-      )}
-    </section>
+          )}
+          <g className="chart-axis chart-axis-x">
+            {xTicks.map((tick) => (
+              <text key={tick.label} x={tick.offset} y={plot.height + margin.bottom - 6}>
+                {tick.label}
+              </text>
+            ))}
+          </g>
+          <g className="chart-axis chart-axis-y">
+            {yTicks.map((tick) => (
+              <text key={tick.label} x={-6} y={tick.offset}>
+                {tick.label}
+              </text>
+            ))}
+          </g>
+          {children(plot)}
+        </g>
+      </svg>
+    </ChartShell>
   );
 }

@@ -9,29 +9,37 @@
 /**
  * One computed colour, as sRGB channels 0-255 plus alpha.
  *
- * Two notations, because the engine hands back whichever the stylesheet was
+ * Three notations, because the engine hands back whichever the stylesheet was
  * written in. Legacy colours serialize as `rgb()` / `rgba()`; a colour authored
  * in a CSS Color 4 space keeps that space, so since phase 33 most of this app
- * computes to `oklch(L C H)` or `oklch(L C H / A)`.
+ * computes to `oklch(L C H)` or `oklch(L C H / A)`. A `color-mix()` computes to
+ * the space it was mixed in rather than to either operand's, so the chart ramp
+ * - eight mixes in oklab since 116b - arrives as `oklab(L a b)`.
  *
  * That distinction is not academic. The first version of this file read three
  * numbers out of whatever string arrived, which against `oklch(0.94 0.005 55)`
  * gave channels of 0.94, 0.005 and 55 - and two colours mangled the same way
  * both landed near black, so every ratio came out at exactly 1.00:1 and the
  * suite reported that nothing anywhere was legible.
+ *
+ * The sign is part of the number for the same reason: oklab's a and b run
+ * either way, and a green read as a magenta is the same silent wrong answer
+ * one step further on.
  */
 function parse(colour: string): [number, number, number, number] {
-  const parts = (colour.match(/[\d.]+/g) ?? []).map(Number);
+  const parts = (colour.match(/-?[\d.]+/g) ?? []).map(Number);
+  const notation = colour.trimStart().toLowerCase();
 
-  if (!colour.trimStart().toLowerCase().startsWith("oklch")) {
+  if (!notation.startsWith("oklch") && !notation.startsWith("oklab")) {
     const [r = 0, g = 0, b = 0, alpha = 1] = parts;
     return [r, g, b, alpha];
   }
 
   // oklch -> oklab -> LMS -> linear sRGB -> gamma-encoded sRGB, per CSS Color 4.
-  const [L = 0, C = 0, H = 0, alpha = 1] = parts;
-  const a = C * Math.cos((H * Math.PI) / 180);
-  const b = C * Math.sin((H * Math.PI) / 180);
+  const [L = 0, second = 0, third = 0, alpha = 1] = parts;
+  const [a, b]: [number, number] = notation.startsWith("oklab")
+    ? [second, third]
+    : [second * Math.cos((third * Math.PI) / 180), second * Math.sin((third * Math.PI) / 180)];
 
   const long = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
   const medium = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;

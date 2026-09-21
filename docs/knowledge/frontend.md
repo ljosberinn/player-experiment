@@ -100,13 +100,29 @@ and every colour on screen is ours, which is what the design and
   cases — a filter that matched nothing, a library where every album shares a
   bitrate — and a scale given either maps everything onto one pixel, or onto
   NaN.
-- **`ChartFrame` measures; primitives do not.** It measures the `<section>`
-  into state through a `ResizeObserver` (`BrowseView`'s rule, for the reason it
-  paid for) and hands down a plot rect, so a primitive is a pure function of
-  its data and that rect. It also owns the margins — one constant, because
-  charts whose plots start at different x do not read as a set — the empty and
-  loading states, the `role="img"` label and the show-as-table toggle. Those
-  last two live here so that a panel cannot ship without them.
+- **`ChartFrame` measures; primitives do not.** It measures the `<section>`'s
+  plot box into state through a `ResizeObserver` (`BrowseView`'s rule, for the
+  reason it paid for) and hands down a plot rect, so a primitive is a pure
+  function of its data and that rect. It also owns the margins — one constant,
+  because charts whose plots start at different x do not read as a set.
+- **`ChartShell` is everything around a chart that is not the drawing**: the
+  `role="img"` label, the empty and loading states, and the show-as-table
+  toggle. `ChartFrame` is that shell plus the svg, the margins and the axes.
+  The split is 116b's: section 4d draws the heatmap as a grid of stated sizes,
+  so `Heatmap` is an HTML grid that wants the label and the toggle and wants
+  none of the measuring. The alternative was a second toggle mechanism, and
+  the label and the toggle live in one place precisely so that a panel cannot
+  ship without them. The label goes on the box rather than on the svg, so a
+  drawing made of `<div>`s gets it on the same terms — and only while the
+  drawing is up, since the table, the empty message and the skeleton are text
+  a reader should reach rather than a picture.
+- **A chart is 180px unless it states its own size.** The fixed height is what
+  makes measuring terminate: left to size itself, the box would report a
+  height, the svg would take it, the box would grow by the toggle and the
+  observer would run again on a taller box every frame. `.chart-intrinsic` is
+  the other side of it — nobody measures a grid of 13px rows, so there is no
+  loop to break, and the skeleton that holds its height has to be the grid
+  rather than the shell's block.
 - **Loading outranks empty.** An aggregate in flight is not an aggregate of
   nothing; saying there are no plays and correcting it a frame later is worse
   than saying nothing yet.
@@ -121,9 +137,27 @@ and every colour on screen is ours, which is what the design and
   accent-derived ramp, so the app stays monochrome where it can, and a separate
   five-to-six hue categorical set — validated against `--surface` — exists only
   for multi-series. The sequential ramp is in the sheet as `--chart-ramp-0` to
-  `-4`, an empty step and four opaque steps up to the accent, landed with
-  `Heatmap`; a mark takes a step through `rampStep` by its share of the
-  largest, rounded up so one play never reads as none.
+  `-7`; a mark takes a step through `rampStep` by its share of the largest,
+  rounded up so one play never reads as none.
+- **The ramp is one formula, not sixteen values.** Each step is
+  `color-mix(in oklab, var(--accent) N%, var(--surface))` at twelve and a half
+  per cent a step, which is 4d's "one accent at eight opacity steps" without
+  the opacity: a step is the same colour over any backdrop, and
+  `e2e/contrast.ts` measures a value rather than a stack. Both grounds get the
+  identical eight declarations and resolve them differently, since `--accent`
+  and `--surface` are what differ; they stay duplicated because the guard that
+  catches a token forgotten on one ground compares the two name sets. The
+  empty step is 12.5% rather than nothing — a cell the colour of the ground
+  would take the grid away wherever the week was quiet. `--accent` is the
+  light ground's darkened text accent rather than the sheet's raw `#e8730f`,
+  so the light ramp runs a shade deeper than 4d draws it and the ramp tracks
+  the accent instead of a second copy of it.
+- **`RAMP_STEPS` is one number for two charts.** Raising it regrades the donut
+  along with the heatmap, which is the point: `rampStep` is shared, and two
+  copies of it is where a heatmap and a donut stop agreeing about how dark the
+  quietest thing on screen is. A step with no CSS rule is a mark drawn as
+  nothing, so `App.css.test.ts` asserts a token and a rule per mark for every
+  step the quantizer can return, and none beyond it.
 - **The categorical set did not land with the donut, and the donut is why.**
   `genre_breakdown` returns its slices ordered by size, so a genre ring is a
   magnitude series wearing a different shape — the sequential ramp reads as
@@ -133,12 +167,14 @@ and every colour on screen is ours, which is what the design and
   set earns its place when something draws categories that are genuinely
   unordered.
 - **`BarList` is HTML, and deliberately not a `ChartFrame`.** A ranked list is
-  already the table `ChartFrame`'s toggle would offer, and wrapping it in one
+  already the table the toggle would offer, and wrapping it in one
   `role="img"` would take away the reading it has: names that truncate, rows
   that take focus, an ordered list a screen reader can walk. So it owns its own
   empty and loading states, and it draws each fill as a share of the largest
   value rather than of the total - a top list is read as rows against each
-  other, and a long tail measured against the total is ten slivers.
+  other, and a long tail measured against the total is ten slivers. It is not
+  a `ChartShell` either, and for the half of that argument that survives the
+  split: the label and the toggle are what a ranked list already has.
 - **`Bar` is a categorical axis, never a numeric one.** The domain is the
   array's order: a histogram with an empty bin and a sparse time series both
   want the gap the caller left, and a scale over the values would close it. So
@@ -150,9 +186,12 @@ and every colour on screen is ours, which is what the design and
   as as an array. Every tick on a scale sits at a position derived from the
   plot's height or width, which only the frame knows; `Bar`, its first real
   caller, is what found that out.
-- **`Heatmap` is categorical on both axes**, so `ChartFrame` draws it with
-  `grid={false}`: a gridline through a row of weekday cells shows through every
-  gap and measures nothing.
+- **`Heatmap` is categorical on both axes**, and since 116b it has no axis
+  component at all: the row names are a 22px column of the grid and the hours
+  are five labels spread under it with `space-between`, which is 4d's
+  `00 06 12 18 23`. The labels come from the columns the panel passed, so the
+  axis and the show-as-table view say the same thing; the bands they sit over
+  are not quite evenly spaced as a result, and the sheet draws it that way.
 - **`Donut` divides by the total, and takes `RADIAL_MARGIN`.** Every other
   chart here divides by a domain or by the largest value; a ring's whole is its
   sum, which is what lets a slice mean the same on two panels that agree about

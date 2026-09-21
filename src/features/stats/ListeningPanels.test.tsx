@@ -261,7 +261,9 @@ describe("ListeningPanels", () => {
       (title) => title.textContent,
     );
     expect(titles).toContain(`${eight}: 5`);
-    expect(clock.querySelectorAll("rect.chart-cell")).toHaveLength(168);
+    // Stepped cells: the skeleton is the same grid drawn empty, so it is the
+    // colouring rather than the markup that says the aggregate landed.
+    expect(clock.querySelectorAll(".heatmap-cell[data-step]")).toHaveLength(168);
   });
 
   it("says what share of the history the time panels could place", async () => {

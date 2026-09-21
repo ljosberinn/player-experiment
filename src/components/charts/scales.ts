@@ -76,8 +76,8 @@ export function ticks(
   }));
 }
 
-/** How many non-empty steps the ramp has: `--chart-ramp-1` to `--chart-ramp-4`. */
-export const RAMP_STEPS = 4;
+/** How many non-empty steps the ramp has: `--chart-ramp-1` to `--chart-ramp-7`. */
+export const RAMP_STEPS = 7;
 
 /**
  * Which ramp step `value` takes: 0 for nothing, then 1 up to [`RAMP_STEPS`] by

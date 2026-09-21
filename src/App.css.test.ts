@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { RAMP_STEPS } from "./components/charts/scales";
+
 /**
  * The native-feel rules, asserted against the stylesheet itself.
  *
@@ -969,22 +971,51 @@ describe("the stylesheet", () => {
   });
 
   it("keeps the stat figures' own drawing out of `app.css`", () => {
-    // Sections 4a and 4c are where the figures on this app's stat surfaces are
-    // settled - the sizes, the weights, the rule, the cell edges and the
-    // streak's track - and the Statistics view is the only place any of them
-    // appears. A rule here would be a private second drawing that no other
-    // caller of the primitive gets, which is the drift 113 pulled the dialog
-    // shell out of eight dialogs to stop.
+    // Sections 4a, 4c and 4d are where the figures on this app's stat surfaces
+    // are settled - the sizes, the weights, the rule, the cell edges, the
+    // streak's track and the heatmap's 13px cell - and the Statistics view is
+    // the only place any of them appears. A rule here would be a private
+    // second drawing that no other caller of the primitive gets, which is the
+    // drift 113 pulled the dialog shell out of eight dialogs to stop.
     //
     // Not even layout: the two-column override Streaks needed went with the
     // tiles it narrowed, so the region names none of these at all. A region
     // that later has a real reason to overrule one of them relaxes this with
     // the reason written down, rather than finding the door already open.
+    //
+    // `.chart-intrinsic` is not on this list and belongs where it is: it is
+    // the shell around the grid rather than the grid, and it is the other half
+    // of `.chart`'s fixed height, which app.css states three lines above it.
     const drawn = rules(sources[3] ?? "")
       .map((one) => uncommented(one.selector))
-      .filter((selector) => /\.(stat-(row|tiles?|unit)|streak)\b/.test(selector));
+      .filter((selector) => /\.(stat-(row|tiles?|unit)|streak|heatmap)\b/.test(selector));
 
     expect(drawn).toEqual([]);
+  });
+
+  it("paints every ramp step either mark can ask for, and no more", () => {
+    // `rampStep` returns 0 through `RAMP_STEPS`, and a step with no rule is a
+    // mark drawn as nothing at all - on a heatmap that is indistinguishable
+    // from a quiet hour, and on a donut from a genre a filter emptied. The
+    // ramp went from four steps to seven in 116b, which is three files: the
+    // constant, the tokens, and a rule per step per mark. This is what says
+    // so, rather than a screenshot somebody has to look at closely.
+    //
+    // Both ends are asserted. A ramp left one token longer than the quantizer
+    // is a colour nothing can reach, which is how the two drift apart in the
+    // other direction.
+    for (let step = 0; step <= RAMP_STEPS; step += 1) {
+      expect(declaredTokens, `the ramp declares step ${step}`).toContain(`--chart-ramp-${step}`);
+      for (const mark of [".chart-slice", ".heatmap-cell"]) {
+        const rule = `${mark}[data-step="${step}"]`;
+        expect(
+          all.some((one) => uncommented(one.selector).trim() === rule),
+          `${rule} is drawn`,
+        ).toBe(true);
+      }
+    }
+
+    expect(declaredTokens).not.toContain(`--chart-ramp-${RAMP_STEPS + 1}`);
   });
 
   it("gives Settings one size and one scroller too", () => {
