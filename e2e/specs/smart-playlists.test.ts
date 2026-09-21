@@ -138,7 +138,10 @@ describe("a smart playlist with a cutoff", () => {
     // field is a combobox whose suggestion list is portalled over what comes
     // next; a rule on Year took `setValue` without complaint and then built a
     // playlist that matched nothing. Neither is what this spec is about.
-    await browser.$("//label[normalize-space(.)='Limited to']/preceding-sibling::input").click();
+    // The caption rather than the box: the drawn checkbox wraps its input in a
+    // label of its own, so the input is no longer a sibling of this label - and
+    // a `<label for>` activates its control whatever the control is drawn as.
+    await browser.$("//label[normalize-space(.)='Limited to']").click();
     const limit = await browser.$("input[aria-label='Limit']");
     await limit.setValue(String(LIMIT));
 
