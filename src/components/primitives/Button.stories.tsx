@@ -19,11 +19,14 @@ function Kinds() {
         <Button kind="primary">Play all</Button>
         <Button kind="secondary">Add to playlist</Button>
         <Button kind="ghost">Get tags</Button>
+        {/* The one the sheet does not draw. It is here so the row it has to
+            survive - beside a Cancel, in a dialog's footer - is visible. */}
+        <Button kind="destructive">Delete</Button>
         <Button disabled>Disabled</Button>
       </div>
 
       {/* Disabled is drawn the same whatever kind asked for it, which is only
-          visible with all three beside each other. */}
+          visible with all four beside each other. */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <Button kind="primary" disabled>
           Play all
@@ -33,6 +36,9 @@ function Kinds() {
         </Button>
         <Button kind="ghost" disabled>
           Get tags
+        </Button>
+        <Button kind="destructive" disabled>
+          Delete
         </Button>
       </div>
 

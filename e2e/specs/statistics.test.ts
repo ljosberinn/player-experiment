@@ -182,12 +182,12 @@ describe("the Statistics view", () => {
     });
 
     await panel("Top albums").$(".//button[normalize-space()='Fix the grouping…']").click();
-    const dialog = browser.$(".modal");
+    const dialog = browser.$(".dialog");
     await dialog.waitForExist({ timeout: 10_000 });
     await expect(dialog.$("h2")).toHaveText("How this album is grouped");
     // The spellings the fold put under this heading, which is what the
     // dialog is for and what the screenshot is of.
-    await browser.waitUntil(async () => (await dialog.$$(".modal-list li").length) > 1, {
+    await browser.waitUntil(async () => (await dialog.$$(".dialog-list li").length) > 1, {
       timeout: 10_000,
       timeoutMsg: "the group's spellings never arrived",
     });
@@ -319,7 +319,7 @@ describe("the Statistics view", () => {
     const genres = panel("Genres");
     await genres.$(".//button[normalize-space()='Fix a parent…']").click();
 
-    const dialog = browser.$(".modal");
+    const dialog = browser.$(".dialog");
     await dialog.waitForExist({ timeout: 10_000 });
     await expect(dialog.$("h2")).toHaveText("Where this genre belongs");
     // Prefilled with the level the drill left the view on, not the first

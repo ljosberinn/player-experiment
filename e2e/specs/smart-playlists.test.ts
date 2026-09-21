@@ -124,11 +124,11 @@ describe("a smart playlist with a cutoff", () => {
 
     await browser.$("button[aria-label='New smart playlist']").click();
 
-    // `.modal-field input` rather than `input[type='text']`: the name field
+    // `.dialog-field input` rather than `input[type='text']`: the name field
     // declares no `type` at all, and an attribute selector needs the attribute
     // to be present - the implicit default does not satisfy it. That is what
     // failed here first, and every later failure was this one cascading.
-    const name = await browser.$(".modal-field input");
+    const name = await browser.$(".dialog-field input");
     await name.waitForExist({ timeout: 10_000 });
     await name.setValue(NAME);
 
@@ -146,7 +146,7 @@ describe("a smart playlist with a cutoff", () => {
     await limit.setValue(String(LIMIT));
 
     await browser.$("//button[normalize-space(.)='Save']").click();
-    await browser.$(".modal").waitForExist({ reverse: true, timeout: 10_000 });
+    await browser.$(".dialog").waitForExist({ reverse: true, timeout: 10_000 });
   });
 
   it("opens on its releases, scoped to what it holds", async () => {
@@ -205,7 +205,7 @@ describe("a smart playlist with a cutoff", () => {
     await expect(limit).toHaveValue(String(LIMIT));
 
     await browser.$("//button[normalize-space(.)='Cancel']").click();
-    await browser.$(".modal").waitForExist({ reverse: true, timeout: 10_000 });
+    await browser.$(".dialog").waitForExist({ reverse: true, timeout: 10_000 });
   });
 
   after(async () => {

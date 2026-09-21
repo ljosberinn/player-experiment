@@ -1,5 +1,13 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useEffectEvent, useId, useState } from "react";
+import { Button } from "../../components/primitives/Button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  DialogStatus,
+} from "../../components/primitives/Dialog";
 import { TagCombobox } from "../../components/ui/TagCombobox";
 import {
   type CoverEdit,
@@ -153,113 +161,93 @@ export function TagEditor({
     // no trigger. Escape is the library's, and Enter-to-save is a real form
     // submit - which is what `useDialogKeys`' BUTTON/SELECT/TEXTAREA exclusion
     // list was approximating by hand.
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
+    <Dialog
+      onSubmit={() => {
+        if (canSave) {
+          onSave({ ...toEdit(draft), cover });
+        }
+      }}
+      onClose={() => {
         // A write in flight cannot be called off - files are already on disk -
         // so Escape and the backdrop stop closing the dialog while one runs.
-        if (!open && !saving) {
+        if (!saving) {
           onCancel();
         }
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup
-          className="modal"
-          render={
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (canSave) {
-                  onSave({ ...toEdit(draft), cover });
-                }
-              }}
-            />
-          }
-        >
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>
-            {tracks.length === 1 ? "Edit" : `Edit — ${tracks.length} songs`}
-          </Dialog.Title>
+      <DialogHeader title={tracks.length === 1 ? "Edit" : `Edit — ${tracks.length} songs`} />
 
-          <div className="tag-grid">
-            {FIELDS.map((field) => {
-              const common = commonValue(tracks, field);
-              const touched = draft[field.id] !== undefined;
-              return (
-                <TagField
-                  key={field.id}
-                  label={field.label}
-                  // A mixed field shows nothing and says so in its placeholder;
-                  // typing into it is what opts every selected track in.
-                  value={draft[field.id] ?? (common.kind === "same" ? common.value : "")}
-                  placeholder={common.kind === "mixed" ? "Mixed" : ""}
-                  touched={touched}
-                  suggest={field.suggest ?? null}
-                  onChange={(value) => setDraft((current) => ({ ...current, [field.id]: value }))}
-                />
-              );
-            })}
+      <DialogBody>
+        <div className="tag-grid">
+          {FIELDS.map((field) => {
+            const common = commonValue(tracks, field);
+            const touched = draft[field.id] !== undefined;
+            return (
+              <TagField
+                key={field.id}
+                label={field.label}
+                // A mixed field shows nothing and says so in its placeholder;
+                // typing into it is what opts every selected track in.
+                value={draft[field.id] ?? (common.kind === "same" ? common.value : "")}
+                placeholder={common.kind === "mixed" ? "Mixed" : ""}
+                touched={touched}
+                suggest={field.suggest ?? null}
+                onChange={(value) => setDraft((current) => ({ ...current, [field.id]: value }))}
+              />
+            );
+          })}
+        </div>
+
+        <div ref={setCoverBlock} className={hovered ? "tag-cover drop-target" : "tag-cover"}>
+          <div className="tag-cover-preview">
+            {/* The square is drawn whether or not there is art to put in it,
+                so the block keeps its shape as the selection changes and as a
+                choice goes pending. A pending replacement is shown from the
+                staging file rather than from the library, which is the whole
+                reason both routes stage; the caption stays either way,
+                because what the save will do is not something a picture
+                says. */}
+            {art === null ? (
+              <div className="tag-cover-art tag-cover-art-empty" aria-hidden="true" />
+            ) : (
+              <img className="tag-cover-art" src={art} alt="" />
+            )}
+            {coverNote === null ? null : <span className="tag-cover-note">{coverNote}</span>}
           </div>
-
-          <div ref={setCoverBlock} className={hovered ? "tag-cover drop-target" : "tag-cover"}>
-            <div className="tag-cover-preview">
-              {/* The square is drawn whether or not there is art to put in it,
-                  so the block keeps its shape as the selection changes and as a
-                  choice goes pending. A pending replacement is shown from the
-                  staging file rather than from the library, which is the whole
-                  reason both routes stage; the caption stays either way,
-                  because what the save will do is not something a picture
-                  says. */}
-              {art === null ? (
-                <div className="tag-cover-art tag-cover-art-empty" aria-hidden="true" />
-              ) : (
-                <img className="tag-cover-art" src={art} alt="" />
-              )}
-              {coverNote === null ? null : <span className="tag-cover-note">{coverNote}</span>}
-            </div>
-            <div className="tag-cover-actions">
-              <button type="button" onClick={() => choose(onPickCover())}>
-                Choose Artwork…
-              </button>
-              <button type="button" onClick={() => setCover({ kind: "remove" })}>
-                Remove Artwork
-              </button>
-              {cover === null ? null : (
-                <button type="button" onClick={() => setCover(null)}>
-                  Keep Existing
-                </button>
-              )}
-            </div>
+          <div className="tag-cover-actions">
+            <Button onClick={() => choose(onPickCover())}>Choose Artwork…</Button>
+            <Button onClick={() => setCover({ kind: "remove" })}>Remove Artwork</Button>
+            {cover === null ? null : <Button onClick={() => setCover(null)}>Keep Existing</Button>}
           </div>
+        </div>
 
-          {message ? (
-            <p className="content-error" role="alert">
-              {message}
-            </p>
-          ) : null}
+        {message ? (
+          <p className="content-error" role="alert">
+            {message}
+          </p>
+        ) : null}
+      </DialogBody>
 
-          {saving || tracks.length > 1 ? (
-            <p className="modal-summary">
+      <DialogFooter
+        lead={
+          saving || tracks.length > 1 ? (
+            <DialogStatus>
               {saving
                 ? `Writing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
                 : "Only the fields you change are written; the rest are left as they are."}
-            </p>
-          ) : null}
-
-          <div className="modal-actions">
-            <Dialog.Close render={<button type="button" disabled={saving} />}>Cancel</Dialog.Close>
-            {/* A submit button, so Enter anywhere in the form saves - and does
-                nothing when the form cannot be saved, without a key handler
-                having to decide which elements to keep its hands off. */}
-            <button type="submit" className="primary" disabled={!canSave}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+            </DialogStatus>
+          ) : undefined
+        }
+      >
+        <DialogClose disabled={saving}>Cancel</DialogClose>
+        {/* A submit button, so Enter anywhere in the form saves - and does
+            nothing when the form cannot be saved, without a key handler
+            having to decide which elements to keep its hands off. */}
+        <Button kind="primary" type="submit" disabled={!canSave}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

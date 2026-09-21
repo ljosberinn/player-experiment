@@ -1,5 +1,12 @@
-import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "../../components/primitives/Button";
+import {
+  Dialog,
+  DialogBody,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+} from "../../components/primitives/Dialog";
 import { acknowledgeCrash, type CrashReport, lastCrash, revealCrashLog } from "../../ipc";
 
 /**
@@ -10,14 +17,13 @@ import { acknowledgeCrash, type CrashReport, lastCrash, revealCrashLog } from ".
  * once on mount rather than subscribed to. A crash that has already happened
  * cannot happen again while the app is up.
  *
- * `AlertDialog`, not a banner and not `Dialog`. The first draft was a strip
+ * `role="alert"`, not a banner and not an ordinary dialog. The first draft was a strip
  * above the table, which is the wrong shape twice over: it sat where the scan
  * and tag notices sit, which describe the session that is *running*, and it
  * could be scrolled past - the wrong affordance for the one message that
  * reports the app having died. An alert dialog also cannot be dismissed by
- * clicking the backdrop, which is exactly the distinction Base UI draws
- * between `AlertDialog` and `Dialog`: the choice has to be made rather than
- * clicked away.
+ * clicking the backdrop, which is exactly the distinction the two roles draw:
+ * the choice has to be made rather than clicked away.
  *
  * Dismissing records *which* crash was seen, so the dialog belongs to that
  * crash rather than to the session: closing it does not hide the next one, and
@@ -56,37 +62,35 @@ export function CrashNotice() {
     // the state, so there is no trigger. Every route out - Escape, Dismiss -
     // is the same acknowledgement, because a crash the user has now read is a
     // crash the user has seen.
-    <AlertDialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          void dismiss();
-        }
-      }}
+    <Dialog
+      role="alert"
+      variant="crash-notice"
+      initialFocus={dismissRef}
+      onClose={() => void dismiss()}
     >
-      <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="modal-backdrop" />
-        <AlertDialog.Popup className="modal crash-notice" initialFocus={dismissRef}>
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <AlertDialog.Title render={<h2 />}>The app closed unexpectedly</AlertDialog.Title>
+      <DialogHeader title="The app closed unexpectedly" />
 
-          <AlertDialog.Description className="modal-summary">
-            It stopped last time with the error below. Nothing was sent anywhere - the report is on
-            this machine only.
-          </AlertDialog.Description>
+      <DialogBody>
+        <DialogDescription>
+          It stopped last time with the error below. Nothing was sent anywhere - the report is on
+          this machine only.
+        </DialogDescription>
 
-          <p className="crash-notice-summary">{report.summary}</p>
+        <p className="crash-notice-summary">{report.summary}</p>
 
-          {expanded ? (
-            // `<pre>`, because a backtrace is a column of frames and reflowing
-            // it makes it unreadable. It scrolls inside its own box rather than
-            // growing the dialog past the bottom of the window.
-            <pre className="crash-notice-details">{report.details}</pre>
-          ) : null}
+        {expanded ? (
+          // `<pre>`, because a backtrace is a column of frames and reflowing
+          // it makes it unreadable. It scrolls inside its own box rather than
+          // growing the dialog past the bottom of the window.
+          <pre className="crash-notice-details">{report.details}</pre>
+        ) : null}
 
-          {error ? <p className="content-error">{error}</p> : null}
+        {error ? <p className="content-error">{error}</p> : null}
+      </DialogBody>
 
-          <div className="modal-actions">
+      <DialogFooter
+        lead={
+          <>
             <button type="button" className="link-button" onClick={() => setExpanded(!expanded)}>
               {expanded ? "Hide details" : "Show details"}
             </button>
@@ -102,20 +106,16 @@ export function CrashNotice() {
             >
               Show log file
             </button>
-            {/* The ref goes on the rendered element rather than on the part:
-                `initialFocus` reads it while the popup is opening, and it has
-                to be pointing at the button by then. */}
-            <button
-              type="button"
-              className="primary"
-              ref={dismissRef}
-              onClick={() => void dismiss()}
-            >
-              Dismiss
-            </button>
-          </div>
-        </AlertDialog.Popup>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+          </>
+        }
+      >
+        {/* The ref goes on the rendered button rather than on the part:
+            `initialFocus` reads it while the popup is opening, and it has to
+            be pointing at the element by then. */}
+        <Button kind="primary" ref={dismissRef} onClick={() => void dismiss()}>
+          Dismiss
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

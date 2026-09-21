@@ -37,7 +37,7 @@ function checkbox(): HTMLInputElement {
 
 /** The scrolling pane, which is the one panel mounted. */
 function pane(): HTMLElement {
-  const found = document.querySelector<HTMLElement>(".modal-body");
+  const found = document.querySelector<HTMLElement>(".dialog-body");
   if (found === null) {
     throw new Error("the dialog has no scrolling pane");
   }

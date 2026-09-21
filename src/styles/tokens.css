@@ -80,6 +80,13 @@
      track across a wide row; this is the least that still does. */
   --row-odd: oklch(0.937 0.002 40);
   --field: oklch(0.92 0.003 68); /* #e6e4e2, the sheet's "surface" */
+  /* A control switched off where it is, so that what it would offer can still
+     be read - the smart playlist editor's sort and limit rows. Flatter than
+     `--field` rather than darker: the point is that it has receded out of the
+     row, not that it has been pressed. `#eeecec` / `#1f1b16` on the sheet, and
+     its edge and its text are `--chrome-border` and `--faint`, which already
+     land on the hexes drawn beside it. */
+  --field-disabled: oklch(0.945 0.002 17);
   /* Ours. A placeholder block, and the one surface that carries text: the
      search field's clear affordance. `--muted` on it is 4.22:1, which clears
      1.4.11's 3:1 for a control but not 4.5:1 - and nothing can fix that on
@@ -238,6 +245,17 @@
   --chrome-border: oklch(0.237 0.004 49 / 0.125); /* -> #dbd7d4 */
   --menu-border: oklch(0.237 0.004 49 / 0.2); /* -> #cbc7c4 */
   --field-border: oklch(0.68 0.006 60);
+  /* A dialog's section rules, above its footer and below its header. Heavier
+     than any other line in the app and deliberately so: the sheet builds
+     structure out of rules and alignment rather than cards, and 2px of this is
+     what a dialog has instead of a shadow between its regions.
+
+     Its own token although it is `--menu-border` exactly on dark - on light
+     the sheet draws the rule at `.4` and the dialog's own edge at `.2`, so no
+     one name can be both. It is a separator rather than part of a control, so
+     WCAG 1.4.11 does not reach it and nothing here asserts a ratio; at 2.47:1
+     over `--chrome` it is the drawing. */
+  --rule: oklch(0.237 0.004 49 / 0.4);
   /* Lighter than a field's edge rather than darker, and measured against a
      different thing: a rail is a *graphic*, so WCAG 1.4.11 asks 3:1 of it
      against what it sits on - which is the transport strip's veil over the
@@ -299,10 +317,11 @@
      The hover veil is the sheet's, which states an ink wash on light against a
      white one on dark. The scrim is ours: the sheet's "behind dialog" is a
      swatch for a panel, not a modal backdrop, and at the 0.04 it works out to
-     a dialog would not separate from the window at all. The shadow is the
-     sheet's menu shadow - every `--shadow` in the app is on a menu, a tooltip
-     or a popup, so the sheet's second, heavier dialog shadow has no consumer
-     and is not declared. */
+     a dialog would not separate from the window at all. `--shadow` is the
+     sheet's menu shadow - every consumer of it is a menu, a tooltip or a
+     popup - and `--shadow-dialog` is its second, heavier one, which phase 113
+     gave a consumer by pulling the dialog's chrome out of the eight dialogs
+     that each drew their own. */
   --hover-veil: oklch(0.237 0.004 49 / 0.06);
   /* The same veil under the press, roughly doubled - the sheet's own step for
      a secondary button and for an icon button, which are the two controls
@@ -314,6 +333,7 @@
   --neutral-veil: oklch(0.237 0.004 49 / 0.09);
   --scrim: oklch(0 0 0 / 0.32);
   --shadow: 0 3px 10px oklch(0.237 0.004 49 / 0.16);
+  --shadow-dialog: 0 12px 32px oklch(0.237 0.004 49 / 0.22);
 }
 
 :root[data-theme="dark"] {
@@ -326,6 +346,7 @@
   --surface: oklch(0.193 0.011 81); /* #17140f, the sheet's "ground" */
   --row-odd: oklch(0.218 0.011 75);
   --field: oklch(0.234 0.014 72); /* #221d17, the sheet's "surface" */
+  --field-disabled: oklch(0.225 0.011 73); /* #1f1b16 */
   --skeleton: oklch(0.262 0.016 67); /* #2a231c, the sheet's "separator" */
   --track: oklch(0.29 0.017 70);
   --pill: oklch(0.228 0.012 70);
@@ -378,6 +399,10 @@
   --chrome-border: oklch(1 0 0 / 0.07); /* -> #2a231c */
   --menu-border: oklch(1 0 0 / 0.135); /* -> #3a332b */
   --field-border: oklch(0.46 0.017 67);
+  /* The sheet draws the dialog's rules and its edge at one colour here and at
+     two on light, which is why this is a name of its own rather than a second
+     use of the line above. */
+  --rule: oklch(1 0 0 / 0.135);
   /* 3.83:1 against the strip it sits on; see the light ground's note. At the
      0.5 this first shipped at it was 2.97:1 - the e2e suite measures the rail
      against the composited strip rather than against its own fill, and that
@@ -405,4 +430,5 @@
   --neutral-veil: oklch(1 0 0 / 0.09);
   --scrim: oklch(0 0 0 / 0.6);
   --shadow: 0 3px 14px oklch(0 0 0 / 0.5);
+  --shadow-dialog: 0 12px 32px oklch(0 0 0 / 0.6);
 }

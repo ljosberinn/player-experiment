@@ -1,6 +1,12 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useEffect, useState } from "react";
+import { Button } from "../../components/primitives/Button";
 import { Checkbox } from "../../components/primitives/Checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from "../../components/primitives/Dialog";
 import {
   coverUrl,
   type ReleaseCandidate,
@@ -89,102 +95,94 @@ export function ReleaseLookup() {
   const busy = stage === "applying";
 
   return (
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
+    <Dialog
+      paned
+      variant="lookup"
+      onClose={() => {
         // A write in flight cannot be called off - files are already on disk.
-        if (!open && !busy) {
+        if (!busy) {
           close();
         }
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup className="modal paned lookup">
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>{title(queue.length, index, fromReview)}</Dialog.Title>
+      <DialogHeader title={title(queue.length, index, fromReview)} />
 
-          {release === null ? (
-            <QueueTable queue={queue} onChoose={(at) => void choose(at)} />
+      {release === null ? (
+        <QueueTable queue={queue} onChoose={(at) => void choose(at)} />
+      ) : (
+        <>
+          <p className="lookup-subject">
+            <strong>{release.album ?? "No album"}</strong>
+            {" — "}
+            {release.artist ?? "No artist"}
+            {` (${tracks.length} selected)`}
+          </p>
+
+          {detail === null ? (
+            <Results
+              stage={stage}
+              candidates={candidates}
+              onPick={(mbid) => void pick(mbid)}
+              onSearchAgain={() => void search()}
+            />
           ) : (
-            <>
-              <p className="lookup-subject">
-                <strong>{release.album ?? "No album"}</strong>
-                {" — "}
-                {release.artist ?? "No artist"}
-                {` (${tracks.length} selected)`}
-              </p>
-
-              {detail === null ? (
-                <Results
-                  stage={stage}
-                  candidates={candidates}
-                  onPick={(mbid) => void pick(mbid)}
-                  onSearchAgain={() => void search()}
-                />
-              ) : (
-                <Confirm
-                  // Keyed on the release, so picking a different candidate
-                  // starts from its own mapping rather than inheriting the
-                  // last one's.
-                  key={detail.candidate.mbid}
-                  tracks={tracks}
-                  detail={detail}
-                  fields={fields}
-                  progress={progress}
-                  busy={busy}
-                  onFields={setFields}
-                  onApply={(assignment) =>
-                    void apply(buildEdits(tracks, detail, assignment, fields))
-                  }
-                  onBack={back}
-                />
-              )}
-            </>
+            <Confirm
+              // Keyed on the release, so picking a different candidate
+              // starts from its own mapping rather than inheriting the
+              // last one's.
+              key={detail.candidate.mbid}
+              tracks={tracks}
+              detail={detail}
+              fields={fields}
+              progress={progress}
+              busy={busy}
+              onFields={setFields}
+              onApply={(assignment) => void apply(buildEdits(tracks, detail, assignment, fields))}
+              onBack={back}
+            />
           )}
+        </>
+      )}
 
-          {error === null ? null : (
-            <p className="content-error" role="alert">
-              {error}
-            </p>
-          )}
+      {error === null ? null : (
+        <p className="content-error" role="alert">
+          {error}
+        </p>
+      )}
 
-          {/* Cancel alone on the table: the other two act on a release, and
+      {/* Cancel alone on the table: the other two act on a release, and
               on the table there is not one open. */}
-          <div className="modal-actions">
-            <Dialog.Close render={<button type="button" disabled={busy} />}>Cancel</Dialog.Close>
-            {release === null ? null : (
-              <>
-                {/* Only on the review queue, which is the only queue an entry
+      <DialogFooter>
+        <DialogClose disabled={busy}>Cancel</DialogClose>
+        {release === null ? null : (
+          <>
+            {/* Only on the review queue, which is the only queue an entry
                     persists in. On a selection there is nothing to set aside:
                     the queue dies with the dialog. */}
-                {fromReview ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    title="Take this release out of the review queue"
-                    onClick={() => void setAside()}
-                  >
-                    Set Aside
-                  </button>
-                ) : null}
-                {/* "Not now": the release keeps its place in the table, which
+            {fromReview ? (
+              <Button
+                disabled={busy}
+                title="Take this release out of the review queue"
+                onClick={() => void setAside()}
+              >
+                Set Aside
+              </Button>
+            ) : null}
+            {/* "Not now": the release keeps its place in the table, which
                     is what makes Set Aside beside it a different decision
                     rather than a louder one. A selection has no table behind
                     it, so there it is still a step forward. */}
-                <button type="button" disabled={busy} onClick={() => void skip()}>
-                  {fromReview
-                    ? "Back to Queue"
-                    : (index ?? 0) + 1 < queue.length
-                      ? "Skip Release"
-                      : "Skip"}
-                </button>
-              </>
-            )}
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+            <Button disabled={busy} onClick={() => void skip()}>
+              {fromReview
+                ? "Back to Queue"
+                : (index ?? 0) + 1 < queue.length
+                  ? "Skip Release"
+                  : "Skip"}
+            </Button>
+          </>
+        )}
+      </DialogFooter>
+    </Dialog>
   );
 }
 
@@ -230,7 +228,7 @@ function QueueTable({
   onChoose: (index: number) => void;
 }) {
   return (
-    <div className="modal-body">
+    <div className="dialog-body">
       <table className="lookup-queue">
         <thead>
           <tr>
@@ -329,8 +327,8 @@ function Results({
   }
   if (candidates.length === 0) {
     return (
-      <div className="modal-body">
-        <p className="modal-summary">
+      <div className="dialog-body">
+        <p className="dialog-summary">
           MusicBrainz has nothing under that album and artist. Skip this release, or edit the tags
           by hand and try again.
         </p>
@@ -340,7 +338,7 @@ function Results({
   }
 
   return (
-    <div className="modal-body">
+    <div className="dialog-body">
       <ul className="lookup-results">
         {candidates.map((candidate) => (
           <li key={candidate.mbid}>
@@ -364,8 +362,8 @@ function Results({
 /** A step with nothing to act on yet, in a dialog whose size does not change. */
 function Waiting({ children }: { children: string }) {
   return (
-    <div className="modal-body">
-      <p className="modal-summary">{children}</p>
+    <div className="dialog-body">
+      <p className="dialog-summary">{children}</p>
     </div>
   );
 }
@@ -420,7 +418,7 @@ function Confirm({
 
   return (
     <>
-      <div className="modal-body">
+      <div className="dialog-body">
         <div className="lookup-covers">
           <Art
             label="Current"
@@ -522,7 +520,7 @@ function Confirm({
         </table>
       </div>
 
-      <p className="modal-summary">
+      <p className="dialog-summary">
         {busy
           ? progress === null || progress.total === 0
             ? "Writing…"
@@ -530,18 +528,17 @@ function Confirm({
           : `The release identifiers are written to every song of this release; the ticked fields to the ${willWrite} mapped above.`}
       </p>
 
-      <div className="modal-actions lookup-confirm-actions">
-        <button type="button" disabled={busy} onClick={onBack}>
+      <div className="lookup-confirm-actions">
+        <Button disabled={busy} onClick={onBack}>
           Back to Results
-        </button>
-        <button
-          type="button"
-          className="primary"
+        </Button>
+        <Button
+          kind="primary"
           disabled={busy || willWrite === 0}
           onClick={() => onApply(assignment)}
         >
           {busy ? "Writing…" : "Apply"}
-        </button>
+        </Button>
       </div>
     </>
   );

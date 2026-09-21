@@ -378,7 +378,7 @@ describe("a release out of the review queue", () => {
 describe("the fixed box", () => {
   /** The one scroll area, which every state has to put its content inside. */
   function body(): HTMLElement {
-    const found = document.querySelector<HTMLElement>(".modal-body");
+    const found = document.querySelector<HTMLElement>(".dialog-body");
     if (found === null) {
       throw new Error("the dialog has no scrolling body");
     }

@@ -487,8 +487,8 @@
    is the most web-looking thing on the bar. The ring stays everywhere else - on
    a button or a list it is the only focus indication there is. */
 .search:focus-visible,
-.modal input:focus-visible,
-.modal textarea:focus-visible,
+.dialog input:focus-visible,
+.dialog textarea:focus-visible,
 .sidebar-rename:focus-visible {
   outline: none;
 }
@@ -879,7 +879,7 @@
 
 /* The dialog that reports a session that is already over.
    
-   A `.modal` first, so it inherits the surface, the shadow and the centring
+   A `.dialog` first, so it inherits the surface, the shadow and the centring
    every other dialog has; wider than the default because a backtrace in a
    40-character column is not a backtrace. It is deliberately *not* red: a
    panel of danger colour for something that has already stopped happening
@@ -912,14 +912,6 @@
      scrolls inside its own box rather than growing the dialog past the bottom
      of a window that does not scroll. */
   white-space: pre;
-}
-
-/* The two disclosure actions sit left, away from Dismiss: `.modal-actions`
-   pushes its children to the right, and a link that reveals a backtrace should
-   not look like it is part of the same decision as the button that closes the
-   dialog. */
-.crash-notice .modal-actions .link-button:first-child {
-  margin-right: auto;
 }
 
 .empty-state {
@@ -1194,7 +1186,7 @@ th.status {
 }
 
 /* Sized here rather than left to the image: an embedded cover can be 3000px
-   square, and at its intrinsic size it pushes the dialog past `.modal`'s
+   square, and at its intrinsic size it pushes the dialog past `.dialog`'s
    `max-height` and turns it into a scroll area. */
 .tag-cover-art {
   flex: none;
@@ -1225,7 +1217,7 @@ th.status {
    Skip moved Cancel and Skip Release 270px and back under the pointer holding
    them. 720px is the tallest of the six, so the box that holds all of them
    costs the largest state nothing. */
-.modal.lookup {
+.dialog.lookup {
   height: min(720px, 86vh);
 }
 
@@ -1255,8 +1247,8 @@ th.status {
   font-size: 12px;
 }
 
-/* Beats `.modal button`, which is a one-line control 29px tall - a result is
-   four facts on two lines. */
+/* A result is four facts on two lines, so it is a grid rather than the
+   one-line control `primitives.css` gives a bare `<button>`. */
 .lookup .lookup-result {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1321,7 +1313,7 @@ th.status {
 }
 
 /* The review queue, sorted by what the unattended pass scored each release
-   at. Four hundred rows of it, so the header stays put against `.modal-body`
+   at. Four hundred rows of it, so the header stays put against `.dialog-body`
    the way the mapping table's does. */
 .lookup-queue {
   width: 100%;
@@ -1379,7 +1371,7 @@ th.status {
   border-collapse: collapse;
 }
 
-/* Sticks to the top of `.modal-body`, which is the nearest scrollport now that
+/* Sticks to the top of `.dialog-body`, which is the nearest scrollport now that
    the table has no wrapper of its own: the covers and the field toggles scroll
    under it rather than pushing it off. */
 .lookup-map th {
@@ -1427,94 +1419,40 @@ th.status {
 }
 
 /* Back sits away from Apply: one goes on with the release and one abandons the
-   candidate, and they should not read as a pair. */
+   candidate, and they should not read as a pair. Its own row rather than the
+   dialog's footer, which already carries Cancel and Skip - 118 is what folds
+   the two rows into one. */
 .lookup-confirm-actions {
+  display: flex;
   justify-content: space-between;
+  gap: 8px;
+}
+
+/* The lookup puts three things between its body and its actions - the release
+   line, a refusal, the confirm step's own row - and the box states no padding
+   of its own, so they take the body's inset here rather than each inventing
+   one. They stay out of the scroller: see the paned rule in `library.css`. */
+.dialog.lookup > :not(.dialog-header, .dialog-body, .dialog-footer) {
+  margin: 0;
+  padding: 10px 18px;
 }
 
 /* ---------- smart playlist editor ---------- */
 
-/* Only the dim layer. It used to centre the dialog as its flex child, which
-   stopped being true in phase 24: Base UI renders the backdrop and the popup
-   as siblings inside the portal, so a modal that relies on its parent for
-   position lands in normal flow at the end of the body - below the footer,
-   which is exactly where it went. */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  background: var(--scrim);
-}
-
-.modal {
-  /* Positions itself, and must: nothing above it in the tree does. */
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 11;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: min(912px, 92vw);
-  max-height: 86vh;
-  overflow: auto;
-  padding: 17px 19px;
-  border: 1px solid var(--chrome-border);
-  background: var(--chrome);
-}
-
-/**
- * A dialog that keeps its size while its contents change.
- *
- * `.modal` alone is a scroller with a maximum, so every state it passes
- * through is a different height - and it is centred, so both edges move under
- * whatever the pointer is resting on. A paned dialog takes a `height` instead,
- * and only `.modal-body` scrolls: the heading above it and the action rows
- * below it stay where they are.
- *
- * Opt-in rather than a change to `.modal`, which six dialogs wear - the four
- * that are not paned still need `overflow: auto` to be scrollable at all.
- */
-.modal.paned {
-  overflow: hidden;
-}
-
-/* A flex item's automatic minimum is its content, which is what makes an
-   `overflow-y: auto` child of a column flex refuse to shrink. */
-.modal.paned > .modal-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-/* Nothing but the body gives way when the body is full. */
-.modal.paned > :not(.modal-body) {
-  flex: none;
-}
-
-.modal h2 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.modal-field {
+.dialog-field {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.modal-field input {
+.dialog-field input {
   flex: 1;
 }
 
 /* Text fields. A drawn control's own input is transparent and absolutely
    placed, so this reaches it too - harmlessly, because everything here is
    paint on something with no opacity - but `library.css` is what sizes it. */
-.modal input {
+.dialog input {
   height: var(--control-height);
   padding: 0 5px;
   border: 1px solid var(--field-border);
@@ -1527,7 +1465,7 @@ th.status {
    rather than `:focus-visible` here on purpose: these are text fields inside a
    dialog, where clicking one *is* the act of choosing where to type, so the
    highlight is wanted for the pointer too. */
-.modal input:focus {
+.dialog input:focus {
   border-color: var(--accent);
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   outline-offset: -1px;
@@ -1536,7 +1474,7 @@ th.status {
 /* The spellings one album group folds together, in `AlbumLinkDialog`. A list
    rather than a field: which of them the group is named after is a fact to
    read off, and each one carries an action of its own. */
-.modal-list {
+.dialog-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1547,13 +1485,13 @@ th.status {
   list-style: none;
 }
 
-.modal-list li {
+.dialog-list li {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.modal-list-label {
+.dialog-list-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1561,54 +1499,27 @@ th.status {
   text-overflow: ellipsis;
 }
 
-.modal-list-value {
+.dialog-list-value {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-/* Small enough to sit inside a row, rather than sized like the dialog's own
-   actions at the foot of it. */
-.modal-list button {
-  height: 21px;
-  padding: 0 8px;
+/* The region overruling the primitive it wraps, which is what the sheet
+   order in `App.css` exists for: a `Button` states the padding a dialog's own
+   actions want, and this one sits inside a list row and has to fit it. */
+.dialog-list .button {
+  padding: 3px 8px;
 }
 
-.modal-summary {
+.dialog-summary {
   margin: 0;
   color: var(--muted);
 }
 
 /* A refused write, beside the field it is about. `--danger` is the token for
    text that says something went wrong; the dialog stays open behind it. */
-.modal-refusal {
+.dialog-refusal {
   color: var(--danger);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.modal button {
-  height: 29px;
-  padding: 0 14px;
-  border: 1px solid var(--chrome-border);
-  background: var(--field);
-  color: var(--text);
-  font: inherit;
-  cursor: default;
-}
-
-.modal button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-
-.modal button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* Nested groups are indented and ruled, so which rules belong to which
@@ -1681,8 +1592,8 @@ th.status {
 /* A rail of categories beside a pane that keeps the ~420px column the dialog
    had, which is what the last.fm prose was measured against in phase 10b. A
    grid rather than the paned column, because the rail sits beside the body;
-   the rail stays put, and the pane is `.modal-body`, the one scroller. */
-.modal.settings {
+   the rail stays put, and the pane is `.dialog-body`, the one scroller. */
+.dialog.settings {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -1691,22 +1602,27 @@ th.status {
   height: min(560px, 86vh);
 }
 
-.modal.settings > h2,
-.modal.settings > .modal-actions {
+/* The rail is the second cell of the middle row; the header and the footer
+   run the full width above and below it. */
+.dialog.settings > .dialog-header,
+.dialog.settings > .dialog-footer {
   grid-column: 1 / -1;
 }
 
+/* The rail and the pane beside it take the vertical edge themselves: the box
+   they sit in states no padding, so that the hairline between them can run
+   the full height of the row. */
 .settings-rail {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-right: 10px;
+  padding: 14px 10px 14px 18px;
   border-right: 1px solid var(--chrome-border);
 }
 
 /* The sidebar's navigation item, so choosing a category reads as the same act
-   as choosing a view. Two classes to beat `.modal button`, which would
-   otherwise make it a bordered 29px control. */
+   as choosing a view - and deliberately not a `Button`, which would draw the
+   eight categories as eight things to press. */
 .settings-rail .settings-tab {
   display: flex;
   align-items: center;
@@ -1726,9 +1642,11 @@ th.status {
 }
 
 /* Clear of the rail's hairline on the left, and of the scrollbar on the right
-   when the pane has one. */
-.settings-pane {
-  padding: 0 8px 0 20px;
+   when the pane has one. Written against `.dialog.settings` so that it beats
+   the paned body's own `padding: 0`, which is there for a column that reaches
+   the edge and is the wrong answer for a pane of prose. */
+.dialog.settings > .settings-pane {
+  padding: 14px 8px 14px 20px;
 }
 
 .settings-pane > h3 {
@@ -2061,15 +1979,8 @@ body:not(:focus-within) .sidebar-row.current {
 }
 
 /* A destructive confirmation is narrower than an editor - it asks one thing. */
-.modal.confirm {
+.dialog.confirm {
   max-width: 456px;
-}
-
-/* The one place a colour carries meaning rather than decoration. */
-.modal-actions .destructive {
-  border-color: var(--destructive);
-  background: var(--destructive);
-  color: var(--on-danger);
 }
 
 /* The update prompt replaces the version in the corner rather than adding a
