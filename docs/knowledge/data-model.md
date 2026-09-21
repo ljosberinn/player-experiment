@@ -309,11 +309,20 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
 - **The log does not inherit the scrobbler's rules.** No artist and shorter
   than thirty seconds are last.fm's conditions for accepting a scrobble, not
   this app's for remembering a play.
-- **`match_key` is normalized in Rust** — lowercase, collapsed whitespace, a
-  trailing `(feat. …)` dropped, nothing else. `lower()` and `COLLATE NOCASE`
-  are ASCII-only and would leave Motörhead unfolded, and folding `(Live)` into
-  the studio cut would destroy a distinction worth keeping. A key with an empty
-  side is empty, because one built from nothing matches every untagged file.
+- **`match_key` is normalized in Rust** — case, punctuation, diacritics and
+  script folded, and a trailing `(feat. …)` dropped, nothing else. `lower()`
+  and `COLLATE NOCASE` are ASCII-only and would leave Motörhead unfolded, and
+  folding `(Live)` into the studio cut would destroy a distinction worth
+  keeping. A key with an empty side is empty, because one built from nothing
+  matches every untagged file — so a side that is punctuation alone (`!!!`,
+  the title `?`) keeps its unfolded spelling rather than becoming that.
+- **`plays.matchFold` is which fold the stored keys were built with**, in
+  `ALBUM_FOLD`'s shape and bumped for its reason. `match_key` lives in two
+  columns — `plays.match_key` and the whole of `lastfm_loved.match_key` — so a
+  widened fold links nothing until a pass rewrites both, and `plays::refold` is
+  that pass. It runs `resolve` itself, because nothing else runs `resolve` at
+  launch. `lastfm_loved` has no artist and title to recompute from and folds
+  the stored key a side at a time, the separator held out of `squeeze`.
 - **`plays::resolve` rebuilds `track_id` for the whole log**, wherever
   `tag_values::rebuild` runs, for the reason that module gives at length. One
   key names several tracks routinely — the album copy and the compilation copy

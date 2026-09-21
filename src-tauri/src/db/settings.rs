@@ -93,6 +93,12 @@ pub const MUSICBRAINZ_READ_THROUGH: &str = "tracks.musicbrainzReadThrough";
 /// to be told once. A library that has already imported its history never
 /// runs the pass again otherwise.
 pub const ALBUM_FOLD: &str = "plays.albumFold";
+/// Which version of `db::plays::match_key` the stored keys were built with.
+///
+/// A version for [`ALBUM_FOLD`]'s reason, and unlike it the key is stored: it
+/// is a column on `plays` and the whole primary key of `lastfm_loved`, so a
+/// widened fold links nothing at all until `db::plays::refold` rewrites both.
+pub const MATCH_FOLD: &str = "plays.matchFold";
 /// Where the last.fm import stands, as `lastfm::import::State` JSON.
 ///
 /// Not exportable: it names an account and describes this library's copy of
