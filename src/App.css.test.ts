@@ -971,12 +971,13 @@ describe("the stylesheet", () => {
   });
 
   it("keeps the stat figures' own drawing out of `app.css`", () => {
-    // Sections 4a, 4c and 4d are where the figures on this app's stat surfaces
-    // are settled - the sizes, the weights, the rule, the cell edges, the
-    // streak's track and the heatmap's 13px cell - and the Statistics view is
-    // the only place any of them appears. A rule here would be a private
-    // second drawing that no other caller of the primitive gets, which is the
-    // drift 113 pulled the dialog shell out of eight dialogs to stop.
+    // Sections 4a, 4c, 4d and 4e are where the figures on this app's stat
+    // surfaces are settled - the sizes, the weights, the rule, the cell edges,
+    // the streak's track, the heatmap's 13px cell and the ranked row's 30px -
+    // and the Statistics view is the only place any of them appears. A rule
+    // here would be a private second drawing that no other caller of the
+    // primitive gets, which is the drift 113 pulled the dialog shell out of
+    // eight dialogs to stop.
     //
     // Not even layout: the two-column override Streaks needed went with the
     // tiles it narrowed, so the region names none of these at all. A region
@@ -988,7 +989,7 @@ describe("the stylesheet", () => {
     // of `.chart`'s fixed height, which app.css states three lines above it.
     const drawn = rules(sources[3] ?? "")
       .map((one) => uncommented(one.selector))
-      .filter((selector) => /\.(stat-(row|tiles?|unit)|streak|heatmap)\b/.test(selector));
+      .filter((selector) => /\.(stat-(row|tiles?|unit)|streak|heatmap|bar-list)\b/.test(selector));
 
     expect(drawn).toEqual([]);
   });
@@ -1257,6 +1258,7 @@ describe("the stylesheet", () => {
       ".statusbar-zoom-value",
       ".stat-row dd",
       ".stat-tile-value",
+      ".bar-list-value",
       ".count",
     ]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));

@@ -2670,76 +2670,13 @@ body:not(:focus-within) .sidebar-row.current {
   color: var(--faint);
 }
 
-/* ---------- bar lists ---------- */
-
-.bar-list ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* The row is the positioning context for its own fill, which sits behind the
-   text rather than beside it: a separate track column would waste the width a
-   long artist name needs. */
-.bar-list-row {
-  position: relative;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-  padding: 4px 8px;
-  border: none;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-}
-
-.bar-list-fill {
-  position: absolute;
-  inset: 1px auto 1px 0;
-  background: var(--accent-fade);
-}
-
-/* Above the fill, and the ellipsis is what keeps a long name from pushing the
-   count off the row. */
-.bar-list-label {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.bar-list-secondary {
-  margin-left: 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-/* Tabular figures so the counts line up down the column; they are read as a
-   ranking, and proportional digits make a longer number look shorter. */
-.bar-list-value {
-  position: relative;
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.bar-list-caption,
+/* The note under a panel, which the ranked list draws for itself in
+   `library.css`: the same three declarations, because a panel's caption is not
+   a leaderboard's and the primitive's drawing may not live here. */
 .stats-panel-caption {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 11px;
-}
-
-/* No shimmer, for `ChartFrame`'s reason: the table's skeleton rows animate and
-   nothing in this view does. */
-.bar-list-skeleton {
-  height: 21px;
-  margin: 4px 0;
-  background: var(--chrome-border);
 }
 
 /* ---------- the plays table ---------- */

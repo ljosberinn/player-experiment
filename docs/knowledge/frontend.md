@@ -174,7 +174,12 @@ and every colour on screen is ours, which is what the design and
   value rather than of the total - a top list is read as rows against each
   other, and a long tail measured against the total is ten slivers. It is not
   a `ChartShell` either, and for the half of that argument that survives the
-  split: the label and the toggle are what a ranked list already has.
+  split: the label and the toggle are what a ranked list already has. Since
+  116c its drawing is 4e's and lives in `library.css`, the way the heatmap's
+  does — 30px rows 3px apart, the fill spanning the row's whole height, the
+  name at 600 against a tabular muted count. **4e's numbered list did not
+  ship.** The sheet draws the same five rows twice, so it is a choice rather
+  than a second form, and the bar is the one four panels already call.
 - **`Bar` is a categorical axis, never a numeric one.** The domain is the
   array's order: a histogram with an empty bin and a sparse time series both
   want the gap the caller left, and a scale over the values would close it. So

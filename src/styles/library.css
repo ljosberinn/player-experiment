@@ -1061,6 +1061,96 @@
   background: var(--skeleton);
 }
 
+/* ---------- 4e · leaderboard ---------- */
+
+/* 3px between rows rather than a margin on each, so the last row does not push
+   the caption a step further down than the sheet sets it. */
+.bar-list ol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The row is the positioning context for its own fill, which sits behind the
+   text rather than beside it: a separate track column would waste the width a
+   long artist name needs. */
+.bar-list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+/* The whole height of the row, not inset from it: 4e sets the bar against the
+   rows above and below with the 3px gap alone. */
+.bar-list-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-fade);
+}
+
+/* Above the fill, and the ellipsis is what keeps a long name from pushing the
+   count off the row. 600 is the sheet's, and it is what separates the name
+   from the count at one size. */
+.bar-list-label {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The artist behind an album, which 4e does not draw: a second name at the
+   row's own weight and size would read as a second row. */
+.bar-list-secondary {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* Tabular figures so the counts line up down the column; they are read as a
+   ranking, and proportional digits make a longer number look shorter. */
+.bar-list-value {
+  position: relative;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-list-caption {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* No shimmer, for `ChartFrame`'s reason: the table's skeleton rows animate and
+   nothing in this view does. The rows it holds the space with are the rows
+   that land, so the panel does not resettle around them. */
+.bar-list-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bar-list-skeleton {
+  height: 30px;
+  background: var(--chrome-border);
+}
+
 /* ---------- 06 · dialogs ---------- */
 
 /* Only the dim layer. It used to centre the dialog as its flex child, which
