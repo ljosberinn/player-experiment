@@ -32,11 +32,20 @@ const SEPARATOR: char = '\u{1f}';
 /// The identity two spellings of one song share, or empty for a play nothing
 /// can be matched to.
 ///
-/// **Deliberately conservative**: lowercase, collapsed whitespace, and a
-/// trailing `(feat. …)` or `(with …)` dropped. Nothing else. Folding `(Live)`
-/// into the studio cut would destroy a distinction the MBIDs exist to
-/// preserve, and a key that matched too much is worse than one that matches
-/// nothing - it attributes plays to a song the user never heard.
+/// **Deliberately conservative**: case, punctuation, diacritics and script
+/// folded through [`decompose`] and [`squeeze`], and a trailing `(feat. …)` or
+/// `(with …)` dropped. Nothing else. Folding `(Live)` into the studio cut
+/// would destroy a distinction the MBIDs exist to preserve, and a key that
+/// matched too much is worse than one that matches nothing - it attributes
+/// plays to a song the user never heard.
+///
+/// **Punctuation is inside that boundary, and was not always.** The key was
+/// case and whitespace alone until issue 120, which measured 9,282 unlinked
+/// plays over a 237,728-play log: a typographic apostrophe in a tag against an
+/// ASCII one in a scrobble, `Paper Thin Hotel` against `Paper-Thin Hotel`, and
+/// NFC against NFD in the same string. It costs two tracks whose titles are
+/// punctuation the artist chose - see [`MATCH_FOLD_VERSION`], which is what
+/// tells an existing library to fold again.
 ///
 /// **Either side missing empties the whole key.** A key built from nothing
 /// would match every untagged file in the library, so a play with no artist is
@@ -266,10 +275,23 @@ fn roman(word: &str) -> Option<u32> {
 }
 
 /// One side of a key.
+///
+/// **The order is load-bearing in both directions.** [`without_featuring`]
+/// matches its openers lowercase, so it runs after [`decompose`]; and it
+/// matches on parentheses, which [`squeeze`] deletes, so it runs before that.
+///
+/// **A side that squeezes to nothing keeps its unsqueezed spelling.** `!!!`,
+/// `†††` and the title `?` are alphanumeric-free, and an empty side empties
+/// the whole key - which [`resolve`] skips. They link today and must go on
+/// linking; `…` against `...` still folds, which is more than the key managed
+/// before.
 fn normalize(value: &str) -> String {
-    let lowered = value.to_lowercase();
-    let trimmed = without_featuring(lowered.trim());
-    trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+    let decomposed = decompose(value);
+    let folded = without_featuring(decomposed.trim()).trim_end();
+    match squeeze(folded) {
+        squeezed if squeezed.is_empty() => folded.to_owned(),
+        squeezed => squeezed,
+    }
 }
 
 /// `value` without a trailing parenthesised credit.
@@ -603,6 +625,109 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
     Ok(true)
 }
 
+/// Which [`match_key`] the stored keys are expected to have been built with.
+///
+/// **Bump this whenever the fold changes what it folds together**, for the
+/// reason [`FOLD_VERSION`] gives - and more sharply, because this key is
+/// stored rather than derived on read. A library whose keys predate the fold
+/// does not half-link; it does not link at all.
+const MATCH_FOLD_VERSION: &str = "1";
+
+/// Rewrites every stored `match_key` with the current fold, returning how many
+/// rows moved.
+///
+/// `plays` recomputes from its own `artist` and `title`. `lastfm_loved` has
+/// neither column, so it folds the stored key in place, a side at a time: the
+/// new fold refines the old one, so folding an old key again lands where
+/// folding the original tags would - but [`squeeze`] eats [`SEPARATOR`], so
+/// the key cannot be folded whole.
+///
+/// **Both tables are read to the end before either is written.** The `plays`
+/// pass updates the table its own cursor is reading, and `UPDATE OR REPLACE`
+/// can delete a row the cursor has not reached yet.
+///
+/// `UPDATE OR REPLACE` because `idx_plays_identity` can collide: two spellings
+/// of one song scrobbled in the same second are one play, and dropping the
+/// loser is what that index is for. Nothing carries a foreign key onto
+/// `plays.id`, so the dropped row orphans nothing.
+pub fn refold(conn: &mut Connection) -> AppResult<u32> {
+    let tx = conn.transaction()?;
+
+    let mut rewritten: Vec<(i64, String)> = Vec::new();
+    {
+        let mut statement = tx.prepare("SELECT id, artist, title, match_key FROM plays")?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let folded = match_key(&row.get::<_, String>(1)?, &row.get::<_, String>(2)?);
+            if folded != row.get::<_, String>(3)? {
+                rewritten.push((row.get(0)?, folded));
+            }
+        }
+    }
+
+    let mut refolded: Vec<(String, String)> = Vec::new();
+    {
+        let mut statement = tx.prepare("SELECT match_key FROM lastfm_loved")?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let stored: String = row.get(0)?;
+            let Some((artist, title)) = stored.split_once(SEPARATOR) else {
+                continue;
+            };
+            let folded = match_key(artist, title);
+            if folded != stored && !folded.is_empty() {
+                refolded.push((stored, folded));
+            }
+        }
+    }
+
+    let mut moved = 0;
+    {
+        let mut update = tx.prepare("UPDATE OR REPLACE plays SET match_key = ?2 WHERE id = ?1")?;
+        for (id, folded) in &rewritten {
+            update.execute(rusqlite::params![id, folded])?;
+            moved += 1;
+        }
+
+        // Insert before delete, so a fold that lands on a key already loved
+        // keeps the love rather than dropping both spellings of it.
+        let mut insert =
+            tx.prepare("INSERT OR IGNORE INTO lastfm_loved (match_key) VALUES (?1)")?;
+        let mut delete = tx.prepare("DELETE FROM lastfm_loved WHERE match_key = ?1")?;
+        for (stored, folded) in &refolded {
+            insert.execute([folded])?;
+            delete.execute([stored])?;
+            moved += 1;
+        }
+    }
+
+    tx.commit()?;
+    Ok(moved)
+}
+
+/// Runs [`refold`] if this library's keys predate [`MATCH_FOLD_VERSION`],
+/// answering whether it did.
+///
+/// A marker rather than a migration, in [`regroup_if_stale`]'s shape and for
+/// its reason.
+///
+/// **It runs [`resolve`] itself.** Nothing else resolves at launch - the
+/// callers are the scan, the import and a tag write - so a pass that stopped
+/// at the keys would leave every newly foldable play unlinked until the user
+/// next scanned or imported. Before the marker, so a failure in either is
+/// retried on the next launch.
+pub fn refold_if_stale(conn: &mut Connection) -> AppResult<bool> {
+    use crate::db::settings;
+
+    if settings::get(conn, settings::MATCH_FOLD)?.as_deref() == Some(MATCH_FOLD_VERSION) {
+        return Ok(false);
+    }
+    refold(conn)?;
+    resolve(conn)?;
+    settings::set(conn, settings::MATCH_FOLD, MATCH_FOLD_VERSION)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -723,6 +848,44 @@ mod tests {
                 ("Kanye West", "Stronger"),
                 ("Kanye West", "Stronger (ft. Daft Punk)"),
             ),
+            // Capitalised, which is what pins `without_featuring` after
+            // `decompose` rather than before it.
+            (
+                ("Kanye West", "Stronger"),
+                ("Kanye West", "Stronger (Feat. Daft Punk)"),
+            ),
+            // The four causes issue 120 measured, largest first. The
+            // apostrophe is on the artist side, so nothing about the band
+            // linked at all.
+            (
+                ("The Devil's Blood", "Die Old"),
+                ("The Devil\u{2019}s Blood", "Die Old"),
+            ),
+            (
+                ("King Dude", "Death Won't Take Me"),
+                ("King Dude", "Death Won\u{2019}t Take Me"),
+            ),
+            (
+                ("Leonard Cohen", "Paper Thin Hotel"),
+                ("Leonard Cohen", "Paper-Thin Hotel"),
+            ),
+            (
+                ("The Ruins of Beverast", "Theriak - Baal - Theriak"),
+                (
+                    "The Ruins of Beverast",
+                    "Theriak \u{2013} Baal \u{2013} Theriak",
+                ),
+            ),
+            // NFC against NFD in the same string - both spellings are on disk.
+            (
+                ("Sopor Aeternus", "Monumentale Schw\u{e4}rze"),
+                ("Sopor Aeternus", "Monumentale Schwa\u{308}rze"),
+            ),
+            // A diacritic the scrobble dropped and the tag kept.
+            (
+                ("Mot\u{f6}rhead", "Ace of Spades"),
+                ("Motorhead", "Ace of Spades"),
+            ),
         ];
         for (left, right) in cases {
             assert_eq!(
@@ -745,6 +908,29 @@ mod tests {
 
         // The separator is doing its job.
         assert_ne!(match_key("ab", "c"), match_key("a", "bc"));
+    }
+
+    #[test]
+    fn a_side_of_punctuation_alone_still_makes_a_key() {
+        // `squeeze` drops everything non-alphanumeric, and an empty side
+        // empties the whole key - which `resolve` skips on `match_key <> ''`.
+        // These link today and have to go on linking.
+        for (artist, title) in [
+            ("!!!", "Me and Giuliani Down by the School Yard"),
+            ("Crosses", "\u{2020}"),
+            ("Boards of Canada", "?"),
+        ] {
+            assert!(
+                !match_key(artist, title).is_empty(),
+                "{artist:?} - {title:?}"
+            );
+        }
+
+        // And the fallback still folds what decomposition agrees about.
+        assert_eq!(
+            match_key("Boards of Canada", "\u{2026}"),
+            match_key("Boards of Canada", "...")
+        );
     }
 
     #[test]
@@ -1185,6 +1371,108 @@ mod tests {
 
         crate::db::settings::set(&conn, crate::db::settings::ALBUM_FOLD, "0").unwrap();
         assert!(regroup_if_stale(&conn).unwrap(), "a moved fold asks again");
+    }
+
+    /// `match_key` as it was before issue 120 widened it: lowercase, collapsed
+    /// whitespace and a trailing credit, and nothing about punctuation. What a
+    /// library that imported its history before the fold moved has stored.
+    fn stale_key(artist: &str, title: &str) -> String {
+        fn stale(value: &str) -> String {
+            let lowered = value.to_lowercase();
+            let trimmed = without_featuring(lowered.trim());
+            trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+        format!("{}{SEPARATOR}{}", stale(artist), stale(title))
+    }
+
+    fn scrobbled(conn: &Connection, started_at: i64, artist: &str, title: &str) {
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, match_key)
+             VALUES (?1, 'lastfm', ?2, ?3, ?4)",
+            rusqlite::params![started_at, artist, title, stale_key(artist, title)],
+        )
+        .unwrap();
+    }
+
+    fn keys(conn: &Connection, table: &str) -> Vec<String> {
+        conn.prepare(&format!("SELECT match_key FROM {table} ORDER BY match_key"))
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    }
+
+    /// The whole point of the pass: the key is stored, so widening the fold
+    /// links nothing until every stored copy is rewritten.
+    #[test]
+    fn a_fold_that_has_moved_relinks_the_plays_it_kept_apart() {
+        let (_dir, mut conn) = open();
+        add_track(&conn, 1, Some("The Devil's Blood"), Some("Die Old"));
+        // The artist side, which is why nothing about this band linked.
+        scrobbled(&conn, 10, "The Devil\u{2019}s Blood", "Die Old");
+        resolve(&conn).unwrap();
+        assert_eq!(
+            linked(&conn, 10),
+            None,
+            "the old key holds the apostrophes apart"
+        );
+
+        assert!(refold_if_stale(&mut conn).unwrap());
+        assert_eq!(
+            keys(&conn, "plays"),
+            [match_key("The Devil's Blood", "Die Old")]
+        );
+        assert_eq!(linked(&conn, 10), Some(1), "and the pass resolves itself");
+
+        assert!(!refold_if_stale(&mut conn).unwrap(), "once per fold");
+        assert_eq!(refold(&mut conn).unwrap(), 0, "and it is idempotent");
+    }
+
+    /// A collision on `idx_plays_identity` is one song scrobbled twice in the
+    /// same second under two spellings. The index exists to drop the loser,
+    /// and the pass has to finish rather than abort on it.
+    #[test]
+    fn a_collision_during_the_fold_drops_a_row_and_finishes() {
+        let (_dir, mut conn) = open();
+        scrobbled(&conn, 10, "The Devil\u{2019}s Blood", "Die Old");
+        scrobbled(&conn, 10, "The Devil's Blood", "Die Old");
+        scrobbled(&conn, 11, "King Dude", "Death Won\u{2019}t Take Me");
+
+        refold(&mut conn).unwrap();
+
+        assert_eq!(
+            keys(&conn, "plays"),
+            {
+                let mut both = [
+                    match_key("The Devil's Blood", "Die Old"),
+                    match_key("King Dude", "Death Won't Take Me"),
+                ];
+                both.sort();
+                both
+            },
+            "one row of the pair survives, and the pass got past it"
+        );
+    }
+
+    /// `lastfm_loved` is keyed by `match_key` and has no tags to recompute
+    /// from, so the pass folds the stored key a side at a time - and
+    /// `squeeze` would eat the separator if it were folded whole.
+    #[test]
+    fn a_loved_key_is_refolded_in_place() {
+        let (_dir, mut conn) = open();
+        conn.execute(
+            "INSERT INTO lastfm_loved (match_key) VALUES (?1)",
+            [stale_key("The Devil\u{2019}s Blood", "Die Old")],
+        )
+        .unwrap();
+
+        refold(&mut conn).unwrap();
+
+        let folded = match_key("The Devil's Blood", "Die Old");
+        assert!(folded.contains(SEPARATOR), "the separator survives");
+        assert_eq!(keys(&conn, "lastfm_loved"), [folded]);
+        assert_eq!(refold(&mut conn).unwrap(), 0, "and it is idempotent");
     }
 
     #[test]

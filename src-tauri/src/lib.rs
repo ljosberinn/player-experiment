@@ -146,7 +146,7 @@ pub fn run() {
             let lock = scan::ScanLock::default();
             normalize_covers(db.clone(), lock.clone(), log.clone());
             read_musicbrainz_tags(db.clone(), lock.clone(), log.clone());
-            regroup_albums(db.clone(), log.clone());
+            fold_the_log(db.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -460,23 +460,39 @@ fn read_musicbrainz_tags(db: Db, lock: scan::ScanLock, log: log::Log) {
         });
 }
 
-/// Folds the album spellings in the play log together once per fold version,
-/// off the setup path for the reason [`normalize_covers`] runs there.
+/// Folds the play log's keys and album spellings together once per fold
+/// version, off the setup path for the reason [`normalize_covers`] runs there.
 ///
-/// No `ScanLock`: it reads `plays` and writes `album_groups`, and touches
-/// neither a file nor a track row. Nothing announces either - the Statistics
-/// view reads it when it next opens, and a library whose grouping moved
-/// between one launch and the next has no panel on screen to refresh.
-fn regroup_albums(db: Db, log: log::Log) {
+/// One thread for both passes rather than two, because they write the same
+/// database file and neither is urgent enough to be worth contending for it.
+/// The keys go first: that pass is the one that leaves plays unlinked until it
+/// runs.
+///
+/// No `ScanLock`: they read `plays` and write `plays`, `album_groups` and
+/// links, and touch neither a file nor a track row. Nothing announces either -
+/// the Statistics view reads both when it next opens, and a library whose
+/// grouping moved between one launch and the next has no panel on screen to
+/// refresh.
+fn fold_the_log(db: Db, log: log::Log) {
     let _ = std::thread::Builder::new()
-        .name("album-regroup".to_owned())
+        .name("plays-fold".to_owned())
         .spawn(move || {
+            let op = log.op("plays.refold");
+            match db
+                .conn()
+                .and_then(|mut conn| db::plays::refold_if_stale(&mut conn))
+            {
+                // Every launch after the one that ran the fold.
+                Ok(false) => {}
+                Ok(true) => op.succeeded(log::Fields::new()),
+                Err(error) => op.failed(&error),
+            }
+
             let op = log.op("plays.regroup");
             match db
                 .conn()
                 .and_then(|conn| db::plays::regroup_if_stale(&conn))
             {
-                // Every launch after the one that ran the fold.
                 Ok(false) => {}
                 Ok(true) => op.succeeded(log::Fields::new()),
                 Err(error) => op.failed(&error),
