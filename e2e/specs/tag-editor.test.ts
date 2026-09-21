@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { png } from "../fixtures";
 import { emit } from "../invoke";
+import { menuItem } from "../menu";
 import { capture } from "../screenshot";
 
 /** Where the files this spec drops are written; the app reads them by path. */
@@ -69,11 +70,7 @@ async function openEditorOn(title: string): Promise<void> {
   await browser
     .$("//*[@role='menu'][@aria-label='Song actions']")
     .waitForExist({ timeout: 10_000, timeoutMsg: `no row menu on ${title}` });
-  await browser
-    .$(
-      "//*[@role='menu'][@aria-label='Song actions']//*[@role='menuitem'][normalize-space()='Edit']",
-    )
-    .click();
+  await browser.$(menuItem("Song actions", "Edit")).click();
   await browser
     .$("[role='dialog']")
     .waitForExist({ timeout: 10_000, timeoutMsg: `the editor never opened on ${title}` });

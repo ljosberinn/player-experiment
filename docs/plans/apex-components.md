@@ -98,6 +98,17 @@ shell stays governed by the old file until the library covers it.
   bar of 320 would read flat, and a `24px 1fr auto` grid drops two of those
   columns. `BarList` stays in `charts/` for `Heatmap`'s reason; its drawing
   moved to `library.css` and the same guard covers it.
+- **Section 05 is in, and it is one drawing for two menus.** Done in 117.
+  `renderMenuItem` has drawn the row menu and every menu-bar dropdown since
+  phase 34, so the section lands on both; the classes became `.menu-*` on the
+  way into `library.css`, "context" having stopped being true at the bar, and
+  226px is a floor rather than the sheet's fixed width so File is not two
+  thirds empty. Items went full bleed, which reverses phase 24's inset. The
+  trailing column now also carries a `shortcut`, drawn only where a binding
+  exists — the sheet's own `Ctrl+E` names nothing, so it is not drawn.
+  `ProgressBar` landed with `TaskLine`: the sheet draws the same 4px rail here
+  and under 6f, and anything under way is drawn at three pixels at least, which
+  is what the sheet does with 0,22%.
 - **Section 4b is two alternatives, and that is the asymmetry.** Its selects
   read `All time` / `Either` / `Either` while its tokens read `last 12 months` /
   `owned only`. Two forms of one control drawn in one frame contradict each
@@ -138,15 +149,15 @@ Primitives the sheet specifies, against what exists:
 | `Tag` (four tones), `Count` | **done, 110** — the sheet's tag and badge are one drawing, so one component |
 | `Checkbox`, `Radio`, `Switch` | **done, 111** — `Switch` is Base UI, the other two draw over the native element |
 | `Select`, `SearchField`, `SegmentedControl` | **done, 111** — `Select` is Base UI; the segments are a native radio group |
-| `Slider`, `ProgressBar` | **`Slider` done, 111** (Base UI). `Scrubber` and `VolumeControl` keep the transport's own treatment |
+| `Slider`, `ProgressBar` | **`Slider` done, 111** (Base UI); **`ProgressBar` done, 117**, the rail `TaskLine` and 6f share. `Scrubber` and `VolumeControl` keep the transport's own treatment |
 | `StatRow`, `StatTiles` | **done, 115** — `charts/StatTile` retired into the two |
 | `FilterBar` | **done, 115** — `.stats-filters`. `FilterToken` is 122 |
 | `Streak` | **done, 116a** — with `Streaks.last_seven` behind its week |
 | `Heatmap` | **done, 116b** — stays in `charts/`, drawn by `library.css` |
 | `Leaderboard` | **done, 116c** — `charts/BarList`, drawn by `library.css` |
-| `Menu`, `MenuItem`, `MenuSeparator` | `ui/ContextMenu` (Base UI, close) |
+| `Menu`, `MenuItem`, `MenuSeparator` | **done, 117** — drawn by `library.css` as `.menu-*`; `ui/ContextMenu` stays put, the item renderer and the trigger region being one vocabulary (116b's rule) |
 | `Dialog` header / body / footer | **done, 113** — all eight dialogs |
-| `TaskLine`, `Skeleton` | `.sidebar-task`, ad-hoc |
+| `TaskLine`, `Skeleton` | **`TaskLine` done, 117**; `.sidebar-task` is its placement and nothing else. `Skeleton` is 6f's pulse, which is 118 |
 
 Base UI stays underneath the ones that need behaviour (menu, dialog, slider,
 combobox). The primitive is what the app imports, so the library choice is
@@ -184,9 +195,10 @@ Foundation first, then primitives, then the surfaces built out of them.
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 and 111 with them.
-113b through 118 are independent of each other once 113 has landed. 113b, 114
-and 115 have landed too, each off main rather than stacked — 113 was in by the
-time any of them started.
+113b through 118 are independent of each other once 113 has landed. 113b, 114,
+115 and 117 have landed too, each off main rather than stacked — 113 was in by
+the time any of them started. 118 draws the same 4px rail 117 made a primitive,
+so it has a `ProgressBar` to call rather than a second one to write.
 
 **116 is three issues, and they share nothing.** 4c, 4d and 4e are three
 drawings, not three views of one, and each carries its own decision: 116a a new

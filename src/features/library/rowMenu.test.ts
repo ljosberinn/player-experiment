@@ -148,6 +148,32 @@ describe("rowMenuItems", () => {
     });
   });
 
+  describe("the keystrokes it names", () => {
+    it("names Ctrl+I on Edit and nothing on Show in Explorer", () => {
+      // `useSelectionShortcuts` binds the first; nothing in the app binds the
+      // second, whatever the specimen sheet draws beside it.
+      expect(entry(items(), "Edit")?.shortcut).toBe("Ctrl+I");
+      expect(entry(items(), "Show in Explorer")?.shortcut).toBeUndefined();
+    });
+
+    it("gives Del to whichever removal Delete would perform", () => {
+      // Inside a static playlist Delete takes the membership row - the less
+      // destructive reading - so the library entry beside it claims nothing.
+      const inPlaylist = items({
+        openPlaylist: playlist(1, "Evening"),
+        onRemoveFromLibrary: noop,
+      });
+
+      expect(entry(inPlaylist, "Remove from Playlist")?.shortcut).toBe("Del");
+      expect(entry(inPlaylist, "Remove from Library…")?.shortcut).toBeUndefined();
+
+      // Everywhere else there is nothing to take a song out of but the library.
+      expect(entry(items({ onRemoveFromLibrary: noop }), "Remove from Library…")?.shortcut).toBe(
+        "Del",
+      );
+    });
+  });
+
   it("disables Show in Explorer unless exactly one song is selected", () => {
     const one = items({ count: 1 }).find(
       (item) => item.kind !== "separator" && item.label === "Show in Explorer",

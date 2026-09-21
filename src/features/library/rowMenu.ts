@@ -144,7 +144,10 @@ export function rowMenuItems({
   const items: MenuItem[] = [
     { label: "Play", onSelect: onPlay },
     { kind: "separator" },
-    { label: count === 1 ? "Edit" : `Edit ${songs}`, onSelect: onEdit },
+    // `useSelectionShortcuts` binds this, so the menu can name it. The two
+    // entries below that carry a keystroke are the only two in the app that
+    // have one; the sheet's `Ctrl+E` on Show in Explorer names nothing.
+    { label: count === 1 ? "Edit" : `Edit ${songs}`, shortcut: "Ctrl+I", onSelect: onEdit },
     // Beside Edit because it is the same act by another route: the tags of
     // these songs, typed by hand or fetched. Ellipsized - it opens a dialog
     // and writes nothing until that dialog is confirmed.
@@ -172,6 +175,9 @@ export function rowMenuItems({
   if (openPlaylist?.kind === "static") {
     items.push({
       label: count === 1 ? "Remove from Playlist" : `Remove ${songs} from Playlist`,
+      // Where Delete lands inside a static playlist - the less destructive
+      // reading, which is the rule `useSelectionShortcuts` follows.
+      shortcut: "Del",
       onSelect: onRemove,
     });
   }
@@ -182,6 +188,12 @@ export function rowMenuItems({
   if (onRemoveFromLibrary !== undefined) {
     items.push({
       label: count === 1 ? "Remove from Library…" : `Remove ${songs} from Library…`,
+      // Delete's other landing place: everywhere but a static playlist, there
+      // is nothing to take a song out of but the library. Named only where
+      // that is what Delete would do, which is why the entry above claims the
+      // same key and the File menu's copy of this one claims neither - `menus`
+      // does not know whether a playlist is open.
+      ...(openPlaylist?.kind === "static" ? {} : { shortcut: "Del" }),
       onSelect: onRemoveFromLibrary,
     });
   }

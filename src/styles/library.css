@@ -1151,6 +1151,146 @@
   background: var(--chrome-border);
 }
 
+/* ---------- 05 · menus ---------- */
+
+/* One drawing for both menus this app has: the row's right-click menu, which
+   the sheet draws, and every dropdown on the menu bar. `renderMenuItem` has
+   drawn both since phase 34, so the classes lost the word "context" on the way
+   here - it stopped being true at the bar.
+
+   Where a menu goes is Floating UI's, and has been since phase 24; this
+   positions nothing. */
+.menu-positioner {
+  z-index: 40;
+  outline: none;
+}
+
+/* 226px as a floor rather than the sheet's fixed measure. File holds two
+   entries and would stand two thirds empty at a fixed width, and "Get Tags
+   from MusicBrainz…" is within a few pixels of 226 at this size - a zoom step
+   up and a fixed panel would clip it. */
+.menu-popup {
+  min-width: 226px;
+  max-height: var(--available-height, 60vh);
+  overflow-y: auto;
+  margin: 0;
+  /* Full bleed, reversing the 5px inset phase 24 gave this. The sheet draws
+     the highlight as a band across the panel and the separator as a rule
+     across it, and an inset popup can draw neither. */
+  padding: 4px 0;
+  list-style: none;
+  background: var(--chrome);
+  border: 1px solid var(--menu-border);
+  box-shadow: var(--shadow);
+  outline: none;
+  font-size: 12.5px;
+  line-height: 1;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 19px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* One selector where there were two, and no hover exception left to grant:
+   Base UI sets `data-highlighted` for the pointer and the keyboard alike, so
+   the highlight follows whichever is driving without the CSS knowing which. */
+.menu-item[data-highlighted] {
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+.menu-item[data-disabled] {
+  color: var(--muted);
+  cursor: default;
+}
+
+/* An <hr> carries a default `border: 1px inset`, which drew a second, brighter
+   line and reserved space around it. The rule is the background, nothing
+   else - and it crosses the panel now, with the items it groups. */
+.menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: var(--menu-border);
+}
+
+/* The trailing column, in the sheet's muted grey: a submenu marker, the
+   keystroke that does the same thing, or why an entry is greyed. Never two at
+   once - a hinted entry is disabled, and a disabled entry has no binding to
+   name. */
+.menu-shortcut,
+.menu-arrow,
+.menu-hint {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Smaller than the column's other two, which are a glyph and a chord. A hint
+   is a sentence, and at the item's own size it sets the width of the whole
+   panel. */
+.menu-hint {
+  font-size: 0.85em;
+}
+
+.menu-empty {
+  padding: 7px 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ---------- 05 · progress and the task line ---------- */
+
+/* The sheet's 4px rail, drawn twice in it - under the task line below and
+   under 6f's loading pane. The width is the caller's: a bar that stretches to
+   whatever holds it turns a fraction of a percent into an invisible mark, and
+   the two places it appears want different measures.
+
+   A bare slab of `--track`, where `.streak-track` takes a hairline. That one
+   is the only statement of the ratio it draws, so WCAG 1.4.11 asks 3:1 of it;
+   these two both sit under a line that prints the same figure in words, and
+   at 4px an edge either side would leave 2px of rail. */
+.progress {
+  position: relative;
+  height: 4px;
+  background: var(--track);
+}
+
+.progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+
+/* Two lines and the bar: what is running with how far it has got, then how
+   much longer. One line was what this said before the sheet drew it, and an
+   estimate on the end of a percentage read as a third clause of the label. */
+.task-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  /* So a figure to two decimal places does not jitter as it counts. */
+  font-variant-numeric: tabular-nums;
+}
+
+.task-line-text {
+  margin: 0;
+}
+
 /* ---------- 06 · dialogs ---------- */
 
 /* Only the dim layer. It used to centre the dialog as its flex child, which

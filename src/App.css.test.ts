@@ -68,7 +68,7 @@ const HOVER_ALLOWED = [
   // Both spellings, because `.icon-button` does not contain `.button`.
   ".button",
   ".icon-button",
-  // `.context-item` used to be here: a menu's active entry follows the
+  // `.menu-item` used to be here: a menu's active entry follows the
   // pointer by definition. Phase 24 removed the need for the exception rather
   // than the behaviour - Base UI sets `data-highlighted` for the pointer and
   // the keyboard alike, so the rule is a state selector, not a hover one.
@@ -994,6 +994,28 @@ describe("the stylesheet", () => {
     expect(drawn).toEqual([]);
   });
 
+  it("keeps the menus' and the task line's own drawing out of `app.css`", () => {
+    // Section 05 is one drawing for both menus in the app and for the readout
+    // at the foot of the sidebar. `.sidebar-task` says where that readout
+    // goes - the foot of the sidebar is the app's decision, not the
+    // primitive's - and says nothing about what it looks like, which is the
+    // split 113 drew for the dialogs and 115 for the figures.
+    const drawn = rules(sources[3] ?? "")
+      .map((one) => uncommented(one.selector))
+      .filter((selector) => /\.(menu-[\w-]+|task-line|progress)\b/.test(selector));
+
+    expect(drawn).toEqual([]);
+
+    const placement = rules(sources[3] ?? "").find(
+      (one) => uncommented(one.selector).trim() === ".sidebar-task",
+    );
+
+    expect(placement, ".sidebar-task should still place the readout").toBeDefined();
+    expect(placement?.body, ".sidebar-task draws what `TaskLine` owns").not.toMatch(
+      /(^|;|\s)(color|font|font-size|line-height|background|border|box-shadow):/,
+    );
+  });
+
   it("paints every ramp step either mark can ask for, and no more", () => {
     // `rampStep` returns 0 through `RAMP_STEPS`, and a step with no rule is a
     // mark drawn as nothing at all - on a heatmap that is indistinguishable
@@ -1112,7 +1134,9 @@ describe("the stylesheet", () => {
     // a submenu is its own portalled popup that Floating UI anchors to the
     // item that opened it, so hand-written offsets would now fight it rather
     // than help. Their absence is the assertion.
-    for (const selector of [".context-row", ".context-submenu"]) {
+    // Named as phase 24 spelled them; 117 renamed the family to `.menu-*`,
+    // and neither of these came back under either spelling.
+    for (const selector of [".context-row", ".context-submenu", ".menu-row", ".menu-submenu"]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
       expect(rule, `${selector} should have gone with the hand-rolled menu`).toBeUndefined();
     }
@@ -1130,7 +1154,7 @@ describe("the stylesheet", () => {
     // Matched exactly rather than by suffix: `.icon-button.in-dialog` ends in
     // a word this list also holds, and a suffix match found *it* instead and
     // asserted that a 36px square positions itself.
-    for (const selector of [".dialog", ".dialog-backdrop", ".context-positioner", ".drag-badge"]) {
+    for (const selector of [".dialog", ".dialog-backdrop", ".menu-positioner", ".drag-badge"]) {
       const rule = all.find((one) => uncommented(one.selector).trim() === selector);
 
       expect(rule, `${selector} should exist`).toBeDefined();
@@ -1162,12 +1186,12 @@ describe("the stylesheet", () => {
     // that `HOVER_ALLOWED` grants it - and a `:hover` rule would now fight the
     // keyboard, lighting up two rows at once.
     const hovered = all
-      .filter((rule) => rule.selector.includes(".context-item"))
+      .filter((rule) => rule.selector.includes(".menu-item"))
       .filter((rule) => rule.selector.includes(":hover"))
       .map((rule) => rule.selector);
 
     expect(hovered).toEqual([]);
-    expect(css).toMatch(/\.context-item\[data-highlighted\]/);
+    expect(css).toMatch(/\.menu-item\[data-highlighted\]/);
   });
 
   it("gives form fields a border you can actually see", () => {

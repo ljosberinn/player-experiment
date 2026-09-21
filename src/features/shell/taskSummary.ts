@@ -46,9 +46,27 @@ export function taskEstimate(etaMs: number | null): string | null {
   return `about ${size} ${size === 1 ? unit : `${unit}s`} left`;
 }
 
-/** The whole line: what is running, how far it has got, and how much longer. */
-export function taskSummary(task: BackgroundTask): string {
-  return [task.label, taskPercent(task.done, task.total), taskEstimate(task.etaMs)]
-    .filter((part) => part !== null)
-    .join(" · ");
+/**
+ * The readout, in the two lines section 05 draws it on.
+ *
+ * What is running and how far it has got are one statement and share a line;
+ * how much longer is a second, and was a third clause of the first until the
+ * sheet split them.
+ *
+ * A task with no total yet is at nought rather than at nothing: the rail is
+ * what says a pass has started, and a started pass with no denominator is
+ * still one that has not got anywhere.
+ */
+export function taskLines(task: BackgroundTask): {
+  headline: string;
+  estimate: string | null;
+  ratio: number;
+} {
+  const percent = taskPercent(task.done, task.total);
+
+  return {
+    headline: percent === null ? task.label : `${task.label} · ${percent}`,
+    estimate: taskEstimate(task.etaMs),
+    ratio: task.total === 0 ? 0 : task.done / task.total,
+  };
 }

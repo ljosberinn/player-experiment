@@ -1,6 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { LIBRARY } from "../fixtures";
-import { openMenu } from "../menu";
+import { menuItem, openMenu } from "../menu";
 import { capture } from "../screenshot";
 
 /**
@@ -92,8 +92,8 @@ async function pressShiftF10(): Promise<void> {
 /**
  * The labels inside an open menu.
  *
- * Trimmed of the submenu arrow, which is a `<span>` inside the trigger and so
- * lands in its `textContent`.
+ * The label span rather than the item's own text, which since 117 may also
+ * hold a submenu arrow, a keystroke or the reason an entry is greyed.
  */
 function itemsOf(label: string): Promise<string[]> {
   return browser.execute((name: string) => {
@@ -102,7 +102,7 @@ function itemsOf(label: string): Promise<string[]> {
       return [];
     }
     return Array.from(popup.querySelectorAll("[role='menuitem']")).map((item) =>
-      (item.textContent ?? "").replace("▸", "").trim(),
+      (item.querySelector(".menu-label")?.textContent ?? item.textContent ?? "").trim(),
     );
   }, label);
 }
@@ -225,11 +225,7 @@ describe("the row menu", () => {
     // from under them. What is worth driving is the route - a right-click
     // reaching a dialog that names what it is about to do.
     await openRowMenu();
-    await browser
-      .$(
-        "//*[@role='menu'][@aria-label='Song actions']//*[@role='menuitem'][normalize-space()='Remove from Library…']",
-      )
-      .click();
+    await browser.$(menuItem("Song actions", "Remove from Library…")).click();
 
     const dialog = browser.$("[role='alertdialog']");
     await dialog.waitForExist({ timeout: 10_000, timeoutMsg: "the confirmation never opened" });
@@ -257,11 +253,7 @@ describe("the row menu", () => {
     // The one entry it is safe to follow: the lookups open a browser on the
     // runner, and this opens a dialog. Cancel puts it back.
     await openRowMenu();
-    await browser
-      .$(
-        "//*[@role='menu'][@aria-label='Song actions']//*[@role='menuitem'][normalize-space()='Edit']",
-      )
-      .click();
+    await browser.$(menuItem("Song actions", "Edit")).click();
 
     const dialog = browser.$("[role='dialog']");
     await dialog.waitForExist({ timeout: 10_000, timeoutMsg: "the tag editor never opened" });
