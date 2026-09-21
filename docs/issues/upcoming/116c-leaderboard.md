@@ -22,6 +22,6 @@ table today "because the bar would be a share of 320", which is the numbered
 list's case exactly. Without it the variant is drawn only by its own test.
 
 Off main. Independent of [116a](../done/116a-streak.md) and
-[116b](116b-heatmap.md).
+[116b](../done/116b-heatmap.md).
 
 Part of the [component library sweep](../../plans/apex-components.md).

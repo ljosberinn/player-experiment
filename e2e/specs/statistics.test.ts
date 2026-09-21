@@ -128,15 +128,17 @@ describe("the Statistics view", () => {
 
   it("draws the week the plays fall in", async () => {
     const clock = panel("When you listen");
-    // Cells, not a skeleton: the clock is 168 counts whatever was played, so
-    // the grid existing says the aggregate landed, and the seed's quiet
-    // nights are what make some of it the ramp's empty step.
-    await browser.waitUntil(async () => (await clock.$$("rect.chart-cell").length) === 168, {
-      timeout: 30_000,
-      timeoutMsg: "the week clock never arrived",
-    });
-    await expect(clock.$("rect.chart-cell[data-step='0']")).toBeExisting();
-    await expect(clock.$("rect.chart-cell[data-step='4']")).toBeExisting();
+    // Stepped cells, not a grid: since 116b the skeleton is the same grid
+    // drawn empty - it is what holds the panel's height - so 168 cells says
+    // nothing about whether the answer landed and 168 *coloured* ones does.
+    // The clock is 168 counts whatever was played, and the seed's quiet nights
+    // are what make some of them the ramp's empty step.
+    await browser.waitUntil(
+      async () => (await clock.$$(".heatmap-cell[data-step]").length) === 168,
+      { timeout: 30_000, timeoutMsg: "the week clock never arrived" },
+    );
+    await expect(clock.$(".heatmap-cell[data-step='0']")).toBeExisting();
+    await expect(clock.$(".heatmap-cell[data-step='7']")).toBeExisting();
     // 24 hour bars under the grid, off the same answer.
     await expect(clock.$$("rect.chart-bar")).toBeElementsArrayOfSize(24);
 

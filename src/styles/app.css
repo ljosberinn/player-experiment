@@ -2408,6 +2408,14 @@ body:not(:focus-within) .sidebar-row.current {
   height: 180px;
 }
 
+/* The other side of the rule above: a chart drawn out of stated sizes is
+   measured by nobody, so there is no loop to break and no reason to hold a
+   height it may not fill. `Heatmap` is the one, and 4d draws it as seven 13px
+   rows rather than as a plot scaled to the panel. */
+.chart-intrinsic {
+  height: auto;
+}
+
 /* What `ChartFrame` measures. `min-height: 0` because a flex item's default
    `auto` would floor it at the svg's own height and defeat the point. */
 .chart-plot {
@@ -2858,29 +2866,11 @@ body:not(:focus-within) .sidebar-row.current {
   margin-top: 12px;
 }
 
-.chart-cell[data-step="0"] {
-  fill: var(--chart-ramp-0);
-}
-
-.chart-cell[data-step="1"] {
-  fill: var(--chart-ramp-1);
-}
-
-.chart-cell[data-step="2"] {
-  fill: var(--chart-ramp-2);
-}
-
-.chart-cell[data-step="3"] {
-  fill: var(--chart-ramp-3);
-}
-
-.chart-cell[data-step="4"] {
-  fill: var(--chart-ramp-4);
-}
-
 /* The donut shares the heatmap's ramp, for the reason `rampStep` gives: the
    slices arrive ordered by size, so a sequential ramp reads as the magnitude
-   it already is and the sheet needs no categorical palette. */
+   it already is and the sheet needs no categorical palette. Eight steps since
+   116b, which regraded the ring along with the grid - a shared quantizer that
+   two callers read differently is two ramps. */
 .chart-slice[data-step="0"] {
   fill: var(--chart-ramp-0);
 }
@@ -2899,6 +2889,18 @@ body:not(:focus-within) .sidebar-row.current {
 
 .chart-slice[data-step="4"] {
   fill: var(--chart-ramp-4);
+}
+
+.chart-slice[data-step="5"] {
+  fill: var(--chart-ramp-5);
+}
+
+.chart-slice[data-step="6"] {
+  fill: var(--chart-ramp-6);
+}
+
+.chart-slice[data-step="7"] {
+  fill: var(--chart-ramp-7);
 }
 
 /* The panel's own ground, not a border colour: it is a gap between slices

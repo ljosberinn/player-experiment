@@ -288,16 +288,34 @@
      it is text, and wears `--muted` like every other recessive label. */
   --chart-grid: oklch(0.237 0.004 49 / 0.16);
   /* The sequential ramp, for a magnitude drawn as colour: an empty cell, then
-     four steps up to the accent, evenly spaced in lightness so each step reads
-     as the same distance. Opaque, so a step is the same colour over any
-     backdrop, and quantized rather than continuous, so the smallest count
-     still stands apart from none. Descending in lightness here and ascending
-     on dark, because on both grounds "more" has to move away from the page. */
-  --chart-ramp-0: oklch(0.9 0.004 60);
-  --chart-ramp-1: oklch(0.845 0.047 55);
-  --chart-ramp-2: oklch(0.79 0.089 54);
-  --chart-ramp-3: oklch(0.735 0.131 53);
-  --chart-ramp-4: oklch(0.68 0.172 52);
+     seven steps up to the accent. The sheet's 4d states "one accent at eight
+     opacity steps", and this is those eight without the opacity - a mix in
+     oklab rather than a wash, so a step is the same colour over any backdrop
+     and `e2e/contrast.ts` measures a value rather than a stack.
+
+     One twelfth and a half per step, so the whole ramp is one formula instead
+     of sixteen hand-tuned values, and the steps are evenly spaced in lightness
+     because a mix's lightness is linear in its percentage. Descending in
+     lightness here and ascending on dark, since the accent is darker than this
+     ground and lighter than that one - on both, "more" moves away from the
+     page, and neither block has to say so.
+
+     Quantized rather than continuous, so the smallest count still stands apart
+     from none; the empty step is 12.5% rather than nothing, since a cell that
+     matched the ground would take the grid away wherever the week was quiet.
+
+     The two blocks are identical text and stay duplicated: the guard that
+     catches a token declared on one ground and forgotten on the other compares
+     the two name sets, and a name hoisted out of both would be absent from
+     both. */
+  --chart-ramp-0: color-mix(in oklab, var(--accent) 12.5%, var(--surface));
+  --chart-ramp-1: color-mix(in oklab, var(--accent) 25%, var(--surface));
+  --chart-ramp-2: color-mix(in oklab, var(--accent) 37.5%, var(--surface));
+  --chart-ramp-3: color-mix(in oklab, var(--accent) 50%, var(--surface));
+  --chart-ramp-4: color-mix(in oklab, var(--accent) 62.5%, var(--surface));
+  --chart-ramp-5: color-mix(in oklab, var(--accent) 75%, var(--surface));
+  --chart-ramp-6: color-mix(in oklab, var(--accent) 87.5%, var(--surface));
+  --chart-ramp-7: color-mix(in oklab, var(--accent) 100%, var(--surface));
 
   /* Red, and the two surfaces it appears on. Ours on both grounds - the sheet
      draws no destructive state. `--danger` is text: 5.15:1 on surface.
@@ -414,11 +432,14 @@
   --rail: oklch(0.372 0.019 67);
 
   --chart-grid: oklch(1 0 0 / 0.08);
-  --chart-ramp-0: oklch(0.245 0.013 72);
-  --chart-ramp-1: oklch(0.367 0.052 68);
-  --chart-ramp-2: oklch(0.49 0.09 64);
-  --chart-ramp-3: oklch(0.612 0.129 61);
-  --chart-ramp-4: oklch(0.735 0.167 58);
+  --chart-ramp-0: color-mix(in oklab, var(--accent) 12.5%, var(--surface));
+  --chart-ramp-1: color-mix(in oklab, var(--accent) 25%, var(--surface));
+  --chart-ramp-2: color-mix(in oklab, var(--accent) 37.5%, var(--surface));
+  --chart-ramp-3: color-mix(in oklab, var(--accent) 50%, var(--surface));
+  --chart-ramp-4: color-mix(in oklab, var(--accent) 62.5%, var(--surface));
+  --chart-ramp-5: color-mix(in oklab, var(--accent) 75%, var(--surface));
+  --chart-ramp-6: color-mix(in oklab, var(--accent) 87.5%, var(--surface));
+  --chart-ramp-7: color-mix(in oklab, var(--accent) 100%, var(--surface));
 
   --danger: oklch(0.635 0.17 25);
   --destructive: oklch(0.58 0.21 25);

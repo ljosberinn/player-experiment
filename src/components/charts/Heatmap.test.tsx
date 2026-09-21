@@ -1,44 +1,23 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { CHART_MARGIN } from "./ChartFrame";
 import { Heatmap } from "./Heatmap";
 
-const WIDTH = 400;
-const HEIGHT = 200;
-const PLOT = {
-  width: WIDTH - CHART_MARGIN.left - CHART_MARGIN.right,
-  height: HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom,
-};
-
-// jsdom lays nothing out, so the size the frame measures is stubbed the way
-// `Bar.test.tsx` stubs it.
-beforeEach(() => {
-  for (const [property, of] of [
-    ["clientWidth", "width"],
-    ["clientHeight", "height"],
-  ] as const) {
-    Object.defineProperty(HTMLElement.prototype, property, {
-      configurable: true,
-      get: () => ({ width: WIDTH, height: HEIGHT })[of],
-    });
-  }
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
-function draw(rows: readonly string[], columns: readonly string[], values: readonly number[]) {
+/**
+ * No measurement stub, unlike every other chart's test.
+ *
+ * Section 4d is a grid of stated sizes, so `Heatmap` draws through
+ * `ChartShell` rather than `ChartFrame` and never asks how big it is. A test
+ * that had to teach jsdom a layout would be testing a dependency this
+ * component no longer has.
+ */
+function draw(
+  rows: readonly string[],
+  columns: readonly string[],
+  values: readonly number[],
+  loading = false,
+) {
   render(
     <Heatmap
       label="Plays by weekday and hour"
@@ -48,81 +27,87 @@ function draw(rows: readonly string[], columns: readonly string[], values: reado
       format={(value) => `${value}`}
       corner="Day"
       empty="Nothing in this range."
+      loading={loading}
     />,
   );
-  return Array.from(document.querySelectorAll<SVGRectElement>("rect.chart-cell"));
-}
-
-function extent(rect: SVGRectElement) {
-  return {
-    x: Number(rect.getAttribute("x")),
-    y: Number(rect.getAttribute("y")),
-    width: Number(rect.getAttribute("width")),
-    height: Number(rect.getAttribute("height")),
-  };
+  return Array.from(document.querySelectorAll<HTMLElement>(".heatmap-cell"));
 }
 
 describe("Heatmap", () => {
-  test("lays the values out row by row, a band per row and column", () => {
+  test("lays the values out row by row, a cell per column", () => {
     const cells = draw(["Mon", "Tue"], ["0", "1", "2"], [1, 2, 3, 4, 5, 6]);
 
     expect(cells).toHaveLength(6);
-    const across = PLOT.width / 3;
-    const down = PLOT.height / 2;
-    // Row-major: the fourth value opens the second row.
-    expect(extent(cells[3] as SVGRectElement)).toStrictEqual({
-      x: 0,
-      y: down,
-      width: across - 2,
-      height: down - 2,
-    });
-    expect(extent(cells[5] as SVGRectElement).x).toBeCloseTo(across * 2);
+    // Row-major: the fourth value opens the second row, and the row is the
+    // grid's own row rather than a y offset anybody computed.
+    const tuesday = document.querySelectorAll(".heatmap-row")[1];
+    expect(tuesday?.querySelector(".heatmap-day")?.textContent).toBe("Tue");
+    expect(
+      Array.from(tuesday?.querySelectorAll(".heatmap-cell") ?? []).map(
+        (cell) => (cell as HTMLElement).title,
+      ),
+    ).toStrictEqual(["Tue 0: 4", "Tue 1: 5", "Tue 2: 6"]);
+  });
+
+  test("repeats the track once per column, and says so as a count", () => {
+    draw(["Mon"], ["0", "1", "2"], [1, 2, 3]);
+
+    const cells = document.querySelector<HTMLElement>(".heatmap-cells");
+    expect(cells?.style.getPropertyValue("--heatmap-columns")).toBe("3");
   });
 
   test("steps each cell by its share of the largest, and keeps nothing apart from little", () => {
     const cells = draw(["Mon"], ["0", "1", "2", "3", "4"], [0, 1, 50, 75, 100]);
 
     // One play in a hundred still takes the first step rather than rounding
-    // to the colour of none.
-    expect(cells.map((cell) => cell.dataset.step)).toStrictEqual(["0", "1", "2", "3", "4"]);
+    // to the colour of none, and the ramp now runs to seven.
+    expect(cells.map((cell) => cell.dataset.step)).toStrictEqual(["0", "1", "4", "6", "7"]);
   });
 
-  test("fills a single cell rather than collapsing onto nothing", () => {
-    const cells = draw(["Mon"], ["0"], [7]);
-
-    expect(extent(cells[0] as SVGRectElement)).toStrictEqual({
-      x: 0,
-      y: 0,
-      width: PLOT.width - 2,
-      height: PLOT.height - 2,
-    });
-    expect(cells[0]?.dataset.step).toBe("4");
-  });
-
-  test("draws no gridlines, since a row label is not a value to read across", () => {
-    draw(["Mon", "Tue"], ["0"], [1, 2]);
-
-    expect(document.querySelectorAll(".chart-grid line")).toHaveLength(0);
-    expect(
-      Array.from(document.querySelectorAll(".chart-axis-y text")).map((text) => text.textContent),
-    ).toStrictEqual(["Mon", "Tue"]);
-  });
-
-  test("thins the column labels to the ones that fit", () => {
+  test("names the hours the sheet names, the first and the last among them", () => {
     const hours = Array.from({ length: 24 }, (_, hour) => `${hour}`);
     draw(["Mon"], hours, hours.map(Number));
 
-    const labels = Array.from(document.querySelectorAll(".chart-axis-x text")).map(
-      (text) => text.textContent,
-    );
-    expect(labels[0]).toBe("0");
-    expect(labels.length).toBeGreaterThan(2);
-    expect(labels.length).toBeLessThan(24);
+    // 4d's own `00 06 12 18 23`, spread under the grid rather than placed
+    // under the bands they name.
+    expect(
+      Array.from(document.querySelectorAll(".heatmap-ticks span")).map((tick) => tick.textContent),
+    ).toStrictEqual(["0", "6", "12", "18", "23"]);
+  });
+
+  test("names every column when there are few enough of them to fit", () => {
+    draw(["Mon"], ["0", "1", "2"], [1, 2, 3]);
+
+    expect(
+      Array.from(document.querySelectorAll(".heatmap-ticks span")).map((tick) => tick.textContent),
+    ).toStrictEqual(["0", "1", "2"]);
   });
 
   test("says why there is nothing rather than drawing an empty grid", () => {
     expect(draw(["Mon"], ["0"], [])).toHaveLength(0);
     expect(screen.getByText("Nothing in this range.")).toBeInTheDocument();
+  });
+
+  test("holds the panel's height with the grid it is waiting for", () => {
+    // The block `ChartShell` draws by default fills a fixed height this chart
+    // does not have, so the thing standing in for the grid has to be the grid.
+    const cells = draw(["Mon", "Tue"], ["0", "1"], [], true);
+
+    expect(cells).toHaveLength(4);
+    expect(cells.every((cell) => cell.dataset.step === undefined)).toBe(true);
+    expect(screen.getByTestId("chart-skeleton")).toBeInTheDocument();
+    // Loading outranks empty, even though there is nothing to draw yet.
+    expect(screen.queryByText("Nothing in this range.")).not.toBeInTheDocument();
+  });
+
+  test("is named as a picture, and stops being one when the table is up", async () => {
+    draw(["Mon", "Tue"], ["0", "1"], [1, 2, 3, 4]);
+
+    expect(screen.getByRole("img")).toHaveAccessibleName("Plays by weekday and hour");
+
+    await userEvent.click(screen.getByRole("button", { name: "Show as table" }));
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
   test("reads as a table of every cell, a row per row", async () => {
