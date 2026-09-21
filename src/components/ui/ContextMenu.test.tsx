@@ -103,6 +103,28 @@ describe("ContextMenu", () => {
     expect(screen.getByText("Needs a last.fm account")).toBeInTheDocument();
   });
 
+  it("draws a shortcut without letting it into the item's name", async () => {
+    // The chord is announced by `aria-keyshortcuts`, in ARIA's own spelling,
+    // rather than read out of the row - so an entry is still named after what
+    // it does, which is what every call site and every test looks it up by.
+    await open([{ label: "Edit", shortcut: "Ctrl+I" }]);
+
+    const item = screen.getByRole("menuitem", { name: "Edit" });
+
+    expect(item).toHaveAttribute("aria-keyshortcuts", "Control+I");
+    expect(screen.getByText("Ctrl+I")).toBeInTheDocument();
+  });
+
+  it("claims no shortcut for an item that has none", async () => {
+    // The sheet draws `Ctrl+E` on Show in Explorer and nothing listens for it.
+    // An item names a chord only where one really exists.
+    await open([{ label: "Show in Explorer" }]);
+
+    expect(screen.getByRole("menuitem", { name: "Show in Explorer" })).not.toHaveAttribute(
+      "aria-keyshortcuts",
+    );
+  });
+
   it("does not run a disabled item that is clicked", async () => {
     const onSelect = vi.fn();
     const { user } = await open([{ label: "Show in Explorer", disabled: true, onSelect }]);

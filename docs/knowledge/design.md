@@ -45,6 +45,11 @@ design wins.
 - **It has no missing files and no scan in progress.** Those
   states have no mockup; their placement was decided in the phases that built
   them.
+- **Its menu names a shortcut the app does not have.** The specimen sheet draws
+  `Ctrl+E` beside Show in Explorer; nothing listens for it. The column is drawn,
+  with the two keystrokes that are real — `Ctrl+I` on Edit and `Del` on whichever
+  removal Delete performs where the menu was opened. A menu that names a chord
+  nothing answers is worse than one that names none.
 - **It calls the second library item Albums.** Ours says Releases: an EP, a
   single, a split and a compilation all live in that view and none of them is an
   album. A deliberate departure, not a drift to correct on the next re-fetch.

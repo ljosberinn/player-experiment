@@ -31,8 +31,8 @@ export function MenuBar({ menus }: { menus: MenuModel[] }) {
             {menu.label}
           </Menu.Trigger>
           <Menu.Portal>
-            <Menu.Positioner className="context-positioner" sideOffset={4} align="start">
-              <Menu.Popup className="context-menu" aria-label={menu.label}>
+            <Menu.Positioner className="menu-positioner" sideOffset={4} align="start">
+              <Menu.Popup className="menu-popup" aria-label={menu.label}>
                 {menu.items.map(renderMenuItem)}
               </Menu.Popup>
             </Menu.Positioner>

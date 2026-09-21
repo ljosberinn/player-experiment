@@ -22,12 +22,22 @@ export async function openMenu(name: string): Promise<void> {
     .waitForExist({ timeout: 10_000, timeoutMsg: `the ${name} menu never opened` });
 }
 
+/**
+ * One entry of an open menu, by the label it prints.
+ *
+ * Matched on the label span rather than on the item's whole text: since 117 an
+ * item may carry a trailing column - a submenu marker, a keystroke, or why it
+ * is greyed - and `normalize-space()` over the item would take that in too, so
+ * Edit reads as "EditCtrl+I".
+ */
+export function menuItem(menu: string, item: string): string {
+  return `//*[@role='menu'][@aria-label='${menu}']//*[@role='menuitem'][.//span[contains(@class,'menu-label')][normalize-space()='${item}']]`;
+}
+
 /** Opens a menu and chooses one of its entries. */
 export async function chooseFromMenu(menu: string, item: string): Promise<void> {
   await openMenu(menu);
-  await browser
-    .$(`//*[@role='menu'][@aria-label='${menu}']//*[@role='menuitem'][normalize-space()='${item}']`)
-    .click();
+  await browser.$(menuItem(menu, item)).click();
 }
 
 /** The labels inside an open menu, in order. */
@@ -38,7 +48,7 @@ export function itemsOf(name: string): Promise<string[]> {
       return [];
     }
     return Array.from(popup.querySelectorAll("[role='menuitem']")).map((item) =>
-      (item.textContent ?? "").trim(),
+      (item.querySelector(".menu-label")?.textContent ?? item.textContent ?? "").trim(),
     );
   }, name);
 }

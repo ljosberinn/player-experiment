@@ -717,18 +717,14 @@
   outline-offset: -2px;
 }
 
-/* The readout for a task nobody started by hand and nobody waits at: the
-   unattended lookup pass runs for the better part of two days. `margin-top:
-   auto` puts it at the foot of the sidebar under however many sections there
-   are, which is the space the design leaves empty. Tabular numerals so a
-   figure to two decimal places does not jitter as it counts. */
+/* Where the readout for a task nobody started by hand and nobody waits at
+   sits: the unattended lookup pass runs for the better part of two days.
+   `margin-top: auto` puts it at the foot of the sidebar under however many
+   sections there are, which is the space the design leaves empty. Placement
+   only - what it looks like is `TaskLine`'s, in `library.css`. */
 .sidebar-task {
   margin: auto 0 0;
   padding: 0 10px;
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.5;
 }
 
 .sidebar-rename {
@@ -1957,99 +1953,10 @@ th.status {
   grid-row: 1;
 }
 
-/* Context menus
-   -------------------------------------------------------------------------
-   Positioned at the pointer in viewport coordinates, so they are fixed rather
-   than absolute - an absolute menu inside the scrolling table would travel
-   with the rows it is describing. */
-/* Floating UI owns the coordinates now; this is what it positions. Everything
-   about *where* a menu goes - the fixed placement, the measure-then-nudge, the
-   submenu offset - moved out of the app in phase 24. */
-.context-positioner {
-  z-index: 40;
-  outline: none;
-}
-
-.context-menu {
-  min-width: 216px;
-  max-height: var(--available-height, 60vh);
-  overflow-y: auto;
-  margin: 0;
-  /* Inset, so the highlight on an item reads as a menu row rather than as a
-     full-bleed band across the panel. */
-  padding: 5px;
-  list-style: none;
-  background: var(--chrome);
-  border: 1px solid var(--menu-border);
-  box-shadow: var(--shadow);
-  outline: none;
-}
-
-.context-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 19px;
-  width: 100%;
-  padding: 6px 12px;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  white-space: nowrap;
-  cursor: default;
-}
-
-/* Hover and keyboard focus look the same on purpose: the menu tracks one
-   active item whichever way it is being driven. */
-/* One selector where there were two, and no hover exception left to grant:
-   Base UI sets `data-highlighted` for both the pointer and the keyboard, so
-   the highlight follows whichever is driving without the CSS knowing which. */
-.context-item[data-highlighted] {
-  background: var(--accent-tint);
-  color: var(--text);
-}
-
-.context-item[data-disabled] {
-  color: var(--muted);
-  cursor: default;
-}
-
-/* An <hr> carries a default `border: 1px inset`, which drew a second, brighter
-   line and reserved space around it - the gap that made hovering the rows
-   either side look mis-spaced. The rule is the background, nothing else. */
-.context-separator {
-  height: 1px;
-  margin: 5px 7px;
-  border: 0;
-  background: var(--menu-border);
-}
-
-/* Why an entry is greyed, in the trailing column a menu elsewhere gives to a
-   shortcut. Never the only signal - the entry is disabled as well, and the
-   text is read out with the label. */
-.context-hint {
-  color: var(--muted);
-  font-size: 0.85em;
-  white-space: nowrap;
-}
-
-.context-empty {
-  padding: 5px 14px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-/* `.context-row`'s positioning context and `.context-submenu`'s offsets are
-   gone with phase 24: a submenu is its own portalled popup that Floating UI
-   anchors to the item that opened it, so there is nothing left here to line up
-   by hand - and nothing left to get wrong when the menu is near an edge. */
-
-.context-arrow {
-  color: inherit;
-  opacity: 0.7;
-}
+/* The menus' drawing moved to `library.css` in 117, with the word "context"
+   dropped from its classes: `renderMenuItem` draws the menu bar's dropdowns
+   too, and section 05 is one drawing for both. `.menubar` above is what is
+   left here - the bar is chrome the sheet does not draw. */
 
 .sidebar-dropzone {
   min-height: 38px;
