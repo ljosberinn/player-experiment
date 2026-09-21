@@ -22,10 +22,36 @@ Also folded, free: NFC against NFD in the same string (`würfelspiel`,
 
 ## The change
 
-`normalize` becomes `squeeze(&decompose(without_featuring(trimmed)))`, both
-already in [`plays.rs`](../../../src-tauri/src/db/plays.rs). `decompose`
-lowercases, so the explicit `to_lowercase` goes; `squeeze` collapses whitespace,
-so the `split_whitespace` join goes. Nothing new is written.
+`normalize` gains `decompose` and `squeeze`, both already in
+[`plays.rs`](../../../src-tauri/src/db/plays.rs). Nothing new is written:
+
+```rust
+fn normalize(value: &str) -> String {
+    let decomposed = decompose(value);
+    let folded = without_featuring(decomposed.trim()).trim_end();
+    match squeeze(folded) {
+        squeezed if squeezed.is_empty() => folded.to_owned(),
+        squeezed => squeezed,
+    }
+}
+```
+
+`decompose` lowercases, so the explicit `to_lowercase` goes; `squeeze`
+collapses whitespace, so the `split_whitespace` join goes.
+
+**The order is load-bearing in both directions.** `without_featuring` matches
+`OPENERS` lowercase with `starts_with`, so it has to run *after* `decompose` or
+`Song (Feat. Guest)` stops being stripped — today's `normalize` lowercases
+first and that must not regress. And it has to run *before* `squeeze`, which
+deletes the parentheses it matches on.
+
+**A side that squeezes to nothing keeps its unsqueezed spelling.** `squeeze`
+drops everything non-alphanumeric, so the artists `!!!`, `†††` and `∆` and the
+titles `?` and `...` would each become empty — and an empty side empties the
+whole key, which `resolve` skips on `match_key <> ''`. Those plays link today
+and would stop linking, a new unlinked class in a change that exists to shrink
+one. Falling back to the decomposed value keeps them linked and still folds
+`…` onto `...`, which today's `normalize` does not.
 
 **The conservative boundary does not move.** `(Live)`, `(Remastered)` and
 `(Radio Edit)` still name different recordings, and the existing tests asserting
@@ -44,7 +70,8 @@ files that are genuinely not in the library.
   match_key)`. 73,467 of 237,728 rows change; **0 collide** on that index in the
   reference library, but the pass has to survive one, because a collision there
   is one song scrobbled twice in the same second and the loser should be
-  dropped, not skipped.
+  dropped, not skipped. `UPDATE OR REPLACE` is that, and nothing has a foreign
+  key onto `plays.id`, so a dropped row orphans nothing.
 - `lastfm_loved.match_key`, which is the whole primary key. 75 of 285 rows
   change, 0 collide, 0 empty. It is replaced wholesale on the next import, but
   between the fold and that import every one of those 75 loves reads as
@@ -60,7 +87,15 @@ Gate it the way `regroup_if_stale` gates `regroup`: a `MATCH_FOLD` version in
 `settings`, sibling to `ALBUM_FOLD`, bumped whenever the fold changes what it
 folds together. A marker rather than a migration, for the reason `FOLD_VERSION`
 gives — the pass reads every play, and the transaction before the window is
-shown is not where that belongs. `resolve` runs after it.
+shown is not where that belongs.
+
+**The pass runs `resolve` itself.** Nothing spawns `resolve` at launch — its
+callers are the three scan entry points, the import, a tag write and one
+command — so a backfill that stopped at the keys would leave the library
+unlinked until the user next scanned or imported. `resolve` runs after the
+rewrite and before the marker is set, so a failure in either retries on the
+next launch. The thread is `lib.rs`'s `regroup_albums` in shape, and takes no
+`ScanLock` for that function's reason.
 
 ## The cost
 
@@ -74,6 +109,8 @@ artist used as the title:
 - Spiritual Front `(Useless.)`, `(Useless..)` and `(Useless...)`, three tracks
   on *Nihilist Cocktails for Calypso Inferno*.
 
+Both keep letters or digits, so the empty-side fallback does not reach them.
+
 Neither loses a play. One key naming several tracks is already routine — the
 album copy and the compilation copy — and `resolve`'s tiebreak picks the same
 one every run. The plays land on a sibling track of the same album instead of
@@ -82,13 +119,18 @@ plays.
 
 ## Verification
 
-- Unit tests over the four causes above, at both `match_key` sites: the
-  apostrophe pair, the dash pair, the NFC/NFD pair, and a diacritic pair.
+- Unit tests over the four causes: the apostrophe pair, the dash pair, the
+  NFC/NFD pair, and a diacritic pair, each on both the artist and the title
+  side.
+- `Song (Feat. Guest)` still folds onto `Song`, which pins the order against
+  `decompose`.
+- `!!!` and `?` still produce a non-empty key and still link.
 - The existing `(Live)` / `(Remastered)` assertions still pass.
 - The backfill is idempotent — running it twice moves nothing the second time,
   which is what `resolve`'s own tests assert of it.
 - A collision on `idx_plays_identity` during the backfill drops one row and
   finishes, rather than aborting the pass.
+- A `lastfm_loved` key survives the in-place fold with its `SEPARATOR` intact.
 
 `docs/knowledge/data-model.md` describes `match_key` as "lowercase, collapsed
 whitespace, a trailing `(feat. …)` dropped, nothing else". Update it, and the
