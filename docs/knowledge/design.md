@@ -140,7 +140,18 @@ how a UA style gets reset.
 
 Shadow still draws two things the sheet has no quarrel with: the play button's
 halo and the cover art's hairline ring, both now square. What the rule reaches
-is corners, not depth.
+is corners, not depth. A dialog has a third, `--shadow-dialog` — the sheet's own
+`0 12px 32px`, heavier than the `--shadow` every menu and popup casts, and the
+only thing besides a hairline edge separating a square box from the window
+behind it.
+
+**A dialog's regions are divided by 2px of `--rule`**, under its header and
+above its footer. That rule is what the sheet has instead of a card, so it is
+its own token rather than a second use of `--menu-border`: on dark the two are
+the same colour, and on light the sheet draws the rule at `.4` of ink against
+the edge's `.2`. It is a separator rather than part of a control, so WCAG
+1.4.11 does not reach it and nothing asserts a ratio on the token; the
+appearance suite measures the composited line instead.
 
 ## Type
 

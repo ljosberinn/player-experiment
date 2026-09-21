@@ -1,5 +1,12 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
+import { Button } from "../../../components/primitives/Button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from "../../../components/primitives/Dialog";
 import { Select } from "../../../components/primitives/Select";
 import { statsAlbumGroup } from "../../../ipc";
 import { useStatsStore } from "../store";
@@ -76,113 +83,95 @@ export function AlbumLinkDialog({
   const neighbour = others.find((other) => other.heading === merging);
 
   return (
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
+    <Dialog
+      onClose={onClose}
+      onSubmit={() => {
+        const wanted = title.trim();
+        if (wanted !== "" && !saving && members.length > 0) {
+          void attempt(
+            members.map((member) => member.album),
+            wanted,
+            wanted !== heading,
+          );
         }
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup
-          className="modal"
-          render={
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const wanted = title.trim();
-                if (wanted !== "" && !saving && members.length > 0) {
-                  void attempt(
-                    members.map((member) => member.album),
-                    wanted,
-                    wanted !== heading,
-                  );
-                }
-              }}
-            />
-          }
-        >
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>How this album is grouped</Dialog.Title>
+      <DialogHeader title="How this album is grouped" />
 
-          <label className="modal-field" htmlFor={titleId}>
-            Shown as
-            <input
-              id={titleId}
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
+      <DialogBody>
+        <label className="dialog-field" htmlFor={titleId}>
+          Shown as
+          <input
+            id={titleId}
+            type="text"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </label>
+
+        {members.length > 0 && (
+          <ul className="dialog-list">
+            {members.map((member) => (
+              <li key={member.album}>
+                <span className="dialog-list-label">{member.album}</span>
+                <span className="dialog-list-value">{member.plays.toLocaleString()}</span>
+                {/* The last spelling has nothing to be separated from. */}
+                <Button
+                  onClick={() => void attempt([member.album], member.album, false)}
+                  disabled={saving || members.length === 1}
+                >
+                  Separate
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {others.length > 0 && (
+          <label className="dialog-field" htmlFor={mergeId}>
+            Merge in
+            <Select
+              id={mergeId}
+              value={merging}
+              options={[
+                { value: "", label: "Nothing — this album stands alone" },
+                ...others.map((other) => ({
+                  value: other.heading,
+                  label: `${other.heading} (${other.plays.toLocaleString()})`,
+                })),
+              ]}
+              onChange={setMerging}
             />
           </label>
+        )}
 
-          {members.length > 0 && (
-            <ul className="modal-list">
-              {members.map((member) => (
-                <li key={member.album}>
-                  <span className="modal-list-label">{member.album}</span>
-                  <span className="modal-list-value">{member.plays.toLocaleString()}</span>
-                  {/* The last spelling has nothing to be separated from. */}
-                  <button
-                    type="button"
-                    onClick={() => void attempt([member.album], member.album, false)}
-                    disabled={saving || members.length === 1}
-                  >
-                    Separate
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+        {refusal !== null && (
+          <p className="dialog-summary dialog-refusal" role="alert">
+            {refusal}
+          </p>
+        )}
+      </DialogBody>
 
-          {others.length > 0 && (
-            <label className="modal-field" htmlFor={mergeId}>
-              Merge in
-              <Select
-                id={mergeId}
-                value={merging}
-                options={[
-                  { value: "", label: "Nothing — this album stands alone" },
-                  ...others.map((other) => ({
-                    value: other.heading,
-                    label: `${other.heading} (${other.plays.toLocaleString()})`,
-                  })),
-                ]}
-                onChange={setMerging}
-              />
-            </label>
-          )}
-
-          {refusal !== null && (
-            <p className="modal-summary modal-refusal" role="alert">
-              {refusal}
-            </p>
-          )}
-
-          <div className="modal-actions">
-            <Dialog.Close render={<button type="button" />}>Cancel</Dialog.Close>
-            <button
-              type="button"
-              onClick={() => {
-                if (neighbour !== undefined) {
-                  void attempt(neighbour.albums, heading, false);
-                }
-              }}
-              disabled={saving || neighbour === undefined}
-            >
-              Merge
-            </button>
-            <button
-              type="submit"
-              className="primary"
-              disabled={saving || title.trim() === "" || members.length === 0}
-            >
-              Save
-            </button>
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <DialogFooter>
+        <DialogClose>Cancel</DialogClose>
+        <Button
+          onClick={() => {
+            if (neighbour !== undefined) {
+              void attempt(neighbour.albums, heading, false);
+            }
+          }}
+          disabled={saving || neighbour === undefined}
+        >
+          Merge
+        </Button>
+        <Button
+          kind="primary"
+          type="submit"
+          disabled={saving || title.trim() === "" || members.length === 0}
+        >
+          Save
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

@@ -8,9 +8,10 @@
    decision. `primitives.css` above is bare element selectors, which a class
    here would win over at equal specificity - so it has to come first.
    `app.css` below is the app's own regions, which have to win over a
-   primitive they wrap: `.modal button` is two components deep and knows
-   something `.button` cannot. A primitive states the drawing; a region
-   states the exception.
+   primitive they wrap: a control disabled *in place to be read* is drawn
+   differently from one disabled because it cannot be used yet, and only the
+   region it sits in knows which it is. A primitive states the drawing; a
+   region states the exception.
 
    One file rather than one per primitive. The classes are global - CSS
    Modules were declined, see conventions - so a file boundary buys no
@@ -112,6 +113,28 @@
   background: var(--accent-veil-strong);
 }
 
+/* The one place a colour carries meaning rather than decoration, and the one
+   kind the sheet does not draw: a yes that cannot be taken back. `--danger` is
+   the red for *text* that reports something; this is the heavier one, which
+   exists to be filled. */
+.button.destructive {
+  background: var(--destructive);
+  border-color: var(--destructive);
+  color: var(--on-danger);
+}
+
+.button.destructive:hover {
+  background: var(--close-hover);
+  border-color: var(--close-hover);
+}
+
+/* The same problem the primary has: the global ring is `--accent`, and an
+   inset orange ring on a red fill is two warm colours arguing. Its own
+   foreground is the only one guaranteed to carry on it. */
+.button.destructive:focus-visible {
+  outline-color: var(--on-danger);
+}
+
 /* Drawn as a secondary whatever kind it was asked for, which is what the
    sheet's own row shows: a disabled primary that kept its fill still reads as
    the one thing on the surface you are meant to press. */
@@ -149,7 +172,7 @@
   cursor: default;
 }
 
-.icon-button.dialog {
+.icon-button.in-dialog {
   width: 36px;
   height: 36px;
 }
@@ -713,4 +736,155 @@
 
 .slider[data-disabled] {
   opacity: 0.45;
+}
+
+/* ---------- 06 · dialogs ---------- */
+
+/* Only the dim layer. It used to centre the dialog as its flex child, which
+   stopped being true in phase 24: Base UI renders the backdrop and the popup
+   as siblings inside the portal, so a dialog that relies on its parent for
+   position lands in normal flow at the end of the body - below the footer,
+   which is exactly where it went. */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--scrim);
+}
+
+/* The box, and nothing that is inside it.
+
+   No padding: each region below pads itself, because a paned dialog's header
+   keeps the 18px edge and its body gives it up so a column can reach the
+   sides. `--menu-border` rather than `--chrome-border`, which is the edge the
+   eight dialogs wore until 113 and is a step lighter than the sheet's. */
+.dialog {
+  /* Positions itself, and must: nothing above it in the tree does. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  width: min(912px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  border: 1px solid var(--menu-border);
+  background: var(--chrome);
+  box-shadow: var(--shadow-dialog);
+}
+
+/**
+ * A dialog that keeps its size while its contents change.
+ *
+ * `.dialog` alone is a scroller with a maximum, so every state it passes
+ * through is a different height - and it is centred, so both edges move under
+ * whatever the pointer is resting on. A paned dialog takes a `height` from its
+ * variant instead, and only `.dialog-body` scrolls: the header above it and
+ * the actions below it stay where they are.
+ *
+ * Opt-in rather than a change to `.dialog`, which eight dialogs wear - the six
+ * that are not paned still need `overflow: auto` to be scrollable at all.
+ */
+.dialog.paned {
+  overflow: hidden;
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+}
+
+/* A flex item's automatic minimum is its content, which is what makes an
+   `overflow-y: auto` child of a column flex refuse to shrink. */
+.dialog.paned > .dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Nothing but the body gives way when the body is full. */
+.dialog.paned > :not(.dialog-body) {
+  flex: none;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex: none;
+  padding: 18px 18px 12px;
+  border-bottom: 2px solid var(--rule);
+}
+
+/* Two pixels off the top, and the caption beside it is why: the paned form
+   carries two things on one baseline, and the sheet tightens the header that
+   has to hold both. */
+.dialog.paned > .dialog-header {
+  padding: 16px 18px 12px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.dialog.paned > .dialog-header h2 {
+  font-size: 16px;
+}
+
+/* What the dialog is about, beside what it is called. Muted and light where
+   the title is ink and 800, so the two read as a line rather than as two
+   headings. */
+.dialog-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px 18px;
+  border-top: 2px solid var(--rule);
+}
+
+/* The body has already given the sides up, so the footer keeps the edge on
+   its own and drops the extra step at the bottom the unpaned form has. */
+.dialog.paned > .dialog-footer {
+  padding: 12px 18px;
+}
+
+/* Drawn whether or not it holds anything: the row is `space-between`, and
+   without a first child the actions would swing left the moment a dialog has
+   nothing to put here. */
+.dialog-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* The count a dialog has to state - "2 conditions · 116 songs match". Smaller
+   than any label in the body: it is the footer's own note about what the
+   actions beside it are going to act on. */
+.dialog-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1;
 }

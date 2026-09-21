@@ -1,6 +1,14 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useId, useRef, useState } from "react";
+import { Button } from "../../components/primitives/Button";
 import { Checkbox } from "../../components/primitives/Checkbox";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  DialogStatus,
+} from "../../components/primitives/Dialog";
 import { Select } from "../../components/primitives/Select";
 import { TagCombobox } from "../../components/ui/TagCombobox";
 import type {
@@ -118,65 +126,51 @@ export function SmartPlaylistEditor({
     // guess which elements to leave alone. That matters more here - the tree
     // is full of selects and buttons, which is precisely the list
     // `useDialogKeys` was maintaining by hand.
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          onCancel();
+    <Dialog
+      onClose={onCancel}
+      onSubmit={() => {
+        if (canSave) {
+          onSave(draftName.trim(), draft, draftOrder);
         }
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup
-          className="modal"
-          render={
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (canSave) {
-                  onSave(draftName.trim(), draft, draftOrder);
-                }
-              }}
-            />
-          }
-        >
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>{title}</Dialog.Title>
+      <DialogHeader title={title} />
 
-          <label className="modal-field" htmlFor={nameId}>
-            Name
-            <input
-              id={nameId}
-              value={draftName}
-              onChange={(event) => changeName(event.currentTarget.value)}
-            />
-          </label>
+      <DialogBody>
+        <label className="dialog-field" htmlFor={nameId}>
+          Name
+          <input
+            id={nameId}
+            value={draftName}
+            onChange={(event) => changeName(event.currentTarget.value)}
+          />
+        </label>
 
-          <GroupEditor group={draft} path={[]} root onChange={changeDraft} />
+        <GroupEditor group={draft} path={[]} root onChange={changeDraft} />
 
-          {/* Once, under the rules, rather than beside every field dropdown:
-              the reason is the same for all of them and a disabled option
-              cannot carry its own explanation. */}
-          {lovedUnavailable === null ? null : <p className="filter-note">{lovedUnavailable}</p>}
+        {/* Once, under the rules, rather than beside every field dropdown:
+            the reason is the same for all of them and a disabled option
+            cannot carry its own explanation. */}
+        {lovedUnavailable === null ? null : <p className="filter-note">{lovedUnavailable}</p>}
 
-          <OrderEditor order={draftOrder} onChange={setDraftOrder} />
+        <OrderEditor order={draftOrder} onChange={setDraftOrder} />
+      </DialogBody>
 
-          <p className="modal-summary">
+      <DialogFooter
+        lead={
+          <DialogStatus>
             {countRules(draft) === 0
               ? "No conditions yet — this playlist will hold your whole library."
               : `${countRules(draft)} condition${countRules(draft) === 1 ? "" : "s"}.`}
-          </p>
-
-          <div className="modal-actions">
-            <Dialog.Close render={<button type="button" />}>Cancel</Dialog.Close>
-            <button type="submit" className="primary" disabled={!canSave}>
-              Save
-            </button>
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </DialogStatus>
+        }
+      >
+        <DialogClose>Cancel</DialogClose>
+        <Button kind="primary" type="submit" disabled={!canSave}>
+          Save
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

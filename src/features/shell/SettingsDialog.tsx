@@ -1,7 +1,12 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
 import { useCallback, useEffect, useState } from "react";
 import { Checkbox } from "../../components/primitives/Checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from "../../components/primitives/Dialog";
 import { Select } from "../../components/primitives/Select";
 import { revealMainLog } from "../../ipc";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
@@ -28,16 +33,16 @@ const CATEGORIES: { value: SettingsCategory; label: string }[] = [
  * Settings, reachable from Edit ▸ Settings… and, opened on Online, from
  * Account ▸ Connect to last.fm…
  *
- * `Dialog` rather than `AlertDialog`: nothing here is a decision that cannot be
- * taken back, so clicking the backdrop to leave is the right way out. The
- * opposite choice - and the reason it is worth stating - is the crash notice,
- * which is an `AlertDialog` precisely because it must be acknowledged.
+ * An ordinary dialog rather than an alert: nothing here is a decision that
+ * cannot be taken back, so clicking the backdrop to leave is the right way
+ * out. The opposite choice - and the reason it is worth stating - is the crash
+ * notice, which is an alert precisely because it must be acknowledged.
  *
  * A rail of categories beside the one that is open, in order of how far each
  * reaches: how the app looks, what it does to the library on its own, what
  * leaves the machine, and the one row that is not a preference at all. The
  * popup is the `Tabs.Root` so that the rail and the open panel can both be its
- * direct children - the panel is the paned dialog's `.modal-body`, and only
+ * direct children - the panel is the paned dialog's `DialogBody`, and only
  * one is mounted at a time, so switching category starts it at the top.
  *
  * Interface zoom is the same control the status bar carries, deliberately: the
@@ -93,133 +98,122 @@ export function SettingsDialog({
   };
 
   return (
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
+    <Dialog
+      paned
+      variant="settings"
+      onClose={onClose}
+      render={<Tabs.Root orientation="vertical" defaultValue={category} />}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup
-          className="modal paned settings"
-          render={<Tabs.Root orientation="vertical" defaultValue={category} />}
-        >
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>Settings</Dialog.Title>
+      <DialogHeader title="Settings" />
 
-          <Tabs.List className="settings-rail">
-            {CATEGORIES.map(({ value, label }) => (
-              <Tabs.Tab key={value} value={value} className="settings-tab">
-                {label}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
+      <Tabs.List className="settings-rail">
+        {CATEGORIES.map(({ value, label }) => (
+          <Tabs.Tab key={value} value={value} className="settings-tab">
+            {label}
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
 
-          <Tabs.Panel value="appearance" className="modal-body settings-pane">
-            <h3>Appearance</h3>
+      <Tabs.Panel value="appearance" className="dialog-body settings-pane">
+        <h3>Appearance</h3>
 
-            <div className="settings-row">
-              <span>Interface Zoom</span>
-              {/* No group label: each button already says what it does, and a
+        <div className="settings-row">
+          <span>Interface Zoom</span>
+          {/* No group label: each button already says what it does, and a
                   plain span cannot carry one without inventing a role for it. */}
-              <span className="statusbar-zoom">
-                <button
-                  type="button"
-                  aria-label="Zoom out"
-                  disabled={factor <= MIN_ZOOM}
-                  onClick={() => void step(-1)}
-                >
-                  −
-                </button>
-                <span className="statusbar-zoom-value" aria-live="polite">
-                  {formatZoom(factor)}
-                </span>
-                <button
-                  type="button"
-                  aria-label="Zoom in"
-                  disabled={factor >= MAX_ZOOM}
-                  onClick={() => void step(1)}
-                >
-                  +
-                </button>
-              </span>
-            </div>
+          <span className="statusbar-zoom">
+            <button
+              type="button"
+              aria-label="Zoom out"
+              disabled={factor <= MIN_ZOOM}
+              onClick={() => void step(-1)}
+            >
+              −
+            </button>
+            <span className="statusbar-zoom-value" aria-live="polite">
+              {formatZoom(factor)}
+            </span>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              disabled={factor >= MAX_ZOOM}
+              onClick={() => void step(1)}
+            >
+              +
+            </button>
+          </span>
+        </div>
 
-            {/* Three values rather than a switch, because "System" is one of
+        {/* Three values rather than a switch, because "System" is one of
                 them: a two-state control could not say "follow the OS" and
                 would have no way back to it once touched. */}
-            <div className="settings-row">
-              <label htmlFor="theme">Theme</label>
-              <Select
-                id="theme"
-                value={themePreference}
-                options={THEME_PREFERENCES.map((preference) => ({
-                  value: preference,
-                  label: THEME_LABELS[preference],
-                }))}
-                onChange={(value) => void setTheme(value)}
-              />
-            </div>
+        <div className="settings-row">
+          <label htmlFor="theme">Theme</label>
+          <Select
+            id="theme"
+            value={themePreference}
+            options={THEME_PREFERENCES.map((preference) => ({
+              value: preference,
+              label: THEME_LABELS[preference],
+            }))}
+            onChange={(value) => void setTheme(value)}
+          />
+        </div>
 
-            {/* A checkbox rather than a switch: the row is a preference in a
+        {/* A checkbox rather than a switch: the row is a preference in a
                 dialog, and the sheet's switch is for a setting that takes
                 effect as it is thrown. The label stays at the far left of the
                 row, so the control is named by `id` rather than by wrapping
                 it. */}
-            <div className="settings-row">
-              <label htmlFor="dynamic-background">Colour From Album Art</label>
-              <Checkbox
-                id="dynamic-background"
-                checked={dynamicBackground}
-                onChange={(checked) => void setDynamicBackground(checked)}
-              />
-            </div>
-          </Tabs.Panel>
+        <div className="settings-row">
+          <label htmlFor="dynamic-background">Colour From Album Art</label>
+          <Checkbox
+            id="dynamic-background"
+            checked={dynamicBackground}
+            onChange={(checked) => void setDynamicBackground(checked)}
+          />
+        </div>
+      </Tabs.Panel>
 
-          <Tabs.Panel value="library" className="modal-body settings-pane">
-            <h3>Library</h3>
-            <LibraryFolderSettings onLockChange={lock} />
-            <WatchFolderSettings lockedRoot={lockedRoot} />
-          </Tabs.Panel>
+      <Tabs.Panel value="library" className="dialog-body settings-pane">
+        <h3>Library</h3>
+        <LibraryFolderSettings onLockChange={lock} />
+        <WatchFolderSettings lockedRoot={lockedRoot} />
+      </Tabs.Panel>
 
-          {/* The lookup is here rather than under Library, beside the other
+      {/* The lookup is here rather than under Library, beside the other
               things the app does to the library unasked, because it is the one
               of them that also leaves the machine. */}
-          <Tabs.Panel value="online" className="modal-body settings-pane">
-            <h3>Online</h3>
-            <div className="settings-row">
-              <label htmlFor="unattended-lookup">Look Up Releases Online</label>
-              <Checkbox
-                id="unattended-lookup"
-                checked={unattendedLookup}
-                onChange={(checked) => void setUnattendedLookup(checked)}
-              />
-            </div>
-            <LastfmSettings />
-          </Tabs.Panel>
+      <Tabs.Panel value="online" className="dialog-body settings-pane">
+        <h3>Online</h3>
+        <div className="settings-row">
+          <label htmlFor="unattended-lookup">Look Up Releases Online</label>
+          <Checkbox
+            id="unattended-lookup"
+            checked={unattendedLookup}
+            onChange={(checked) => void setUnattendedLookup(checked)}
+          />
+        </div>
+        <LastfmSettings />
+      </Tabs.Panel>
 
-          {/* The one row that is not a preference: it opens the file every
+      {/* The one row that is not a preference: it opens the file every
               backend operation is written down in. Settings is where somebody
               already goes when the app has done something they cannot account
               for, and a log nobody can find is not one. */}
-          <Tabs.Panel value="about" className="modal-body settings-pane">
-            <h3>About</h3>
-            <div className="settings-row">
-              <span>Activity Log</span>
-              <button type="button" onClick={() => void showLog()}>
-                Show Log File
-              </button>
-            </div>
-          </Tabs.Panel>
+      <Tabs.Panel value="about" className="dialog-body settings-pane">
+        <h3>About</h3>
+        <div className="settings-row">
+          <span>Activity Log</span>
+          <button type="button" onClick={() => void showLog()}>
+            Show Log File
+          </button>
+        </div>
+      </Tabs.Panel>
 
-          <div className="modal-actions">
-            <Dialog.Close render={<button type="button" className="primary" />}>Done</Dialog.Close>
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <DialogFooter>
+        <DialogClose kind="primary">Done</DialogClose>
+      </DialogFooter>
+    </Dialog>
   );
 }

@@ -1,5 +1,12 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
+import { Button } from "../../../components/primitives/Button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from "../../../components/primitives/Dialog";
 import { GenreCombobox } from "../../../components/ui/GenreCombobox";
 import { useStatsStore } from "../store";
 
@@ -57,72 +64,55 @@ export function GenreOverrideDialog({
   };
 
   return (
-    <Dialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
+    <Dialog
+      onClose={onClose}
+      onSubmit={() => {
+        if (label.trim() !== "" && !saving) {
+          // An empty parent is `null`, not `""`: the first is "this genre is a
+          // root" and the second is a label nothing knows.
+          void attempt(() =>
+            setOverride(label.trim(), parent.trim() === "" ? null : parent.trim()),
+          );
         }
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup
-          className="modal"
-          render={
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (label.trim() !== "" && !saving) {
-                  // An empty parent is `null`, not `""`: the first is "this
-                  // genre is a root" and the second is a label nothing knows.
-                  void attempt(() =>
-                    setOverride(label.trim(), parent.trim() === "" ? null : parent.trim()),
-                  );
-                }
-              }}
-            />
-          }
+      <DialogHeader title="Where this genre belongs" />
+
+      <DialogBody>
+        <label className="dialog-field" htmlFor={labelId}>
+          Genre
+          <GenreCombobox id={labelId} value={label} onChange={setLabel} />
+        </label>
+
+        <label className="dialog-field" htmlFor={parentId}>
+          Belongs under
+          <GenreCombobox
+            id={parentId}
+            value={parent}
+            placeholder="Nothing — this genre is a root"
+            onChange={setParent}
+          />
+        </label>
+
+        {refusal !== null && (
+          <p className="dialog-summary dialog-refusal" role="alert">
+            {refusal}
+          </p>
+        )}
+      </DialogBody>
+
+      <DialogFooter>
+        <DialogClose>Cancel</DialogClose>
+        <Button
+          onClick={() => void attempt(() => clearOverride(label.trim()))}
+          disabled={saving || label.trim() === ""}
         >
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <Dialog.Title render={<h2 />}>Where this genre belongs</Dialog.Title>
-
-          <label className="modal-field" htmlFor={labelId}>
-            Genre
-            <GenreCombobox id={labelId} value={label} onChange={setLabel} />
-          </label>
-
-          <label className="modal-field" htmlFor={parentId}>
-            Belongs under
-            <GenreCombobox
-              id={parentId}
-              value={parent}
-              placeholder="Nothing — this genre is a root"
-              onChange={setParent}
-            />
-          </label>
-
-          {refusal !== null && (
-            <p className="modal-summary modal-refusal" role="alert">
-              {refusal}
-            </p>
-          )}
-
-          <div className="modal-actions">
-            <Dialog.Close render={<button type="button" />}>Cancel</Dialog.Close>
-            <button
-              type="button"
-              onClick={() => void attempt(() => clearOverride(label.trim()))}
-              disabled={saving || label.trim() === ""}
-            >
-              Forget Correction
-            </button>
-            <button type="submit" className="primary" disabled={saving || label.trim() === ""}>
-              Save
-            </button>
-          </div>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+          Forget Correction
+        </Button>
+        <Button kind="primary" type="submit" disabled={saving || label.trim() === ""}>
+          Save
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

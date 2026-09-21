@@ -53,10 +53,16 @@ shell stays governed by the old file until the library covers it.
   This reversed phase 24's stop clause on the native select — an OS popup
   draws in the OS's colours, which is the wrong kind of native once the
   controls beside it are drawn and there are two grounds.
-- **The button primitive exists but nothing uses it.** Every region still
-  styles its own; `.window-buttons`, `.repeat-button`, `.link-button`,
-  `.history-button`, `.modal button` are unrelated rules until their own issue
-  migrates them.
+- **Section 06 is in.** Done in 113: `Dialog` over both Base UI roots, with
+  every one of the eight dialogs migrated and `app.css`'s `.modal` block gone.
+  The classes are `.dialog*`; `.dialog.lookup`, `.dialog.settings` and
+  `.dialog.confirm` are all that is left in `app.css`, and a guard fails any of
+  them that restates the edge, the inset or the shadow. `--rule`,
+  `--shadow-dialog` and `--field-disabled` landed with it.
+- **The button primitive is now what a dialog's actions are.** Elsewhere every
+  region still styles its own; `.window-buttons`, `.repeat-button`,
+  `.link-button` and `.history-button` are unrelated rules until their own
+  issue migrates them.
 - **Track list.** 3f (grouped by release, 168px art gutter, footer total row) is
   marked *Selected* and is a layout the Releases view does not have.
 - **Titlebar.** `decorations: false` and a drawn 36px bar. The design assumes
@@ -78,7 +84,7 @@ Primitives the sheet specifies, against what exists:
 
 | Primitive | Today |
 | --- | --- |
-| `Button` (primary / secondary / ghost / disabled) | **done, 110** |
+| `Button` (primary / secondary / ghost / disabled) | **done, 110**; `destructive` added in 113 |
 | `IconButton` (32px toolbar, 36px dialog, toggled) | **done, 110** |
 | `Tag` (four tones), `Count` | **done, 110** — the sheet's tag and badge are one drawing, so one component |
 | `Checkbox`, `Radio`, `Switch` | **done, 111** — `Switch` is Base UI, the other two draw over the native element |
@@ -88,7 +94,7 @@ Primitives the sheet specifies, against what exists:
 | `FilterBar`, `FilterToken` | `.stats-filter` |
 | `Leaderboard`, `Heatmap`, `Streak` | `charts/BarList`, `charts/Heatmap` |
 | `Menu`, `MenuItem`, `MenuSeparator` | `ui/ContextMenu` (Base UI, close) |
-| `Dialog` header / body / footer | `.modal`, per-dialog |
+| `Dialog` header / body / footer | **done, 113** — all eight dialogs |
 | `TaskLine`, `Skeleton` | `.sidebar-task`, ad-hoc |
 
 Base UI stays underneath the ones that need behaviour (menu, dialog, slider,
@@ -114,7 +120,8 @@ Foundation first, then primitives, then the surfaces built out of them.
 
 107 Archivo ─┐
 108 Grounds ─┼─→ 110 Buttons ─┐
-109 Radius ──┘   111 Controls ┴─→ 113 Dialog chrome ─→ 114 Track list
+109 Radius ──┘   111 Controls ┴─→ 113 Dialog chrome ─→ 113b Smart playlist editor
+                                                       114 Track list
                                                        115 Stat tiles
                                                        116 Streaks etc.
                                                        117 Menu + task line
@@ -124,7 +131,12 @@ Foundation first, then primitives, then the surfaces built out of them.
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 and 111 with them.
-114 through 118 are independent of each other once 113 has landed.
+113b through 118 are independent of each other once 113 has landed.
+
+**113 is the chrome and 113b is what one dialog holds.** Section 06 draws both
+in one picture, but the rule grid and the disabled sort row touch nothing the
+other six dialogs share, so they are a second branch stacked on the first
+rather than half of a diff nobody can review.
 
 **111 stacked on 110 rather than branching from main.** Both write
 `library.css` and both add tokens, which is the same two files 107–109 were

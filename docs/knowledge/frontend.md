@@ -286,31 +286,54 @@ absences are what nobody notices coming back — hence the guards in
   - **The caption buttons are the exception** and stay Segoe MDL2 (see
     `.window-buttons` in `styles/app.css`). Those are the OS glyphs; a library X in the
     corner of a Windows title bar reads as a web page.
-- **A dialog that outlives its own content states does not resize.** `.modal` on
-  its own is a scroller with a `max-height`, which is right for a dialog asked
-  once and dismissed. One that is stepped through — the lookup's queue,
-  settings' categories — adds `.modal.paned`: the popup takes a `height` and
-  `overflow: hidden`, and `.modal-body` inside it is the only scroll area, with
+- **Every dialog is `primitives/Dialog`**, which is header, body and footer
+  over one of Base UI's two roots. `role="alert"` picks `AlertDialog` — an
+  alert cannot be dismissed by its backdrop, which is why the delete
+  confirmation and the crash notice are alerts — and everything else is the
+  ordinary `Dialog`. The eight callers import the primitive, never Base UI.
+  - **The box states the chrome and no padding**: `--chrome` over the ground, a
+    `--menu-border` hairline, `--shadow-dialog`. Each region pads itself,
+    because Settings' rail and pane need the hairline between them to run the
+    full height of the row. The header and footer carry the 2px `--rule` that
+    is what the sheet has instead of a card.
+  - A region may say how wide its dialog is or how tall — `.dialog.lookup`
+    states a height, `.dialog.settings` a grid — but the edge, the inset and
+    the shadow are the primitive's, and `App.css.test.ts` fails an `app.css`
+    rule that restates one.
+  - `DialogFooter`'s `lead` is the left-hand slot, and holds one of two things:
+    the action that leaves rather than completes ("Back to queue", ghost), or
+    the count the dialog has to state ("2 conditions · 116 songs match"). Never
+    both — a dialog either has somewhere to go back to or something to tally.
+- **A dialog that outlives its own content states does not resize.** `.dialog`
+  on its own is a scroller with a `max-height`, which is right for a dialog
+  asked once and dismissed. One that is stepped through — the lookup's queue,
+  settings' categories — passes `paned`: the popup takes a `height` and
+  `overflow: hidden`, and `.dialog-body` inside it is the only scroll area, with
   `flex: 1` and the `min-height: 0` beside it that lets a column flex child
   shrink below its content. Everything else is `flex: none` and stays put. A
   second `max-height` scroller inside a paned dialog is the regression;
   `App.css.test.ts` guards it.
   - **Settings lays the same parts out as a grid**, with its rail of categories
-    beside the body. The popup renders as Base UI's `Tabs.Root`, so the
-    `Tabs.List` and the one mounted `Tabs.Panel` — which is the `.modal-body` —
-    are both its children, and switching category mounts a fresh pane at the
-    top. `SettingsDialog` takes the category to open on: Account ▸ Connect to
-    last.fm… opens it on Online.
+    beside the body. The popup renders as Base UI's `Tabs.Root` through the
+    primitive's `render`, so the `Tabs.List` and the one mounted `Tabs.Panel` —
+    which is the `.dialog-body` — are both its children, and switching category
+    mounts a fresh pane at the top. `SettingsDialog` takes the category to open
+    on: Account ▸ Connect to last.fm… opens it on Online.
 - **The component library is `components/primitives/`**, one file per
   component, drawn by `styles/library.css`. What the sheet specifies rather
-  than what a caller wanted: `Button` has three kinds and **at most one
+  than what a caller wanted: `Button` has four kinds and **at most one
   primary per surface**, `IconButton` has three sizes named for the three
   places they belong (32px toolbar, 36px dialog, 20px nudge), and `Tag` has
   four tones with `Count` beside it. The design names a tag and a badge
   separately and draws them identically, so this is one component — the same
   reasoning that folded `--dim` into `--muted`.
-  - Regions migrate onto them one issue at a time; `.modal button` and the
-    rest are still their own rules until theirs lands. See
+  - `destructive` is the one kind the sheet does not draw. It is a yes that
+    cannot be taken back, and it exists because phase 113 took away the
+    `.modal-actions .destructive` rule it used to live in.
+  - **`IconButton`'s dialog size wears `in-dialog`, not `dialog`.** The classes
+    are global, so a 36px button carrying `dialog` would pick up `.dialog`
+    itself — a fixed-position 912px box with a shadow.
+  - Regions migrate onto them one issue at a time. See
     [plans/apex-components.md](../plans/apex-components.md).
 - No hover backgrounds, except window caption buttons, menu items and the two
   button primitives — a row lighting up under a passing pointer reads as a web
@@ -520,7 +543,7 @@ absences are what nobody notices coming back — hence the guards in
 - **It is a fixed box, because a queue reuses it.** `advance` re-enters at
   `stage: "opening"` with no tracks, so a dialog sized by its contents collapsed
   to its shortest state and grew back on every Skip — 270px each way, under the
-  pointer still resting on Skip. `.modal.lookup` states `height: min(720px,
+  pointer still resting on Skip. `.dialog.lookup` states `height: min(720px,
   86vh)`, which is the tallest state it ever reached, so the largest step is
   unchanged and only the short ones grow. Both rows of confirm actions are
   pinned; Back and Apply are not merged into the queue's row, because Skip

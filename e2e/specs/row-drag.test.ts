@@ -255,7 +255,7 @@ describe("dragging rows", () => {
         );
       }, NEW_PLAYLIST_NAME);
       await browser.$("//*[@role='menuitem'][normalize-space(.)='Delete']").click();
-      await browser.$(".modal-actions .destructive").click();
+      await browser.$(".dialog-actions .destructive").click();
       await playlistItem(NEW_PLAYLIST_NAME).waitForExist({ reverse: true, timeout: 10_000 });
     }
 

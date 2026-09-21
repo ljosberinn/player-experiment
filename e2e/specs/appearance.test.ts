@@ -218,8 +218,72 @@ describe("appearance, in the engine that actually lays it out", () => {
         expect(tooFaint).toEqual([]);
       });
 
+      it("separates a dialog's regions with a rule you can see", async () => {
+        // Phase 113 pulled the chrome out of eight dialogs, and the whole of
+        // what replaces a card here is two 2px rules and a shadow - "structure
+        // is rules and alignment, never cards". A rule that composites to
+        // nothing against the fill it is drawn on leaves a dialog whose header
+        // and footer are three paragraphs in a box.
+        //
+        // Measured off the composited stack rather than off `--rule`: it is a
+        // translucent ink on light and a translucent white on dark, so its own
+        // value says nothing about whether it is visible.
+        await openFilterDialog();
+
+        const regions = await browser.execute(() => {
+          const dialogElement = document.querySelector<HTMLElement>(".dialog");
+          if (dialogElement === null) {
+            return null;
+          }
+          const read = (selector: string, side: "Bottom" | "Top") => {
+            const found = dialogElement.querySelector<HTMLElement>(selector);
+            if (found === null) {
+              return null;
+            }
+            const style = getComputedStyle(found);
+            return {
+              width: style.getPropertyValue(`border-${side.toLowerCase()}-width`),
+              colour: style.getPropertyValue(`border${side}Color`),
+            };
+          };
+          return {
+            fill: getComputedStyle(dialogElement).backgroundColor,
+            shadow: getComputedStyle(dialogElement).boxShadow,
+            header: read(".dialog-header", "Bottom"),
+            footer: read(".dialog-footer", "Top"),
+          };
+        });
+
+        expect(regions).not.toBeNull();
+
+        // Collected rather than asserted one at a time, as the field check
+        // above is: `expect` here takes no message, so the list is the failure
+        // message and it reports both rules at once.
+        const wrong = (["header", "footer"] as const)
+          .map((name) => ({ name, rule: regions?.[name] ?? null }))
+          .flatMap(({ name, rule }) => {
+            if (rule === null) {
+              return [`${name}: no rule drawn at all`];
+            }
+            const ratio = contrast(rule.colour, regions?.fill ?? "");
+            if (rule.width !== "2px") {
+              return [`${name}: rule is ${rule.width}, not the sheet's 2px`];
+            }
+            return ratio > 1.3
+              ? []
+              : [`${name}: rule ${rule.colour} on ${regions?.fill} = ${ratio.toFixed(2)}:1`];
+          });
+
+        expect(wrong).toEqual([]);
+
+        // And the box casts the sheet's dialog shadow rather than the menu's,
+        // which is what separates it from the window behind it now that it has
+        // no radius and a hairline edge.
+        expect(regions?.shadow).toContain("12px");
+      });
+
       it("puts a dialog over the app rather than after it", async () => {
-        // The defect: `.modal` relied on its backdrop for centring, Base UI
+        // The defect: `.dialog` relied on its backdrop for centring, Base UI
         // renders the two as siblings, and the dialog landed below the footer -
         // off the bottom of a window that does not scroll.
         await openFilterDialog();

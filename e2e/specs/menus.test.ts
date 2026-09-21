@@ -93,7 +93,7 @@ describe("the menu bar", () => {
       ["About", /Activity Log/],
     ] as const) {
       await browser.$(`//*[@role='tab'][normalize-space()='${category}']`).click();
-      await expect(browser.$(".modal-body")).toHaveText(text);
+      await expect(browser.$(".dialog-body")).toHaveText(text);
       await capture(`settings-${category.toLowerCase()}`);
     }
 

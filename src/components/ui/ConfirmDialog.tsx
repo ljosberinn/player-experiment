@@ -1,13 +1,21 @@
-import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useEffect, useRef } from "react";
+import { Button } from "../primitives/Button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+} from "../primitives/Dialog";
 
 /**
  * A yes/no dialog for an action that cannot be undone.
  *
- * `AlertDialog` rather than `Dialog`, which is the role this component's own
- * prose already claimed: an alert dialog cannot be dismissed by clicking the
- * backdrop, which is the behaviour the hand-rolled version implemented by
- * simply not listening for it.
+ * `role="alert"` rather than the ordinary dialog, which is the role this
+ * component's own prose already claimed: an alert dialog cannot be dismissed
+ * by clicking the backdrop, which is the behaviour the hand-rolled version
+ * implemented by simply not listening for it.
  *
  * Still deliberately not the OS message box. Tauri's `dialog.ask` is a separate
  * ACL-gated plugin call, looks nothing like the rest of the window, and cannot
@@ -43,36 +51,20 @@ export function ConfirmDialog({
   }, []);
 
   return (
-    // Open from the moment it is rendered: the caller decides whether the
-    // question is being asked, so there is no trigger and no internal state.
-    // A close from anywhere - Escape, Cancel - is the caller's `onCancel`.
-    <AlertDialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          onCancel();
-        }
-      }}
-    >
-      <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="modal-backdrop" />
-        <AlertDialog.Popup className="modal confirm" initialFocus={cancelRef}>
-          {/* biome-ignore lint/a11y/useHeadingContent: the heading's content is this component's children, which Base UI puts inside the rendered <h2> - the rule only sees the empty element literal. */}
-          <AlertDialog.Title render={<h2 />}>{title}</AlertDialog.Title>
-          <AlertDialog.Description className="modal-summary">{body}</AlertDialog.Description>
-          <div className="modal-actions">
-            {/* The ref goes on the rendered element rather than on the part:
-                `initialFocus` reads it while the popup is opening, and it has
-                to be pointing at the button by then. */}
-            <AlertDialog.Close render={<button type="button" ref={cancelRef} />}>
-              Cancel
-            </AlertDialog.Close>
-            <button type="button" className="destructive" onClick={onConfirm}>
-              {confirmLabel}
-            </button>
-          </div>
-        </AlertDialog.Popup>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+    <Dialog role="alert" variant="confirm" initialFocus={cancelRef} onClose={onCancel}>
+      <DialogHeader title={title} />
+      <DialogBody>
+        <DialogDescription>{body}</DialogDescription>
+      </DialogBody>
+      <DialogFooter>
+        {/* The ref goes on the rendered button rather than on the part:
+            `initialFocus` reads it while the popup is opening, and it has to
+            be pointing at the element by then. */}
+        <DialogClose ref={cancelRef}>Cancel</DialogClose>
+        <Button kind="destructive" onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

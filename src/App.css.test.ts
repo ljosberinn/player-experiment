@@ -459,8 +459,9 @@ describe("the stylesheet", () => {
     // The split is load-bearing three times over. `primitives.css` is bare
     // element selectors that a component rule of equal specificity would win
     // over, so it has to precede the other two; `library.css` is the
-    // primitives, which a region in `app.css` has to be able to overrule at
-    // equal specificity - `.modal button` knows something `.button` cannot;
+    // primitives, which a region in `app.css` has to be able to overrule -
+    // `.dialog-list .button` sits in a list row and knows a size `.button`
+    // cannot;
     // and `tokens.css` has to precede all of them or every `var()` resolves
     // against nothing. An import reordered by a tidying pass would break the
     // sheet in ways that look like a component bug, so the order is asserted
@@ -878,7 +879,7 @@ describe("the stylesheet", () => {
   it("sizes the tag editor's artwork rather than letting the file decide", () => {
     // Same failure as the strip's thumbnail, somewhere it is worse: an
     // embedded cover can be 3000px square, and drawn at its intrinsic size it
-    // pushes the dialog past `.modal`'s `max-height` and turns it into a
+    // pushes the dialog past `.dialog`'s `max-height` and turns it into a
     // scroll area. The box states its size and crops to it.
     const art = all.find((one) => /(^|\s)\.tag-cover-art$/.test(one.selector));
 
@@ -892,10 +893,10 @@ describe("the stylesheet", () => {
     // The lookup passed through six heights - 154px reading the files, 695px
     // confirming eleven - and it is centred, so every one of them moved both
     // edges under the pointer resting on Skip. The box states a height and
-    // only `.modal-body` scrolls; a second `overflow` anywhere inside is the
+    // only `.dialog-body` scrolls; a second `overflow` anywhere inside is the
     // regression, because then the buttons travel again.
-    const paned = all.find((one) => /(^|\s)\.modal\.paned$/.test(one.selector));
-    const body = all.find((one) => /(^|\s)\.modal\.paned > \.modal-body$/.test(one.selector));
+    const paned = all.find((one) => /(^|\s)\.dialog\.paned$/.test(one.selector));
+    const body = all.find((one) => /(^|\s)\.dialog\.paned > \.dialog-body$/.test(one.selector));
 
     expect(paned?.body).toMatch(/overflow:\s*hidden/);
     // A flex item's automatic minimum is its content, which is what makes an
@@ -904,12 +905,12 @@ describe("the stylesheet", () => {
     expect(body?.body).toMatch(/min-height:\s*0/);
     expect(body?.body).toMatch(/flex:\s*1/);
 
-    const lookup = all.find((one) => /(^|\s)\.modal\.lookup$/.test(one.selector));
+    const lookup = all.find((one) => /(^|\s)\.dialog\.lookup$/.test(one.selector));
 
-    expect(lookup?.body, ".modal.lookup should state a height").toMatch(/[^-]height:\s*min\(/);
+    expect(lookup?.body, ".dialog.lookup should state a height").toMatch(/[^-]height:\s*min\(/);
 
     const inside = all.filter(
-      (one) => /(^|\s)\.lookup[\w-]*$/.test(one.selector) && !one.selector.includes(".modal"),
+      (one) => /(^|\s)\.lookup[\w-]*$/.test(one.selector) && !one.selector.includes(".dialog"),
     );
 
     // Counted, so that a selector this stops matching fails here rather than
@@ -920,13 +921,36 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("keeps the dialog's own chrome out of `app.css`", () => {
+    // The point of pulling the shell out of eight dialogs is that a ninth
+    // cannot quietly draw a different one. A region may say how wide its
+    // dialog is, how tall, and how the things inside it sit - `.dialog.lookup`
+    // states a height, `.dialog.settings` a grid - but the edge, the inset and
+    // the shadow are the primitive's, and a rule here that restates one of
+    // them is the drift this exists to catch.
+    //
+    // `border-*` and `padding-*` on a region *inside* a dialog are none of
+    // this rule's business, so it only looks at selectors that name the box.
+    const chrome = rules(sources[3] ?? "").filter((one) =>
+      /\.dialog(\.[\w-]+)*\s*$/.test(uncommented(one.selector)),
+    );
+
+    // Counted, so that a rename here fails rather than emptying the loop.
+    expect(chrome.length).toBeGreaterThanOrEqual(3);
+    for (const rule of chrome) {
+      expect(rule.body, `${rule.selector} draws chrome the primitive owns`).not.toMatch(
+        /(^|;|\s)(border|padding|box-shadow|background):/,
+      );
+    }
+  });
+
   it("gives Settings one size and one scroller too", () => {
     // A category with eight watch folders is taller than one with two rows,
     // and the rail and Done should not move between them. `overflow: hidden`
     // stays allowed - it is how a long path truncates, not a scroll area.
-    const settings = all.find((one) => /(^|\s)\.modal\.settings$/.test(one.selector));
+    const settings = all.find((one) => /(^|\s)\.dialog\.settings$/.test(one.selector));
 
-    expect(settings?.body, ".modal.settings should state a height").toMatch(/[^-]height:\s*min\(/);
+    expect(settings?.body, ".dialog.settings should state a height").toMatch(/[^-]height:\s*min\(/);
 
     const inside = all.filter((one) => /\.settings-[\w-]+/.test(one.selector));
 
@@ -1020,26 +1044,30 @@ describe("the stylesheet", () => {
   });
 
   it("positions every portalled overlay itself", () => {
-    // The bug this exists for: `.modal` was centred by being a flex child of
-    // `.modal-backdrop`. Base UI renders the two as siblings in a portal, so
+    // The bug this exists for: `.dialog` was centred by being a flex child of
+    // `.dialog-backdrop`. Base UI renders the two as siblings in a portal, so
     // the dialog fell into normal flow at the end of the body and drew below
     // the footer. Nothing could have caught it in a component test - jsdom
     // applies no stylesheet - and the app still passed 630 of them.
     //
     // Anything the app portals to the body has to carry its own position.
-    for (const selector of [".modal", ".modal-backdrop", ".context-positioner", ".drag-badge"]) {
-      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+    //
+    // Matched exactly rather than by suffix: `.icon-button.in-dialog` ends in
+    // a word this list also holds, and a suffix match found *it* instead and
+    // asserted that a 36px square positions itself.
+    for (const selector of [".dialog", ".dialog-backdrop", ".context-positioner", ".drag-badge"]) {
+      const rule = all.find((one) => uncommented(one.selector).trim() === selector);
 
       expect(rule, `${selector} should exist`).toBeDefined();
       expect(rule?.body, `${selector} must position itself`).toMatch(/position:\s*fixed|z-index:/);
     }
 
     // And the dialog has to sit above its own backdrop, not merely somewhere.
-    const modal = all.find((one) => one.selector.trim().endsWith(".modal"));
-    const backdrop = all.find((one) => one.selector.trim().endsWith(".modal-backdrop"));
+    const dialog = all.find((one) => uncommented(one.selector).trim() === ".dialog");
+    const backdrop = all.find((one) => uncommented(one.selector).trim() === ".dialog-backdrop");
     const layer = (body: string | undefined) => Number(/z-index:\s*(\d+)/.exec(body ?? "")?.[1]);
 
-    expect(layer(modal?.body)).toBeGreaterThan(layer(backdrop?.body));
+    expect(layer(dialog?.body)).toBeGreaterThan(layer(backdrop?.body));
   });
 
   it("keeps the drag badge out of the pointer's way", () => {
@@ -1095,12 +1123,12 @@ describe("the stylesheet", () => {
     }
 
     // And the fields must actually use it rather than the chrome divider.
-    // `.modal select` was the other half of this rule until phase 111 drew the
+    // `.dialog select` was the other half of this rule until phase 111 drew the
     // select itself; `.select` in `library.css` is where its edge lives now.
     const named = (selector: string) =>
       all.find((rule) => uncommented(rule.selector).trim() === selector)?.body;
 
-    expect(named(".modal input")).toMatch(/border:[^;]*var\(--field-border\)/);
+    expect(named(".dialog input")).toMatch(/border:[^;]*var\(--field-border\)/);
     expect(named(".select,\n.search-field")).toMatch(/border:[^;]*var\(--field-border\)/);
   });
 
