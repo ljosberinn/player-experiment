@@ -28,9 +28,10 @@ function view(name: string) {
   return browser.$(`//button[contains(@class,'sidebar-item')][normalize-space()='${name}']`);
 }
 
-/** A tile's value, by the label above it. */
-function tile(label: string) {
-  return browser.$(`//dl[@class='stat-tile'][dt[text()='${label}']]/dd[@class='stat-tile-value']`);
+/** A headline figure's value, by the label above it. The Listening tab draws
+ * its four bare counts on the rule and only the qualified three in cells. */
+function figure(label: string) {
+  return browser.$(`//dl[@class='stat-row']/div[dt[text()='${label}']]/dd`);
 }
 
 /**
@@ -67,9 +68,9 @@ describe("the Statistics view", () => {
     await expect(view("Statistics")).toHaveAttribute("aria-current", "page");
     await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Listening");
 
-    // The tiles render before the totals arrive, with an em dash where each
+    // The figures render before the totals arrive, with an em dash where each
     // number goes, so existing proves nothing - the value does.
-    const plays = tile("Plays");
+    const plays = figure("Plays");
     await plays.waitForExist({ timeout: 10_000 });
     await browser.waitUntil(async () => (await plays.getText()) !== "—", {
       timeout: 30_000,
@@ -210,7 +211,7 @@ describe("the Statistics view", () => {
     await tiles.waitForExist({ timeout: 10_000 });
     // The seeded library, through `stats_library_totals` rather than through
     // the count under the table.
-    await expect(browser.$("//dl[@class='stat-tile'][dt[text()='Songs']]")).toBeExisting();
+    await expect(browser.$("//div[@class='stat-tile'][dt[text()='Songs']]")).toBeExisting();
 
     for (const title of [
       "Bitrates",

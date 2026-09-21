@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatDuration, formatLibrarySummary } from "./format";
+import { byteParts, formatBytes, formatDuration, formatLibrarySummary, spanParts } from "./format";
 
 describe("formatDuration", () => {
   it("formats as m:ss with a padded seconds field", () => {
@@ -84,6 +84,23 @@ describe("formatLibrarySummary", () => {
     // size means the scanner recorded none, and "0 MB" beside 237 songs reads
     // as a bug rather than as a fact.
     expect(formatLibrarySummary(237, 3_600_000, 0)).not.toContain("MB");
+  });
+});
+
+describe("spanParts", () => {
+  it("hands back the two halves the joined string is built from", () => {
+    // A figure that draws the unit smaller needs the split, and re-splitting
+    // the joined string would be a parser over our own output.
+    expect(spanParts(69_120_000)).toEqual(["19.2", "hours"]);
+    expect(spanParts(600_000)).toEqual(["10", "minutes"]);
+  });
+});
+
+describe("byteParts", () => {
+  it("hands back the two halves the joined string is built from", () => {
+    expect(byteParts(2_270_000_000)).toEqual(["2.27", "GB"]);
+    expect(byteParts(500_000_000)).toEqual(["500", "MB"]);
+    expect(byteParts(0)).toEqual(["0", "MB"]);
   });
 });
 

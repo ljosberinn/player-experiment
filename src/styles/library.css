@@ -747,6 +747,108 @@
   opacity: 0.45;
 }
 
+/* ---------- 04 · stat rows and tiles ---------- */
+
+/* Two drawings of one idea, and the sheet itself says which figure takes
+   which: the four it draws on the rule carry nothing but a number, and the
+   three it draws in cells each carry a line of prose. So the split is by
+   whether a figure needs qualifying, not by tab or by count.
+
+   Both are one `<dl>` around the whole set - see the components. */
+
+/* Figures on a shared baseline under a rule, no boxes. `grid-auto-flow`
+   rather than the sheet's literal `repeat(4, …)`: it is the same track list
+   for the four the sheet draws, and a row of three or five is still even
+   rather than four tracks with one empty. */
+.stat-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 18px;
+  margin: 0;
+  border-top: 2px solid var(--rule);
+  padding-top: 12px;
+}
+
+.stat-row dt {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.stat-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/* Bordered cells, with the 2px gap over a border colour so an interior edge
+   reads as one rule rather than two abutting borders. */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0;
+  border: 1px solid var(--menu-border);
+  background: var(--menu-border);
+}
+
+.stat-tile {
+  padding: 12px;
+  background: var(--surface);
+}
+
+.stat-tile dt {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.stat-tile-value {
+  margin: 0;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.stat-tile-caption {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* A movement rather than a fact, so it is the one line here the accent is
+   spent on. `--accent-deep` on both grounds: on dark it is the accent. */
+.stat-tile-caption.delta {
+  color: var(--accent-deep);
+}
+
+/* The unit rides on the figure at roughly half its size. Muted on the row,
+   where every unit is a word and the number is the answer; on a tile it is
+   the sheet's per-cent sign, which is part of the figure and drawn as one. */
+.stat-unit {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.stat-tile-value .stat-unit {
+  font-size: 15px;
+  color: inherit;
+}
+
 /* ---------- 06 · dialogs ---------- */
 
 /* Only the dim layer. It used to centre the dialog as its flex child, which

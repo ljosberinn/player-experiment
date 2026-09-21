@@ -2505,30 +2505,6 @@ body:not(:focus-within) .sidebar-row.current {
   pointer-events: none;
 }
 
-.stat-tile {
-  margin: 0;
-  padding: 10px 12px;
-  background: var(--surface);
-}
-
-.stat-tile dt {
-  color: var(--label);
-  font-size: 11px;
-}
-
-.stat-tile-value {
-  margin: 2px 0 0;
-  color: var(--text);
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-tile-secondary {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-
 /* ---------- statistics ---------- */
 
 /* The one view that scrolls as a page rather than as a virtualized list: it is
@@ -2566,19 +2542,27 @@ body:not(:focus-within) .sidebar-row.current {
   border-bottom-color: var(--accent);
 }
 
+/* Section 4b's upper drawing: labelled controls on one rule. Aligned on their
+   bottoms rather than their middles, because a date field and a select are
+   different heights and it is the row of boxes that has to line up. */
 .stats-filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: 14px;
-  padding: 10px 30px;
+  padding: 10px 30px 16px;
+  border-bottom: 2px solid var(--rule);
 }
 
+/* The caption is a bare text node beside the control rather than an element,
+   so it is styled from here - see the component for why it is not a
+   `<label>`. */
 .stats-filter {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--label);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -2621,16 +2605,29 @@ body:not(:focus-within) .sidebar-row.current {
   color: var(--text);
 }
 
+/* 22px down from the filter bar rather than 8px. Both 4a and 4b draw a 2px
+   rule, and in a page that has both they end up one above the other - at the
+   old gap the two read as a single double rule rather than as the end of the
+   controls and the start of the figures. */
 .stats-panels {
-  padding: 8px 30px 20px;
+  padding: 22px 30px 20px;
 }
 
-/* Tracks wide enough for a six-digit count and a caption under it; the row
-   wraps rather than shrinking below that, so a narrow window stacks. */
-.stat-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
+/* The row over the cells, at the gap section 4a draws between them. Its own
+   element rather than two children of `.stats-panels`, whose gap is the one
+   between panels and is a different number. */
+.stat-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Streaks is two figures in a grid the sheet fixes at three columns, and the
+   empty third would be a block of the gap colour. A region overruling the
+   primitive it wraps, which is what this sheet's place in the cascade is for.
+   Section 4c replaces the panel outright. */
+.stats-panel .stat-tiles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* A column of panels rather than a grid: the widths differ by panel - a top
