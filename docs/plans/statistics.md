@@ -332,9 +332,14 @@ virtualized. Rule of three is nowhere near met.
 src/components/charts/
   scales.ts       -- the only file importing d3-scale / d3-shape
   ChartFrame.tsx  -- ResizeObserver measure, axes, empty and loading states
-  Bar.tsx  Line.tsx  Donut.tsx  Heatmap.tsx  Sparkline.tsx  StatTile.tsx
+  Bar.tsx  Line.tsx  Donut.tsx  Heatmap.tsx  Sparkline.tsx
   Tooltip.tsx
 ```
+
+`StatTile` was here too until 115, when section 4a turned one number with its
+name into two drawings and it became `primitives/StatRow` and
+`primitives/StatTiles`. A figure is not a chart, and the library is where the
+sheet specifies it.
 
 `Heatmap` serves the weekday-by-hour grid and the calendar year alike — one
 component, two domains. Colours are tokens only, so the contrast rule holds by

@@ -28,19 +28,31 @@ const YEAR = 365 * DAY;
  * No months: a month has no fixed length, so weeks step straight to years.
  */
 export function formatSpan(totalMs: number): string {
+  const [value, unit] = spanParts(totalMs);
+  return `${value} ${unit}`;
+}
+
+/**
+ * The same span, kept in two pieces.
+ *
+ * A stat figure draws the unit smaller than the number, so it needs the two
+ * apart. Split here rather than at the call site because splitting the joined
+ * string would be a parser over our own output.
+ */
+export function spanParts(totalMs: number): readonly [string, string] {
   if (totalMs < HOUR) {
-    return `${Math.round(totalMs / MINUTE)} minutes`;
+    return [`${Math.round(totalMs / MINUTE)}`, "minutes"];
   }
   if (totalMs < 2 * DAY) {
-    return `${(totalMs / HOUR).toFixed(1)} hours`;
+    return [(totalMs / HOUR).toFixed(1), "hours"];
   }
   if (totalMs < 2 * WEEK) {
-    return `${(totalMs / DAY).toFixed(1)} days`;
+    return [(totalMs / DAY).toFixed(1), "days"];
   }
   if (totalMs < YEAR) {
-    return `${(totalMs / WEEK).toFixed(1)} weeks`;
+    return [(totalMs / WEEK).toFixed(1), "weeks"];
   }
-  return `${(totalMs / YEAR).toFixed(1)} years`;
+  return [(totalMs / YEAR).toFixed(1), "years"];
 }
 
 /**
@@ -79,12 +91,18 @@ export function fileNameOf(path: string): string {
 
 /** Bytes as the human-facing unit, matching the sizes shown in the footer. */
 export function formatBytes(bytes: number): string {
+  const [value, unit] = byteParts(bytes);
+  return `${value} ${unit}`;
+}
+
+/** The same size in two pieces, for the reason {@link spanParts} is. */
+export function byteParts(bytes: number): readonly [string, string] {
   if (bytes <= 0) {
-    return "0 MB";
+    return ["0", "MB"];
   }
   const gb = bytes / 1_000_000_000;
   if (gb >= 1) {
-    return `${gb.toFixed(2)} GB`;
+    return [gb.toFixed(2), "GB"];
   }
-  return `${Math.round(bytes / 1_000_000)} MB`;
+  return [`${Math.round(bytes / 1_000_000)}`, "MB"];
 }

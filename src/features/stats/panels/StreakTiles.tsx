@@ -1,4 +1,4 @@
-import { StatTile } from "../../../components/charts/StatTile";
+import { StatTiles } from "../../../components/primitives/StatTiles";
 import { statsStreaks } from "../../../ipc";
 import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
@@ -17,16 +17,18 @@ export function StreakTiles() {
 
   return (
     <StatsPanel title="Streaks">
-      <div className="stat-tiles">
-        <StatTile label="Current" value={days(data?.current)} />
-        <StatTile
-          label="Longest"
-          value={days(data?.longest)}
-          {...(data?.longestFrom != null && data.longestTo != null
-            ? { secondary: `${localDate(data.longestFrom)} – ${localDate(data.longestTo)}` }
-            : {})}
-        />
-      </div>
+      <StatTiles
+        tiles={[
+          { label: "Current", value: days(data?.current) },
+          {
+            label: "Longest",
+            value: days(data?.longest),
+            ...(data?.longestFrom != null && data.longestTo != null
+              ? { caption: `${localDate(data.longestFrom)} – ${localDate(data.longestTo)}` }
+              : {}),
+          },
+        ]}
+      />
     </StatsPanel>
   );
 }

@@ -968,6 +968,30 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("keeps the stat figures' own drawing out of `app.css`", () => {
+    // Section 4a is where the figures on this app's two stat surfaces are
+    // settled - the sizes, the weights, the rule and the cell edges - and the
+    // Statistics view is the only place either form appears. A rule here that
+    // restated one of them would be a private second drawing that no other
+    // caller of the primitive gets, which is the drift 113 pulled the dialog
+    // shell out of eight dialogs to stop.
+    //
+    // Layout is still the region's: `.stats-panel` narrows the grid to the
+    // two columns Streaks has, because a third empty track would be a block
+    // of the gap colour.
+    const drawn = rules(sources[3] ?? "").filter((one) =>
+      /\.stat-(row|tiles?|unit)\b/.test(uncommented(one.selector)),
+    );
+
+    // Counted, so that a rename here fails rather than emptying the loop.
+    expect(drawn.length).toBeGreaterThanOrEqual(1);
+    for (const rule of drawn) {
+      expect(rule.body, `${rule.selector} draws what the primitive owns`).not.toMatch(
+        /(^|;|\s)(font|font-size|font-weight|color|background|border|padding|letter-spacing):/,
+      );
+    }
+  });
+
   it("gives Settings one size and one scroller too", () => {
     // A category with eight watch folders is taller than one with two rows,
     // and the rail and Done should not move between them. `overflow: hidden`
@@ -1205,6 +1229,7 @@ describe("the stylesheet", () => {
       ".sidebar-count",
       ".song-cell.right",
       ".statusbar-zoom-value",
+      ".stat-row dd",
       ".stat-tile-value",
       ".count",
     ]) {

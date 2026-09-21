@@ -345,6 +345,13 @@ absences are what nobody notices coming back — hence the guards in
   - **`IconButton`'s dialog size wears `in-dialog`, not `dialog`.** The classes
     are global, so a 36px button carrying `dialog` would pick up `.dialog`
     itself — a fixed-position 912px box with a shadow.
+  - **`StatRow` and `StatTiles` take the whole set, not one figure.** Each
+    renders one `<dl>` around all of them, so a grid of six is one group of
+    six pairs rather than twelve unrelated announcements. Which form a figure
+    belongs in is the sheet's own rule: a bare number sits on the row, a
+    number that needs a line of prose takes a cell. A unit rides inside the
+    figure rather than under it — "1.5 years", "68%" — which is why
+    `spanParts` and `byteParts` exist beside `formatSpan` and `formatBytes`.
   - Regions migrate onto them one issue at a time. See
     [plans/apex-components.md](../plans/apex-components.md).
 - No hover backgrounds, except window caption buttons, menu items and the two

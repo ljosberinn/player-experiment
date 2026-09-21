@@ -1,12 +1,17 @@
-import { StatTile } from "../../components/charts/StatTile";
-import { formatSpan } from "../../lib/format";
+import { StatRow } from "../../components/primitives/StatRow";
+import { StatTiles } from "../../components/primitives/StatTiles";
+import { spanParts } from "../../lib/format";
 import { listenTotalsOnce } from "./listenTotals";
 import { useStatsStore } from "./store";
 import { useListenQuery } from "./useListenQuery";
 import { usePanelQuery } from "./usePanelQuery";
 
 /**
- * What you have heard, as six numbers.
+ * What you have heard, as seven numbers in the two forms section 4a draws.
+ *
+ * The split is the sheet's own: the four bare counts sit on the rule, and the
+ * three that need a line of prose under them take the cells. It draws this
+ * tab by name, down to "plays matched to a file".
  *
  * Subscribes to the filters and the drill path itself - `App` and
  * `StatisticsView` must not re-render because a range changed.
@@ -26,32 +31,44 @@ export function ListeningTiles() {
     );
   }
 
+  const spent = totals === null ? null : spanParts(totals.durationMs);
+
   return (
-    <div className="stat-tiles">
-      <StatTile label="Plays" value={count(totals?.plays)} />
-      <StatTile label="Artists" value={count(totals?.artists)} />
-      <StatTile label="Albums" value={count(totals?.albums)} />
-      <StatTile label="Tracks" value={count(totals?.tracks)} />
-      <StatTile
-        label="Listening days"
-        value={count(totals?.days)}
-        {...(totals !== null && totals.firstAt !== null
-          ? { secondary: `since ${localDate(totals.firstAt)}` }
-          : {})}
+    <div className="stat-summary">
+      <StatRow
+        figures={[
+          { label: "Plays", value: count(totals?.plays) },
+          { label: "Artists", value: count(totals?.artists) },
+          { label: "Albums", value: count(totals?.albums) },
+          { label: "Tracks", value: count(totals?.tracks) },
+        ]}
       />
-      <StatTile
-        label="Time spent"
-        value={totals === null ? "—" : formatSpan(totals.durationMs)}
-        // Said rather than implied: an imported scrobble carries no duration,
-        // so this is a sum over the plays that have one.
-        {...(totals !== null && totals.timed < totals.plays
-          ? { secondary: `${share(totals.timed, totals.plays)} of plays timed` }
-          : {})}
-      />
-      <StatTile
-        label="Owned"
-        value={totals === null ? "—" : share(totals.owned, totals.plays)}
-        secondary="plays matched to a file"
+      <StatTiles
+        tiles={[
+          {
+            label: "Listening days",
+            value: count(totals?.days),
+            ...(totals !== null && totals.firstAt !== null
+              ? { caption: `since ${localDate(totals.firstAt)}` }
+              : {}),
+          },
+          {
+            label: "Time spent",
+            value: spent === null ? "—" : spent[0],
+            ...(spent === null ? {} : { unit: spent[1] }),
+            // Said rather than implied: an imported scrobble carries no
+            // duration, so this is a sum over the plays that have one.
+            ...(totals !== null && totals.timed < totals.plays
+              ? { caption: `${share(totals.timed, totals.plays)}% of plays timed` }
+              : {}),
+          },
+          {
+            label: "Owned",
+            value: totals === null ? "—" : share(totals.owned, totals.plays),
+            ...(totals === null ? {} : { unit: "%" }),
+            caption: "plays matched to a file",
+          },
+        ]}
       />
     </div>
   );
@@ -62,8 +79,10 @@ function count(value: number | undefined): string {
   return value === undefined ? "—" : value.toLocaleString();
 }
 
+/** The share as a bare number: the per-cent sign is a unit on the figure and
+ * a written character in the prose, so it is not part of this. */
 function share(part: number, whole: number): string {
-  return whole === 0 ? "—" : `${Math.round((part / whole) * 100)}%`;
+  return whole === 0 ? "0" : `${Math.round((part / whole) * 100)}`;
 }
 
 function localDate(unixSeconds: number): string {

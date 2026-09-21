@@ -64,15 +64,28 @@ shell stays governed by the old file until the library covers it.
   and the sort and cutoff rows drawn as disabled-in-place rather than dimmed.
   `IconButton` gained the sheet's fourth place and the icon registry a
   `remove` glyph, which is what the `✕` text buttons were.
+- **Section 4a is in, and it is not two alternatives.** Done in 115. The row it
+  draws is Plays / Artists / Tracks / Time spent and the cells under it are
+  LISTENING DAYS, OWNED "plays matched to a file", THIS MONTH — that caption is
+  verbatim from `ListeningTiles.tsx`, so 4a is drawing this app's Listening tab
+  rather than offering a choice. The rule it splits on is **prose**: a bare
+  figure sits on the row, a figure that needs a line under it takes a cell.
+- **Section 4b is two alternatives, and that is the asymmetry.** Its selects
+  read `All time` / `Either` / `Either` while its tokens read `last 12 months` /
+  `owned only`. Two forms of one control drawn in one frame contradict each
+  other; two forms carrying different figures, as in 4a, cannot. So 115 took the
+  selects and the token line is [122](../issues/upcoming/122-filter-tokens.md),
+  which has to decide which form the view wears — and what "+ add filter" even
+  opens, given that `StatsFilters` is a closed struct.
 - **The button primitive is now what a dialog's actions are.** Elsewhere every
   region still styles its own; `.window-buttons`, `.repeat-button`,
   `.link-button` and `.history-button` are unrelated rules until their own
   issue migrates them.
-- **Track list.** Section 03 holds one drawing, 3f, and the row treatment 114
-  applies comes from **7a** instead — the type specimen is the only place the
-  sheet draws a playing row. 3f itself is 120, and it replaces the drill-in
-  rather than the cover grid: the Releases view is a tile grid, so "grouped by
-  release" was never a restyling of it.
+- **Track list.** Done in 114. Section 03 holds one drawing, 3f, and the row
+  treatment it applied comes from **7a** instead — the type specimen is the
+  only place the sheet draws a playing row. 3f itself is 120, and it replaces
+  the drill-in rather than the cover grid: the Releases view is a tile grid, so
+  "grouped by release" was never a restyling of it.
 - **Titlebar.** `decorations: false` and a drawn 36px bar. The design assumes
   the OS draws it.
 
@@ -98,8 +111,8 @@ Primitives the sheet specifies, against what exists:
 | `Checkbox`, `Radio`, `Switch` | **done, 111** — `Switch` is Base UI, the other two draw over the native element |
 | `Select`, `SearchField`, `SegmentedControl` | **done, 111** — `Select` is Base UI; the segments are a native radio group |
 | `Slider`, `ProgressBar` | **`Slider` done, 111** (Base UI). `Scrubber` and `VolumeControl` keep the transport's own treatment |
-| `StatRow`, `StatTile` | `charts/StatTile` (close) |
-| `FilterBar`, `FilterToken` | `.stats-filter` |
+| `StatRow`, `StatTiles` | **done, 115** — `charts/StatTile` retired into the two |
+| `FilterBar` | **done, 115** — `.stats-filters`. `FilterToken` is 122 |
 | `Leaderboard`, `Heatmap`, `Streak` | `charts/BarList`, `charts/Heatmap` |
 | `Menu`, `MenuItem`, `MenuSeparator` | `ui/ContextMenu` (Base UI, close) |
 | `Dialog` header / body / footer | **done, 113** — all eight dialogs |
@@ -130,7 +143,7 @@ Foundation first, then primitives, then the surfaces built out of them.
 108 Grounds ─┼─→ 110 Buttons ─┐
 109 Radius ──┘   111 Controls ┴─→ 113 Dialog chrome ─→ 113b Smart playlist editor
                                                        114 Track list row ─→ 120 Grouped release
-                                                       115 Stat tiles
+                                                       115 Stat rows + tiles ─→ 122 Filter tokens
                                                        116 Streaks etc.
                                                        117 Menu + task line
                                                        118 MusicBrainz review
@@ -139,8 +152,13 @@ Foundation first, then primitives, then the surfaces built out of them.
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 and 111 with them.
-113b through 118 are independent of each other once 113 has landed. 113b has
-landed too, off main rather than stacked — 113 was in by the time it started.
+113b through 118 are independent of each other once 113 has landed. 113b, 114
+and 115 have landed too, each off main rather than stacked — 113 was in by the
+time any of them started.
+
+**122 comes after 115 rather than beside it.** Both are section 4b, and the
+question 122 opens — whether the view wears the selects or the tokens — is only
+answerable once the selects are drawn.
 
 **120 is stacked on 114 and is not ready to start.** Both draw a track row, so
 the group's 28px row is the 32px row with two metrics changed rather than a
