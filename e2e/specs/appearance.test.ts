@@ -90,34 +90,25 @@ async function closeSettings(): Promise<void> {
 }
 
 /**
- * Picks a theme in Settings, by driving the change React actually listens for.
+ * Picks a theme in Settings, by clicking it the way a user would.
  *
- * `selectByAttribute` is the obvious call and does not work here: it clicks the
- * `<option>`, and inside WebView2 a closed native `<select>` draws its list as
- * an OS popup rather than as DOM boxes, so the click lands on nothing and the
- * value never moves. No other spec in this suite drives a native select, so
- * there was no working example to copy - it shipped green locally and timed out
- * in CI.
+ * This used to reach past the driver and set the value through
+ * `HTMLSelectElement.prototype`'s own setter. The reason was WebView2: a closed
+ * native `<select>` draws its list as an OS popup rather than as DOM boxes, so
+ * `selectByAttribute`'s click landed on nothing and the value never moved - it
+ * shipped green locally and timed out in CI.
  *
- * The React path itself is covered where it can be covered honestly:
- * `SettingsDialog.test.tsx` selects the option with `userEvent` and asserts the
- * attribute on `<html>`, which is the whole chain minus the driver. What is
- * left for this spec is the half jsdom cannot reach - the write to SQLite and
- * the value coming back - so it sets the value through the prototype's own
- * setter (React tracks the last value it saw on the node, and assigning the
- * property directly is what defeats that) and dispatches the event the change
- * handler is bound to.
+ * Phase 111 drew the select itself, and the list is DOM again. The whole chain
+ * is now clickable, which is both simpler and a stronger test: the previous
+ * version could not have caught a trigger that never opened.
  */
-function choose(value: string): Promise<void> {
-  return browser.execute((wanted: string) => {
-    const select = document.querySelector<HTMLSelectElement>("#theme");
-    if (select === null) {
-      return;
-    }
-    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
-    setter?.call(select, wanted);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  }, value);
+async function chooseTheme(label: string): Promise<void> {
+  await browser.$("#theme").click();
+  await browser.$(`[role='option']=${label}`).click();
+
+  // The popup is animated out rather than removed, so the next click has to
+  // wait for it to stop covering the dialog.
+  await browser.$("[role='listbox']").waitForDisplayed({ timeout: 5000, reverse: true });
 }
 
 /** The computed value of one property, for the first element matching. */
@@ -189,16 +180,26 @@ describe("appearance, in the engine that actually lays it out", () => {
           if (dialogElement === null) {
             return [];
           }
-          return Array.from(dialogElement.querySelectorAll("input, select")).map((field) => {
-            const style = getComputedStyle(field);
-            const parent = field.parentElement;
-            return {
-              tag: field.tagName.toLowerCase(),
-              border: style.borderTopColor,
-              background: style.backgroundColor,
-              behind: parent === null ? "" : getComputedStyle(parent).backgroundColor,
-            };
-          });
+          // `.select` rather than `select`, as of phase 111. The drawn controls
+          // keep a real input behind the drawing - transparent for a checkbox,
+          // clipped to a pixel for a select's form value - and measuring the
+          // edge of something nobody can see says nothing, so anything without
+          // a drawn box of its own is dropped rather than asserted on.
+          return Array.from(dialogElement.querySelectorAll("input, .select"))
+            .filter((field) => {
+              const style = getComputedStyle(field);
+              return style.opacity !== "0" && field.getBoundingClientRect().width > 4;
+            })
+            .map((field) => {
+              const style = getComputedStyle(field);
+              const parent = field.parentElement;
+              return {
+                tag: field.tagName.toLowerCase(),
+                border: style.borderTopColor,
+                background: style.backgroundColor,
+                behind: parent === null ? "" : getComputedStyle(parent).backgroundColor,
+              };
+            });
         });
 
         expect(fields.length).toBeGreaterThan(0);
@@ -609,27 +610,28 @@ describe("appearance, in the engine that actually lays it out", () => {
     // The other half of the theme, and the half the loop above deliberately
     // does not exercise: the loop writes `data-theme` itself, so a store that
     // never wrote the attribute, a preference that never reached SQLite or a
-    // `<select>` wired to nothing would all leave it green.
+    // select wired to nothing would all leave it green.
     const attribute = () =>
       browser.execute(() => document.documentElement.getAttribute("data-theme"));
 
     await openSettings();
 
-    for (const choice of ["dark", "light"]) {
-      await choose(choice);
-      await browser.waitUntil(async () => (await attribute()) === choice, {
+    for (const choice of ["Dark", "Light"]) {
+      await chooseTheme(choice);
+      await browser.waitUntil(async () => (await attribute()) === choice.toLowerCase(), {
         timeout: 5000,
-        timeoutMsg: `choosing ${choice} left the ground at ${await attribute()} with the control reading ${await browser.$("#theme").getValue()}`,
+        timeoutMsg: `choosing ${choice} left the ground at ${await attribute()} with the control reading ${await browser.$("#theme").getText()}`,
       });
     }
 
     // Reopened rather than read from the store: the point is that the choice
     // survived the write and comes back as the selected option, which is what
-    // a restart would show.
+    // a restart would show. Read as text rather than as a value: the trigger
+    // is a button now, and what it holds is the option's label.
     await closeSettings();
     await openSettings();
 
-    await expect(browser.$("#theme")).toHaveValue("light");
+    await expect(browser.$("#theme")).toHaveText("Light");
 
     await closeSettings();
     await clearGround();

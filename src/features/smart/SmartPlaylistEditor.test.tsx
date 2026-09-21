@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type FilterGroup, type SmartOrder, suggestTagValues } from "../../ipc";
+import { choose, offered, offers, select, showing } from "../../test/select";
 import { useLastfmStore } from "../lastfm/store";
 import { emptyFilter, noOrder } from "./filterTree";
 import { SmartPlaylistEditor } from "./SmartPlaylistEditor";
@@ -66,7 +67,7 @@ describe("the Loved field", () => {
     connected();
     open(lovedIs);
 
-    expect(screen.getByRole("combobox", { name: "Condition 1 on Loved" })).toHaveValue("is");
+    expect(showing("Condition 1 on Loved")).toBe("is");
     expect(screen.queryByLabelText("Value for condition 1")).not.toBeInTheDocument();
   });
 
@@ -82,7 +83,7 @@ describe("the Loved field", () => {
   it("cannot be picked on a build with no key, and says so", async () => {
     open(artistIs("Rome"));
 
-    expect(screen.getByRole("option", { name: "Loved" })).toBeDisabled();
+    expect(await offers("Field for condition 1", "Loved")).toBe(false);
     expect(screen.getByText(/carries no last.fm key/)).toBeInTheDocument();
   });
 
@@ -90,7 +91,7 @@ describe("the Loved field", () => {
     useLastfmStore.setState({ configured: true, username: null });
     open(artistIs("Rome"));
 
-    expect(screen.getByRole("option", { name: "Loved" })).toBeDisabled();
+    expect(await offers("Field for condition 1", "Loved")).toBe(false);
     expect(screen.getByText(/Connect a last.fm account/)).toBeInTheDocument();
   });
 
@@ -98,7 +99,7 @@ describe("the Loved field", () => {
     connected();
     open(artistIs("Rome"));
 
-    expect(screen.getByRole("option", { name: "Loved" })).toBeEnabled();
+    expect(await offers("Field for condition 1", "Loved")).toBe(true);
     expect(screen.queryByText(/last.fm/)).not.toBeInTheDocument();
   });
 
@@ -107,7 +108,7 @@ describe("the Loved field", () => {
     // rule the user built while they were connected.
     open(lovedIs);
 
-    expect(screen.getByRole("combobox", { name: "Field for condition 1" })).toHaveValue("loved");
+    expect(showing("Field for condition 1")).toBe("Loved");
   });
 });
 
@@ -144,7 +145,7 @@ describe("SmartPlaylistEditor", () => {
       const order: SmartOrder = { sort: { field: "playCount", direction: "desc" }, limit: 100 };
       const { onSave, user } = open(emptyFilter, "Most Played", order);
 
-      expect(screen.getByRole("combobox", { name: "Sort by" })).toHaveValue("playCount");
+      expect(showing("Sort by")).toBe("Plays");
       expect(screen.getByRole("spinbutton", { name: "Limit" })).toHaveValue(100);
 
       await user.click(screen.getByRole("button", { name: "Save" }));
@@ -156,7 +157,7 @@ describe("SmartPlaylistEditor", () => {
       const { onSave, user } = open();
 
       await user.click(screen.getByRole("checkbox", { name: "Limited to" }));
-      await user.selectOptions(screen.getByRole("combobox", { name: "Sort by" }), "playCount");
+      await choose("Sort by", "Plays");
       const limit = screen.getByRole("spinbutton", { name: "Limit" });
       await user.clear(limit);
       await user.type(limit, "25");
@@ -196,14 +197,20 @@ describe("SmartPlaylistEditor", () => {
       });
     });
 
-    it("does not offer a sort the backend would refuse", () => {
-      open();
-      const sort = screen.getByRole("combobox", { name: "Sort by" });
+    it("does not offer a sort the backend would refuse", async () => {
+      const { user } = open();
+
+      // Ticked first because the select is inert until it is, and because a
+      // shut drawn select shows only the value it holds - asking a closed one
+      // what it offers is a test that passes whatever the list says.
+      await user.click(screen.getByRole("checkbox", { name: "Sorted by" }));
+      const sorts = await offered("Sort by");
 
       // Relevance needs a search to rank against and position needs a static
       // playlist to sit in; neither exists inside a smart playlist.
-      expect(sort).not.toHaveTextContent(/relevance/i);
-      expect(sort).not.toHaveTextContent(/position/i);
+      expect(sorts).not.toContain("Relevance");
+      expect(sorts).not.toContain("Position");
+      expect(sorts).toContain("Plays");
     });
 
     it("reads an emptied limit box as one song rather than as none", async () => {
@@ -220,30 +227,22 @@ describe("SmartPlaylistEditor", () => {
   });
 
   it("offers only the operators the chosen field accepts", async () => {
-    const { user } = open(artistIs("Guitar"));
-    const op = screen.getByRole("combobox", { name: "Condition 1 on Artist" });
+    open(artistIs("Guitar"));
 
-    expect(op).toHaveTextContent("contains");
-    expect(op).not.toHaveTextContent("is in the last");
+    const forText = await offered("Condition 1 on Artist");
+    expect(forText).toContain("contains");
+    expect(forText).not.toContain("is in the last");
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Field for condition 1" }),
-      "year",
-    );
+    await choose("Field for condition 1", "Year");
 
-    expect(screen.getByRole("combobox", { name: "Condition 1 on Year" })).not.toHaveTextContent(
-      "contains",
-    );
+    expect(await offered("Condition 1 on Year")).not.toContain("contains");
   });
 
   it("repairs the operator and the value when a field cannot keep them", async () => {
     const { onSave, user } = open(artistIs("Guitar"));
 
     // "Artist is <text>" becoming "Date Added …" cannot keep either half.
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Field for condition 1" }),
-      "addedAt",
-    );
+    await choose("Field for condition 1", "Date Added");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     const rule = saved(onSave).children[0];
@@ -251,12 +250,9 @@ describe("SmartPlaylistEditor", () => {
   });
 
   it("renders no value input for an operator that takes no value", async () => {
-    const { user } = open(artistIs("Guitar"));
+    open(artistIs("Guitar"));
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Condition 1 on Artist" }),
-      "isEmpty",
-    );
+    await choose("Condition 1 on Artist", "is empty");
 
     expect(
       screen.queryByRole("textbox", { name: "Value for condition 1" }),
@@ -292,11 +288,8 @@ describe("SmartPlaylistEditor", () => {
     const { onSave, user } = open();
 
     await user.click(screen.getByRole("button", { name: "+ Group" }));
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Match rules in this group" }),
-      "all",
-    );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Match rules" }), "any");
+    await choose("Match rules in this group", "all");
+    await choose("Match rules", "any");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     const filter = saved(onSave);
@@ -368,14 +361,26 @@ describe("SmartPlaylistEditor", () => {
     // what this test is about.
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Name" })).toHaveFocus());
 
-    screen.getByRole("combobox", { name: "Match rules" }).focus();
+    // Enter on a select drops its list. The native one did nothing at all;
+    // either way the one thing it must not do is submit the dialog.
+    select("Match rules").focus();
     await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+
+    // Shut again before the next key rather than left open: the list is modal,
+    // so an Enter sent through it would never reach the button below and this
+    // test would be asserting the popup rather than the button.
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+
     screen.getByRole("button", { name: "+ Rule" }).focus();
     await user.keyboard("{Enter}");
 
     // The + Rule button did its job; the dialog did not close over it.
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByRole("combobox", { name: "Field for condition 1" })).toBeInTheDocument();
+    expect(select("Field for condition 1")).toBeInTheDocument();
   });
 
   it("is announced as a dialog with its own name", () => {
@@ -477,7 +482,7 @@ describe("the vocabulary a rule offers", () => {
     const { user } = open();
 
     await user.click(screen.getByRole("button", { name: "+ Rule" }));
-    await user.selectOptions(screen.getByLabelText("Field for condition 1"), "genre");
+    await choose("Field for condition 1", "Genre");
     await user.type(screen.getByLabelText("Value for condition 1"), "shoe");
 
     await waitFor(() => expect(suggest).toHaveBeenCalledWith("genre", "shoe"));
@@ -487,7 +492,17 @@ describe("the vocabulary a rule offers", () => {
     const { user } = open();
 
     await user.click(screen.getByRole("button", { name: "+ Rule" }));
-    await user.selectOptions(screen.getByLabelText("Field for condition 1"), "comment");
+    await choose("Field for condition 1", "Comment");
+
+    // Cleared here rather than relied on from `beforeEach`: a new rule starts
+    // on Artist, which *does* have a vocabulary, and `useTagSuggestions` puts
+    // a 150ms debounce on the mount. Whether that timer fires before the field
+    // changes is a race against how long picking a field takes - which the
+    // drawn select made longer than the native one, and which is a property of
+    // the machine rather than of the code under test. What this test is about
+    // is what Comment does once it is the field.
+    suggest.mockClear();
+
     await user.type(screen.getByLabelText("Value for condition 1"), "anything");
 
     // A dropdown of other songs' comments is a way to paste the wrong data.

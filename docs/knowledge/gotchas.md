@@ -117,10 +117,15 @@ Each of these cost real time once. They are here so they cost it once.
 - **`selectByAttribute` does not drive a native `<select>`.** A closed select
   renders its option list as an OS popup rather than as DOM boxes, so clicking
   the `<option>` hits nothing and the value never moves — green locally under
-  jsdom, a timeout in CI. Assert the React path in a component test and, where a
-  spec genuinely needs the value changed, assign through
-  `HTMLSelectElement.prototype`'s own setter (React tracks the last value it saw
-  on the node) and dispatch a bubbling `change`.
+  jsdom, a timeout in CI. Historical as of phase 111: the app has no native
+  select left, and a drawn one's list is DOM, so it is clicked like anything
+  else. Kept because the failure mode is the general one — a control the OS
+  draws is invisible to the driver — and the next one will look the same.
+- **A driver will not click a transparent element.** The drawn checkbox and
+  radio leave the real input at `opacity: 0` over the mark, and `isDisplayed`
+  counts that as hidden. Read state off the input (`isSelected`, `toBeEnabled`
+  — none of those need it interactable) and click the `.checkbox-box` beside
+  it, or the `<label for>` that names it.
 - **A cleanup helper that only knows one dialog's way out poisons the suite.**
   `closeDialog` clicked Cancel; Settings says Done. One failing test left its
   dialog standing and three later tests measured it instead of their own — four

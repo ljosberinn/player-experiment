@@ -241,8 +241,28 @@
   /* Lighter than a field's edge rather than darker, and measured against a
      different thing: a rail is a *graphic*, so WCAG 1.4.11 asks 3:1 of it
      against what it sits on - which is the transport strip's veil over the
-     window, not the rail's own fill. 3.99:1 there, 3.01:1 against the fill. */
+     window, not the rail's own fill. 3.99:1 there, 3.01:1 against the fill.
+
+     Phase 111 gave it the drawn controls whose *only* mark is an edge: an
+     unticked checkbox, an unselected radio, a switch's off track. The name
+     says rail and the job is wider than one - the edge of a control that has
+     to be found by eye - which is the same job, so it is this token rather
+     than a second one at the same weight. The sheet draws all three at its
+     own `#9b9694` / `#5b5147`, which is `--field-border` and lands at 2.58:1
+     and 2.57:1; a field can afford that because its fill and its text are
+     there too, and a 15px empty box cannot. 3.38:1 at the worst of the four
+     surfaces here, 3.59:1 on dark. */
   --track-border: oklch(0.58 0.006 60);
+  /* The inert part of a control that is partly filled: a switch's off track,
+     a slider's rail behind the fill. The sheet's own `#c4c0bd`, and its
+     "separator" - which is `--track`, the transport's rail - is deliberately
+     a different tone; one is a line between things and this is a groove.
+
+     A fill rather than an edge, so it carries no threshold of its own; the
+     edge above is what makes the switch findable, and a slider is found by
+     its accent fill and its 11px ink knob. What it does have to clear is the
+     knob drawn *on* it: 3.17:1 under `--muted`. */
+  --rail: oklch(0.81 0.006 60);
 
   /* A chart's gridlines. Its own token rather than `--chrome-border`: a grid
      is behind data rather than between panels, and the two want to move in
@@ -363,6 +383,10 @@
      against the composited strip rather than against its own fill, and that
      is the number that matters for a control you have to see the extent of. */
   --track-border: oklch(0.56 0.017 67);
+  /* The sheet's `#4a4138` darkened by 0.01 of lightness, which is inside a
+     JND: at the sheet's own value `--muted` is 2.98:1 on it and the knob that
+     says which way the switch is thrown misses 1.4.11 by two hundredths. */
+  --rail: oklch(0.372 0.019 67);
 
   --chart-grid: oklch(1 0 0 / 0.08);
   --chart-ramp-0: oklch(0.245 0.013 72);

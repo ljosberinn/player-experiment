@@ -1,5 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
+import { Checkbox } from "../../components/primitives/Checkbox";
 import {
   coverUrl,
   type ReleaseCandidate,
@@ -573,17 +574,12 @@ function FieldToggle({
   disabled: boolean;
   onChange: (checked: boolean) => void;
 }) {
-  const id = useId();
   return (
-    <span className="lookup-field">
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked && !disabled}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <label htmlFor={id}>{label}</label>
-    </span>
+    <Checkbox
+      label={label}
+      checked={checked && !disabled}
+      disabled={disabled}
+      onChange={onChange}
+    />
   );
 }

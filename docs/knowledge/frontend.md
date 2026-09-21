@@ -323,8 +323,12 @@ absences are what nobody notices coming back — hence the guards in
 - The webview context menu is suppressed outside text fields by one
   document-level listener. Text inputs keep theirs — Cut/Copy/Paste and the IME
   entries are real functionality.
-- The three `<select>`s stay native: a native select opens a real OS popup,
-  which is closer to native than any listbox.
+- Every widget is drawn, not inherited from the browser (phase 111). The
+  `<select>`s stayed native until then, on the argument that an OS popup is
+  closer to native than any listbox; two grounds retired it, because an OS
+  popup draws in the OS's colours and the design's claim is one token set
+  across both. `Checkbox` and `Radio` still keep the native element underneath
+  the drawing — it is what carries the keyboard, the label and the grouping.
 - A drag badge ("7 songs") replaces the browser's translucent row screenshot. It
   is a `position: fixed` element on the body, moved by `transform` every frame
   from outside React, and it carries `pointer-events: none` — without that it is

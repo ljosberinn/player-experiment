@@ -143,9 +143,12 @@ async function setPreference(on: boolean): Promise<void> {
   await chooseFromMenu("Edit", "Settings…");
   await browser.$("[role='dialog']").waitForExist({ timeout: 10_000 });
 
+  // Read off the real input, which is still the control, but clicked on the
+  // mark beside it: phase 111 draws the box and leaves the input transparent
+  // over it, and a driver will not click something at `opacity: 0`.
   const checkbox = browser.$("#dynamic-background");
   if ((await checkbox.isSelected()) !== on) {
-    await checkbox.click();
+    await browser.$("#dynamic-background ~ .checkbox-box").click();
   }
 
   await browser.$("//button[text()='Done']").click();

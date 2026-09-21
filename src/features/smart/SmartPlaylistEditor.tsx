@@ -1,5 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useRef, useState } from "react";
+import { Checkbox } from "../../components/primitives/Checkbox";
+import { Select } from "../../components/primitives/Select";
 import { TagCombobox } from "../../components/ui/TagCombobox";
 import type {
   FilterField,
@@ -8,8 +10,6 @@ import type {
   FilterRule,
   FilterValue,
   SmartOrder,
-  SortDirection,
-  SortField,
   TagValueField,
 } from "../../ipc";
 import { useLastfmStore } from "../lastfm/store";
@@ -214,71 +214,59 @@ function OrderEditor({
   return (
     <div className="filter-order">
       <div className="filter-row">
-        <input
+        <Checkbox
           id={sortId}
-          type="checkbox"
           checked={order.sort !== null}
           // Unticking discards the sort, unless a cutoff is relying on it - a
           // limit with no sort is a hundred arbitrary songs, so the two
           // controls are not quite independent and the checkbox says so by
           // refusing rather than by silently leaving itself ticked.
           disabled={limited}
-          onChange={(event) =>
+          onChange={(checked) =>
             onChange({
               ...order,
-              sort: event.currentTarget.checked ? { field: "addedAt", direction: "desc" } : null,
+              sort: checked ? { field: "addedAt", direction: "desc" } : null,
             })
           }
         />
         <label htmlFor={sortId}>Sorted by</label>
 
-        <select
-          aria-label="Sort by"
+        <Select
+          label="Sort by"
           disabled={order.sort === null}
           value={order.sort?.field ?? "addedAt"}
-          onChange={(event) =>
+          options={SORT_FIELDS.map((field) => ({ value: field.id, label: field.label }))}
+          onChange={(field) =>
             onChange({
               ...order,
-              sort: {
-                field: event.currentTarget.value as SortField,
-                direction: order.sort?.direction ?? "desc",
-              },
+              sort: { field, direction: order.sort?.direction ?? "desc" },
             })
           }
-        >
-          {SORT_FIELDS.map((field) => (
-            <option key={field.id} value={field.id}>
-              {field.label}
-            </option>
-          ))}
-        </select>
+        />
 
-        <select
-          aria-label="Sort direction"
+        <Select
+          label="Sort direction"
           disabled={order.sort === null}
           value={order.sort?.direction ?? "desc"}
-          onChange={(event) =>
+          options={[
+            { value: "desc", label: "descending" },
+            { value: "asc", label: "ascending" },
+          ]}
+          onChange={(direction) =>
             onChange({
               ...order,
-              sort: {
-                field: order.sort?.field ?? "addedAt",
-                direction: event.currentTarget.value as SortDirection,
-              },
+              sort: { field: order.sort?.field ?? "addedAt", direction },
             })
           }
-        >
-          <option value="desc">descending</option>
-          <option value="asc">ascending</option>
-        </select>
+        />
       </div>
 
       <div className="filter-row">
-        <input
+        <Checkbox
           id={limitId}
-          type="checkbox"
           checked={limited}
-          onChange={(event) => {
-            if (event.currentTarget.checked) {
+          onChange={(checked) => {
+            if (checked) {
               setLimitText(String(DEFAULT_LIMIT));
               onChange(withLimit(order, DEFAULT_LIMIT));
             } else {
@@ -338,18 +326,15 @@ function GroupEditor({
     <div className={root ? "filter-group root" : "filter-group"}>
       <div className="filter-row">
         <span>{label}</span>
-        <select
-          aria-label={root ? "Match rules" : "Match rules in this group"}
+        <Select
+          label={root ? "Match rules" : "Match rules in this group"}
           value={group.combinator}
-          onChange={(event) =>
-            onChange(
-              setCombinator(group, [], event.currentTarget.value as FilterGroup["combinator"]),
-            )
-          }
-        >
-          <option value="all">all</option>
-          <option value="any">any</option>
-        </select>
+          options={[
+            { value: "all", label: "all" },
+            { value: "any", label: "any" },
+          ]}
+          onChange={(combinator) => onChange(setCombinator(group, [], combinator))}
+        />
         <span>of the following:</span>
         <span className="filter-spacer" />
         <button
@@ -439,39 +424,26 @@ function RuleEditor({
 
   return (
     <div className="filter-row filter-rule">
-      <select
-        aria-label={`Field for condition ${position}`}
+      <Select
+        label={`Field for condition ${position}`}
         value={rule.field}
-        onChange={(event) => changeField(event.currentTarget.value as FilterField)}
-      >
-        {FIELDS.map((field) => (
-          <option
-            key={field.id}
-            value={field.id}
-            // A filter saved while an account was connected still selects it
-            // after a disconnect, which a disabled option displays fine - it
-            // only stops it being picked afresh.
-            disabled={field.id === "loved" && lovedUnavailable !== null}
-          >
-            {field.label}
-          </option>
-        ))}
-      </select>
+        options={FIELDS.map((field) => ({
+          value: field.id,
+          label: field.label,
+          // A filter saved while an account was connected still selects it
+          // after a disconnect, which a disabled option displays fine - it
+          // only stops it being picked afresh.
+          disabled: field.id === "loved" && lovedUnavailable !== null,
+        }))}
+        onChange={changeField}
+      />
 
-      <select
-        aria-label={`Condition ${position} on ${labelOf(rule.field)}`}
+      <Select
+        label={`Condition ${position} on ${labelOf(rule.field)}`}
         value={rule.op}
-        onChange={(event) => {
-          const op = event.currentTarget.value as FilterOp;
-          onChange({ ...rule, op, value: valueFor(rule.field, op, rule.value) });
-        }}
-      >
-        {opsFor(rule.field).map((op) => (
-          <option key={op} value={op}>
-            {OP_LABELS[op]}
-          </option>
-        ))}
-      </select>
+        options={opsFor(rule.field).map((op) => ({ value: op, label: OP_LABELS[op] }))}
+        onChange={(op) => onChange({ ...rule, op, value: valueFor(rule.field, op, rule.value) })}
+      />
 
       <ValueEditor
         value={rule.value}

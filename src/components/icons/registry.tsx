@@ -3,6 +3,7 @@ import { CaretUpIcon } from "@phosphor-icons/react/CaretUp";
 import { ChartBarIcon } from "@phosphor-icons/react/ChartBar";
 import { GearSixIcon } from "@phosphor-icons/react/GearSix";
 import { ListChecksIcon } from "@phosphor-icons/react/ListChecks";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react/MagnifyingGlass";
 import { MusicNotesIcon } from "@phosphor-icons/react/MusicNotes";
 import { PauseIcon } from "@phosphor-icons/react/Pause";
 import { PlayIcon } from "@phosphor-icons/react/Play";
@@ -56,7 +57,9 @@ export type IconName =
   | "stats"
   | "review"
   | "move-up"
-  | "move-down";
+  | "move-down"
+  | "expand"
+  | "search";
 
 /**
  * Filled for the transport, outlined everywhere else.
@@ -89,4 +92,9 @@ export const ICONS: Record<IconName, Glyph> = {
   // inside a 20px nudge button, where a regular-weight caret is a smudge.
   "move-up": (props) => <CaretUpIcon weight="bold" {...props} />,
   "move-down": (props) => <CaretDownIcon weight="bold" {...props} />,
+  // The same caret at regular weight, and a separate name because it means
+  // something else: `move-down` moves a row, this one says a list will drop.
+  // A select that wore the nudge button's bold caret would read as an action.
+  expand: (props) => <CaretDownIcon {...props} />,
+  search: (props) => <MagnifyingGlassIcon {...props} />,
 };

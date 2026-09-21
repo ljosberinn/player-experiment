@@ -47,9 +47,12 @@ shell stays governed by the old file until the library covers it.
   `src/components/primitives/`, drawn by a fourth sheet, `styles/library.css`,
   imported between the reset and the app's regions so a region can still
   overrule a primitive it wraps. Nothing calls them yet.
-- **Controls are native.** `input[type=checkbox|radio]` and `select` are
-  browser widgets with light styling. The design draws all four itself, plus a
-  switch the app does not have.
+- **Section 02 is in.** Done in 111: `Checkbox`, `Radio`, `Switch`, `Select`,
+  `SearchField`, `SegmentedControl` and `Slider`, with every native
+  `input[type=checkbox|radio]` and `<select>` in the app migrated onto them.
+  This reversed phase 24's stop clause on the native select — an OS popup
+  draws in the OS's colours, which is the wrong kind of native once the
+  controls beside it are drawn and there are two grounds.
 - **The button primitive exists but nothing uses it.** Every region still
   styles its own; `.window-buttons`, `.repeat-button`, `.link-button`,
   `.history-button`, `.modal button` are unrelated rules until their own issue
@@ -78,9 +81,9 @@ Primitives the sheet specifies, against what exists:
 | `Button` (primary / secondary / ghost / disabled) | **done, 110** |
 | `IconButton` (32px toolbar, 36px dialog, toggled) | **done, 110** |
 | `Tag` (four tones), `Count` | **done, 110** — the sheet's tag and badge are one drawing, so one component |
-| `Checkbox`, `Radio`, `Switch` | native elements |
-| `Select`, `SearchField`, `SegmentedControl` | native `select`, ad-hoc inputs |
-| `Slider`, `ProgressBar` | `Scrubber`, `VolumeControl` (Base UI) |
+| `Checkbox`, `Radio`, `Switch` | **done, 111** — `Switch` is Base UI, the other two draw over the native element |
+| `Select`, `SearchField`, `SegmentedControl` | **done, 111** — `Select` is Base UI; the segments are a native radio group |
+| `Slider`, `ProgressBar` | **`Slider` done, 111** (Base UI). `Scrubber` and `VolumeControl` keep the transport's own treatment |
 | `StatRow`, `StatTile` | `charts/StatTile` (close) |
 | `FilterBar`, `FilterToken` | `.stats-filter` |
 | `Leaderboard`, `Heatmap`, `Streak` | `charts/BarList`, `charts/Heatmap` |
@@ -120,9 +123,9 @@ Foundation first, then primitives, then the surfaces built out of them.
 
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
-All three have landed, and 110 with them.
+All three have landed, and 110 and 111 with them.
 114 through 118 are independent of each other once 113 has landed.
 
-**111 now stacks on 110 rather than branching from main.** Both write
+**111 stacked on 110 rather than branching from main.** Both write
 `library.css` and both add tokens, which is the same two files 107–109 were
 stacked for.

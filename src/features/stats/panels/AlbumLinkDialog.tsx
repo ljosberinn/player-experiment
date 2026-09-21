@@ -1,5 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useState } from "react";
+import { Select } from "../../../components/primitives/Select";
 import { statsAlbumGroup } from "../../../ipc";
 import { useStatsStore } from "../store";
 import { usePanelQuery } from "../usePanelQuery";
@@ -138,18 +139,18 @@ export function AlbumLinkDialog({
           {others.length > 0 && (
             <label className="modal-field" htmlFor={mergeId}>
               Merge in
-              <select
+              <Select
                 id={mergeId}
                 value={merging}
-                onChange={(event) => setMerging(event.target.value)}
-              >
-                <option value="">Nothing — this album stands alone</option>
-                {others.map((other) => (
-                  <option key={other.heading} value={other.heading}>
-                    {`${other.heading} (${other.plays.toLocaleString()})`}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Nothing — this album stands alone" },
+                  ...others.map((other) => ({
+                    value: other.heading,
+                    label: `${other.heading} (${other.plays.toLocaleString()})`,
+                  })),
+                ]}
+                onChange={setMerging}
+              />
             </label>
           )}
 

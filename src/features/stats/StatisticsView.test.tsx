@@ -7,6 +7,7 @@ import {
   statsLibraryTotals,
   statsListenTotals,
 } from "../../ipc";
+import { choose, showing } from "../../test/select";
 import { historyAt } from "../library/history";
 import { useLibraryStore } from "../library/store";
 import { DEFAULT_FILTERS } from "./filters";
@@ -132,11 +133,10 @@ describe("StatisticsView", () => {
   });
 
   it("re-asks for the tiles when the range changes, and stores the range", async () => {
-    const user = userEvent.setup();
     render(<StatisticsView />);
     await screen.findByText(shown(7863));
 
-    await user.selectOptions(screen.getByLabelText("Range"), "thisYear");
+    await choose("Range", "This year");
 
     await waitFor(() => expect(listenMock).toHaveBeenCalledTimes(2));
     expect(listenMock.mock.calls[1]?.[0].range).not.toBeNull();
@@ -148,9 +148,9 @@ describe("StatisticsView", () => {
 
     render(<StatisticsView />);
 
-    await waitFor(() =>
-      expect(screen.getByLabelText<HTMLSelectElement>("Range").value).toBe("days7"),
-    );
+    // The title rather than the stored id: the select is drawn since phase
+    // 111, so what it holds is the text the list showed.
+    await waitFor(() => expect(showing("Range")).toBe("Last 7 days"));
   });
 
   it("says so rather than showing a row of zeros before anything has been played", async () => {

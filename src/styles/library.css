@@ -43,6 +43,10 @@
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
+  /* A `<button>` does not inherit the document's face - the engine gives it
+     one of its own - so every button rule in this app states this, and the
+     Archivo guard cannot see a family that was never declared. Phase 111. */
+  font: inherit;
   font-size: 13px;
   font-weight: 800;
   line-height: 1.2;
@@ -138,6 +142,10 @@
   border: 1px solid var(--menu-border);
   background: transparent;
   color: var(--text);
+  /* Its whole label is a glyph, so this changes nothing on screen; it is here
+     because a button that does not state a face is one edit away from
+     drawing a letter in the engine's. */
+  font: inherit;
   cursor: default;
 }
 
@@ -243,4 +251,466 @@
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+/* ---------- 02 · ticks, dots and knobs ---------- */
+
+/* Every widget below is drawn rather than inherited from the browser, and
+   every one of them still *is* the native element underneath: the input is
+   made transparent and a sibling `<span>` is drawn in its place, so the
+   keyboard, the label association, the form value and `:indeterminate` stay
+   the platform's and only the pixels are ours. The switch is the one
+   exception - there is no native element to keep - and it is Base UI.
+
+   The marks are 15px and the targets are 24px. The transparent input carries
+   the 24px, centred over a mark smaller than it: the same split the 20px
+   nudge button makes with an `::after`, made here with the control itself
+   because here there is a real element to grow.
+
+   Two departures from the sheet, both recorded in `tokens.css` beside the
+   value. An unticked box takes `--track-border` rather than the sheet's
+   lighter line, which is 2.58:1 and is the whole control. A switch's off knob
+   is `--muted` on both grounds rather than the ground's own colour, which on
+   light is 1.62:1 on its own track. */
+
+.checkbox,
+.radio {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* The row is a target tall even where the mark is 15px, so a column of
+     these cannot pack closer than a pointer can hit. */
+  min-height: 24px;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: default;
+}
+
+/* The control itself, still here and still doing the work - transparent, 24px
+   square, over the 15px mark it is drawn as. Every state below is selected
+   off its pseudo-classes rather than off a class React would have to keep in
+   step with them. */
+.checkbox input,
+.radio input {
+  position: absolute;
+  top: calc(50% - 12px);
+  left: -4.5px;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  opacity: 0;
+}
+
+/* The ring goes on the mark rather than on the 24px box the input is: an
+   outline 4.5px clear of the thing it points at reads as a ring around the
+   label. Dropped and replaced in the same place, so no state is left without
+   one. */
+.checkbox input:focus-visible,
+.radio input:focus-visible {
+  outline: none;
+}
+
+.checkbox-box,
+.radio-box {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--track-border);
+  color: var(--on-accent);
+}
+
+/* The off state's fill, which the sheet gives the box and not the radio. It
+   is 1.06:1 against the ground and is not what makes the box findable - the
+   edge above is - but it is what stops a ticked and an unticked box reading
+   as a filled shape and a hole. */
+.checkbox-box {
+  background: var(--field);
+}
+
+/* Below the two rules above rather than beside the `outline: none` it
+   replaces: a lower-specificity selector for the same element coming later is
+   what the descending-specificity rule is about. */
+.checkbox input:focus-visible ~ .checkbox-box,
+.radio input:focus-visible ~ .radio-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* On and mixed are one fill; which mark is inside says which of them it is. */
+.checkbox input:checked + .checkbox-box,
+.checkbox input:indeterminate + .checkbox-box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* Both marks are drawn and hidden rather than branched on in React, so the
+   three states cannot disagree with the pseudo-class that produced them.
+   `:indeterminate` wins over `:checked`, which is the order the DOM reports
+   them in: a box can be both, and mixed is what it means when it is. */
+.checkbox-tick,
+.checkbox-bar {
+  display: none;
+}
+
+.checkbox input:checked + .checkbox-box .checkbox-tick {
+  display: block;
+}
+
+.checkbox input:indeterminate + .checkbox-box .checkbox-tick {
+  display: none;
+}
+
+.checkbox input:indeterminate + .checkbox-box .checkbox-bar {
+  display: block;
+  width: 8px;
+  height: 2px;
+  background: currentcolor;
+}
+
+/* A square with a square dot in it. Round would be the one radius left in the
+   app and the design's rule has no exceptions - it reads as a radio from the
+   inset dot and from the company it keeps. */
+.radio input:checked + .radio-box {
+  border-color: var(--accent);
+}
+
+/* Drawn always and hidden when off, rather than mounted by React: the dot has
+   to sit dead centre of a 15px box, and a box that is empty in one state and
+   holds a child in the other is two layouts to keep agreeing. */
+.radio-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  visibility: hidden;
+}
+
+.radio input:checked + .radio-box .radio-dot {
+  visibility: visible;
+}
+
+/* The whole row rather than the mark alone. The label is a text node beside
+   the span, so a sibling selector would dim the box and leave the word it
+   belongs to at full ink - which reads as a live label on a dead control. */
+.checkbox:has(input:disabled),
+.radio:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 02 · switches ---------- */
+
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: default;
+}
+
+/* 34 by 18 with the knob inset 2px, which here is a 1px edge and a 1px gap
+   rather than the sheet's 2px of padding. The box and the travel are the
+   sheet's to the pixel; what the split buys is an edge at 3:1, without which
+   the off state is a pale bar at 1.69:1 on the chrome and the control cannot
+   be found at all. */
+.switch {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-start;
+  width: 34px;
+  height: 18px;
+  padding: 1px;
+  border: 1px solid var(--track-border);
+  background: var(--rail);
+  cursor: default;
+}
+
+.switch[data-checked] {
+  justify-content: flex-end;
+  /* The edge takes the colour of the fill rather than going away, so the box
+     stays 34px between the two states. */
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* `--muted` on both grounds. The sheet draws the off knob in the ground's own
+   colour on light, where it is 1.62:1 on its own track - and its dark column
+   already reaches for the muted tone instead, so this is the sheet's own
+   answer applied to both. 3.17:1 and 3.10:1. */
+.switch-knob {
+  width: 14px;
+  height: 14px;
+  background: var(--muted);
+}
+
+.switch[data-checked] .switch-knob {
+  background: var(--on-accent);
+}
+
+/* The row where there is one, for the reason the checkbox dims its row. */
+.switch[data-disabled],
+.switch-row:has([data-disabled]) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 02 · fields ---------- */
+
+/* A select and a search field are one box with different contents, so they
+   are one rule. `--field-border` rather than the sheet's hairline: a field's
+   edge at 1.02:1 shipped here once, and the heavier token was born from it. */
+.select,
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  padding: 7px 9px;
+  border: 1px solid var(--field-border);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  cursor: default;
+}
+
+/* The sheet draws a select's active state as an accent edge. `:focus` rather
+   than `:focus-visible`, as the dialog's own fields already are: clicking one
+   *is* the act of choosing where to work, so the pointer wants the highlight
+   too. `[data-popup-open]` keeps it while the list is up, when focus has
+   moved into the popup. */
+.select:focus,
+.select[data-popup-open],
+.search-field:focus-within {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.select {
+  /* The value goes left and the chevron right, which is the whole of the
+     sheet's drawing. `space-between` rather than a margin, so a long value
+     pushes the chevron to the edge instead of past it. */
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.select-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.select-chevron {
+  flex: none;
+}
+
+.select[data-disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The list, which the sheet does not draw - it draws a select closed.
+   Borrowed from the context menu rather than invented: the app already has
+   one answer to "a list of choices over the window", and two would drift. */
+.select-positioner {
+  z-index: 10;
+}
+
+.select-popup {
+  min-width: var(--anchor-width);
+  max-height: var(--available-height, 60vh);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--menu-border);
+  background: var(--chrome);
+  box-shadow: var(--shadow);
+  outline: none;
+}
+
+.select-item {
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* One selector for the pointer and the keyboard, as the menu's is: Base UI
+   marks the active item the same way whichever is driving it. */
+.select-item[data-highlighted] {
+  background: var(--accent-tint);
+}
+
+/* The chosen line, marked even when the highlight has moved off it. Weight
+   rather than a tick: the sheet gives the list no indicator column, and a
+   bolder line does not need one. */
+.select-item[data-selected] {
+  font-weight: 800;
+}
+
+.select-item[data-disabled] {
+  color: var(--muted);
+}
+
+/* The glyph is the label on a search field, so it takes the recessive tone
+   the sheet gives it rather than the field's ink. */
+.search-field-glyph {
+  flex: none;
+  color: var(--muted);
+}
+
+/* The field inside the box, with none of its own chrome - the drawing is the
+   `<span>` around it, and two borders would be two boxes. */
+.search-field input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.search-field input::placeholder {
+  color: var(--muted);
+}
+
+/* The engine's own clear affordance, which is a second glyph drawn in the
+   engine's colours. Taken off rather than restyled: nothing in this sheet can
+   reach its fill, so it is the one part of the field that would not follow
+   the ground. */
+.search-field input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+/* ---------- 02 · segmented controls ---------- */
+
+/* One edge around the set and a line between the segments, which is what
+   makes it read as one control rather than as three buttons. A `<fieldset>`
+   brings a border, padding and margin of its own; all three go. */
+.segmented {
+  display: inline-flex;
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--menu-border);
+}
+
+/* The group's name, read out and not drawn: the segments are the labels on
+   screen, and a legend above them would be a second heading on a control one
+   line tall. Clipped rather than `display: none`, which would take it out of
+   the accessibility tree along with the picture. */
+.segmented legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 7px 13px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: default;
+}
+
+.segment + .segment {
+  border-left: 1px solid var(--menu-border);
+}
+
+/* Transparent and covering its own segment, so the pointer lands on the real
+   radio and the arrow keys the group already has go on working. */
+.segment input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+}
+
+.segment:has(input:checked) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The ring is left where the global rule puts it - on the input, which is
+   exactly the segment's box - rather than moved to the label the way the
+   checkbox's is. A checkbox's input is bigger than its mark and a segment's
+   is the mark, so there is nothing here to correct.
+
+   On a selected segment it would be the accent drawn on the accent, which is
+   the primary button's problem and takes the primary button's answer. */
+.segment:has(input:checked) input:focus-visible {
+  outline-color: var(--on-accent);
+}
+
+/* ---------- 02 · sliders ---------- */
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.slider-control {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  /* The knob stands 4px above a 3px rail, so the control needs the height the
+     rail has not got or the mark is clipped by whatever is above it. */
+  min-height: 19px;
+}
+
+/* No edge, unlike the transport's rails. What identifies this control is the
+   accent fill and the ink knob; the groove behind them is not a part WCAG
+   1.4.11 asks 3:1 of. See `--rail`. */
+.slider-rail {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: var(--rail);
+}
+
+.slider-fill {
+  position: absolute;
+  inset-block: 0;
+  background: var(--accent);
+}
+
+/* Square and ink, which is the sheet's own drawing and is deliberately not
+   the transport's knob. Standing 4px above a 3px rail leaves it overhanging
+   both edges, which is what makes an 11px mark read as a handle rather than
+   as a bead threaded on the line. */
+.slider-knob {
+  width: 11px;
+  height: 11px;
+  background: var(--text);
+}
+
+.slider-readout {
+  flex: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.slider[data-disabled] {
+  opacity: 0.45;
 }

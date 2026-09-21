@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadUnattendedLookup, revealMainLog } from "../../ipc";
+import { choose, select, showing } from "../../test/select";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
 import { type SettingsCategory, SettingsDialog } from "./SettingsDialog";
@@ -65,27 +66,31 @@ describe("the Settings dialog", () => {
     useThemeStore.setState({ preference: "system", ground: "light" });
   });
 
-  it("offers the three theme choices and reports the stored one", () => {
+  it("offers the three theme choices and reports the stored one", async () => {
+    const user = userEvent.setup();
     useThemeStore.setState({ preference: "dark", ground: "dark" });
     render(<SettingsDialog onClose={vi.fn()} />);
 
-    const select = screen.getByRole("combobox", { name: "Theme" });
+    // The label rather than the stored key since phase 111 drew the control:
+    // the trigger is a button, and what it holds is the text on screen.
+    expect(showing("Theme")).toBe("Dark");
 
-    expect(select).toHaveValue("dark");
     // "System" is one of them: a two-state control could not say "follow the
     // OS", and there would be no way back to it once the user had chosen.
-    expect([...(select as HTMLSelectElement).options].map((option) => option.value)).toEqual([
-      "system",
-      "light",
-      "dark",
+    // The list is only in the DOM while it is open.
+    await user.click(select("Theme"));
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "System",
+      "Light",
+      "Dark",
     ]);
   });
 
   it("changes the ground without waiting for the write", async () => {
-    const user = userEvent.setup();
     render(<SettingsDialog onClose={vi.fn()} />);
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "light");
+    await choose("Theme", "Light");
 
     expect(useThemeStore.getState().preference).toBe("light");
     // Through the real port, all the way to the attribute the stylesheet keys
