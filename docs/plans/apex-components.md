@@ -59,6 +59,11 @@ shell stays governed by the old file until the library covers it.
   `.dialog.confirm` are all that is left in `app.css`, and a guard fails any of
   them that restates the edge, the inset or the shadow. `--rule`,
   `--shadow-dialog` and `--field-disabled` landed with it.
+- **Section 6a is in.** Done in 113b: the smart playlist editor's interior —
+  the rule box as one `130px 130px 1fr 30px` grid, the name row's accent edge,
+  and the sort and cutoff rows drawn as disabled-in-place rather than dimmed.
+  `IconButton` gained the sheet's fourth place and the icon registry a
+  `remove` glyph, which is what the `✕` text buttons were.
 - **The button primitive is now what a dialog's actions are.** Elsewhere every
   region still styles its own; `.window-buttons`, `.repeat-button`,
   `.link-button` and `.history-button` are unrelated rules until their own
@@ -85,7 +90,7 @@ Primitives the sheet specifies, against what exists:
 | Primitive | Today |
 | --- | --- |
 | `Button` (primary / secondary / ghost / disabled) | **done, 110**; `destructive` added in 113 |
-| `IconButton` (32px toolbar, 36px dialog, toggled) | **done, 110** |
+| `IconButton` (32px toolbar, 36px dialog, toggled) | **done, 110**; the 30px filter-rule place added in 113b |
 | `Tag` (four tones), `Count` | **done, 110** — the sheet's tag and badge are one drawing, so one component |
 | `Checkbox`, `Radio`, `Switch` | **done, 111** — `Switch` is Base UI, the other two draw over the native element |
 | `Select`, `SearchField`, `SegmentedControl` | **done, 111** — `Select` is Base UI; the segments are a native radio group |
@@ -131,7 +136,8 @@ Foundation first, then primitives, then the surfaces built out of them.
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 and 111 with them.
-113b through 118 are independent of each other once 113 has landed.
+113b through 118 are independent of each other once 113 has landed. 113b has
+landed too, off main rather than stacked — 113 was in by the time it started.
 
 **113 is the chrome and 113b is what one dialog holds.** Section 06 draws both
 in one picture, but the rule grid and the disabled sort row touch nothing the

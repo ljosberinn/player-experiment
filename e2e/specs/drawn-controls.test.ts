@@ -35,12 +35,19 @@ async function closeDialog(label: string): Promise<void> {
 /**
  * Builds a dialog with one of everything in it.
  *
- * A rule and a nested group put four selects on screen at two depths; ticking
- * the cutoff is what takes the sort row out of its disabled state, so the shot
- * carries an enabled checkbox, a disabled one and two live selects rather than
- * a row of greyed-out furniture.
+ * Two rules and a nested group, which is what 113b's grid has to survive: the
+ * pair proves the selects line up down the column, and the group - which
+ * arrives holding a rule of its own - proves a box with its own grid sits
+ * between them and the outer columns. Ticking the cutoff is what takes the
+ * sort row out of its disabled state, so the shot carries an enabled checkbox,
+ * a disabled one and two live selects rather than a row of greyed-out
+ * furniture.
+ *
+ * The first `+ Rule` in document order stays the root's - a group's header
+ * follows its parent's - so both clicks land in the outer box.
  */
 async function fill(): Promise<void> {
+  await browser.$("//button[text()='+ Rule']").click();
   await browser.$("//button[text()='+ Rule']").click();
   await browser.$("//button[text()='+ Group']").click();
 
@@ -84,6 +91,14 @@ describe("the drawn controls, for the reviewer", () => {
       // controls this spec exists for.
       await expect(browser.$$(".select")).toBeElementsArrayOfSize({ gte: 4 });
       await expect(browser.$$(".checkbox-box")).toBeElementsArrayOfSize({ gte: 2 });
+      // And the shape 113b is about: two rule rows in the outer box, and a box
+      // inside it with a rule of its own. Counted per group rather than over
+      // the dialog, because `+ Group` brings a rule with it - `newGroup` seeds
+      // one so a group that has just been added matches something.
+      await expect(browser.$$(".filter-group.root > .filter-rule")).toBeElementsArrayOfSize(2);
+      await expect(
+        browser.$$(".filter-group .filter-group > .filter-rule"),
+      ).toBeElementsArrayOfSize(1);
 
       expect(await capture(`drawn-controls-filter-${ground}`)).toBe(true);
       await closeDialog("Cancel");

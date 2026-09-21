@@ -16,6 +16,7 @@ import { SpeakerSimpleSlashIcon } from "@phosphor-icons/react/SpeakerSimpleSlash
 import { SquaresFourIcon } from "@phosphor-icons/react/SquaresFour";
 import { TagIcon } from "@phosphor-icons/react/Tag";
 import { UserSoundIcon } from "@phosphor-icons/react/UserSound";
+import { XIcon } from "@phosphor-icons/react/X";
 import type { ComponentType } from "react";
 
 /**
@@ -59,7 +60,8 @@ export type IconName =
   | "move-up"
   | "move-down"
   | "expand"
-  | "search";
+  | "search"
+  | "remove";
 
 /**
  * Filled for the transport, outlined everywhere else.
@@ -97,4 +99,7 @@ export const ICONS: Record<IconName, Glyph> = {
   // A select that wore the nudge button's bold caret would read as an action.
   expand: (props) => <CaretDownIcon {...props} />,
   search: (props) => <MagnifyingGlassIcon {...props} />,
+  // Bold, like the nudge carets and for the same reason: it is drawn at
+  // 11px inside a rule row, where a regular-weight cross is a smudge.
+  remove: (props) => <XIcon weight="bold" {...props} />,
 };

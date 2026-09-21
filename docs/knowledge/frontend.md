@@ -304,6 +304,17 @@ absences are what nobody notices coming back — hence the guards in
     the action that leaves rather than completes ("Back to queue", ghost), or
     the count the dialog has to state ("2 conditions · 116 songs match"). Never
     both — a dialog either has somewhere to go back to or something to tally.
+  - **The smart playlist editor's rule box is one grid**, `130px 130px 1fr
+    30px`, so the field and operator selects line up down the column instead of
+    each row packing its own flex. A rule is `display: contents` and its four
+    cells are the grid's own; the header line, the empty note and a nested
+    group span `1 / -1`, the nested group being a box with a grid of its own so
+    its rules align with each other rather than with the outer columns. The
+    value cell is a box even where one control fills it, because `inLast` adds
+    a unit, `between` adds a second bound, and `kind: "none"` leaves it empty.
+  - **The sort and cutoff rows are disabled in place to be read**, not because
+    they cannot be used yet, so `.filter-order` overrides the primitives'
+    `opacity: 0.45` with `--field-disabled`, `--chrome-border` and `--faint`.
 - **A dialog that outlives its own content states does not resize.** `.dialog`
   on its own is a scroller with a `max-height`, which is right for a dialog
   asked once and dismissed. One that is stepped through — the lookup's queue,
@@ -322,8 +333,9 @@ absences are what nobody notices coming back — hence the guards in
 - **The component library is `components/primitives/`**, one file per
   component, drawn by `styles/library.css`. What the sheet specifies rather
   than what a caller wanted: `Button` has four kinds and **at most one
-  primary per surface**, `IconButton` has three sizes named for the three
-  places they belong (32px toolbar, 36px dialog, 20px nudge), and `Tag` has
+  primary per surface**, `IconButton` has four sizes named for the four
+  places they belong (32px toolbar, 36px dialog, 30px filter rule, 20px
+  nudge), and `Tag` has
   four tones with `Count` beside it. The design names a tag and a badge
   separately and draws them identically, so this is one component — the same
   reasoning that folded `--dim` into `--muted`.

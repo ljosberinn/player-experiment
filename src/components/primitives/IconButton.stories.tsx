@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { IconButton } from "./IconButton";
 
-/** The three places, the toggled state, and the hit area the 20px one keeps. */
+/** The four places, the toggled state, and the hit area the 20px one keeps. */
 function Places() {
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
@@ -20,6 +20,14 @@ function Places() {
         <IconButton icon="review" label="Review matches" place="dialog" />
         <IconButton icon="repeat-one" label="Repeat one" place="dialog" pressed />
         <span style={{ marginLeft: 6, color: "var(--muted)", fontSize: 11.5 }}>dialog, 36px</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <IconButton icon="remove" label="Remove condition 1" place="rule" />
+        <IconButton icon="remove" label="Remove condition 2" place="rule" />
+        <span style={{ marginLeft: 6, color: "var(--muted)", fontSize: 11.5 }}>
+          filter rule, 30px · muted, and stretched to the row by the grid it sits in
+        </span>
       </div>
 
       {/* Drawn on a rule, which is the row it would sit in. The pair is 20px
