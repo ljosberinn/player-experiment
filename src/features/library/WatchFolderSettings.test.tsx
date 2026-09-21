@@ -7,6 +7,7 @@ import {
   removeWatchFolder,
   saveWatchInterval,
 } from "../../ipc";
+import { choose, showing } from "../../test/select";
 import { WatchFolderSettings } from "./WatchFolderSettings";
 
 vi.mock("../../ipc", () => ({
@@ -16,8 +17,16 @@ vi.mock("../../ipc", () => ({
   saveWatchInterval: vi.fn(async () => undefined),
 }));
 
-function interval(): HTMLSelectElement {
-  return screen.getByLabelText<HTMLSelectElement>("Check For Changes");
+/**
+ * What the interval select is showing.
+ *
+ * The label rather than the number since phase 111 drew the control: the
+ * select is a button and a button has no `value`. The mapping is the point -
+ * "Never" is zero minutes, and that it reads as a sentence rather than as a
+ * figure is the thing worth asserting anyway.
+ */
+function interval(): string {
+  return showing("Check For Changes");
 }
 
 describe("the music folders section", () => {
@@ -59,28 +68,26 @@ describe("the music folders section", () => {
     vi.mocked(loadWatchInterval).mockResolvedValue(60);
     render(<WatchFolderSettings lockedRoot={null} />);
 
-    await waitFor(() => expect(interval().value).toBe("60"));
+    await waitFor(() => expect(interval()).toBe("Every hour"));
   });
 
   it("saves a new interval", async () => {
-    const user = userEvent.setup();
     render(<WatchFolderSettings lockedRoot={null} />);
-    await waitFor(() => expect(interval().value).toBe("15"));
+    await waitFor(() => expect(interval()).toBe("Every 15 minutes"));
 
-    await user.selectOptions(interval(), "30");
+    await choose("Check For Changes", "Every 30 minutes");
 
     expect(saveWatchInterval).toHaveBeenCalledWith(30);
-    expect(interval().value).toBe("30");
+    expect(interval()).toBe("Every 30 minutes");
   });
 
   it("offers turning the checks off", async () => {
-    const user = userEvent.setup();
     render(<WatchFolderSettings lockedRoot={null} />);
-    await waitFor(() => expect(interval().value).toBe("15"));
+    await waitFor(() => expect(interval()).toBe("Every 15 minutes"));
 
     // Zero rather than a separate flag: off is an interval like any other, so
     // nothing downstream has two things to agree on.
-    await user.selectOptions(interval(), "Never");
+    await choose("Check For Changes", "Never");
 
     expect(saveWatchInterval).toHaveBeenCalledWith(0);
   });

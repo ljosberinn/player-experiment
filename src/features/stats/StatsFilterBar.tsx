@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Select } from "../../components/primitives/Select";
 import { type BrowseGroup, browseGroups } from "../../ipc";
 import { usePlaylistsStore } from "../playlists/store";
 import {
@@ -19,8 +20,17 @@ import { useStatsStore } from "./store";
  * two, because the row itself - its place, its height, its separator - is the
  * same row either way.
  *
- * The three selects are native, by phase 24's stop clause: a native select in a
- * webview opens a real OS popup, which is closer to native than any listbox.
+ * The selects were native, by phase 24's stop clause - a native select in a
+ * webview opens a real OS popup. Phase 111 lifted it: an OS popup draws in the
+ * OS's colours, and a bar of them beside drawn controls on a light ground the
+ * OS knows nothing about was the wrong kind of native.
+ *
+ * Each one is named by `label` rather than by a `<label>` around it, and the
+ * caption beside it is a plain `<span>`. A `<label>` wrapping a drawn select
+ * would be labelling a `<button>` by its own text content - the caption and
+ * the chosen value read out as one string - and clicking the caption would
+ * not open anything, because a wrapping label forwards its click to form
+ * controls and a button is not one. The date fields below keep theirs.
  */
 export function StatsFilterBar({ tab }: { tab: StatsTab }) {
   const filters = useStatsStore((s) => s.filters);
@@ -30,47 +40,50 @@ export function StatsFilterBar({ tab }: { tab: StatsTab }) {
     <div className="stats-filters">
       {tab === "listening" ? (
         <>
-          <label className="stats-filter">
+          <span className="stats-filter">
             Range
-            <select
+            <Select
+              label="Range"
               value={filters.range}
-              onChange={(event) => setFilters({ range: event.target.value as RangeId })}
-            >
-              {(Object.keys(RANGE_TITLES) as RangeId[]).map((id) => (
-                <option key={id} value={id}>
-                  {RANGE_TITLES[id]}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={(Object.keys(RANGE_TITLES) as RangeId[]).map((id) => ({
+                value: id,
+                label: RANGE_TITLES[id],
+              }))}
+              onChange={(range) => setFilters({ range })}
+            />
+          </span>
 
           {filters.range === "custom" ? <CustomRange /> : null}
 
           {/* Tri-state, and a checkbox has two: "either" is the default and the
               most common answer, so it has to be reachable. */}
-          <label className="stats-filter">
+          <span className="stats-filter">
             Owned
-            <select
+            <Select
+              label="Owned"
               value={triValue(filters.owned)}
-              onChange={(event) => setFilters({ owned: triState(event.target.value) })}
-            >
-              <option value="either">Either</option>
-              <option value="yes">In the library</option>
-              <option value="no">Not in the library</option>
-            </select>
-          </label>
+              options={[
+                { value: "either", label: "Either" },
+                { value: "yes", label: "In the library" },
+                { value: "no", label: "Not in the library" },
+              ]}
+              onChange={(value) => setFilters({ owned: triState(value) })}
+            />
+          </span>
 
-          <label className="stats-filter">
+          <span className="stats-filter">
             Loved
-            <select
+            <Select
+              label="Loved"
               value={triValue(filters.loved)}
-              onChange={(event) => setFilters({ loved: triState(event.target.value) })}
-            >
-              <option value="either">Either</option>
-              <option value="yes">Loved</option>
-              <option value="no">Not loved</option>
-            </select>
-          </label>
+              options={[
+                { value: "either", label: "Either" },
+                { value: "yes", label: "Loved" },
+                { value: "no", label: "Not loved" },
+              ]}
+              onChange={(value) => setFilters({ loved: triState(value) })}
+            />
+          </span>
         </>
       ) : (
         <>
@@ -130,21 +143,22 @@ function ScopeFilter() {
   const playlists = usePlaylistsStore((s) => s.playlists);
 
   return (
-    <label className="stats-filter">
+    <span className="stats-filter">
       Scope
-      <select
+      <Select
+        label="Scope"
         value={scope.kind === "playlist" ? `playlist:${scope.playlistId}` : scope.kind}
-        onChange={(event) => setFilters({ scope: parseScopeValue(event.target.value) })}
-      >
-        <option value="library">Whole library</option>
-        <option value="view">Current view</option>
-        {playlists.map((playlist) => (
-          <option key={playlist.id} value={`playlist:${playlist.id}`}>
-            {playlist.name}
-          </option>
-        ))}
-      </select>
-    </label>
+        options={[
+          { value: "library", label: "Whole library" },
+          { value: "view", label: "Current view" },
+          ...playlists.map((playlist) => ({
+            value: `playlist:${playlist.id}`,
+            label: playlist.name,
+          })),
+        ]}
+        onChange={(value) => setFilters({ scope: parseScopeValue(value) })}
+      />
+    </span>
   );
 }
 
@@ -190,26 +204,23 @@ function GenreFilter() {
   }, []);
 
   return (
-    <label className="stats-filter">
+    <span className="stats-filter">
       Genre
-      <select
+      <Select
+        label="Genre"
         value={genre ?? ""}
-        onChange={(event) =>
-          setFilters({ genre: event.target.value === "" ? null : event.target.value })
-        }
-      >
-        <option value="">Every genre</option>
-        {genres.map((group) =>
+        options={[
+          { value: "", label: "Every genre" },
           // The untagged group is `key: null`, which is a filter this bar has
           // no way to express - "no genre" is not one genre.
-          group.key === null ? null : (
-            <option key={group.key} value={group.key}>
-              {group.key}
-            </option>
-          ),
-        )}
-      </select>
-    </label>
+          ...genres
+            .map((group) => group.key)
+            .filter((key) => key !== null)
+            .map((key) => ({ value: key, label: key })),
+        ]}
+        onChange={(value) => setFilters({ genre: value === "" ? null : value })}
+      />
+    </span>
   );
 }
 

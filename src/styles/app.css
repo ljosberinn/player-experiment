@@ -1320,19 +1320,6 @@ th.status {
   border: 1px solid var(--chrome-border);
 }
 
-.lookup-field {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-/* The checkbox keeps its native size; `.modal input` sizes text fields. */
-.lookup .lookup-field input {
-  width: 13px;
-  height: 13px;
-  padding: 0;
-}
-
 /* The review queue, sorted by what the unattended pass scored each release
    at. Four hundred rows of it, so the header stays put against `.modal-body`
    the way the mapping table's does. */
@@ -1524,8 +1511,10 @@ th.status {
   flex: 1;
 }
 
-.modal input,
-.modal select {
+/* Text fields. A drawn control's own input is transparent and absolutely
+   placed, so this reaches it too - harmlessly, because everything here is
+   paint on something with no opacity - but `library.css` is what sizes it. */
+.modal input {
   height: var(--control-height);
   padding: 0 5px;
   border: 1px solid var(--field-border);
@@ -1534,19 +1523,11 @@ th.status {
   font: inherit;
 }
 
-/* A select has to look like one before it is opened. Without this it reads as
-   a label with an arrow beside it, which is what a filter row full of them
-   looked like. */
-.modal select {
-  padding-right: 4px;
-}
-
 /* Which field is active, without waiting for the caret to blink. `:focus`
-   rather than `:focus-visible` here on purpose: these are text fields and
-   selects inside a dialog, where clicking one *is* the act of choosing where
-   to type, so the highlight is wanted for the pointer too. */
-.modal input:focus,
-.modal select:focus {
+   rather than `:focus-visible` here on purpose: these are text fields inside a
+   dialog, where clicking one *is* the act of choosing where to type, so the
+   highlight is wanted for the pointer too. */
+.modal input:focus {
   border-color: var(--accent);
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   outline-offset: -1px;
@@ -1653,7 +1634,6 @@ th.status {
   flex-wrap: wrap;
 }
 
-.filter-rule select,
 .filter-rule input {
   min-width: 0;
 }
@@ -1694,8 +1674,7 @@ th.status {
    to be legible enough to know what ticking the box would do - so `--muted`,
    which the rest of the app already uses for de-emphasised text, rather than
    an opacity that would take it somewhere unmeasured. */
-.filter-order input:disabled,
-.filter-order select:disabled {
+.filter-order input:disabled {
   color: var(--muted);
 }
 
@@ -2530,7 +2509,8 @@ body:not(:focus-within) .sidebar-row.current {
   font-size: 11px;
 }
 
-.stats-filter select,
+/* The custom range's two date fields. The selects beside them are drawn now
+   and carry their own box from `library.css`. */
 .stats-filter input {
   height: var(--control-height);
   padding: 0 4px 0 5px;
@@ -2541,7 +2521,6 @@ body:not(:focus-within) .sidebar-row.current {
   font-size: 12px;
 }
 
-.stats-filter select:focus,
 .stats-filter input:focus {
   border-color: var(--accent);
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);

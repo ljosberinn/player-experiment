@@ -1,6 +1,8 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
 import { useCallback, useEffect, useState } from "react";
+import { Checkbox } from "../../components/primitives/Checkbox";
+import { Select } from "../../components/primitives/Select";
 import { revealMainLog } from "../../ipc";
 import { LastfmSettings } from "../lastfm/LastfmSettings";
 import { LibraryFolderSettings } from "../library/LibraryFolderSettings";
@@ -8,7 +10,7 @@ import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
 import { report } from "./statusStore";
-import { THEME_LABELS, THEME_PREFERENCES, type ThemePreference } from "./theme";
+import { THEME_LABELS, THEME_PREFERENCES } from "./theme";
 import { useThemeStore } from "./themeStore";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./zoom";
 import { useZoomStore } from "./zoomStore";
@@ -148,35 +150,31 @@ export function SettingsDialog({
 
             {/* Three values rather than a switch, because "System" is one of
                 them: a two-state control could not say "follow the OS" and
-                would have no way back to it once touched. Native `<select>`,
-                like the smart-playlist editor's - the design's own Select is
-                still ahead of us. */}
+                would have no way back to it once touched. */}
             <div className="settings-row">
               <label htmlFor="theme">Theme</label>
-              <select
+              <Select
                 id="theme"
                 value={themePreference}
-                onChange={(event) => void setTheme(event.target.value as ThemePreference)}
-              >
-                {THEME_PREFERENCES.map((preference) => (
-                  <option key={preference} value={preference}>
-                    {THEME_LABELS[preference]}
-                  </option>
-                ))}
-              </select>
+                options={THEME_PREFERENCES.map((preference) => ({
+                  value: preference,
+                  label: THEME_LABELS[preference],
+                }))}
+                onChange={(value) => void setTheme(value)}
+              />
             </div>
 
-            {/* A native checkbox rather than a Base UI switch: it is a plain
-                on/off preference in a dialog, which is what the platform
-                control is for, and `<label>` gives it its own hit target and
-                name without a `role` or an `aria-label`. */}
+            {/* A checkbox rather than a switch: the row is a preference in a
+                dialog, and the sheet's switch is for a setting that takes
+                effect as it is thrown. The label stays at the far left of the
+                row, so the control is named by `id` rather than by wrapping
+                it. */}
             <div className="settings-row">
               <label htmlFor="dynamic-background">Colour From Album Art</label>
-              <input
+              <Checkbox
                 id="dynamic-background"
-                type="checkbox"
                 checked={dynamicBackground}
-                onChange={(event) => void setDynamicBackground(event.target.checked)}
+                onChange={(checked) => void setDynamicBackground(checked)}
               />
             </div>
           </Tabs.Panel>
@@ -194,11 +192,10 @@ export function SettingsDialog({
             <h3>Online</h3>
             <div className="settings-row">
               <label htmlFor="unattended-lookup">Look Up Releases Online</label>
-              <input
+              <Checkbox
                 id="unattended-lookup"
-                type="checkbox"
                 checked={unattendedLookup}
-                onChange={(event) => void setUnattendedLookup(event.target.checked)}
+                onChange={(checked) => void setUnattendedLookup(checked)}
               />
             </div>
             <LastfmSettings />

@@ -77,7 +77,8 @@ light it is darker, and the sidebar is darker than the content on both. Which
 ground is drawn is `data-theme` on `<html>`, written by `themeStore` before the
 window is shown — **not** a `@media (prefers-color-scheme:)` block, which would
 need a third copy of every dark value. `color-scheme` follows it, so scrollbars
-and native popups follow too.
+follow too. Native popups no longer have to: phase 111 drew the last control
+that opened one.
 
 The departures from the sheet, all recorded in `tokens.css` beside the value.
 The first is why most of the others exist:

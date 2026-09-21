@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type AlbumGroup, statsAlbumGroup, statsPinAlbum } from "../../../ipc";
+import { choose } from "../../../test/select";
 import { useStatsStore } from "../store";
 import { AlbumLinkDialog } from "./AlbumLinkDialog";
 
@@ -105,7 +106,11 @@ describe("AlbumLinkDialog", () => {
     const user = userEvent.setup();
     open();
 
-    await user.selectOptions(await screen.findByLabelText("Merge in"), "Black Meddle Anthology");
+    // The group arrives from the backend, so the select is not there on the
+    // first frame. Matched loosely because the label carries the play count
+    // beside the heading, which is what makes the list pickable at all.
+    await screen.findByRole("combobox", { name: "Merge in" });
+    await choose("Merge in", /^Black Meddle Anthology/);
     await user.click(screen.getByRole("button", { name: "Merge" }));
 
     await waitFor(() =>

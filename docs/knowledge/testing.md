@@ -131,6 +131,17 @@ contents would prove nothing.
 **jsdom applies no stylesheet** — no layout engine, no computed colour. Three
 defects shipped past 600 green tests for exactly that reason.
 
+**A drawn control is driven differently from the element it replaced.**
+`src/test/select.ts` holds the four readers every spec that touched a
+`<select>` now needs: `showing` in place of `.value`, `choose` in place of
+`selectOptions`, and `offered`/`offers` for the `<option>`s that used to sit in
+the document whether the select was open or not. One file rather than one copy
+per spec, because a select that changes how it opens again should be one edit.
+Two traps in there: Base UI leaves a closed popup in the document for an exit
+animation jsdom never finishes, so wait on the *role* disappearing and not on
+the node; and a disabled option is a `<div role="option">` with `aria-disabled`,
+which `toBeDisabled` does not read.
+
 - **`src/App.css.test.ts`** reads the stylesheet as text and asserts *absences*:
   no hover background outside the allowlist, no `cursor: pointer`, no transition
   or animation outside `ANIMATION_ALLOWED` (whose exception must itself stand

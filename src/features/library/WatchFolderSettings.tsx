@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Select } from "../../components/primitives/Select";
 import {
   listWatchFolders,
   loadWatchInterval,
@@ -95,17 +96,19 @@ export function WatchFolderSettings({ lockedRoot }: { lockedRoot: string | null 
 
       <div className="settings-row">
         <label htmlFor="watch-interval">Check For Changes</label>
-        <select
+        {/* The interval is a number and the primitive's values are strings,
+            which is deliberate: a select is a choice out of a fixed list, and
+            a list keyed by anything else is a lookup table the caller has to
+            keep in step. The conversion is these two lines. */}
+        <Select
           id="watch-interval"
-          value={minutes}
-          onChange={(event) => void changeInterval(Number(event.target.value))}
-        >
-          {WATCH_INTERVALS.map((option) => (
-            <option key={option} value={option}>
-              {intervalLabel(option)}
-            </option>
-          ))}
-        </select>
+          value={String(minutes)}
+          options={WATCH_INTERVALS.map((option) => ({
+            value: String(option),
+            label: intervalLabel(option),
+          }))}
+          onChange={(value) => void changeInterval(Number(value))}
+        />
       </div>
 
       {/* Null while the list is still being read: an empty list and an

@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
+import { Checkbox } from "../../components/primitives/Checkbox";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import {
   countTracks,
@@ -110,18 +111,17 @@ export function LibraryFolderSettings({
         </span>
       </div>
 
-      {/* A native checkbox rather than a Base UI switch, like the rows above:
-          it is a plain on/off preference in a dialog. Disabled until there is
-          a folder, so filing with nowhere to file to is not a state this can
-          reach — the pass treats it as off in any case. */}
+      {/* A checkbox rather than a switch, like the rows above: it is a plain
+          on/off preference in a dialog. Disabled until there is a folder, so
+          filing with nowhere to file to is not a state this can reach — the
+          pass treats it as off in any case. */}
       <div className="settings-row">
         <label htmlFor="organize-library">Organise My Library</label>
-        <input
+        <Checkbox
           id="organize-library"
-          type="checkbox"
           checked={organize}
           disabled={root === null}
-          onChange={(event) => void changeOrganize(event.target.checked)}
+          onChange={(checked) => void changeOrganize(checked)}
         />
       </div>
 

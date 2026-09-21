@@ -85,6 +85,10 @@ export const config: WebdriverIO.Config = {
     // Also before the library: it only opens Settings, and a table behind the
     // dialog would add nothing to the photograph.
     "./specs/lastfm-import.test.ts",
+    // Also before the library: the drawn controls it photographs need no song,
+    // and the filter editor opens over an empty table. It saves nothing and
+    // puts the ground back.
+    "./specs/drawn-controls.test.ts",
     "./specs/library.test.ts",
     // After `library`, because an empty table is not a photograph of this app:
     // it only photographs the two grounds, and a reviewer cannot review a

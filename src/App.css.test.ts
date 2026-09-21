@@ -721,6 +721,117 @@ describe("the stylesheet", () => {
     expect(primary?.body, "a primary button's ring must not be its own fill").toMatch(
       /outline-color:\s*var\(--on-accent\)/,
     );
+
+    // The same problem on a selected segment, which is the other accent fill
+    // a focus ring can land on. Phase 111.
+    const segment = all.find((one) =>
+      one.selector.trim().endsWith(".segment:has(input:checked) input:focus-visible"),
+    );
+
+    expect(segment?.body, "a selected segment's ring must not be its own fill").toMatch(
+      /outline-color:\s*var\(--on-accent\)/,
+    );
+  });
+
+  it("keeps every mark of a drawn control findable", () => {
+    // Phase 111 replaced the native checkbox, radio and select, and a drawn
+    // control has to earn by hand what the engine used to supply. WCAG 1.4.11
+    // asks 3:1 of the visual information required to identify a component and
+    // its state, and for three of these the mark *is* the whole control: an
+    // unticked 15px box, an unselected radio, a switch that is off. The
+    // sheet's own line for all three is `--field-border`, which is 2.58:1 on
+    // light and 2.57:1 on dark - fine behind a field's fill and its text,
+    // nowhere near enough on an empty box - so they take `--track-border`.
+    //
+    // Four surfaces, because a dialog, the sidebar and a field are all places
+    // one of these is drawn.
+    const behind = ["surface", "chrome", "field", "sidebar"];
+
+    // Guards the guard: a name misspelt below resolves to the empty string,
+    // which `linearSrgb` reads as black, and black passes on a light ground
+    // while measuring nothing.
+    for (const name of ["track-border", "rail", "muted", "accent", "text", ...behind]) {
+      for (const ground of GROUNDS) {
+        expect(token(name, ground), `--${name} on ${ground}`).not.toBe("");
+      }
+    }
+
+    for (const ground of GROUNDS) {
+      for (const under of behind) {
+        // An unticked box's edge and a switch's off track, which is the same
+        // token doing the same job.
+        expect(
+          contrast(token("track-border", ground), token(under, ground)),
+          `track-border on ${under} (${ground})`,
+        ).toBeGreaterThan(3);
+        // A selected radio's ring and dot, and a slider's fill.
+        expect(
+          contrast(token("accent", ground), token(under, ground)),
+          `accent on ${under} (${ground})`,
+        ).toBeGreaterThan(3);
+        // A slider's knob, which is what says where the value is.
+        expect(
+          contrast(token("text", ground), token(under, ground)),
+          `text on ${under} (${ground})`,
+        ).toBeGreaterThan(3);
+      }
+
+      // The knob that says which way a switch is thrown, on the track it
+      // sits on. The sheet draws this one in the ground's own colour on
+      // light, where it is 1.62:1 and the state cannot be read at all; both
+      // grounds take `--muted`, which is the sheet's own dark-column answer.
+      expect(
+        contrast(token("muted", ground), token("rail", ground)),
+        `a switch's off knob on its own track (${ground})`,
+      ).toBeGreaterThan(3);
+
+      // A tick, a mixed bar, a thrown switch's knob - every mark drawn on an
+      // accent fill rather than beside one.
+      expect(
+        contrast(token("on-accent", ground), token("accent", ground)),
+        `a mark on the accent fill (${ground})`,
+      ).toBeGreaterThan(3);
+    }
+  });
+
+  it("replaces every focus ring a drawn control turns off", () => {
+    // A drawn control hides its own input, so the ring the global rule would
+    // have put on that input is dropped and re-drawn on the mark beside it.
+    // The `outline: none` and its replacement are two different selectors -
+    // exactly the kind of pair a later edit separates - and the first alone
+    // is an accessibility bug.
+    //
+    // Found by the thing that makes one: a rule that takes an input's opacity
+    // to zero. A text field that drops the ring in favour of a `:focus`
+    // border is a different bargain, keeps a visible element to put one on,
+    // and has its own rules in `app.css`.
+    //
+    // `uncommented`, because `rules()` sweeps the comment above a rule into
+    // its selector, and more than one of them explains itself by naming
+    // `:focus-visible`.
+    const owner = /\.([\w-]+)\s+input(?::focus-visible)?$/;
+    const components = (pattern: RegExp, body: RegExp) =>
+      all
+        .map((rule) => ({ selector: uncommented(rule.selector), body: rule.body }))
+        .filter((rule) => body.test(rule.body))
+        .flatMap((rule) => rule.selector.split(","))
+        .map((one) => pattern.exec(one.trim())?.[1])
+        .filter((name) => name !== undefined);
+
+    const hidden = new Set(components(owner, /opacity:\s*0\s*[;}]?\s*$/m));
+    const dropped = components(owner, /outline:\s*none/).filter((name) => hidden.has(name));
+
+    expect(dropped, "the drawn controls that hide their own input").not.toEqual([]);
+
+    for (const component of dropped) {
+      const replacement = all.find(
+        (rule) =>
+          uncommented(rule.selector).includes(`.${component} input:focus-visible ~ `) &&
+          /outline:\s*\d/.test(rule.body),
+      );
+
+      expect(replacement, `nothing draws a ring for .${component}`).toBeDefined();
+    }
   });
 
   it("keeps every status bar child on one row", () => {
@@ -984,8 +1095,13 @@ describe("the stylesheet", () => {
     }
 
     // And the fields must actually use it rather than the chrome divider.
-    const fields = all.find((rule) => /\.modal input,\s*\.modal select/.test(rule.selector));
-    expect(fields?.body).toMatch(/border:[^;]*var\(--field-border\)/);
+    // `.modal select` was the other half of this rule until phase 111 drew the
+    // select itself; `.select` in `library.css` is where its edge lives now.
+    const named = (selector: string) =>
+      all.find((rule) => uncommented(rule.selector).trim() === selector)?.body;
+
+    expect(named(".modal input")).toMatch(/border:[^;]*var\(--field-border\)/);
+    expect(named(".select,\n.search-field")).toMatch(/border:[^;]*var\(--field-border\)/);
   });
 
   it("rounds no corner anywhere in the sheet", () => {
