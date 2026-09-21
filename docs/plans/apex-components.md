@@ -70,7 +70,7 @@ shell stays governed by the old file until the library covers it.
   verbatim from `ListeningTiles.tsx`, so 4a is drawing this app's Listening tab
   rather than offering a choice. The rule it splits on is **prose**: a bare
   figure sits on the row, a figure that needs a line under it takes a cell.
-- **Section 4c is one panel, and 4e is two forms.** Both wear the sheet's
+- **Section 4c is one panel, and 4e is two alternatives.** Both wear the sheet's
   "Top: … Bottom: …" caption, which is 4b's alternatives grammar — but 4c's
   two blocks carry the seven-day strip, which the figures above it do not, and
   4e's two draw the same five rows twice. Same grammar, and what settles it is
@@ -89,6 +89,15 @@ shell stays governed by the old file until the library covers it.
   `Donut` across two directories to satisfy a row of this table buys nothing.
   Its *drawing* did move, to `library.css`, and the guard that keeps 4a and
   4c out of `app.css` now covers it.
+- **Section 4e is two alternatives, and the app takes the bar.** Done in 116c.
+  Its two blocks iterate the same five rows twice — the lower drops the bar and
+  adds a rank numeral, which is nothing 4b's rule counts as new — so `BarList`
+  was restyled to the upper form and the numbered list was not built. The
+  variant the issue first proposed had no honest caller: `WorstByBitrate` is a
+  table because it carries album, artist, songs and mean kbps, not because a
+  bar of 320 would read flat, and a `24px 1fr auto` grid drops two of those
+  columns. `BarList` stays in `charts/` for `Heatmap`'s reason; its drawing
+  moved to `library.css` and the same guard covers it.
 - **Section 4b is two alternatives, and that is the asymmetry.** Its selects
   read `All time` / `Either` / `Either` while its tokens read `last 12 months` /
   `owned only`. Two forms of one control drawn in one frame contradict each
@@ -134,7 +143,7 @@ Primitives the sheet specifies, against what exists:
 | `FilterBar` | **done, 115** — `.stats-filters`. `FilterToken` is 122 |
 | `Streak` | **done, 116a** — with `Streaks.last_seven` behind its week |
 | `Heatmap` | **done, 116b** — stays in `charts/`, drawn by `library.css` |
-| `Leaderboard` | `charts/BarList` |
+| `Leaderboard` | **done, 116c** — `charts/BarList`, drawn by `library.css` |
 | `Menu`, `MenuItem`, `MenuSeparator` | `ui/ContextMenu` (Base UI, close) |
 | `Dialog` header / body / footer | **done, 113** — all eight dialogs |
 | `TaskLine`, `Skeleton` | `.sidebar-task`, ad-hoc |
@@ -182,11 +191,10 @@ time any of them started.
 **116 is three issues, and they share nothing.** 4c, 4d and 4e are three
 drawings, not three views of one, and each carries its own decision: 116a a new
 backend field, 116b the ramp — which `rampStep` shares with `Donut` — and 116c
-whether the numbered list is a variant or a toggle. The only file two of them
+whether the numbered list ships at all. The only file two of them
 would both write is `library.css`, which is what 110 and 111 stacked for; here
-the blocks are three separate sections, so they run off main in parallel.
-116a and 116b have landed; 116b took the ramp with it, so 116c starts from an
-eight-step one.
+the blocks are three separate sections, so they ran off main in parallel.
+All three have landed.
 
 **122 comes after 115 rather than beside it.** Both are section 4b, and the
 question 122 opens — whether the view wears the selects or the tokens — is only
