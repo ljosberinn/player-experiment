@@ -2622,14 +2622,6 @@ body:not(:focus-within) .sidebar-row.current {
   gap: 22px;
 }
 
-/* Streaks is two figures in a grid the sheet fixes at three columns, and the
-   empty third would be a block of the gap colour. A region overruling the
-   primitive it wraps, which is what this sheet's place in the cascade is for.
-   Section 4c replaces the panel outright. */
-.stats-panel .stat-tiles {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 /* A column of panels rather than a grid: the widths differ by panel - a top
    list wants a name's worth, the plays table wants more - and a grid would
    size them all to the widest. */

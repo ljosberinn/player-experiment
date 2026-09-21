@@ -4,7 +4,7 @@ import { ListeningTiles } from "./ListeningTiles";
 import { HeardNeverOwned } from "./panels/HeardNeverOwned";
 import { RecentPlays } from "./panels/RecentPlays";
 import { SeriesPanel } from "./panels/SeriesPanel";
-import { StreakTiles } from "./panels/StreakTiles";
+import { StreakPanel } from "./panels/StreakPanel";
 import { TopPanel } from "./panels/TopPanel";
 import { WeekClock } from "./panels/WeekClock";
 
@@ -32,7 +32,7 @@ export function ListeningPanels() {
   return (
     <>
       <ListeningTiles />
-      <StreakTiles />
+      <StreakPanel />
       <SeriesPanel
         title="Plays over time"
         aggregate={statsPlaysOverTime}

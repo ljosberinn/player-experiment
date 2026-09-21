@@ -11,4 +11,10 @@ current: number, longest: number,
 /**
  * `YYYY-MM-DD` bounds of the longest run, the latest one on a tie.
  */
-longestFrom: string | null, longestTo: string | null, };
+longestFrom: string | null, longestTo: string | null, 
+/**
+ * Whether each of the seven local days ending today has a play, oldest
+ * first. A fixed array rather than a `Vec` so the default is what an
+ * empty history answers.
+ */
+lastSeven: [boolean, boolean, boolean, boolean, boolean, boolean, boolean], };

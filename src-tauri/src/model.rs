@@ -1286,6 +1286,10 @@ pub struct Streaks {
     /// `YYYY-MM-DD` bounds of the longest run, the latest one on a tie.
     pub longest_from: Option<String>,
     pub longest_to: Option<String>,
+    /// Whether each of the seven local days ending today has a play, oldest
+    /// first. A fixed array rather than a `Vec` so the default is what an
+    /// empty history answers.
+    pub last_seven: [bool; 7],
 }
 
 /// The Library tab's tiles.
