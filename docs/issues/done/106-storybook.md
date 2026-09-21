@@ -69,7 +69,7 @@ the Ground switch with it.
 ## CI
 
 `npm run build-storybook` as a step on the `frontend` job. Wired here rather
-than deferred: 107 through 117 each bring stories, and a story that does not
+than deferred: every issue after it brings stories, and a story that does not
 compile should fail on the branch that wrote it.
 
 ## The one story

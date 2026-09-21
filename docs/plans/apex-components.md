@@ -106,22 +106,22 @@ state on both grounds at once, which is the thing neither suite shows.
 Foundation first, then primitives, then the surfaces built out of them.
 
 ```
-106 Storybook ─────────────────────────────── parallel
-118 Native titlebar ───────────────────────── parallel
+106 Storybook ──────→ 112 Storybook on Pages ──── parallel
+119 Native titlebar ───────────────────────────── parallel
 
 107 Archivo ─┐
 108 Grounds ─┼─→ 110 Buttons ─┐
-109 Radius ──┘   111 Controls ┴─→ 112 Dialog chrome ─→ 113 Track list
-                                                       114 Stat tiles
-                                                       115 Streaks etc.
-                                                       116 Menu + task line
-                                                       117 MusicBrainz review
+109 Radius ──┘   111 Controls ┴─→ 113 Dialog chrome ─→ 114 Track list
+                                                       115 Stat tiles
+                                                       116 Streaks etc.
+                                                       117 Menu + task line
+                                                       118 MusicBrainz review
 ```
 
 107, 108 and 109 each rewrite guards in `App.css.test.ts` and all three touch
 the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 with them.
-113 through 117 are independent of each other once 112 has landed.
+114 through 118 are independent of each other once 113 has landed.
 
 **111 now stacks on 110 rather than branching from main.** Both write
 `library.css` and both add tokens, which is the same two files 107–109 were
