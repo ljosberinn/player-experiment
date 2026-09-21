@@ -1271,30 +1271,157 @@ th.status {
   height: min(720px, 86vh);
 }
 
-/* Which release the dialog is on, under the heading that says which of how
-   many it is. */
-.lookup-subject {
+/* Section 6e: the queue on the left, the pane following the selection. Full
+   width rather than paired, because the layout needs the room.
+
+   The body gives up both the inset and the scroll. The inset, so the column
+   rule reaches the header above it and the footer below it; the scroll,
+   because the two columns each scroll inside themselves - see the guard in
+   `App.css.test.ts`, which is about the box keeping one height rather than
+   about the number of scroll areas in it. */
+.dialog.lookup > .dialog-body {
+  display: grid;
+  grid-template-columns: 212px 1fr;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The eyebrow over a region, which the sheet draws at one size everywhere it
+   appears: the queue's heading, the WRITE box's, and the mapping table's two
+   column heads. */
+.lookup-eyebrow {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+/* `auto 1fr` with a floor of nothing, rather than the sheet's absolutely
+   positioned list: the eyebrow's height is not a number worth writing down a
+   second time, and a grid child's automatic minimum is its content, which is
+   what would otherwise stop the list from scrolling at all. */
+.lookup-queue {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  border-right: 1px solid var(--chrome-border);
+}
+
+.lookup-queue > .lookup-eyebrow {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+.lookup-queue-list {
+  min-height: 0;
   margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lookup-queue-list [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border-top: 1px solid var(--row-line);
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* The one row with no line above it: the eyebrow's border is already there. */
+.lookup-queue-list [role="option"]:first-child {
+  border-top: 0;
+}
+
+/* An ink fill rather than the track list's accent tint. The sheet draws this
+   row inverted, and it can: the column is 212px of one recessive list, not the
+   surface a library is read on, so there is nothing beside it for a tint to
+   keep legible. */
+.lookup-queue-list [role="option"].selected {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.lookup-queue-score {
+  width: 32px;
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A track count that disagrees with the candidate the score was measured on,
+   which is why a release above the bar is in this queue at all. It colours the
+   score rather than taking a column of its own: 212px has no column to give,
+   and the score is the number the disagreement is about. */
+.lookup-queue-score.disagrees {
+  color: var(--danger);
+}
+
+/* The album takes whatever the score leaves and truncates. The artist is in
+   the pane's subject line, which is where the selection puts it. */
+.lookup-queue-album {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The selected row carries the fill, so the danger red would be red on ink.
+   Inherit instead: the row itself is the strongest mark on the list, and the
+   score is still the number the pane is about to explain. */
+.lookup-queue-list [role="option"].selected .lookup-queue-score.disagrees {
+  color: inherit;
+}
+
+/* The other scroller. Nothing between the pane and the box: each thing in it
+   pads itself, because the mapping's rules run the full width and the covers
+   and the WRITE box do not. */
+.lookup-pane {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* With nothing selected, which is where a decided release leaves the dialog. */
+.lookup-empty {
+  margin: 0;
+  padding: 12px 18px;
   color: var(--muted);
 }
 
-/* No cap and no scroller of its own: the dialog's body is the one scroll area,
-   and Skip and Cancel sit outside it. */
+/* Which release the pane is on: the album at the sheet's weight, then the
+   artist and the file count on the same baseline in a lighter one. */
+.lookup-subject {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 18px 10px;
+  font-size: 13.5px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.lookup-subject-detail {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* No cap and no scroller of its own: the pane is the scroll area this sits in.
+   The candidates are what the source region holds until one is picked, and
+   picking swaps them for the covers and the fields in the same place. */
 .lookup-results {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 0;
+  margin: 0 18px 14px;
   padding: 0;
   list-style: none;
-}
-
-/* The way out of a stale candidate list. The review queue opens on what the
-   unattended pass found, which can be weeks old, so every result list carries
-   the search that replaces it. */
-.lookup-refresh {
-  margin: 8px 0 0;
-  font-size: 12px;
 }
 
 /* A result is four facts on two lines, so it is a grid rather than the
@@ -1338,7 +1465,8 @@ th.status {
    judge it: an archive front is often a different pressing's sleeve. */
 .lookup-covers {
   display: flex;
-  gap: 14px;
+  gap: 18px;
+  padding: 0 18px 14px;
 }
 
 .lookup-cover {
@@ -1346,6 +1474,24 @@ th.status {
   flex-direction: column;
   gap: 5px;
   margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* 82px, against the tag editor's 120px: two of them sit beside each other in a
+   699px pane that also holds the fields and the mapping, rather than alone at
+   the top of a dialog. The edge is the empty box's own - the sheet draws a
+   border on the placeholder and none on the art, which is what tells an
+   unknown cover from a blank one. */
+.lookup-cover .tag-cover-art {
+  width: 82px;
+  height: 82px;
+  box-shadow: none;
+}
+
+.lookup-cover .tag-cover-art-empty {
+  border: 1px solid var(--chrome-border);
 }
 
 .lookup-cover figcaption {
@@ -1353,101 +1499,73 @@ th.status {
   flex-direction: column;
 }
 
+.lookup-cover .tag-cover-note {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
 .lookup-fields {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0;
-  padding: 7px 10px;
-  border: 1px solid var(--chrome-border);
+  align-items: center;
+  gap: 8px 18px;
+  margin: 0 18px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--menu-border);
 }
 
-/* The review queue, sorted by what the unattended pass scored each release
-   at. Four hundred rows of it, so the header stays put against `.dialog-body`
-   the way the mapping table's does. */
-.lookup-queue {
+/* The eyebrow is the legend, so it sits on its own line above the boxes rather
+   than notched into the border the way a browser draws a legend by default. */
+.lookup-fields > legend {
+  float: left;
   width: 100%;
-  border-collapse: collapse;
-}
-
-.lookup-queue th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 3px 7px;
-  background: var(--chrome);
-  color: var(--muted);
-  font-weight: 400;
-  text-align: left;
-}
-
-.lookup-queue td {
-  padding: 4px 7px;
-  border-top: 1px solid var(--chrome-border);
-}
-
-/* The two number columns take what they need and the album and artist take
-   the rest, wrapping rather than widening the table: the dialog's width is
-   fixed, and a sideways scroller inside its body is the thing 89 removed. */
-.lookup-queue-number,
-.lookup-queue-detail {
-  width: 1%;
-  white-space: nowrap;
-}
-
-.lookup-queue-number {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Beats `.lookup-queue th`'s left, so the heading sits over its own numbers. */
-.lookup-queue th.lookup-queue-number {
-  text-align: right;
-}
-
-/* A track count that disagrees with the candidate the score was measured on,
-   which is why a release above the bar is in this queue at all. */
-.lookup-queue-number.disagrees {
-  color: var(--danger);
-}
-
-/* The pressing the pass settled on, secondary to the album it is under. */
-.lookup-queue-detail {
-  color: var(--muted);
+  margin-bottom: 9px;
+  padding: 0;
 }
 
 .lookup-map {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
-/* Sticks to the top of `.dialog-body`, which is the nearest scrollport now that
-   the table has no wrapper of its own: the covers and the field toggles scroll
-   under it rather than pushing it off. */
+/* The sheet's `1fr 62px 1fr`, stated the way a fixed table takes it: the two
+   outer columns split what the middle one leaves. */
+.lookup-map th:nth-child(2) {
+  width: 62px;
+}
+
+/* Between two rules, like the sheet. Not sticky: the pane is the scrollport
+   and the covers above this are part of what the user is comparing, so a head
+   that floated over them would cover the thing it is a heading for. */
 .lookup-map th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 3px 7px;
-  background: var(--chrome);
-  color: var(--muted);
-  font-weight: 400;
+  padding: 7px 18px;
+  border-top: 1px solid var(--chrome-border);
+  border-bottom: 1px solid var(--chrome-border);
   text-align: left;
 }
 
 .lookup-map td {
-  padding: 3px 7px;
-  border-top: 1px solid var(--chrome-border);
-  vertical-align: top;
+  padding: 7px 18px;
+  border-bottom: 1px solid var(--row-line);
+  vertical-align: middle;
 }
 
 .lookup-map-title,
 .lookup-map-detail {
   display: block;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .lookup-map-detail {
   color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* A file the release has nothing for. Dimmed rather than hidden: it is still
@@ -1457,31 +1575,46 @@ th.status {
   opacity: 0.55;
 }
 
+/* Centred between the columns rather than against either, which is what the
+   62px is for. `text-align` rather than a flex row: `display: flex` on a `<td>`
+   takes it out of the table box, and the row's line broke around the two
+   buttons where the anonymous cell replaced it. */
 .lookup-map-move {
+  padding-left: 0;
+  padding-right: 0;
+  text-align: center;
   white-space: nowrap;
 }
 
-/* Square, and small enough that two of them fit the row height they sit in. */
-.lookup .lookup-map-move button {
-  width: 21px;
-  height: 21px;
-  padding: 0;
+/* Side by side in a cell that centres its line, which is what the block box
+   `.icon-button` is everywhere else cannot do. */
+.lookup-map-move .icon-button {
+  display: inline-flex;
+  margin: 0 1.5px;
 }
 
-/* Back sits away from Apply: one goes on with the release and one abandons the
-   candidate, and they should not read as a pair. Its own row rather than the
-   dialog's footer, which already carries Cancel and Skip - 118 is what folds
-   the two rows into one. */
-.lookup-confirm-actions {
+/* What the pane says under the table: what an apply would do, how far a write
+   has got, or - with a rail beside it - what it is still waiting for. */
+.lookup-note {
+  margin: 0;
+  padding: 10px 18px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.lookup-waiting {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  font-size: 11px;
 }
 
-/* The lookup puts three things between its body and its actions - the release
-   line, a refusal, the confirm step's own row - and the box states no padding
-   of its own, so they take the body's inset here rather than each inventing
-   one. They stay out of the scroller: see the paned rule in `library.css`. */
+/* A refusal is the one thing the lookup still puts between the body and the
+   actions, and the box states no padding of its own, so it takes the inset
+   here rather than inventing one. It stays out of the scrollers: an error that
+   can scroll away inside a column is no error message. */
 .dialog.lookup > :not(.dialog-header, .dialog-body, .dialog-footer) {
   margin: 0;
   padding: 10px 18px;

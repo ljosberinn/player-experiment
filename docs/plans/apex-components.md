@@ -109,6 +109,35 @@ shell stays governed by the old file until the library covers it.
   `ProgressBar` landed with `TaskLine`: the sheet draws the same 4px rail here
   and under 6f, and anything under way is drawn at three pixels at least, which
   is what the sheet does with 0,22%.
+- **Sections 6e and 6f are in, and the queue stopped being a screen.** Done in
+  118. 6e draws the queue in a `212px` column beside the pane, which is only
+  affordable because selecting a row costs no request — `enter` reads the
+  release's files and stops, and `pick` is what spends the rate-limited fetch.
+  That settles the thing the sheet does not draw: **the candidate list is still
+  a step**, in the pane's source region, and 6e draws what is after it. A pane
+  that fetched the top candidate as the selection moved would spend a round
+  trip per arrow key.
+  - **6f is not 6e's pane**, it is a narrower specimen: `1fr 1fr` with no nudge
+    column, 16px padding, 12px/10.5px type, its own two-line header. Its
+    metrics would give the mapping two row treatments, so what it contributes
+    is behaviour — the file column is local and drawn in every state, and only
+    the MusicBrainz half waits.
+  - **Its pulse is the one thing of the sheet's that did not ship.**
+    `.chart-skeleton`, `.heatmap-skeleton .heatmap-cell` and `.bar-list-skeleton`
+    each say "no shimmer" in as many words, so a fourth skeleton that animates
+    either makes two kinds of skeleton or regrades the other three — and it
+    buys nothing the sheet's own "no spinner" does not, the rail and the status
+    line being the pending affordance. `ANIMATION_ALLOWED` is untouched.
+  - **The footer's lead is not "Back to queue".** With the queue in the column
+    on the left, back to it is clicking another row. The slot holds whichever
+    step back is live: Back to Results while a candidate is picked, Search
+    again while one is not — which retired a `.link-button`. Skip went with it,
+    both meanings, and so did `index: null` as "draw the table instead".
+  - **The one-scroller guard was restated, not relaxed.** What fixed the six
+    heights was the box stating one, not the count of scroll areas inside it,
+    so the rule is now that anything scrolling in `.dialog-body`'s place states
+    `min-height: 0`. `--row-line` landed with it, a fourth and lightest border
+    weight: 6e draws the frame and the line between two rows a step apart.
 - **Section 4b is two alternatives, and that is the asymmetry.** Its selects
   read `All time` / `Either` / `Either` while its tokens read `last 12 months` /
   `owned only`. Two forms of one control drawn in one frame contradict each
@@ -157,7 +186,7 @@ Primitives the sheet specifies, against what exists:
 | `Leaderboard` | **done, 116c** — `charts/BarList`, drawn by `library.css` |
 | `Menu`, `MenuItem`, `MenuSeparator` | **done, 117** — drawn by `library.css` as `.menu-*`; `ui/ContextMenu` stays put, the item renderer and the trigger region being one vocabulary (116b's rule) |
 | `Dialog` header / body / footer | **done, 113** — all eight dialogs |
-| `TaskLine`, `Skeleton` | **`TaskLine` done, 117**; `.sidebar-task` is its placement and nothing else. `Skeleton` is 6f's pulse, which is 118 |
+| `TaskLine`, `Skeleton` | **`TaskLine` done, 117**; `.sidebar-task` is its placement and nothing else. **`Skeleton` was already `.skeleton`**, and 118 reused it rather than building 6f's pulsing variant — see above |
 
 Base UI stays underneath the ones that need behaviour (menu, dialog, slider,
 combobox). The primitive is what the app imports, so the library choice is
@@ -197,8 +226,9 @@ the token block — stack them rather than running them in parallel worktrees.
 All three have landed, and 110 and 111 with them.
 113b through 118 are independent of each other once 113 has landed. 113b, 114,
 115 and 117 have landed too, each off main rather than stacked — 113 was in by
-the time any of them started. 118 draws the same 4px rail 117 made a primitive,
-so it has a `ProgressBar` to call rather than a second one to write.
+the time any of them started. **118 is the one that stacked**, on 117: it draws
+the same 4px rail, so it has a `ProgressBar` to call rather than a second one
+to write. It has landed as well.
 
 **116 is three issues, and they share nothing.** 4c, 4d and 4e are three
 drawings, not three views of one, and each carries its own decision: 116a a new

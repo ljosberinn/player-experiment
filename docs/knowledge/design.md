@@ -76,6 +76,7 @@ and type), one per ground.
 | `--accent-hover` / `-active` | `#983c00`\* / `#862b00`\* | `#ffa040` / `#d97410` | a primary button under the pointer and under the press |
 | `--accent-deep` | `#9d4000`\* | `#f58a1f` | the accent as a *label on one of its own washes* |
 | `--chrome-border` | ink / .125 | white / .07 | every hairline |
+| `--row-line` | ink / .065 | white / .026 | the line *between two rows of a list*, a step under the hairline that frames it |
 
 The stack inverts rather than repeating: on dark, coming forward is lighter; on
 light it is darker, and the sidebar is darker than the content on both. Which
@@ -157,6 +158,13 @@ the same colour, and on light the sheet draws the rule at `.4` of ink against
 the edge's `.2`. It is a separator rather than part of a control, so WCAG
 1.4.11 does not reach it and nothing asserts a ratio on the token; the
 appearance suite measures the composited line instead.
+
+**A fourth and lightest weight, `--row-line`.** 6e draws two line weights in
+one picture: the queue's column edge and its eyebrow at the sheet's
+`separator`, and the line between two queue rows a step under it. Both the
+review queue and the mapping table wear it, and the difference is what makes a
+run of rows read as one block inside a frame rather than as a stack of panels.
+A separator, so nothing asserts a ratio on it either.
 
 ## Type
 
