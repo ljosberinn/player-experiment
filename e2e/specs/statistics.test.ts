@@ -107,6 +107,25 @@ describe("the Statistics view", () => {
     await capture("statistics-listening");
   });
 
+  it("measures the current streak against the record", async () => {
+    const streaks = panel("Streaks");
+    // Seven whatever the answer is: the strip is a fixed week rather than a
+    // series, so it is drawn before the aggregate lands and does not grow.
+    await expect(streaks.$$(".streak-day")).toBeElementsArrayOfSize(7);
+
+    // The record is an em dash until the walk returns, so existing proves
+    // nothing here for the reason it proves nothing about the tiles.
+    const record = streaks.$(".streak-caption span:last-child");
+    await browser.waitUntil(async () => (await record.getText()) !== "Record —", {
+      timeout: 30_000,
+      timeoutMsg: "the streaks never arrived",
+    });
+
+    // `seed_plays` lays 1,000 a week from Monday 2023-11-13, so 5,000 is five
+    // unbroken weeks and the record is a run rather than a single day.
+    expect(Number((await record.getText()).replaceAll(/\D/g, ""))).toBeGreaterThan(1);
+  });
+
   it("draws the week the plays fall in", async () => {
     const clock = panel("When you listen");
     // Cells, not a skeleton: the clock is 168 counts whatever was played, so

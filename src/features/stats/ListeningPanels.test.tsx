@@ -62,6 +62,8 @@ vi.mock("../../ipc", () => ({
     longest: 12,
     longestFrom: "2024-03-01",
     longestTo: "2024-03-12",
+    // The three the current run is made of, plus one before the gap.
+    lastSeven: [true, false, false, false, true, true, true],
   })),
   statsTop: vi.fn(async (_query, dimension: string) =>
     dimension === "track"
@@ -315,5 +317,15 @@ describe("ListeningPanels", () => {
 
     expect(await within(panel("Streaks")).findByText("12 days")).toBeInTheDocument();
     expect(within(panel("Streaks")).getByText("3 days")).toBeInTheDocument();
+  });
+
+  it("measures the current streak against the record and draws the week", async () => {
+    render(<ListeningPanels />);
+
+    const streaks = panel("Streaks");
+    expect(await within(streaks).findByText("Record 12")).toBeInTheDocument();
+    expect(
+      within(streaks).getByRole("img", { name: "Plays on 4 of the last seven days" }),
+    ).toBeInTheDocument();
   });
 });

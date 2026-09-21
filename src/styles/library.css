@@ -849,6 +849,114 @@
   color: inherit;
 }
 
+/* ---------- 04 · streaks ---------- */
+
+.streak {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* The row's rule and padding are `.stat-row`'s, and the figures are a step
+   smaller: a panel's two numbers sit under the page's four rather than
+   beside them. */
+.streak-figures {
+  display: flex;
+  gap: 44px;
+  margin: 0;
+  border-top: 2px solid var(--rule);
+  padding-top: 12px;
+}
+
+.streak-figures dt {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.streak-figures dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Qualified because it has to beat `.streak-figures dd`: the span is a second
+   definition of the same term, so it is that selector's match too and would
+   otherwise be drawn at 26px and 800. */
+.streak-figures .streak-span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.streak-caption,
+.streak-week {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.streak-caption {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.streak-week {
+  margin-top: 6px;
+}
+
+/* `--track` is the transport's rail, which is what the sheet calls its
+   separator - the same grey a bar is drawn against everywhere else.
+
+   The hairline is the transport's deviation from the design, applied here for
+   the reason it was applied there: the sheet draws both of these as a bare
+   slab of `--track`, which is 1.33:1 against the ground behind it, and WCAG
+   1.4.11 asks 3:1 of the parts of a graphic needed to understand it. The
+   track's extent is what the fill is read as a share of, and a day without
+   plays is half of what the strip says. Both are invisible without it. */
+.streak-track {
+  height: 10px;
+  border: 1px solid var(--track-border);
+  background: var(--track);
+}
+
+.streak-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.streak-days {
+  display: flex;
+  gap: 3px;
+  margin-top: 9px;
+}
+
+/* Equal shares rather than a width: seven days is the whole week whatever the
+   panel is, so the strip stretches instead of ending short of the track it
+   sits under. */
+.streak-day {
+  flex: 1;
+  height: 22px;
+  border: 1px solid var(--track-border);
+  background: var(--track);
+}
+
+/* The edge goes to the fill rather than staying grey: a day with plays is one
+   accent block, not an accent block in a box. */
+.streak-day.on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
 /* ---------- 06 · dialogs ---------- */
 
 /* Only the dim layer. It used to centre the dialog as its flex child, which

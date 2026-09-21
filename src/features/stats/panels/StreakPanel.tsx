@@ -1,4 +1,4 @@
-import { StatTiles } from "../../../components/primitives/StatTiles";
+import { Streak } from "../../../components/primitives/Streak";
 import { statsStreaks } from "../../../ipc";
 import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
@@ -7,37 +7,30 @@ import { StatsPanel } from "./StatsPanel";
 /**
  * Runs of consecutive days with a play.
  *
- * Two numbers, so two tiles: a chart of one datum each would be a chart of
- * nothing. A run that ended yesterday still counts as current, which the
- * backend decides - today is not over.
+ * A run that ended yesterday still counts as current, which the backend
+ * decides - today is not over. The seven days come off the same walk, so the
+ * strip is under the same filters as the figures above it.
  */
-export function StreakTiles() {
+export function StreakPanel() {
   const { query, deps } = useListenQuery();
   const { data } = usePanelQuery(() => statsStreaks(query), deps);
 
   return (
     <StatsPanel title="Streaks">
-      <StatTiles
-        tiles={[
-          { label: "Current", value: days(data?.current) },
-          {
-            label: "Longest",
-            value: days(data?.longest),
-            ...(data?.longestFrom != null && data.longestTo != null
-              ? { caption: `${localDate(data.longestFrom)} – ${localDate(data.longestTo)}` }
-              : {}),
-          },
-        ]}
+      <Streak
+        current={data?.current}
+        longest={data?.longest}
+        {...(data?.longestFrom != null && data.longestTo != null
+          ? { span: `${localDate(data.longestFrom)} – ${localDate(data.longestTo)}` }
+          : {})}
+        days={data?.lastSeven ?? []}
+        format={days}
       />
     </StatsPanel>
   );
 }
 
-/** An em dash until the first answer lands, rather than a zero that is a lie. */
-function days(value: number | undefined): string {
-  if (value === undefined) {
-    return "—";
-  }
+function days(value: number): string {
   return `${value.toLocaleString()} ${value === 1 ? "day" : "days"}`;
 }
 

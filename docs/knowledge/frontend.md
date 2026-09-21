@@ -352,6 +352,21 @@ absences are what nobody notices coming back — hence the guards in
     number that needs a line of prose takes a cell. A unit rides inside the
     figure rather than under it — "1.5 years", "68%" — which is why
     `spanParts` and `byteParts` exist beside `formatSpan` and `formatBytes`.
+  - **`Streak` is 4a's figures over a picture of one of them.** Same `<dl>`
+    rule, and the caption row reprints the current run beside the record
+    although the figure above it says the same thing — the sheet draws it, and
+    that line is what the track under it measures. The seven day bars are the
+    one thing the figures do not carry, so the strip is `role="img"` with a
+    label rather than decoration: `Heatmap`'s bargain, and for its reason.
+    They run oldest to newest, which the sheet's own mock does not — it fills
+    the leftmost four for a four-day current streak, and that reads against
+    the hour axis 4d draws directly below it.
+  - **The streak's track and its empty days carry a `--track-border`
+    hairline.** The transport's deviation from the design, applied a third
+    time for the reason it was made: `--track` is 1.33:1 against the ground
+    behind it, and WCAG 1.4.11 asks 3:1 of the parts of a graphic needed to
+    understand it. The track's extent is what the fill is a share of, and a
+    day without plays is half of what the strip says.
   - Regions migrate onto them one issue at a time. See
     [plans/apex-components.md](../plans/apex-components.md).
 - No hover backgrounds, except window caption buttons, menu items and the two

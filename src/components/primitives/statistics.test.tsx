@@ -3,15 +3,17 @@ import { describe, expect, test } from "vitest";
 
 import { StatRow } from "./StatRow";
 import { StatTiles } from "./StatTiles";
+import { Streak } from "./Streak";
 
 /**
  * What jsdom can actually see.
  *
- * Section 4a is two drawings of one idea, so the two components share this
- * file: the row is the bare figures, the tiles are the ones that need a line
- * of prose under them. Both are drawn in `library.css`, which is not applied
- * here - everything below is about the markup a caller would otherwise have
- * to get right by hand.
+ * The Statistics view's own primitives share this file. Section 4a is two
+ * drawings of one idea - the row is the bare figures, the tiles are the ones
+ * that need a line of prose under them - and 4c is the streak panel, which
+ * puts the same kind of figure over a picture of its own. All of them are
+ * drawn in `library.css`, which is not applied here: everything below is
+ * about the markup a caller would otherwise have to get right by hand.
  */
 describe("StatRow", () => {
   test("states the whole row as one list rather than one list per figure", () => {
@@ -114,5 +116,88 @@ describe("StatTiles", () => {
 
     expect(screen.getByText("+18% on last month")).toHaveClass("delta");
     expect(screen.getByText("plays matched to a file")).not.toHaveClass("delta");
+  });
+});
+
+/** Three days, then a gap, then the two the current run is made of. */
+const WEEK = [true, true, true, false, false, true, true];
+
+const days = (count: number) => `${count.toLocaleString()} ${count === 1 ? "day" : "days"}`;
+
+describe("Streak", () => {
+  test("states the two figures as one list rather than one list per figure", () => {
+    // `StatRow`'s rule, for its reason: two `<dl>`s are two unrelated groups,
+    // and Current and Longest are one subject measured twice.
+    const { container } = render(<Streak current={2} longest={198} days={WEEK} format={days} />);
+
+    expect(container.querySelectorAll("dl")).toHaveLength(1);
+    expect(container.querySelectorAll("dt")).toHaveLength(2);
+  });
+
+  test("hangs the record's span off the same term as the figure it qualifies", () => {
+    render(
+      <Streak current={2} longest={198} span="2.1.2012 – 17.7.2012" days={WEEK} format={days} />,
+    );
+
+    const span = screen.getByText("2.1.2012 – 17.7.2012");
+    expect(span.tagName).toBe("DD");
+    expect(span.previousElementSibling).toHaveTextContent("198 days");
+  });
+
+  test("leaves the span out when the record has no bounds", () => {
+    // An empty element in its place still takes the line's height, which
+    // would drop everything under it by a line for no answer.
+    const { container } = render(<Streak current={0} longest={0} days={WEEK} format={days} />);
+
+    expect(container.querySelectorAll("dd")).toHaveLength(2);
+  });
+
+  test("draws seven days whatever it was given", () => {
+    // The strip is a fixed week rather than a series, so an answer that has
+    // not landed is seven empty days and not a row that grows into place.
+    const { container } = render(
+      <Streak current={undefined} longest={undefined} days={[]} format={days} />,
+    );
+
+    expect(container.querySelectorAll(".streak-day")).toHaveLength(7);
+  });
+
+  test("marks a day with plays apart from one without", () => {
+    const { container } = render(<Streak current={2} longest={198} days={WEEK} format={days} />);
+
+    expect(
+      [...container.querySelectorAll(".streak-day")].map((day) => day.classList.contains("on")),
+    ).toEqual(WEEK);
+  });
+
+  test("fills the track with the current run's share of the record", () => {
+    const { container } = render(<Streak current={99} longest={198} days={WEEK} format={days} />);
+
+    expect(container.querySelector(".streak-fill")).toHaveStyle({ width: "50%" });
+  });
+
+  test("leaves the track empty rather than dividing by a record of zero", () => {
+    // Every library before its first play, and every filter that matched none.
+    const { container } = render(<Streak current={0} longest={0} days={[]} format={days} />);
+
+    expect(container.querySelector(".streak-fill")).toHaveStyle({ width: "0%" });
+  });
+
+  test("writes an em dash until the first answer lands", () => {
+    // `StreakTiles`' rule since 84a: a zero here is a lie about a history
+    // that has not been read yet, and it would be corrected a frame later.
+    render(<Streak current={undefined} longest={undefined} days={[]} format={days} />);
+
+    expect(screen.getByText("Current").nextElementSibling).toHaveTextContent("—");
+    expect(screen.getByText("Current streak · —")).toBeInTheDocument();
+    expect(screen.getByText("Record —")).toBeInTheDocument();
+  });
+
+  test("names the week for a reader who cannot see it", () => {
+    // Seven bars carry the one thing the figures do not - which of the last
+    // seven days had a play - and nothing else on the panel says it.
+    render(<Streak current={2} longest={198} days={WEEK} format={days} />);
+
+    expect(screen.getByRole("img")).toHaveAccessibleName("Plays on 5 of the last seven days");
   });
 });

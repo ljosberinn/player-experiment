@@ -467,6 +467,13 @@ pub fn streaks(conn: &Connection, query: &ListenQuery, now: i64) -> AppResult<St
             streaks.longest_from = Some(run_from.clone());
             streaks.longest_to = Some(day);
         }
+        // The same walk rather than a second query: these are the days it is
+        // already visiting, and the window is fixed to `today` as `current` is.
+        if let Ok(index) = usize::try_from(number - today + 6) {
+            if let Some(slot) = streaks.last_seven.get_mut(index) {
+                *slot = true;
+            }
+        }
         previous = Some(number);
     }
 
@@ -1801,10 +1808,28 @@ mod tests {
                 longest: 3,
                 longest_from: Some("2024-03-01".to_owned()),
                 longest_to: Some("2024-03-03".to_owned()),
+                last_seven: [false, true, true, true, false, true, true],
             }
         );
         assert_eq!(at(7).current, 2, "today is not over yet");
         assert_eq!(at(8).current, 0);
+    }
+
+    #[test]
+    fn streaks_mark_the_last_seven_days_oldest_first() {
+        let (_dir, conn) = open();
+        let day = |n: u32| local(&conn, &format!("2024-03-{n:02} 21:00:00"));
+        for n in [1, 2, 3, 5, 6] {
+            add_play(&conn, day(n), ("Blue Room", "Harbour", None), None);
+        }
+
+        // The window is the seven days ending today, so it slides off the
+        // first of the run rather than staying anchored to it.
+        assert_eq!(
+            streaks(&conn, &all(), day(8)).unwrap().last_seven,
+            [true, true, false, true, true, false, false],
+            "2024-03-02 through 2024-03-08"
+        );
     }
 
     #[test]

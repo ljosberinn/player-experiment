@@ -969,27 +969,22 @@ describe("the stylesheet", () => {
   });
 
   it("keeps the stat figures' own drawing out of `app.css`", () => {
-    // Section 4a is where the figures on this app's two stat surfaces are
-    // settled - the sizes, the weights, the rule and the cell edges - and the
-    // Statistics view is the only place either form appears. A rule here that
-    // restated one of them would be a private second drawing that no other
+    // Sections 4a and 4c are where the figures on this app's stat surfaces are
+    // settled - the sizes, the weights, the rule, the cell edges and the
+    // streak's track - and the Statistics view is the only place any of them
+    // appears. A rule here would be a private second drawing that no other
     // caller of the primitive gets, which is the drift 113 pulled the dialog
     // shell out of eight dialogs to stop.
     //
-    // Layout is still the region's: `.stats-panel` narrows the grid to the
-    // two columns Streaks has, because a third empty track would be a block
-    // of the gap colour.
-    const drawn = rules(sources[3] ?? "").filter((one) =>
-      /\.stat-(row|tiles?|unit)\b/.test(uncommented(one.selector)),
-    );
+    // Not even layout: the two-column override Streaks needed went with the
+    // tiles it narrowed, so the region names none of these at all. A region
+    // that later has a real reason to overrule one of them relaxes this with
+    // the reason written down, rather than finding the door already open.
+    const drawn = rules(sources[3] ?? "")
+      .map((one) => uncommented(one.selector))
+      .filter((selector) => /\.(stat-(row|tiles?|unit)|streak)\b/.test(selector));
 
-    // Counted, so that a rename here fails rather than emptying the loop.
-    expect(drawn.length).toBeGreaterThanOrEqual(1);
-    for (const rule of drawn) {
-      expect(rule.body, `${rule.selector} draws what the primitive owns`).not.toMatch(
-        /(^|;|\s)(font|font-size|font-weight|color|background|border|padding|letter-spacing):/,
-      );
-    }
+    expect(drawn).toEqual([]);
   });
 
   it("gives Settings one size and one scroller too", () => {
