@@ -1,0 +1,50 @@
+name: Storybook
+
+# Its own workflow rather than a job on `ci.yml`. That one runs on pull
+# requests as the required gate, and nothing about a deployment belongs in a
+# gate: this only ever runs once the merge has happened.
+#
+# `ci.yml`'s `frontend` job still builds Storybook on every branch, and still
+# should - a story that does not compile has to fail on the pull request that
+# wrote it, not here on `main` afterwards. The duplicate build costs about a
+# runner minute per merge.
+on:
+  push:
+    branches: [main]
+
+# Not `ci.yml`'s workflow-level group. Cancelling a half-finished deployment is
+# the one case where the newer run should queue behind the older instead of
+# replacing it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build-storybook
+      # The site lives at a subfolder of ljosberinn.github.io, which usually
+      # means a Vite `base`. Not here: @storybook/builder-vite hard-codes
+      # `base: "./"` in its common config for exactly this case, after merging
+      # `vite.config.ts` - so nothing in this repo can override it by accident.
+      # See storybookjs/builder-vite#238.
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: storybook-static
+      - id: deploy
+        uses: actions/deploy-pages@v5

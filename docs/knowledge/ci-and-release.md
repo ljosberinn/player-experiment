@@ -26,6 +26,26 @@ there is one accepted exception, scoped to cycles entirely inside
 **Inspecting state:** `gh` is installed and authenticated. `gh pr checks <n>`,
 `gh run list --branch <b>`, `gh run watch <id>`, `gh run view <id> --log-failed`.
 
+## Storybook on Pages
+
+`.github/workflows/storybook.yml` publishes the component library to
+<https://ljosberinn.github.io/player-experiment/> on every push to `main`. Free:
+the repository is public, and Pages is free for public repositories.
+
+Its own workflow rather than a job on `ci.yml`, because that one is the required
+gate and runs on pull requests — a deployment does not belong there. The
+`Storybook build` step on the `frontend` job stays regardless: it is what fails a
+story that does not compile on the pull request that wrote it. Its concurrency
+group is `pages` with `cancel-in-progress: false`, the one case where the newer
+run should queue rather than cancel a half-finished deployment.
+
+**One manual setting, outside the repository: Settings → Pages → Source = GitHub
+Actions.** Without it `actions/deploy-pages` fails with "Pages is not enabled".
+
+No Vite `base` is needed for the subfolder. `@storybook/builder-vite` hard-codes
+`base: "./"` after merging `vite.config.ts`, precisely for subfolder deploys
+([builder-vite#238](https://github.com/storybookjs/builder-vite/issues/238)).
+
 ## Dependabot
 
 `.github/dependabot.yml` watches npm, cargo and `github-actions` weekly. Patches

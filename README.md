@@ -3,7 +3,9 @@
 A local-only desktop music player for large mp3 libraries.
 
 The layout began as an echo of iTunes 11 and has moved onto a design of its own —
-see [docs/knowledge/design.md](docs/knowledge/design.md).
+see [docs/knowledge/design.md](docs/knowledge/design.md). Every primitive in
+every state, on both grounds, is in the
+[published Storybook](https://ljosberinn.github.io/player-experiment/).
 
 [docs/](docs/) holds the rest: [knowledge/](docs/knowledge/) for how this
 codebase works, [issues/](docs/issues/) for what is and is not done, and
@@ -49,7 +51,7 @@ attempts left `tauri-driver` hung and needing a manual kill.
 | `npm run typecheck` | `tsc --noEmit` for `src/` and `e2e/` |
 | `npm run lint` / `lint:fix` | Biome check |
 | `npm test` / `test:coverage` | Vitest unit + component tests |
-| `npm run storybook` / `build-storybook` | Component specimens on :6006; asserts nothing |
+| `npm run storybook` / `build-storybook` | Component specimens on :6006; asserts nothing ([published](https://ljosberinn.github.io/player-experiment/)) |
 | `npm run bindings` | Regenerate `src/ipc/bindings/` from the Rust types |
 | `npm run e2e` | WebDriver smoke suite (needs the instrumented build — see above) |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust unit + integration tests |
