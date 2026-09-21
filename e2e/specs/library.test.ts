@@ -300,6 +300,73 @@ describe("a library with something in it", () => {
     expect(await browser.$("tr.song-row.playing").getAttribute("aria-rowindex")).toBe("1");
   });
 
+  it("draws the row 7a draws", async () => {
+    // Phase 114's metrics, measured rather than asserted from the sheet's
+    // text: `App.css.test.ts` reads the rules and can say what they declare,
+    // but not what a `<tr>` laid out as a flex container resolves them to. The
+    // accent edge is the reason that distinction matters - it is a `::before`
+    // on a table row, which is the one part of this no unit test can reach.
+    await sortBy("title", "ascending");
+    await playRow(0);
+    // Off the playing row, so the two states are measured apart: activating a
+    // row selects it as well, and a selected row takes its columns to ink.
+    await row(3).click();
+
+    const drawn = await browser.execute(() => {
+      const read = (selector: string) => {
+        const element = document.querySelector(selector);
+        if (element === null) {
+          return null;
+        }
+        const style = getComputedStyle(element);
+        const cell = (column: string) => {
+          const found = element.querySelector(`[data-column="${column}"]`);
+          return found === null ? null : getComputedStyle(found).color;
+        };
+        return {
+          height: Math.round(element.getBoundingClientRect().height),
+          border: style.borderBottomWidth,
+          size: style.fontSize,
+          edge: getComputedStyle(element, "::before").width,
+          title: cell("title"),
+          duration: cell("durationMs"),
+        };
+      };
+      return {
+        plain: read("tr.song-row:not(.playing):not(.selected)"),
+        playing: read("tr.song-row.playing"),
+      };
+    });
+
+    // 32px of pitch with the separator inside it, not 33: `ROW_HEIGHT` is what
+    // the virtualizer positions every row by, and a border that added to it
+    // would drift the whole column by a pixel a row. Both states are collected
+    // into one object so a failure names which of them is wrong.
+    expect(
+      Object.entries(drawn).map(([state, measured]) => [
+        state,
+        measured === null
+          ? "not found"
+          : `${measured.height}px ${measured.border} ${measured.size}`,
+      ]),
+    ).toEqual([
+      ["plain", "32px 1px 12.5px"],
+      ["playing", "32px 1px 12.5px"],
+    ]);
+
+    // The title is set against the rest of the row, and the playing row brings
+    // the rest back up to meet it.
+    expect(drawn.plain?.title).not.toBe(drawn.plain?.duration);
+    expect(drawn.playing?.title).toBe(drawn.playing?.duration);
+    expect(drawn.playing?.title).toBe(drawn.plain?.title);
+
+    // `auto` is what a `::before` that never generated a box reports, so this
+    // pair says the edge is drawn on the playing row and only there.
+    expect([drawn.plain?.edge, drawn.playing?.edge]).toEqual(["auto", "3px"]);
+
+    await capture("track-row");
+  });
+
   /* One theme since phase 33: the app is dark only, so what made this loop -
      a runner that boots light while the defects were dark-only - no longer
      applies. The colours are still measured; there is one pass of it. */

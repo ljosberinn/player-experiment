@@ -969,7 +969,7 @@
    the eye scans down the table. */
 .song-header-cell {
   width: 100%;
-  padding: 5px 12px;
+  padding: 5px 5px;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -992,6 +992,12 @@
   position: relative;
 }
 
+/* The sheet's row, from 7a - the only place it draws one playing. A rule under
+   every row and no banding: the design builds a list out of lines, and a
+   striped row under a 1px separator is neither of the two drawings.
+
+   The separator is inside the row's own height, which `box-sizing: border-box`
+   makes it, because `ROW_HEIGHT` is what the virtualizer positions by. */
 .song-row {
   display: flex;
   align-items: center;
@@ -999,11 +1005,10 @@
   top: 0;
   left: 0;
   width: 100%;
+  border-bottom: 1px solid var(--menu-border);
+  font-size: 12.5px;
+  line-height: 1;
   cursor: default;
-}
-
-.song-row.odd {
-  background: var(--row-odd);
 }
 
 /* A wash, not a fill. White on the accent is 2.60:1, and this is the surface
@@ -1014,10 +1019,23 @@
   color: var(--text);
 }
 
-/* The row currently playing, marked even when the selection has moved on.
-   Weight rather than colour alone, so it reads on the selected row too. */
-.song-row.playing {
-  font-weight: 600;
+/* The row currently playing, marked even when the selection has moved on: an
+   accent edge down its leading side, and - with the two rules further down -
+   its title at 600 and every column back up to full ink.
+
+   A positioned `::before` rather than the sheet's `box-shadow: inset 3px 0 0`,
+   which is the same 3px drawn the same way. `.drop-before` and `.drop-after`
+   already own this row's `box-shadow`, and a shadow list cannot be assembled
+   from two rules - a playing row under a drag would have lost one or the
+   other. */
+.song-row.playing::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--accent);
 }
 
 /* Where a reorder drop would land. A line between rows rather than a
@@ -1030,12 +1048,48 @@
   box-shadow: inset 0 -2px 0 0 var(--accent);
 }
 
+/* 5px a side, which is the sheet's 10px between two columns. The row's own
+   leading inset is the status cell, which is 26px around a 12px glyph. */
 .song-cell {
   flex: none;
-  padding: 0 12px;
+  padding: 0 5px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Muted, and the title taken back to ink: the sheet sets the song name against
+   everything else about it and reads the rest as the supporting detail it is.
+
+   Keyed on `data-column`, which only a real column carries, so the status cell
+   is untouched. It has to keep inheriting the row's own foreground - that is
+   what `.song-row.selected .row-status.*` falls back to, and a muted step
+   there would take the playing speaker down with it. */
+.song-cell[data-column] {
+  color: var(--muted);
+}
+
+.song-cell[data-column="title"] {
+  color: var(--text);
+}
+
+/* A selected row reads every column at full ink, the way the playing row does.
+   Not a choice between two drawings - the sheet never draws a selected row
+   that is not also playing - but a contrast one: `--muted` over `--accent-tint`
+   is 4.16:1 on dark, under AA for body text, and this is the row the user is
+   acting on. `inherit` rather than `--text` so the dimmed selection an
+   unfocused window draws reaches the cells too. */
+.song-row.selected .song-cell[data-column] {
+  color: inherit;
+}
+
+/* Below the two rules they override, so specificity ascends down the file. */
+.song-row.playing .song-cell[data-column] {
+  color: var(--text);
+}
+
+.song-row.playing .song-cell[data-column="title"] {
+  font-weight: 600;
 }
 
 .song-cell.right {

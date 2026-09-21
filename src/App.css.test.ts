@@ -599,6 +599,30 @@ describe("the stylesheet", () => {
     expect(failures).toEqual([]);
   });
 
+  it("takes the muted columns back to ink on a selected row", () => {
+    // Every column but the title is `--muted` now, after the sheet. Over
+    // `--accent-tint` that is 4.16:1 on dark - under AA for body text - so the
+    // selected row has to take it back, the same way it takes back the row
+    // markers above. Both halves are asserted: that the rule is there, and
+    // that what it lands on clears the bar.
+    const override = all.find((rule) =>
+      rule.selector.trim().endsWith(".song-row.selected .song-cell[data-column]"),
+    );
+
+    expect(override?.body, "a selected row must override the muted column").toMatch(
+      /color:\s*inherit/,
+    );
+
+    for (const ground of GROUNDS) {
+      const row = [token("accent-tint", ground), token("surface", ground)];
+
+      expect(
+        contrastOver(token("text", ground), row),
+        `a column on the selected row (${ground})`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("keeps a slider's rail visible against the strip it sits on", () => {
     // WCAG 1.4.11 asks 3:1 of the parts of a control needed to understand it,
     // and a slider whose extent you cannot see is exactly that. Measured
@@ -984,12 +1008,12 @@ describe("the stylesheet", () => {
   it("pads a header and a cell by the same amount a fitted width assumes", () => {
     // `CELL_PADDING_PX` in `columnDrag.ts` is what double-clicking a divider
     // adds to the widest text it measured. It is one number for both because
-    // both are 12px a side; change either here and the fit clips or gaps.
+    // both are 5px a side; change either here and the fit clips or gaps.
     for (const selector of [".song-header-cell", ".song-cell"]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
 
       expect(rule?.body, `${selector} should state its padding`).toMatch(
-        /padding:\s*\S+\s+12px\s*;/,
+        /padding:\s*\S+\s+5px\s*;/,
       );
     }
   });
