@@ -108,6 +108,10 @@ export const config: WebdriverIO.Config = {
     // makes a playlist and deletes it again, so the sidebar it hands on is the
     // one it was given.
     "./specs/row-drag.test.ts",
+    // After `library` too, for a row to be under the pointer's hit test. The
+    // only drop it performs is the one that is refused, so nothing lands and
+    // the specs below still count what the scan found.
+    "./specs/library-drop.test.ts",
     // After `library` too: the artwork square is measured against a song that
     // has a cover and one that does not, and the fixture is what supplies both.
     "./specs/tag-editor.test.ts",
@@ -127,6 +131,13 @@ export const config: WebdriverIO.Config = {
     // down about it, and a scan over an empty library would leave a line with
     // nothing in it.
     "./specs/logfile.test.ts",
+    // After `library`, which is what puts playable files in the queue: the
+    // synthetic rows below it name paths no sink can open. Here rather than
+    // straight after `library` so the specs that photograph the app are not
+    // given a transport in whatever state a queue test left it - this one
+    // stops the player when it is done, which is what `shortcuts` already
+    // hands on.
+    "./specs/playback.test.ts",
     // After `library` too: it needs a real cover, embedded in a real mp3, to
     // extract colours from - and before `virtualization`, whose hundred and
     // fifty thousand synthetic rows have no artwork at all.

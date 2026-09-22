@@ -15,7 +15,7 @@ current frontend coverage is well above it.
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Chart primitives | Vitest + RTL | geometry, never pixels: the plot rect a measured frame hands down, tick offsets, the clamp that keeps a tooltip inside the plot; empty and single-datum inputs for every scale, which is where domains collapse |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
-| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance, every window-bound key and the search box standing it down |
+| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance, every window-bound key and the search box standing it down, the queue moving under Next, Previous, a track ending and the scrubber |
 
 Fixture mp3s are generated (silent frames, known tags) rather than committed
 audio: no encoder, no binary blobs, no licensing question. Rust generates its
@@ -227,6 +227,13 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 - Music gets in through `add_watch_folder` invoked directly from the test — the
   one command the suite drives itself, because WebDriver cannot answer an OS
   folder picker. Everything after is the app's own path.
+- **`SilentSink` never reports a track finished**, and that is deliberate: one
+  loaded track that ran out would advance the queue underneath whatever spec
+  was asserting on it. The cost is that the two things a user only ever sees at
+  a track's end — the queue moving on unasked, and repeat-one starting the same
+  song again — have no route a driver can take. `e2e_end_track` is that route,
+  behind `e2e_only`; the engine handles it with the same code the timer
+  reaches, so only the sink's own end detection is left to the Rust tests.
 - **Two seeds are inserted rather than produced**, behind `e2e_only`:
   `seed_synthetic_tracks` for a library size no fixture folder can reach, and
   `seed_synthetic_plays` for a listening history the suite would otherwise have

@@ -1,6 +1,6 @@
 # 123 — What no e2e spec drives
 
-An inventory, not a feature. Twenty-six spec files cover the app; what follows
+An inventory, not a feature. Twenty-seven spec files cover the app; what follows
 is what a user can do in the running window that none of them does. Each item
 is a route that exists, a reason the gap matters, and how to drive it. What a
 driver cannot reach is at the bottom, for `testing.md`'s *Uncovered on purpose*
@@ -8,41 +8,15 @@ list rather than for a spec.
 
 The keyboard group landed as
 [the keyboard has a spec](../done/123-the-keyboard-has-a-spec.md), which also
-took the vacuous `.content-error` assertion in `smoke.test.ts` with it.
+took the vacuous `.content-error` assertion in `smoke.test.ts` with it. The
+playback group landed as
+[the queue past the first note](../done/123-the-queue-past-the-first-note.md),
+which also put `library-drop.test.ts` into the `specs` array — it had been in
+the repo since #204 and had never run.
 
 Every group below is independent of the others except where said, but all of
 them add a line to `wdio.conf.ts`'s ordered `specs` array, so parallel
 worktrees collide on that one line. Land them in sequence, or take the conflict.
-
-## Playback past the first note
-
-`smoke.test.ts:88` asserts Previous, Play and Next exist and are enabled
-against an *empty* library. Nothing ever presses Next with a queue behind it.
-No spec has seen the queue advance on its own, or seen the playhead move on
-anything but a key — `library.test.ts:333` starts a track and reads the row
-marker, and `shortcuts.test.ts` pauses one and seeks it.
-
-`player_snapshot` carries `status`, `track`, `queue_index`, `queue_len` and
-`position_ms` ([model.rs:880](../../../src-tauri/src/model.rs#L880)), so all of
-this is assertable against the player rather than against the DOM that draws
-it. Fixture tracks are 44–236 MPEG frames, 1.1s to 6.2s
-([fixtures.ts:223](../../../e2e/fixtures.ts#L223)), and `SilentSink` advances
-position on a wall clock, so waiting a track out costs a second.
-
-- Next and Previous move `queue_index`, and `.now-playing-title` with it.
-- A track ends and the next one starts unasked. The one assertion that needs
-  the clock, and the one that would catch a queue that advances only when
-  pressed.
-- Repeat-one replays the same row and leaves `queue_index` alone.
-  `transport.test.ts:105` proves the flag round-trips to the player; nothing
-  proves it changes what happens next.
-- The scrubber moves `position_ms` by pointer. It is an `<input type="range">`,
-  so focus it and use `browser.keys`; a pointer drag along a rail is the flake
-  `row-drag` already pays for.
-
-New `playback.test.ts`, after `library.test.ts`. `transport.test.ts` runs
-before the library is seeded, deliberately, and none of this works without
-songs.
 
 ## Destructive confirmations, past Cancel
 
@@ -142,10 +116,11 @@ and is worth keeping in the same file regardless.
 
 ## The statistics filter bar
 
-`statistics.test.ts` drills into an artist and a genre and never touches the bar
-above them. `StatsFilterBar` has five drawn selects — Range, Owned, Loved,
-Scope, Genre — plus two date fields, and each one re-runs every panel's query
-underneath it. Uncovered entirely.
+`StatsFilterBar` has five drawn selects — Range, Owned, Loved, Scope, Genre —
+plus two date fields, and each one re-runs every panel's query underneath it.
+Range is driven since #122: `statistics.test.ts` sets it to *Last 12 months*,
+asserts the token line that appears and clears it again. The tiles it narrows
+are not asserted, and the other four selects and the date fields are untouched.
 
 Worth at most three tests, because the arithmetic is asserted in Rust: Range
 narrows and the tiles change, Scope set to a playlist narrows to it, and a
@@ -154,9 +129,9 @@ custom range shows the two date fields it hides at every other value.
 Driving a drawn select is `appearance.test.ts:105` — click the trigger, click
 `[role='option']=<label>`, then wait for `[role='listbox']` to stop being
 displayed, because Base UI animates the popup out over whatever is under it.
-That helper exists in exactly one spec today; `drawn-controls.test.ts` counts
-`.select` nodes and never opens one. This group would be the *second* copy, so
-extract it to `e2e/select.ts` when a third asks for it and not before.
+`statistics.test.ts` reaches the option by XPath instead and waits on the token
+rather than on the listbox, so the two call sites do not agree. This group would
+be the third, which is when to extract `e2e/select.ts` and put both on it.
 `src/test/select.ts` is the jsdom equivalent and does not apply.
 
 ## Settings, the panes nothing presses

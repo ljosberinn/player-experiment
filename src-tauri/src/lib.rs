@@ -291,6 +291,7 @@ pub fn run() {
             commands::seed_synthetic_tracks,
             commands::seed_synthetic_plays,
             commands::e2e_provoke_panic,
+            commands::e2e_end_track,
             commands::lastfm_status,
             commands::lastfm_begin_connect,
             commands::lastfm_complete_connect,

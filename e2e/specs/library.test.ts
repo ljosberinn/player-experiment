@@ -4,6 +4,7 @@ import { contrast, flatten, GRAPHIC_MINIMUM, TEXT_MINIMUM } from "../contrast";
 import { LIBRARY, writeLibrary } from "../fixtures";
 import { invoke } from "../invoke";
 import { chooseFromMenu } from "../menu";
+import { playRow } from "../playback";
 import { capture } from "../screenshot";
 
 /**
@@ -127,82 +128,6 @@ function colours(selector: string): Promise<{ text: string; behind: string } | n
     }
     return { text: getComputedStyle(element).color, behind: JSON.stringify(stack) };
   }, selector);
-}
-
-/**
- * What the app thinks is playing, for a failure message.
- *
- * Built only when the wait below has already failed. "No row is marked
- * playing" has at least four causes - the double-click never reached React,
- * the command was rejected, the file would not load, or the marker is not
- * wired to the state - and they are indistinguishable from the outside. Each
- * of the four leaves a different trace here.
- */
-async function describePlayback(): Promise<string> {
-  const safe = async <T>(label: string, read: () => Promise<T>): Promise<string> => {
-    try {
-      return `${label}=${JSON.stringify(await read())}`;
-    } catch (cause) {
-      return `${label}=<threw ${String(cause)}>`;
-    }
-  };
-
-  const parts = await Promise.all([
-    // The backend's own answer: status, the track it holds, and how long the
-    // queue is. A queue of zero means the command never arrived.
-    safe("snapshot", () => invoke("player_snapshot")),
-    // A load failure arrives on `player://error` and lands here. On a runner
-    // that fell back to the shipped sink this reads "no audio output device",
-    // which would mean the silent-sink variable never reached the app.
-    safe("errorPopup", () =>
-      browser.execute(() => document.querySelector(".error-popup")?.textContent ?? ""),
-    ),
-    safe("statusTitle", () =>
-      browser.execute(() => document.querySelector(".now-playing-title")?.textContent ?? ""),
-    ),
-    // A selected row proves the double-click reached React at all: activating
-    // a row selects it on the way past.
-    safe("rowClasses", () =>
-      browser.execute(() =>
-        Array.from(document.querySelectorAll("tr.song-row")).map((one) => one.className),
-      ),
-    ),
-  ]);
-
-  return `no row is marked playing: ${parts.join(" ")}`;
-}
-
-/**
- * Plays row `index`, and waits for the marker.
- *
- * The click is real and the double-click is dispatched, which is not the
- * shape anyone would choose. `element.doubleClick()` goes through the Actions
- * API, and against this driver its two presses did not coalesce into a
- * `dblclick` at all: the diagnostic below reported the row *selected* - so the
- * click half had reached React - beside a backend whose queue was still empty.
- * The activation event simply never happened.
- *
- * Dispatching it is proven in this file: the shift-click above reaches React's
- * delegated handler the same way, and does so on CI. So the row is clicked for
- * real, which is what selects and focuses it, and then told to activate.
- */
-async function playRow(index: number): Promise<void> {
-  await row(index).click();
-  await browser.execute((rowIndex: number) => {
-    document
-      .querySelector(`tr.song-row[aria-rowindex='${rowIndex}']`)
-      ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-  }, index + 1);
-  // The marker is not an optimistic flip in the store: it comes back on
-  // `player://state` after the player thread has loaded the file the row
-  // named, so waiting for it waits for the whole round trip.
-  try {
-    await browser.$("tr.song-row.playing").waitForExist({ timeout: 30_000 });
-  } catch {
-    // Built after the wait rather than before, so it reports the state at the
-    // moment of failure.
-    throw new Error(await describePlayback());
-  }
 }
 
 const BY_TITLE = [...LIBRARY].sort((a, b) => a.title.localeCompare(b.title));
