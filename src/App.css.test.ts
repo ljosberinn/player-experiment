@@ -56,9 +56,9 @@ const all = rules(css);
 
 /** Selectors that may legitimately light up under the pointer. */
 const HOVER_ALLOWED = [
-  // Every Windows title bar highlights these; not doing so reads as broken
-  // rather than as native. Called out in phase 13.
-  ".window-buttons",
+  // `.window-buttons` used to be here, for the reason every Windows title bar
+  // highlights its caption buttons. Phase 119 gave the frame back to the OS,
+  // so there are no caption buttons left to except.
   // The two button primitives, phase 110. The rule this list guards is about
   // rows, cells and list items - a surface you are reading, lighting up under
   // a pointer that is only passing over it. A button is the opposite: it is a
@@ -308,7 +308,7 @@ describe("the stylesheet", () => {
     // Every panel that makes up the window is a veil since phase 35. A fill on
     // any of them is an opaque sheet over the whole window, so the rule is
     // checked rather than remembered.
-    const PANES = [".body", ".content", ".song-body", ".sidebar", ".titlebar", ".transport-strip"];
+    const PANES = [".body", ".content", ".song-body", ".sidebar", ".appbar", ".transport-strip"];
 
     for (const pane of PANES) {
       const rule = all.find((entry) => entry.selector.trim().endsWith(pane));
@@ -1040,13 +1040,13 @@ describe("the stylesheet", () => {
     }
   });
 
-  it("keeps the title bar and the footer the heights the design draws", () => {
+  it("keeps the app bar and the footer the heights the design draws", () => {
     // Both are stated rather than left to their contents, and both are what
     // the transport strip and the content pane are measured against. A bar
     // that sized itself would move every time a version string got a digit
     // longer or a menu label changed.
     for (const [selector, height] of [
-      [".titlebar", 36],
+      [".appbar", 36],
       [".statusbar", 27],
     ] as const) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
@@ -1069,19 +1069,18 @@ describe("the stylesheet", () => {
     }
   });
 
-  it("lets the caption buttons paint over the title bar's own separator", () => {
-    // The close button's red hover fill runs into the corner of the window, so
-    // it has to reach the bar's bottom edge. A `border-bottom` sits outside the
-    // content box the buttons fill, which left a line of `--chrome-border`
-    // across the red; an inset shadow is inside it and paints below children.
-    const titlebar = all.find((one) => one.selector.trim().endsWith(".titlebar"));
+  it("leaves no caption buttons behind", () => {
+    // Phase 119 handed the frame back to the OS. The rules that drew the
+    // minimise, maximise and close glyphs are the one part of the old title
+    // bar with no equivalent under a native frame, so their absence is checked
+    // rather than remembered - a reinstated `.window-buttons` would be a
+    // second set of window controls beside the real ones.
+    expect(css).not.toMatch(/\.window-buttons/);
+    // The separator can be an ordinary border again. It was an inset shadow
+    // only because the close button's red hover fill had to paint over it.
+    const appbar = all.find((one) => one.selector.trim().endsWith(".appbar"));
 
-    expect(titlebar?.body).not.toMatch(/border-bottom/);
-    expect(titlebar?.body).toMatch(/box-shadow:\s*inset 0 -1px 0/);
-
-    const button = all.find((one) => one.selector.trim() === ".window-buttons button");
-
-    expect(button?.body).toMatch(/[^-]height:\s*36px/);
+    expect(appbar?.body).toMatch(/border-bottom:\s*1px solid var\(--chrome-border\)/);
   });
 
   it("blurs behind every translucent panel of chrome", () => {
@@ -1090,8 +1089,8 @@ describe("the stylesheet", () => {
     // wrong colour - and worse, it lets whatever is behind it show through
     // sharply, which is how translucent chrome turns text unreadable.
     // The three blurred panels by name. `--hover-veil` is not one of them: it
-    // is the lift a title-bar button gives under the pointer, painted on top
-    // of chrome rather than being chrome. Nor is `--content-wash`, which is a
+    // is the lift a button gives under the pointer, painted on top of chrome
+    // rather than being chrome. Nor is `--content-wash`, which is a
     // tint over the window rather than a sheet of frosted glass.
     const veiled = all.filter((rule) =>
       /background:\s*var\(--(?:chrome|strip|sidebar)-veil\)/.test(rule.body),
@@ -1251,7 +1250,7 @@ describe("the stylesheet", () => {
     // them from shifting is the numeric variant. Every element drawing one has
     // to ask for it.
     for (const selector of [
-      ".titlebar-version",
+      ".appbar-version",
       ".scrubber-time",
       ".sidebar-count",
       ".song-cell.right",

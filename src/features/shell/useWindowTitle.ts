@@ -7,9 +7,9 @@ import { windowTitle } from "./windowTitle";
  * Keeps the OS window title saying what is playing.
  *
  * Driven off the player store rather than set once from `tauri.conf.json`,
- * which states a fixed `Apex`. The window has no decorations, so the title is
- * invisible in the app itself and shows only in Alt+Tab and the taskbar -
- * which is exactly where a media player should be findable by its song.
+ * which states a fixed `Apex`. Since phase 119 the OS draws the frame, so this
+ * shows in the window's own title bar as well as in Alt+Tab and the taskbar -
+ * all three places a media player should be findable by its song.
  *
  * Subscribes to the track alone, so it runs once a song rather than on every
  * playhead tick.

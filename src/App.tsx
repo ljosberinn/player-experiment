@@ -2,11 +2,11 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import { AppBar } from "./components/ui/AppBar";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { ErrorPopover } from "./components/ui/ErrorPopover";
 import { LibraryNav } from "./components/ui/LibraryNav";
 import { Sidebar } from "./components/ui/Sidebar";
-import { TitleBar } from "./components/ui/TitleBar";
 import { CrashNotice } from "./features/crash/CrashNotice";
 import { useEditorStore } from "./features/editor/store";
 import { TagEditor } from "./features/editor/TagEditor";
@@ -287,11 +287,11 @@ export function App() {
           no artwork playing or the preference is off. */}
       <DynamicBackground />
 
-      {/* The title bar carries the product identity and nothing else now: the
-          mark, the menus, the version and the window buttons. Everything that
-          used to ride on it is in the strip below, which is what the design
-          draws and what gives the menus the left edge to themselves. */}
-      <TitleBar version={appInfo?.version ?? null}>
+      {/* The product identity and nothing else: the mark, the menus and the
+          version. Everything that used to ride here is in the strip below,
+          which is what the design draws and what gives the menus the left edge
+          to themselves. The OS frame above it is the window's own. */}
+      <AppBar version={appInfo?.version ?? null}>
         {/* Its own component because the Edit menu serves the selection:
             built here, a click re-rendered the whole app for a menu nobody
             had open. */}
@@ -300,7 +300,7 @@ export function App() {
           onSettings={(category = "appearance") => setSettings(category)}
           onExport={(choice) => void runExport(choice)}
         />
-      </TitleBar>
+      </AppBar>
 
       {/* Each of these subscribes to its own store values rather than taking
           them as props. They are the things that change on a schedule of their
@@ -497,9 +497,10 @@ export function App() {
             the process and starts the installer, so a player that did it on a
             timer would stop mid-song. Pressing this is the consent.
 
-            The version itself moved to the title bar in phase 34, so this no
-            longer replaces it - the corner is empty until there is an update,
-            which is the state it is in on all but a handful of launches. */}
+            The version itself moved to the app bar in phase 34 and stayed
+            there through 119, so this no longer replaces it - the corner is
+            empty until there is an update, which is the state it is in on all
+            but a handful of launches. */}
         {updateStatus === "ready" || updateStatus === "installing" ? (
           <button
             type="button"

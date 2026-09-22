@@ -5,7 +5,7 @@ menus, dialogs, sliders, tabs and toolbars. No CSS framework. `src/App.css` is
 four `@import`s in cascade order — `styles/tokens.css` (the palette, on both
 grounds), `styles/primitives.css` (reset, window, focus, the blob layer),
 `styles/library.css` (the component library, drawn in
-`components/primitives/`) and `styles/app.css` (every region from the title bar
+`components/primitives/`) and `styles/app.css` (every region from the app bar
 down) — and Base UI parts are handed classes that already exist. The order is
 the cascade: a region has to be able to overrule a primitive it wraps, so
 `library.css` comes before `app.css` rather than after it.
@@ -327,9 +327,6 @@ absences are what nobody notices coming back — hence the guards in
   `weight` are bound in the registry, never at a call site.
   - Every icon is decorative: each sits beside its own label or inside a button
     with an `aria-label`, so a name here would be announced twice.
-  - **The caption buttons are the exception** and stay Segoe MDL2 (see
-    `.window-buttons` in `styles/app.css`). Those are the OS glyphs; a library X in the
-    corner of a Windows title bar reads as a web page.
 - **Every dialog is `primitives/Dialog`**, which is header, body and footer
   over one of Base UI's two roots. `role="alert"` picks `AlertDialog` — an
   alert cannot be dismissed by its backdrop, which is why the delete
@@ -567,9 +564,9 @@ absences are what nobody notices coming back — hence the guards in
   The history itself lives in the library store, because a second store holding
   a copy of those three fields would drift out of step with them.
 - The **OS window title** follows the player: `Apex — <title> — <artist>`, back
-  to `Apex` when nothing is playing. With `decorations: false` it is invisible
-  in the app and shows only in Alt+Tab and the taskbar, which is where it is
-  wanted. `tauri.conf.json` still sets the idle title for the first frame.
+  to `Apex` when nothing is playing. It shows in the frame, in Alt+Tab and in
+  the taskbar — the frame since phase 119 gave the decorations back to the OS.
+  `tauri.conf.json` still sets the idle title for the first frame.
 - `NowPlaying` is **hidden, not absent**, when nothing is playing: it is the
   widest thing on a fixed strip, and a box arriving with the first song would
   shove the volume and the search field sideways. Double-clicking it opens the
