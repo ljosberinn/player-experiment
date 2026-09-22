@@ -32,9 +32,10 @@ entries, 3.79 GB of it PR-scoped, that is what an 11-minute `rust` job was.
   is shared with no other job and stale by the next release.
 - **`.github/workflows/prune-caches.yml`** deletes a pull request's caches when
   it closes. This collects the npm cache, which `setup-node` writes with no way
-  to opt out. `pull_request_target`, because a `pull_request` workflow
-  triggered by Dependabot gets a read-only token — the same constraint that
-  shapes `dependabot.yml`.
+  to opt out — only on a branch that changes a lockfile and so misses its key,
+  which is most of what Dependabot opens. `pull_request_target`, because a
+  `pull_request` workflow triggered by Dependabot gets a read-only token — the
+  same constraint that shapes `dependabot.yml`.
 
 The three Rust `shared-key`s stay distinct: `rust-tests`, `e2e-build` (debug,
 `wdio` feature) and the release profile compile different artifacts, and one

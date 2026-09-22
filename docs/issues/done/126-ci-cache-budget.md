@@ -39,9 +39,11 @@ release, by which time it is both stale and evicted.
 
 **`.github/workflows/prune-caches.yml`, on `pull_request: closed`.** What is
 left after the two above is the npm cache, which `actions/setup-node` writes
-with no way to opt out: ~160 MB per pull request, duplicating a main-branch
-entry under the same lockfile hash. Deleting a closed pull request's caches by
-`ref` reclaims it.
+with no way to opt out. Not on every pull request: on an exact key hit it
+saves nothing, so a branch that leaves both lockfiles alone writes none. What
+does write one is a branch that changes a lockfile and so misses — ~160 MB on
+Windows against ~10 MB on Linux, and Dependabot opens most of them. Deleting a
+closed pull request's caches by `ref` reclaims it.
 
 ## What this does not do
 
@@ -54,9 +56,11 @@ them would evict on every alternation. `notices` keeps `cache-targets: false`.
 
 ## Verification
 
-- A pull request run restores all three Rust caches and writes none. `gh api
-  repos/{owner}/{repo}/actions/caches?ref=refs/pull/{n}/merge` lists only npm
-  entries while it is open, and nothing once it is closed.
+- A pull request run restores all three Rust caches and writes none. Confirmed
+  on this change's own pull request: `gh api
+  repos/{owner}/{repo}/actions/caches?ref=refs/pull/253/merge` returns empty,
+  where pull request 224 had written 1.82 GB, and `rust` still finished in
+  6m32 against a warm-cache 6m19 — so the restore is unaffected.
 - The merge's `push: main` run writes all three.
 - Total usage falls below 10 GB and stays there:
   `gh api repos/{owner}/{repo}/actions/cache/usage`.
