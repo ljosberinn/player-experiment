@@ -10,9 +10,20 @@ import { invoke } from "./invoke";
  * would fail as "no row is marked playing" with none of the diagnosis below.
  */
 
+/**
+ * What the player reports itself doing.
+ *
+ * The serialized values, which are not the Rust variant names: `PlaybackStatus`
+ * carries `rename_all = "camelCase"`, so what crosses the IPC is lowercase.
+ * Spelled here once, and read through `waitForStatus` rather than compared to a
+ * literal at the call site, because a spec asserting `"Playing"` fails as
+ * "expected Playing, received playing" in four places at once.
+ */
+export type PlaybackStatus = "stopped" | "playing" | "paused";
+
 /** What the player itself says, which is the thing the controls are drawing. */
 export function snapshot(): Promise<{
-  status: "Stopped" | "Playing" | "Paused";
+  status: PlaybackStatus;
   track: { id: number; title: string } | null;
   queueIndex: number | null;
   queueLen: number;
@@ -21,6 +32,14 @@ export function snapshot(): Promise<{
   repeatOne: boolean;
 }> {
   return invoke("player_snapshot");
+}
+
+/** Waits for the player to report `expected`, and says so if it never does. */
+export async function waitForStatus(expected: PlaybackStatus): Promise<void> {
+  await browser.waitUntil(async () => (await snapshot()).status === expected, {
+    timeout: 10_000,
+    timeoutMsg: `the player never reported itself ${expected}`,
+  });
 }
 
 /**

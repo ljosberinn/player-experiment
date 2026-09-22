@@ -1,7 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { LIBRARY } from "../fixtures";
 import { invoke } from "../invoke";
-import { endTrack, playRow, snapshot } from "../playback";
+import { endTrack, playRow, snapshot, waitForStatus } from "../playback";
 import { capture } from "../screenshot";
 
 /**
@@ -84,10 +84,7 @@ async function pause(): Promise<void> {
   if ((await playPause().getAttribute("aria-label")) === "Pause") {
     await playPause().click();
   }
-  await browser.waitUntil(async () => (await snapshot()).status === "Paused", {
-    timeout: 10_000,
-    timeoutMsg: "the player never reported itself paused",
-  });
+  await waitForStatus("paused");
 }
 
 describe("a queue that is playing", () => {
@@ -161,7 +158,7 @@ describe("a queue that is playing", () => {
     await endTrack();
 
     await waitForQueueIndex(1);
-    expect((await snapshot()).status).toBe("Playing");
+    await waitForStatus("playing");
     await expect(browser.$(".now-playing-title")).toHaveText(titles[1] ?? "");
   });
 
@@ -180,9 +177,8 @@ describe("a queue that is playing", () => {
       timeout: 10_000,
       timeoutMsg: "the track on repeat never started again",
     });
-    const looped = await snapshot();
-    expect(looped.queueIndex).toBe(0);
-    expect(looped.status).toBe("Playing");
+    await waitForStatus("playing");
+    expect((await snapshot()).queueIndex).toBe(0);
     await expect(browser.$(".now-playing-title")).toHaveText(titles[0] ?? "");
 
     await setRepeat(false);
@@ -200,10 +196,7 @@ describe("a queue that is playing", () => {
 
     await playPause().click();
 
-    await browser.waitUntil(async () => (await snapshot()).status === "Playing", {
-      timeout: 10_000,
-      timeoutMsg: "the player never started again",
-    });
+    await waitForStatus("playing");
     await expect(playPause()).toHaveAttribute("aria-label", "Pause");
   });
 
