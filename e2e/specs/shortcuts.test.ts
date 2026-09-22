@@ -143,58 +143,38 @@ async function pressSideButton(selector: string, button: number): Promise<void> 
 }
 
 /**
- * TEMPORARY, 123. Starts recording window keydowns, in both phases.
+ * Presses `keys`, and answers whether the app took them off whoever had focus.
  *
- * The capture listener runs before the app's, the bubble one after all of
- * them, so the pair says both what the event arrived as and what the app did
- * to it. Paired with `takeRecordedKeys`, which is what removes them again.
+ * Bound in the bubble phase and bound last, so every window listener the app
+ * mounted has already had the event and said what it wanted to say about it
+ * by the time this reads `defaultPrevented`.
  */
-async function recordKeys(): Promise<void> {
+async function pressAndAskIfTaken(keys: string[]): Promise<boolean> {
   await browser.execute(() => {
     const scope = window as unknown as {
-      __keyProbe?: { records: unknown[]; stop: () => void };
+      __taken?: boolean;
+      __watch?: (event: KeyboardEvent) => void;
     };
-    const records: unknown[] = [];
-    const name = (node: EventTarget | null) => {
-      const element = node as HTMLElement | null;
-      return element?.tagName
-        ? `${element.tagName}[${element.getAttribute("aria-label") ?? ""}]`
-        : String(node);
+    scope.__taken = false;
+    const watch = (event: KeyboardEvent) => {
+      scope.__taken = scope.__taken === true || event.defaultPrevented;
     };
-    const capture = (event: KeyboardEvent) => {
-      records.push({
-        phase: "capture",
-        key: event.key,
-        target: name(event.target),
-        active: name(document.activeElement),
-        prevented: event.defaultPrevented,
-      });
-    };
-    const bubble = (event: KeyboardEvent) => {
-      records.push({ phase: "bubble", key: event.key, prevented: event.defaultPrevented });
-    };
-    window.addEventListener("keydown", capture, true);
-    window.addEventListener("keydown", bubble);
-    scope.__keyProbe = {
-      records,
-      stop: () => {
-        window.removeEventListener("keydown", capture, true);
-        window.removeEventListener("keydown", bubble);
-      },
-    };
+    scope.__watch = watch;
+    window.addEventListener("keydown", watch);
   });
-}
 
-/** TEMPORARY, 123. Reads what `recordKeys` saw, and unbinds it. */
-async function takeRecordedKeys(): Promise<string> {
+  await browser.keys(keys);
+
   return browser.execute(() => {
     const scope = window as unknown as {
-      __keyProbe?: { records: unknown[]; stop: () => void };
+      __taken?: boolean;
+      __watch?: (event: KeyboardEvent) => void;
     };
-    const probe = scope.__keyProbe;
-    probe?.stop();
-    scope.__keyProbe = undefined;
-    return JSON.stringify(probe?.records ?? null);
+    if (scope.__watch) {
+      window.removeEventListener("keydown", scope.__watch);
+      scope.__watch = undefined;
+    }
+    return scope.__taken === true;
   });
 }
 
@@ -347,25 +327,28 @@ describe("the keys bound at the window", () => {
       await expect(browser.$("button[aria-label='Pause']")).toBeExisting();
     });
 
-    it("types a space into the search box instead", async () => {
+    /**
+     * The one pair in this spec whose second half cannot assert the character.
+     *
+     * `browser.keys([" "])` sends the WebDriver Space key, ``, and this
+     * driver delivers it as a keydown carrying no text: a window listener sees
+     * `key` as `" "` on the focused field, uncancelled, and the field types
+     * nothing at all. So "a space appears in the box" is unassertable from
+     * here however the key is sent, and asserting it was asserting the driver.
+     *
+     * What is the app's to keep is both halves of standing down - the keydown
+     * left for the field to do what it likes with, and a player that did not
+     * toggle - and those are what this reads. The character itself is covered
+     * in jsdom, by `usePlayerShortcuts.test.tsx`.
+     */
+    it("leaves the space to the search box", async () => {
       await pausedOnTheLongest();
-
       await focusSearch();
-      // TEMPORARY, 123: on the runner this space leaves the field empty while
-      // every other key typed into it lands, so the failure has to say where
-      // the key went rather than only that it did not arrive.
-      await recordKeys();
-      await browser.keys([" "]);
-      const keydowns = await takeRecordedKeys();
 
-      await browser.waitUntil(async () => (await searchBox().getValue()) === " ", {
-        timeout: 5_000,
-        timeoutMsg: `the space never reached the field; keydowns: ${keydowns}`,
-      });
-      // Still paused: the space went into the field rather than to the player.
+      const taken = await pressAndAskIfTaken([" "]);
+
+      expect(taken).toBe(false);
       expect((await snapshot()).status).toBe("paused");
-
-      await clearSearch();
     });
   });
 

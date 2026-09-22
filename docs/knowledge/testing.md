@@ -252,6 +252,18 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;
   `e2e/specs/smart-playlists.test.ts` has the helper.
+- **A pressed space is a keydown and nothing else.** `browser.keys([" "])` maps
+  to the WebDriver Space key, `` — there is no way to send the literal
+  character — and the driver delivers it as a keydown carrying no text: a
+  listener sees `key` as `" "` on the focused element, uncancelled, and a
+  focused text field types nothing. Every other key this suite presses into a
+  field lands, so it reads as a product bug and is not one. Assert what the app
+  did with the event, not the character; `shortcuts.test.ts` reads
+  `defaultPrevented` from a listener bound last.
+- **A click returns when the driver has dispatched it, not when the caret has
+  moved.** A key sent straight after a click on a text field can still reach
+  the window, which is the failure mode every "typing stands the shortcut down"
+  test is built to catch. Wait for `document.activeElement`.
 - **`elementClick` aims at the bounding-box centre, which a ring segment does
   not occupy.** Clicking a donut slice dispatches into the hole: the driver
   reports success, no `click` reaches the path, and the assertion after it
@@ -302,3 +314,7 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   worth proving: the listener is on `window`, and `isTypingTarget` decides
   correctly from the event's target. The physical chord is the same gap as the
   media keys above.
+- Whether a space pressed in the search box puts a space *in* it. The driver
+  cannot type one at all (above), so the e2e half asserts that the app left the
+  keydown alone and did not toggle the player. The character is
+  `usePlayerShortcuts.test.tsx`'s, in jsdom.
