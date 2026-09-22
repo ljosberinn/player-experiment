@@ -947,13 +947,170 @@ describe("SongTable", () => {
       expect(onReorder).not.toHaveBeenCalled();
     });
 
-    it("leaves a bare arrow alone, because that is the player's volume", async () => {
+    it("leaves a bare arrow alone, because that one moves the selection", async () => {
       const onReorder = vi.fn();
       await withSelection([1], { onReorder });
 
       fireEvent.keyDown(window, { key: "ArrowDown" });
 
       expect(onReorder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("moving the selection with the arrows", () => {
+    /** Renders a loaded table with row `anchor` selected. Row index is id. */
+    async function withAnchor(anchor: number | null) {
+      render(<SongTable />);
+      await useLibraryStore.getState().refresh();
+      await waitFor(() => expect(screen.getByText("Track 0")).toBeInTheDocument());
+      useLibraryStore.setState({
+        selection: { ids: anchor === null ? new Set() : new Set([anchor]), anchorIndex: anchor },
+      });
+    }
+
+    const selection = () => useLibraryStore.getState().selection;
+
+    it("replaces the selection with the row below, and moves the anchor there", async () => {
+      await withAnchor(1);
+
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+
+      await waitFor(() => expect([...selection().ids]).toEqual([2]));
+      expect(selection().anchorIndex).toBe(2);
+    });
+
+    it("moves back up again", async () => {
+      await withAnchor(3);
+
+      fireEvent.keyDown(window, { key: "ArrowUp" });
+
+      await waitFor(() => expect([...selection().ids]).toEqual([2]));
+    });
+
+    it("clamps at the top rather than letting the list scroll past it", async () => {
+      await withAnchor(0);
+
+      const event = new KeyboardEvent("keydown", { key: "ArrowUp", cancelable: true });
+      window.dispatchEvent(event);
+
+      await waitFor(() => expect(selection().anchorIndex).toBe(0));
+      expect([...selection().ids]).toEqual([0]);
+      // Claimed even though it moved nothing: an unclaimed arrow at the end of
+      // the list would scroll the container instead.
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("clamps at the bottom too", async () => {
+      await withAnchor(499);
+
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+
+      await waitFor(() => expect(selection().anchorIndex).toBe(499));
+    });
+
+    it("has nowhere to go with nothing selected, and says so by not claiming the key", async () => {
+      await withAnchor(null);
+
+      const event = new KeyboardEvent("keydown", { key: "ArrowDown", cancelable: true });
+      window.dispatchEvent(event);
+
+      await waitFor(() => expect(selection().anchorIndex).toBeNull());
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it("focuses the row it moved to, so the ring follows the selection", async () => {
+      await withAnchor(1);
+
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+
+      await waitFor(() => expect(rowOf("Track 2")).toHaveFocus());
+    });
+
+    it("makes only the anchor row a tab stop", async () => {
+      await withAnchor(1);
+
+      await waitFor(() => expect(rowOf("Track 1")).toHaveAttribute("tabindex", "0"));
+      expect(rowOf("Track 2")).toHaveAttribute("tabindex", "-1");
+      expect(rowOf("Track 0")).toHaveAttribute("tabindex", "-1");
+    });
+
+    it("keeps a tab stop on screen when the anchor is not", async () => {
+      // A selection outlives the pages behind it, so the anchor can be
+      // thousands of rows away - and a tab stop nothing renders is a table
+      // the keyboard cannot enter at all.
+      await withAnchor(400);
+
+      await waitFor(() => expect(rowOf("Track 0")).toHaveAttribute("tabindex", "0"));
+    });
+
+    it("stands down while the user is typing", async () => {
+      await withAnchor(1);
+      const search = document.createElement("input");
+      document.body.append(search);
+      search.focus();
+
+      fireEvent.keyDown(search, { key: "ArrowDown" });
+
+      await waitFor(() => expect(selection().anchorIndex).toBe(1));
+      search.remove();
+    });
+
+    it("stands down for a key something nearer has already taken", async () => {
+      await withAnchor(1);
+
+      // What the release lookup's queue does with its own arrows, and what a
+      // row would do if it ever claimed one.
+      const event = new KeyboardEvent("keydown", { key: "ArrowDown", cancelable: true });
+      event.preventDefault();
+      window.dispatchEvent(event);
+
+      await waitFor(() => expect(selection().anchorIndex).toBe(1));
+    });
+
+    it("waits for a row whose page has not been fetched yet", async () => {
+      await withAnchor(199);
+      // Page 1, which nothing has asked for: the window is at the top of the
+      // list and the anchor is 199 rows below it.
+      let land: (rows: Track[]) => void = () => {};
+      queryTracksMock.mockImplementation((query: TrackQuery) =>
+        new Promise<Track[]>((resolve) => {
+          land = resolve;
+        }).then(() => Array.from({ length: query.limit }, (_, i) => track(query.offset + i))),
+      );
+
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+
+      // Nothing written while the fetch is out: the selection is ids, and
+      // there is no id for row 200 yet.
+      expect([...selection().ids]).toEqual([199]);
+
+      land([]);
+      await waitFor(() => expect(selection().anchorIndex).toBe(200));
+      expect([...selection().ids]).toEqual([200]);
+    });
+
+    it("drops a step a later one has already overtaken", async () => {
+      await withAnchor(199);
+      let land: (rows: Track[]) => void = () => {};
+      queryTracksMock.mockImplementation((query: TrackQuery) =>
+        new Promise<Track[]>((resolve) => {
+          land = resolve;
+        }).then(() => Array.from({ length: query.limit }, (_, i) => track(query.offset + i))),
+      );
+
+      // A held key at a page boundary: the move down is still waiting on the
+      // fetch when a move up lands out of the cache.
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "ArrowUp" });
+      await waitFor(() => expect(selection().anchorIndex).toBe(198));
+
+      land([]);
+      await waitFor(() => expect(useLibraryStore.getState().inFlight.size).toBe(0));
+
+      // Not 200. A fetch that resolves after the anchor moved again must not
+      // write a selection the user has already moved off.
+      expect(selection().anchorIndex).toBe(198);
+      expect([...selection().ids]).toEqual([198]);
     });
   });
 });

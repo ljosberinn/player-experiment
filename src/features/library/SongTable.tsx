@@ -169,6 +169,18 @@ export function SongTable({
   const firstIndex = items[0]?.index ?? 0;
   const lastIndex = items[items.length - 1]?.index ?? 0;
 
+  /**
+   * The one row Tab reaches, which the arrows then move from.
+   *
+   * The anchor, unless it has been scrolled out of the window - a selection
+   * outlives the pages behind it, so the anchor can sit thousands of rows
+   * away, and a tab stop on a row nothing renders is a table the keyboard
+   * cannot enter at all. The first rendered row is where the user is looking.
+   */
+  const anchor = selection.anchorIndex;
+  const tabStop =
+    anchor !== null && anchor >= firstIndex && anchor <= lastIndex ? anchor : firstIndex;
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: queryToken is a cache key, not a value this effect reads - it changes exactly when the cached pages are dropped, which is when the visible range must be fetched again even though the range itself has not moved.
   useEffect(() => {
     if (total > 0) {
@@ -179,10 +191,12 @@ export function SongTable({
   /**
    * Nudges a selection up or down inside a playlist.
    *
-   * Alt rather than a bare arrow: bare arrows are the player's seek and volume
-   * keys, and `shortcutFor` drops anything with a modifier - so an Alt chord
-   * cannot collide with them by construction. Only this view has it: a
-   * drill-in is ordered by release, which is not an order to rearrange.
+   * Alt rather than a bare arrow: bare arrows seek and move the selection, and
+   * every handler that takes one drops anything with a modifier - so an Alt
+   * chord cannot collide with them by construction. The premise held when the
+   * pair was seek and volume and it holds now that it is seek and the
+   * selection. Only this view has it: a drill-in is ordered by release, which
+   * is not an order to rearrange.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -276,6 +290,7 @@ export function SongTable({
                 rowIndex={item.index}
                 top={item.start}
                 selected={track !== null && isSelected(selection, track.id)}
+                focused={item.index === tabStop}
                 playing={track !== null && track.id === nowPlayingId}
                 drop={drop}
                 columns={columns}

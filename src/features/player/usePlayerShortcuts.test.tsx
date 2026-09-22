@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SEEK_STEP_MS, VOLUME_STEP } from "./shortcuts";
+import { SEEK_STEP_MS } from "./shortcuts";
 import { usePlayerStore } from "./store";
 import { usePlayerShortcuts } from "./usePlayerShortcuts";
 
@@ -60,12 +60,13 @@ describe("usePlayerShortcuts", () => {
     expect(store.seek).toHaveBeenLastCalledWith(30_000 - SEEK_STEP_MS);
   });
 
-  it("steps the volume, leaving the clamp to the store", async () => {
-    await userEvent.keyboard("{ArrowUp}");
-    expect(store.setVolume).toHaveBeenLastCalledWith(0.5 + VOLUME_STEP);
+  // 121 gave the up and down arrows to the track list, and the volume has no
+  // window-wide key of its own any more - the wheel over the rail, and the
+  // rail's own arrows once it has focus.
+  it("leaves the up and down arrows alone", async () => {
+    await userEvent.keyboard("{ArrowUp}{ArrowDown}");
 
-    await userEvent.keyboard("{ArrowDown}");
-    expect(store.setVolume).toHaveBeenLastCalledWith(0.5 - VOLUME_STEP);
+    expect(store.setVolume).not.toHaveBeenCalled();
   });
 
   it("stays out of the way while the user is typing", async () => {

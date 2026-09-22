@@ -290,6 +290,46 @@ describe("a library with something in it", () => {
     expect(await browser.$$("tr.song-row[aria-selected='true']").length).toBe(3);
   });
 
+  it("moves the selection with the arrows, and wears the focus ring on it", async () => {
+    await sortBy("title", "ascending");
+    await row(0).click();
+    await expect(browser.$("tr.song-row[aria-selected='true']")).toBeExisting();
+
+    await browser.keys(["ArrowDown"]);
+
+    await browser.waitUntil(
+      async () =>
+        (await browser.$("tr.song-row[aria-selected='true']").getAttribute("aria-rowindex")) ===
+        "2",
+      { timeout: 15_000, timeoutMsg: "the arrow never moved the selection to the second row" },
+    );
+
+    // Selected, focused and the only tab stop - the three are one row here,
+    // and the reason the list is reachable from the keyboard at all.
+    const moved = await browser.execute(() => {
+      const element = document.querySelector("tr.song-row[aria-selected='true']");
+      return element === null
+        ? null
+        : {
+            focused: element === document.activeElement,
+            tabIndex: element.getAttribute("tabindex"),
+            // 121 adds no CSS: `:focus-visible` in `primitives.css` is what
+            // draws this, over `.selected`'s tint.
+            outline: getComputedStyle(element).outlineWidth,
+            stops: document.querySelectorAll("tr.song-row[tabindex='0']").length,
+          };
+    });
+
+    expect(moved).toEqual({
+      focused: true,
+      tabIndex: "0",
+      outline: "2px",
+      stops: 1,
+    });
+
+    await capture("keyboard-selection");
+  });
+
   it("marks the row it is playing, and says so in the status display", async () => {
     await sortBy("title", "ascending");
     await playRow(0);

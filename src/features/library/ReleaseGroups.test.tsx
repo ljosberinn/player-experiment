@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseGroup, SortField, Track, TrackQuery } from "../../ipc";
 import { queryTracks } from "../../ipc";
@@ -182,5 +182,34 @@ describe("a drill-in drawn as release groups", () => {
     // first row of the first visible group rather than at a row read off a
     // group that has not been drawn.
     expect(asked).toEqual([0]);
+  });
+
+  // The keyboard lives in `useSongTableWiring` rather than in `SongTable` so
+  // that it is the same keyboard here: the same rows against the same
+  // selection, and a drill-in is where browsing an album actually happens.
+  describe("the keyboard", () => {
+    const rowAt = (index: number) =>
+      document.querySelector(`tr.song-row[aria-rowindex="${index + 1}"]`) as HTMLElement;
+
+    it("moves the selection with the arrows, across a group boundary", async () => {
+      await settled([release("Yellow House", 2, { year: 2006 }), release("Shields", 3)]);
+      useLibraryStore.setState({ selection: { ids: new Set([1]), anchorIndex: 1 } });
+
+      // Row 1 is the last of Yellow House; row 2 is the first of Shields.
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+
+      await waitFor(() => expect([...useLibraryStore.getState().selection.ids]).toEqual([2]));
+    });
+
+    it("makes one row a tab stop rather than every row of every group", async () => {
+      await settled([release("Yellow House", 2, { year: 2006 }), release("Shields", 3)]);
+      useLibraryStore.setState({ selection: { ids: new Set([3]), anchorIndex: 3 } });
+
+      await waitFor(() => expect(rowAt(3)).toHaveAttribute("tabindex", "0"));
+      const stops = [...document.querySelectorAll("tr.song-row")].filter(
+        (one) => one.getAttribute("tabindex") === "0",
+      );
+      expect(stops).toHaveLength(1);
+    });
   });
 });

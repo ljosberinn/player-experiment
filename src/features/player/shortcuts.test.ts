@@ -9,8 +9,6 @@ describe("shortcutFor", () => {
     ["MediaTrackPrevious", "previous"],
     ["ArrowRight", "seekForward"],
     ["ArrowLeft", "seekBackward"],
-    ["ArrowUp", "volumeUp"],
-    ["ArrowDown", "volumeDown"],
   ])("maps %s", (key, expected) => {
     expect(shortcutFor({ key })).toBe(expected);
   });
@@ -19,6 +17,13 @@ describe("shortcutFor", () => {
     expect(shortcutFor({ key: "a" })).toBeNull();
     expect(shortcutFor({ key: "Enter" })).toBeNull();
     expect(shortcutFor({ key: "Tab" })).toBeNull();
+  });
+
+  // 121 gave them to the track list. The rail keeps them once it has focus,
+  // which `targetOwns` is about, but nothing claims them window-wide.
+  it("leaves the up and down arrows to the track list", () => {
+    expect(shortcutFor({ key: "ArrowUp" })).toBeNull();
+    expect(shortcutFor({ key: "ArrowDown" })).toBeNull();
   });
 
   it("leaves modified keys to the OS and to menu accelerators", () => {
@@ -61,7 +66,7 @@ describe("targetOwns", () => {
 
   it("leaves a slider the arrows it moves on", () => {
     expect(targetOwns(range(), "seekForward")).toBe(true);
-    expect(targetOwns(range(), "volumeUp")).toBe(true);
+    expect(targetOwns(range(), "seekBackward")).toBe(true);
   });
 
   it("lets play/pause through a focused slider", () => {

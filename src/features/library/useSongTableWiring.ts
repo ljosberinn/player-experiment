@@ -135,16 +135,39 @@ export function useSongTableWiring({
   }, [fitPending, pages, fitColumns, columnConfig.ids, scrollRef]);
 
   /**
-   * Opens the row menu from the keyboard.
+   * The keyboard's routes into the rows: the row menu, and the arrows that
+   * move the selection.
    *
    * On the window rather than on a row, because nothing has a row focused when
-   * it is wanted - Ctrl+A and a click in the sidebar both leave focus off the
-   * table, and the selection they leave behind is exactly what this acts on.
-   * State is read through `getState` for the same reason `useSelectionShortcuts`
-   * does: the listener is bound once and must not see a selection from the
-   * render it was created in.
+   * either is wanted - Ctrl+A and a click in the sidebar both leave focus off
+   * the table, and the selection they leave behind is exactly what these act
+   * on. State is read through `getState` for the same reason
+   * `useSelectionShortcuts` does: the listener is bound once and must not see
+   * a selection from the render it was created in.
+   *
+   * Here rather than in `SongTable` so the drill-in has them too: it draws the
+   * same rows against the same selection, and a keyboard that worked in one
+   * view and not the other would be the difference nobody could explain.
    */
   useEffect(() => {
+    /**
+     * Brings `rowIndex` into view and hands its `<tr>` to `then`.
+     *
+     * The row may not be mounted: the selection can sit outside the window
+     * after a scroll, and the scroll above only renders it on the next frame.
+     */
+    const withRow = (rowIndex: number, then: (row: HTMLTableRowElement) => void) => {
+      scrollToRow(rowIndex);
+      requestAnimationFrame(() => {
+        const row = scrollRef.current?.querySelector<HTMLTableRowElement>(
+          `tr[aria-rowindex="${rowIndex + 1}"]`,
+        );
+        if (row) {
+          then(row);
+        }
+      });
+    };
+
     /**
      * Opens the row menu on `rowIndex` by handing the trigger the event it
      * owns.
@@ -155,17 +178,8 @@ export function useSongTableWiring({
      * by any route that opened the menu directly, and the duplicate is what
      * would drift.
      */
-    const openMenuAt = (rowIndex: number) => {
-      scrollToRow(rowIndex);
-      // The row may not be mounted: the selection can sit outside the window
-      // after a scroll, and the scroll above only renders it on the next frame.
-      requestAnimationFrame(() => {
-        const row = scrollRef.current?.querySelector<HTMLTableRowElement>(
-          `tr[aria-rowindex="${rowIndex + 1}"]`,
-        );
-        if (!row) {
-          return;
-        }
+    const openMenuAt = (rowIndex: number) =>
+      withRow(rowIndex, (row) => {
         // Focused first, so closing the menu returns the keyboard to the row
         // it was opened on rather than to the body.
         row.focus();
@@ -179,13 +193,31 @@ export function useSongTableWiring({
           }),
         );
       });
-    };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // A row handles its own keys first, and a text field keeps all of them.
+      // A row handles its own keys first, and a text field keeps all of them -
+      // which covers the scrubber and the volume rail too, both of them an
+      // `<input type="range">` that moves on the arrows it is given.
       if (event.defaultPrevented || isTypingTarget(event.target)) {
         return;
       }
+
+      const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (step !== 0) {
+        // Bare keys only. Alt+Arrow nudges a playlist's order and Shift+Arrow
+        // is left for whoever asks for a range extension; neither is this.
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+          return;
+        }
+        const target = useLibraryStore.getState().moveAnchor(step);
+        if (target === null) {
+          return;
+        }
+        event.preventDefault();
+        withRow(target, (row) => row.focus());
+        return;
+      }
+
       // Windows opens a context menu with the Menu key or Shift+F10, and the
       // second exists because not every keyboard has the first.
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
