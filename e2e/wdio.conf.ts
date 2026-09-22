@@ -98,6 +98,12 @@ export const config: WebdriverIO.Config = {
     // After `library` too, and for the same reason: there is no row to
     // right-click in an empty table.
     "./specs/row-menu.test.ts",
+    // After `library` too, for the selection keys, and before `row-drag` for
+    // Delete: inside a static playlist Delete takes the membership row with no
+    // confirmation, and `row-drag` is what makes the first playlist. It stops
+    // the player, empties the search box and puts the zoom back at 100%, so
+    // the app it hands on is the one it was given.
+    "./specs/shortcuts.test.ts",
     // After `library` too: there is nothing to drag out of an empty table. It
     // makes a playlist and deletes it again, so the sidebar it hands on is the
     // one it was given.

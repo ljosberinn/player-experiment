@@ -1,10 +1,14 @@
 # 123 — What no e2e spec drives
 
-An inventory, not a feature. Twenty-four spec files cover the app; what follows
+An inventory, not a feature. Twenty-six spec files cover the app; what follows
 is what a user can do in the running window that none of them does. Each item
 is a route that exists, a reason the gap matters, and how to drive it. What a
 driver cannot reach is at the bottom, for `testing.md`'s *Uncovered on purpose*
 list rather than for a spec.
+
+The keyboard group landed as
+[the keyboard has a spec](../done/123-the-keyboard-has-a-spec.md), which also
+took the vacuous `.content-error` assertion in `smoke.test.ts` with it.
 
 Every group below is independent of the others except where said, but all of
 them add a line to `wdio.conf.ts`'s ordered `specs` array, so parallel
@@ -14,12 +18,12 @@ worktrees collide on that one line. Land them in sequence, or take the conflict.
 
 `smoke.test.ts:88` asserts Previous, Play and Next exist and are enabled
 against an *empty* library. Nothing ever presses Next with a queue behind it.
-No spec has seen the queue advance, by hand or on its own, seen a pause, or
-seen the playhead move — `library.test.ts:293` starts a track and reads the
-row marker, and that is the whole of it.
+No spec has seen the queue advance on its own, or seen the playhead move on
+anything but a key — `library.test.ts:333` starts a track and reads the row
+marker, and `shortcuts.test.ts` pauses one and seeks it.
 
 `player_snapshot` carries `status`, `track`, `queue_index`, `queue_len` and
-`position_ms` ([model.rs:839](../../../src-tauri/src/model.rs#L839)), so all of
+`position_ms` ([model.rs:880](../../../src-tauri/src/model.rs#L880)), so all of
 this is assertable against the player rather than against the DOM that draws
 it. Fixture tracks are 44–236 MPEG frames, 1.1s to 6.2s
 ([fixtures.ts:223](../../../e2e/fixtures.ts#L223)), and `SilentSink` advances
@@ -32,61 +36,61 @@ position on a wall clock, so waiting a track out costs a second.
 - Repeat-one replays the same row and leaves `queue_index` alone.
   `transport.test.ts:105` proves the flag round-trips to the player; nothing
   proves it changes what happens next.
-- Play becomes Pause — `status`, and the button's `aria-label` with it.
-- The scrubber moves `position_ms`. It is an `<input type="range">`, so focus it
-  and use `browser.keys`; a pointer drag along a rail is the flake `row-drag`
-  already pays for.
+- The scrubber moves `position_ms` by pointer. It is an `<input type="range">`,
+  so focus it and use `browser.keys`; a pointer drag along a rail is the flake
+  `row-drag` already pays for.
 
 New `playback.test.ts`, after `library.test.ts`. `transport.test.ts` runs
 before the library is seeded, deliberately, and none of this works without
 songs.
 
-## The keyboard, which is F5
-
-`menus.test.ts:154` presses F5. That is the only key in the suite that is not
-Escape, Enter or Backspace. Every other binding is covered from a dispatched
-keydown down, in jsdom, which cannot see either half of what matters here: that
-the handler is bound at the window at all, and that `isTypingTarget` stands it
-down inside the search box.
-
-Bindings with no spec: Space (toggle), ←/→ (seek), Alt+←/→ and the mouse's side
-buttons (history), Ctrl+plus / Ctrl+minus (zoom), Escape (clear selection),
-Delete (open the removal confirm). `navigation-history.test.ts` drives the two
-buttons and never the chord.
-
-Two per binding, the second being the one worth having: the key does its thing,
-and the same key typed into `input[aria-label='Search Library']` does not. The
-side buttons are a `mouseup` with `button` 3 or 4, dispatched the way
-`row-menu.test.ts` dispatches `contextmenu`.
-
-New `shortcuts.test.ts`. **Stacked behind [121](121-arrows-move-the-selection.md)**,
-which moves ↑/↓ from volume to the selection — writing it first means rewriting
-two assertions.
-
 ## Destructive confirmations, past Cancel
 
-`row-menu.test.ts:222` opens the library-removal confirm and takes Cancel.
+`row-menu.test.ts:222` opens the library-removal confirm and takes Cancel, and
+`shortcuts.test.ts` opens the same one from Delete and takes Cancel too.
 Nothing in the suite has ever confirmed one, so no spec has seen a row leave
 the library, seen the notice that says how many
-([App.tsx](../../../src/App.tsx) `removeFromLibrary`), or seen the count in
+([App.tsx:591](../../../src/App.tsx#L591)), or seen the count in
 `.statusbar-summary` fall.
 
 Three dialogs, one chain, and the chain is why it is one spec:
 
 1. Remove *n* songs from Library → Remove → the row is gone, the notice says
    `Removed 1 song from your library.`, the summary drops by one.
-2. `File ▸ Forget n Removed Songs…` only appears once something has been
-   removed ([menus.ts:110](../../../src/features/shell/menus.ts#L110)), so it is
-   reachable only after step 1. Nothing covers it today, including the fact
-   that the entry is absent before then.
-3. `File ▸ Remove n Missing Songs…` needs `stats.missing > 0`. Reachable by
+2. `File ▸ Remove n Missing Songs…` needs `stats.missing > 0`. Reachable by
    deleting a fixture file off disk and rescanning through the File menu, the
    way `logfile.test.ts:61` rescans.
+3. `File ▸ Forget n Removed Songs…` only appears once something has been
+   removed ([menus.ts:110](../../../src/features/shell/menus.ts#L110)), so it is
+   reachable only after step 1. Nothing covers it today, including the fact
+   that the entry is absent before then. Its rescan cannot resurrect the
+   tombstoned row — `plan` skips a `removed` path outright
+   ([scan/mod.rs:177](../../../src-tauri/src/scan/mod.rs#L177)) — which is
+   worth asserting while the menu is open.
 
-New `removals.test.ts`, and it must run **last** among the specs that count
-rows — it is the only one that takes songs out of the shared library.
-`virtualization.test.ts` and `statistics.test.ts` both depend on what the scan
-found.
+Numbered in the order the File menu draws them: `menus.ts` pushes Remove
+Missing before Forget Removed.
+
+New `removals.test.ts`, and it must run **after `dynamic-background.test.ts`
+and before `virtualization.test.ts`** — the last slot where the library is
+still the six real fixtures.
+
+Not last, which is where this belonged until the rescan in step 2 was checked
+against the scanner. `plan` marks missing every row in `tracks` that the walk
+did not see and that is not under an absent root, and `absent` is empty for
+every scan the user asked for
+([scan/mod.rs:201](../../../src-tauri/src/scan/mod.rs#L201)). The 150,000 rows
+`virtualization.test.ts` inserts carry `synthetic://%08d.mp3` paths
+([synthetic.rs:63](../../../src-tauri/src/db/synthetic.rs#L63)) that no walk
+will ever find, so a rescan after that spec marks the whole library missing:
+the menu entry would read 150001, and `crash-notice.test.ts` would run over a
+library with nothing left in it.
+
+Everything downstream of the chosen slot counts dynamically —
+`virtualization.test.ts:169` reads `existing` before it seeds, and `statistics`
+and `browse-scroll` assert no absolute totals — so a library two songs shorter
+costs nothing. Everything that asserts `LIBRARY.length` (`library`, `row-drag`,
+`smart-playlists`) is above it.
 
 ## The playlist sidebar, minus the drag
 
@@ -106,9 +110,14 @@ offers is untouched:
   (`Delete "<name>"?`) and the row goes.
 - The row menu's `Play` on a playlist, and its `disabled` state at zero tracks.
 - `Add to Playlist ▸ <name>` in the *row* menu
-  ([rowMenu.ts:153](../../../src/features/library/rowMenu.ts#L153)) — the
+  ([rowMenu.ts:156](../../../src/features/library/rowMenu.ts#L156)) — the
   non-drag route into a playlist, and the only one a keyboard user has.
 - `Remove from Playlist`, which is offered on static playlists only.
+- The Delete key's *other* branch. Inside a static playlist it takes the
+  membership row with no confirmation at all, and `askRemoval` only elsewhere
+  ([useSelectionShortcuts.ts:57](../../../src/features/library/useSelectionShortcuts.ts#L57)).
+  `shortcuts.test.ts` covers the asking branch and runs before any playlist
+  exists, precisely so it cannot meet this one.
 
 Extend `row-drag.test.ts`? No — rename that file's subject or the sidebar work
 inherits its pointer flake. New `playlists.test.ts` after it.
@@ -119,7 +128,7 @@ inherits its pointer flake. New `playlists.test.ts` after it.
 reorder by dragging a header, resize by the divider
 (`[data-testid='resize-<id>']`), double-click a divider to fit the column, and
 a context menu on the header row (`ContextMenu label="Columns"`) that toggles
-visibility and offers `Reset Columns`. `library.test.ts:491` asserts a width,
+visibility and offers `Reset Columns`. `library.test.ts:516` asserts a width,
 but the width a *drill-in* produces — nothing touches a width a user set.
 
 What only the engine can answer: that a dragged header lands where the drop
@@ -145,9 +154,10 @@ custom range shows the two date fields it hides at every other value.
 Driving a drawn select is `appearance.test.ts:105` — click the trigger, click
 `[role='option']=<label>`, then wait for `[role='listbox']` to stop being
 displayed, because Base UI animates the popup out over whatever is under it.
-That helper is copied in two specs now and would be three; **extract it to
-`e2e/select.ts`** as part of this. `src/test/select.ts` is the jsdom
-equivalent and does not apply.
+That helper exists in exactly one spec today; `drawn-controls.test.ts` counts
+`.select` nodes and never opens one. This group would be the *second* copy, so
+extract it to `e2e/select.ts` when a third asks for it and not before.
+`src/test/select.ts` is the jsdom equivalent and does not apply.
 
 ## Settings, the panes nothing presses
 
@@ -156,13 +166,13 @@ Theme (`appearance.test.ts:683`), the dynamic-background checkbox
 (`dynamic-background.test.ts:273`) and the library-folder section
 (`library-folder.test.ts`) are driven. Not driven:
 
-- Interface Zoom, in either place it lives — the Settings row or
-  `.statusbar-zoom` in the footer. Nothing asserts that the stepper scales
-  anything, that `.statusbar-zoom-value` follows, that the buttons disable at
-  `MIN_ZOOM`/`MAX_ZOOM`, or that the factor survives a reload. **Caution:**
-  `viewport.ts:130` sets webview zoom directly *because* the app's store
-  persists, so a zoom spec has to put the preference back or every screenshot
-  after it is at the wrong size.
+- Interface Zoom's two *controls* — the Settings row and `.statusbar-zoom` in
+  the footer. `shortcuts.test.ts` drives the keyboard route and asserts
+  `.statusbar-zoom-value` follows it, so what is left is the steppers
+  themselves and their disabled states at `MIN_ZOOM`/`MAX_ZOOM`, and whether
+  the factor survives a reload. **Caution:** `viewport.ts:130` sets webview
+  zoom directly *because* the app's store persists, so a zoom spec has to put
+  the preference back or every screenshot after it is at the wrong size.
 - `#unattended-lookup` on the Online pane — a checkbox writing a backend
   setting, same shape as the dynamic-background one that is covered.
 - Removing a watch folder through `WatchFolderSettings`.
@@ -170,7 +180,7 @@ Theme (`appearance.test.ts:683`), the dynamic-background checkbox
   teardown, so the button that does it has never been pressed.
 
 Extend `library-folder.test.ts` for the folder row; new `zoom.test.ts` for the
-stepper, because of the restore discipline above.
+steppers, because of the restore discipline above.
 
 ## Smart playlist filters
 
@@ -204,15 +214,6 @@ mixed-value bulk fields stay in `TagEditor.test.tsx`.
 `e2e/.tmp` fixtures are rewritten per run, so a write is safe, but this spec
 must run after every spec that reads a fixture's tags — `library.test.ts`
 asserts what the scanner read.
-
-## One assertion that cannot fail
-
-`smoke.test.ts:110` asserts `.content-error` is absent after a play command
-against an empty queue. That class only ever renders inside `TagEditor` and
-`CrashNotice`, neither of which is mounted at that point, so it is vacuous. A
-player error surfaces in `.error-popup` today
-([ErrorPopover.tsx:50](../../../src/components/ui/ErrorPopover.tsx#L50)).
-One-line fix, and it belongs in whichever of the above lands first.
 
 ## Not reachable from a driver
 

@@ -15,7 +15,7 @@ current frontend coverage is well above it.
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Chart primitives | Vitest + RTL | geometry, never pixels: the plot rect a measured frame hands down, tick offsets, the clamp that keeps a tooltip inside the plot; empty and single-datum inputs for every scale, which is where domains collapse |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
-| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance |
+| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance, every window-bound key and the search box standing it down |
 
 Fixture mp3s are generated (silent frames, known tags) rather than committed
 audio: no encoder, no binary blobs, no licensing question. Rust generates its
@@ -242,10 +242,28 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   shape - empty small hours, busy evenings, heavier weekends - because evenly
   spaced they filled every hour of the week alike and the week clock
   photographed as a flat field.
+- **`tr.song-row.playing` marks the *current* track, not a running one.**
+  `Engine::stop` keeps its queue index — that is where Toggle resumes from — so
+  the snapshot still names the track and the row still wears the marker after a
+  `player_stop`. A spec that waits for the marker to appear after starting the
+  same row twice, or for it to go away after stopping, waits on something that
+  never changed. Wait on `player_snapshot`'s `status` instead.
 - **The driver delivers neither `contextmenu` nor `dblclick`** through the
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;
   `e2e/specs/smart-playlists.test.ts` has the helper.
+- **A pressed space is a keydown and nothing else.** `browser.keys([" "])` maps
+  to the WebDriver Space key, `` — there is no way to send the literal
+  character — and the driver delivers it as a keydown carrying no text: a
+  listener sees `key` as `" "` on the focused element, uncancelled, and a
+  focused text field types nothing. Every other key this suite presses into a
+  field lands, so it reads as a product bug and is not one. Assert what the app
+  did with the event, not the character; `shortcuts.test.ts` reads
+  `defaultPrevented` from a listener bound last.
+- **A click returns when the driver has dispatched it, not when the caret has
+  moved.** A key sent straight after a click on a text field can still reach
+  the window, which is the failure mode every "typing stands the shortcut down"
+  test is built to catch. Wait for `document.activeElement`.
 - **`elementClick` aims at the bounding-box centre, which a ring segment does
   not occupy.** Clicking a donut slice dispatches into the hole: the driver
   reports success, no `click` reaches the path, and the assertion after it
@@ -290,3 +308,13 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 - Whether the OS delivers a media key to an unfocused window, or Shift+F10 and
   the Menu key to a focused one. The shortcut behind them is covered from a
   dispatched keydown down; the key press itself is not reachable from here.
+- Whether the OS delivers a *modifier chord* — Alt+←/→, Ctrl+A, Ctrl+I,
+  Ctrl+plus/minus/0 — or claims it first. `shortcuts.test.ts` presses the bare
+  keys for real and dispatches the chords, which still proves the two halves
+  worth proving: the listener is on `window`, and `isTypingTarget` decides
+  correctly from the event's target. The physical chord is the same gap as the
+  media keys above.
+- Whether a space pressed in the search box puts a space *in* it. The driver
+  cannot type one at all (above), so the e2e half asserts that the app left the
+  keydown alone and did not toggle the player. The character is
+  `usePlayerShortcuts.test.tsx`'s, in jsdom.
