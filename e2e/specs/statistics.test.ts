@@ -361,4 +361,26 @@ describe("the Statistics view", () => {
 
     await expect(browser.$("[role='tab'][aria-selected='true']")).toHaveText("Listening");
   });
+
+  /**
+   * Last, and it clears up after itself: the filters are stored, so a range
+   * left set here would be the range every spec after this one opens on.
+   */
+  it("says what is filtered under the bar, and takes it back", async () => {
+    await browser.$("[role='combobox'][aria-label='Range']").click();
+    await browser.$("//*[@role='option'][normalize-space()='Last 12 months']").click();
+
+    const token = browser.$(".filter-token");
+    await token.waitForExist({ timeout: 10_000 });
+    await expect(token).toHaveText("last 12 months");
+
+    // The line and the bar above it in one frame, which is the thing 4b draws
+    // and the reason this view is photographed at all.
+    await capture("statistics-filter-tokens");
+
+    await browser.$("button[aria-label='Clear last 12 months']").click();
+
+    await expect(browser.$(".filter-token")).not.toBeExisting();
+    await expect(browser.$("[role='combobox'][aria-label='Range']")).toHaveText("All time");
+  });
 });

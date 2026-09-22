@@ -2725,6 +2725,40 @@ body:not(:focus-within) .sidebar-row.current {
   outline-offset: -1px;
 }
 
+/* Section 4b's lower drawing: the same filters as a sentence. 18px under the
+   bar's own rule, which is the gap the sheet draws between the two halves of
+   one frame. The leading "Showing" is a bare text node styled from here, as
+   the bar's captions are. */
+.filter-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 18px 30px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.filter-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+/* The glyph is the whole control and the chip's padding is the room around
+   it: a square box would stand taller than the chip it closes. */
+.filter-token button {
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
 /* The way out of a drill-down, and the same shape as the browse views’ one. */
 .stats-breadcrumb {
   display: flex;

@@ -5,6 +5,7 @@ import { LibraryPanels } from "./LibraryPanels";
 import { ListeningPanels } from "./ListeningPanels";
 import { STATS_TAB_TITLES, type StatsTab, statsRoot, walkBack } from "./path";
 import { StatsFilterBar } from "./StatsFilterBar";
+import { StatsFilterTokens } from "./StatsFilterTokens";
 import { useStatsStore } from "./store";
 
 /**
@@ -51,6 +52,9 @@ export function StatisticsView() {
       </Tabs.List>
 
       <StatsFilterBar tab={tab} />
+      {/* Above the breadcrumb: both say what narrows the view, and they run
+          outermost first - the bar's facets, then the drill path. */}
+      <StatsFilterTokens tab={tab} />
 
       {crumbs.length > 0 && path !== null ? (
         <nav className="stats-breadcrumb" aria-label="Drill-down">

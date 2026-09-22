@@ -3,6 +3,7 @@ import { Select } from "../../components/primitives/Select";
 import { type BrowseGroup, browseGroups } from "../../ipc";
 import { usePlaylistsStore } from "../playlists/store";
 import {
+  DAY,
   dateInputSeconds,
   dateInputValue,
   RANGE_TITLES,
@@ -134,8 +135,6 @@ function CustomRange() {
     </>
   );
 }
-
-const DAY = 86_400;
 
 function ScopeFilter() {
   const scope = useStatsStore((s) => s.filters.scope);

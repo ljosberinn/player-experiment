@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { Playlist } from "../../ipc";
 import { albumIdentity } from "../library/browse";
 import {
+  activeFilters,
+  DAY,
   DEFAULT_FILTERS,
   dateInputSeconds,
   dateInputValue,
@@ -192,5 +195,83 @@ describe("libraryQuery", () => {
 
     expect(query.genre).toBe("rock");
     expect(query.browse).toEqual(album);
+  });
+});
+
+describe("activeFilters", () => {
+  const mix: Playlist = {
+    id: 9,
+    name: "Mix",
+    kind: "static",
+    trackCount: 4,
+    createdAt: 0,
+  };
+
+  it("draws nothing while every facet is at its default", () => {
+    expect(activeFilters(filters(), "listening", [])).toEqual([]);
+    expect(activeFilters(filters(), "library", [mix])).toEqual([]);
+  });
+
+  it("reads the listening facets as a sentence, in the order the bar draws them", () => {
+    const active = activeFilters(
+      filters({ range: "months12", owned: true, loved: false }),
+      "listening",
+      [],
+    );
+
+    expect(active.map((filter) => filter.phrase)).toEqual([
+      "last 12 months",
+      "owned only",
+      "not loved",
+    ]);
+  });
+
+  it("says a custom range as the two days the fields show", () => {
+    const from = dateInputSeconds("2024-03-01") ?? 0;
+    const to = (dateInputSeconds("2024-03-31") ?? 0) + DAY;
+
+    expect(
+      activeFilters(filters({ range: "custom", custom: { from, to } }), "listening", []),
+    ).toEqual([
+      {
+        facet: "range",
+        phrase: `${new Date(from * 1000).toLocaleDateString()} – ${new Date(
+          (to - DAY) * 1000,
+        ).toLocaleDateString()}`,
+        cleared: { range: "all", custom: null },
+      },
+    ]);
+  });
+
+  it("draws no range token before a custom range has its dates, because it narrows nothing", () => {
+    const open = filters({ range: "custom", custom: null });
+
+    expect(rangeFor(open, NOW)).toBeNull();
+    expect(activeFilters(open, "listening", [])).toEqual([]);
+  });
+
+  it("names the playlist a scope is pointed at", () => {
+    const active = activeFilters(
+      filters({ scope: { kind: "playlist", playlistId: 9 } }),
+      "library",
+      [mix],
+    );
+
+    expect(active[0]?.phrase).toBe("Mix");
+  });
+
+  it("keeps each tab to the facets its own query reads", () => {
+    const both = filters({ owned: true, genre: "black metal" });
+
+    expect(activeFilters(both, "listening", []).map((filter) => filter.facet)).toEqual(["owned"]);
+    expect(activeFilters(both, "library", []).map((filter) => filter.facet)).toEqual(["genre"]);
+  });
+
+  it("clears a facet back to its default", () => {
+    const active = activeFilters(filters({ scope: { kind: "view" } }), "library", []);
+
+    expect({ ...filters({ scope: { kind: "view" } }), ...active[0]?.cleared }).toEqual(
+      DEFAULT_FILTERS,
+    );
   });
 });

@@ -1,6 +1,7 @@
 import { StatRow } from "../../components/primitives/StatRow";
 import { StatTiles } from "../../components/primitives/StatTiles";
 import { spanParts } from "../../lib/format";
+import { activeFilters } from "./filters";
 import { listenTotalsOnce } from "./listenTotals";
 import { useStatsStore } from "./store";
 import { useListenQuery } from "./useListenQuery";
@@ -24,7 +25,10 @@ export function ListeningTiles() {
   if (totals !== null && totals.plays === 0) {
     return (
       <p className="empty-state">
-        {filters.range === "all" && filters.owned === null && filters.loved === null
+        {/* The same answer the token line gives, so an empty state blaming the
+            range cannot appear under a line saying nothing is filtered. No
+            playlists: a scope token is the Library tab's. */}
+        {activeFilters(filters, "listening", []).length === 0
           ? "Nothing has been played yet. Import your last.fm history from Settings ▸ last.fm to bring in what came before."
           : "No plays in this range."}
       </p>

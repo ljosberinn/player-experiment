@@ -1,5 +1,5 @@
-import type { ListenQuery, TimeRange, TrackQuery } from "../../ipc";
-import type { StatsCrumb, StatsPath } from "./path";
+import type { ListenQuery, Playlist, TimeRange, TrackQuery } from "../../ipc";
+import type { StatsCrumb, StatsPath, StatsTab } from "./path";
 
 /**
  * What the filter bar can be set to, for both tabs at once.
@@ -149,6 +149,9 @@ function seconds(date: Date): number {
   return Math.floor(date.getTime() / 1000);
 }
 
+/** A day in seconds. `custom.to` is exclusive, so reading it back is one of these. */
+export const DAY = 86_400;
+
 /** The date an `<input type="date">` shows for a bound, in local time. */
 export function dateInputValue(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
@@ -164,6 +167,101 @@ export function dateInputSeconds(value: string): number | null {
     return null;
   }
   return seconds(new Date(year, month - 1, day));
+}
+
+/** One filter the token line draws, and what its × puts back. */
+export interface ActiveFilter {
+  readonly facet: "range" | "owned" | "loved" | "scope" | "genre";
+  /** Reads as the continuation of "Showing …". */
+  readonly phrase: string;
+  readonly cleared: Partial<StatsFilters>;
+}
+
+/**
+ * The filters that are narrowing the open tab, in the order the bar draws them.
+ *
+ * A facet at its default is not one: the token line says what is filtered, and
+ * a token per facet regardless would be the select bar again with worse copy.
+ *
+ * The phrases are their own wording rather than the selects' option labels. A
+ * select answers a caption - Owned: "In the library" - and a token continues a
+ * sentence - Showing "owned only". Range is the exception, because a lower-case
+ * `RANGE_TITLES` is already the sentence form.
+ *
+ * Takes the playlists rather than reading them, for the reason `libraryQuery`
+ * takes the view: the caller subscribes, and a pure function of both is what
+ * the tests can drive.
+ */
+export function activeFilters(
+  filters: StatsFilters,
+  tab: StatsTab,
+  playlists: readonly Playlist[],
+): readonly ActiveFilter[] {
+  const active: ActiveFilter[] = [];
+
+  if (tab === "listening") {
+    // `custom` before both dates are picked narrows nothing - `rangeFor`
+    // returns null for it - so there is no filter to draw.
+    if (filters.range !== "all" && (filters.range !== "custom" || filters.custom !== null)) {
+      active.push({
+        facet: "range",
+        phrase: rangePhrase(filters),
+        cleared: { range: DEFAULT_FILTERS.range, custom: null },
+      });
+    }
+    if (filters.owned !== null) {
+      active.push({
+        facet: "owned",
+        phrase: filters.owned ? "owned only" : "not owned",
+        cleared: { owned: null },
+      });
+    }
+    if (filters.loved !== null) {
+      active.push({
+        facet: "loved",
+        phrase: filters.loved ? "loved only" : "not loved",
+        cleared: { loved: null },
+      });
+    }
+    return active;
+  }
+
+  if (filters.scope.kind !== "library") {
+    active.push({
+      facet: "scope",
+      phrase: scopePhrase(filters.scope, playlists),
+      cleared: { scope: DEFAULT_FILTERS.scope },
+    });
+  }
+  if (filters.genre !== null) {
+    // The genre as the library spells it: it is the library's own word, and a
+    // token that lower-cased it would be naming something else.
+    active.push({ facet: "genre", phrase: filters.genre, cleared: { genre: null } });
+  }
+  return active;
+}
+
+function rangePhrase(filters: StatsFilters): string {
+  if (filters.range !== "custom" || filters.custom === null) {
+    return RANGE_TITLES[filters.range].toLowerCase();
+  }
+  // The stored upper bound is the start of the day after the one that was
+  // picked, which is the day the field shows.
+  return `${localDay(filters.custom.from)} – ${localDay(filters.custom.to - DAY)}`;
+}
+
+function scopePhrase(
+  scope: Exclude<StatsScope, { kind: "library" }>,
+  playlists: readonly Playlist[],
+): string {
+  if (scope.kind === "view") {
+    return "the current view";
+  }
+  return playlists.find((playlist) => playlist.id === scope.playlistId)?.name ?? "the playlist";
+}
+
+function localDay(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleDateString();
 }
 
 /**
