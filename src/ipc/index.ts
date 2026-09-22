@@ -45,6 +45,7 @@ import type { Playlist } from "./bindings/Playlist";
 import type { PlaylistKind } from "./bindings/PlaylistKind";
 import type { ReleaseCandidate } from "./bindings/ReleaseCandidate";
 import type { ReleaseDetail } from "./bindings/ReleaseDetail";
+import type { ReleaseGroup } from "./bindings/ReleaseGroup";
 import type { ReleaseIdentity } from "./bindings/ReleaseIdentity";
 import type { ReleaseSelection } from "./bindings/ReleaseSelection";
 import type { RemoteTrack } from "./bindings/RemoteTrack";
@@ -115,6 +116,7 @@ export type {
   PlaylistKind,
   ReleaseCandidate,
   ReleaseDetail,
+  ReleaseGroup,
   ReleaseIdentity,
   ReleaseSelection,
   RemoteTrack,
@@ -249,6 +251,17 @@ export function libraryStats(query: TrackQuery): Promise<LibraryStats> {
  */
 export function browseGroups(query: TrackQuery, kind: BrowseKind): Promise<BrowseGroup[]> {
   return invoke<BrowseGroup[]>("browse_groups", { query, kind });
+}
+
+/**
+ * The releases inside the open drill-in, in the order its rows are grouped.
+ *
+ * The mirror image of `browseGroups`: this one keeps the query's browse
+ * filter, because the question is which releases are inside the view that is
+ * already open rather than what the tab holds.
+ */
+export function releaseGroups(query: TrackQuery): Promise<ReleaseGroup[]> {
+  return invoke<ReleaseGroup[]>("release_groups", { query });
 }
 
 /**

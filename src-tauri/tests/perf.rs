@@ -301,6 +301,38 @@ fn drilling_into_a_group_is_as_cheap_as_any_other_page() {
 }
 
 #[test]
+fn listing_a_drill_ins_releases_costs_what_a_browse_grouping_does() {
+    let _shared = alongside_others();
+    let (_dir, db) = seeded_library();
+    let conn = db.conn().unwrap();
+
+    // A genre is the worst case the view has: the fixture cycles 20 of them,
+    // so this is a twentieth of the library grouped by release - far more than
+    // the artist drill-in above, and the one shape where a `GROUP BY` over a
+    // column with no index could go quadratic instead of merely scanning.
+    let q = TrackQuery {
+        browse: Some(BrowseFilter {
+            kind: BrowseKind::Genres,
+            id: Some("Genre07".to_owned()),
+        }),
+        ..Default::default()
+    };
+
+    // Unpaged like `browse_groups`, so it gets that budget rather than a
+    // page's: what this catches is the shape going wrong, not the scan.
+    assert_under("genre drill-in releases", 120, || {
+        assert!(!query::release_groups(&conn, &q).unwrap().is_empty());
+    });
+
+    // And the rows themselves must stay a page: the release ordering is a
+    // window function over the drill-in, which sorts it, and that sort is the
+    // thing that could quietly turn a page into a scan of the whole genre.
+    assert_under("genre drill-in page", 60, || {
+        assert_eq!(query::query_tracks(&conn, &q).unwrap().len(), 100);
+    });
+}
+
+#[test]
 fn asking_how_many_files_are_missing_is_free() {
     let _shared = alongside_others();
     let (_dir, db) = seeded_library();

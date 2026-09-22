@@ -76,6 +76,32 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   no screen listing its songs as one list, because a LIBRARY button still
   changes the source back to the library. Reaching that list needs a source row
   the sidebar does not have - see phase 100 in `issues/done/`.
+- **A drill-in is drawn as its releases, not as a flat table.** `ReleaseGroups`
+  replaces `SongTable` while `browse` is set, for all three tabs: a release is
+  one group, an artist or a genre is a discography. Both components sit on
+  `useSongTableWiring`, which holds everything that is not placement — the
+  selection, the row menu, the column fit, the keyboard menu key — so the two
+  cannot drift in how a row behaves. What differs is only that one virtualizes
+  over rows and the other over groups.
+- **A group's rows are a prefix sum, never a measurement.** `releaseLayout.ts`
+  gives a group the closed-form height `28n + 58` and the row range
+  `[offset_i, offset_i + count_i)`, so every group is placed before any row of
+  it has been fetched and nothing resizes when a page lands. This is only
+  correct because the rows come back ordered by release: `query::order_by`
+  prefixes a drill-in's `ORDER BY` with `drill_in_order`, the row-wise form of
+  the ordering `release_groups` returns. **Change either and change both** —
+  disagreeing orderings index the wrong rows, silently.
+- **`release_groups` keeps the browse filter that `browse_groups` drops.** The
+  grid asks what the tab holds and must not filter itself down to the album
+  already open; the drill-in asks what is inside the view that *is* open. Same
+  `scope()`, opposite treatment of one field.
+- **The drill-in's rows are 28px, the library's are 32px.** `SongRow` takes a
+  `height`, defaulting to `ROW_HEIGHT`. The specimen draws 3f shorter, and the
+  closed-form height above is written in terms of the shorter one.
+- **A drill-in offers no reordering.** It is ordered by release, which is not
+  an order there is anything to rearrange, so `ReleaseGroups` takes no
+  `onReorder` and the Alt+Arrow nudge stays in `SongTable`. Removal from a
+  playlist and from the library both still work.
 - **A drill-in that lands empty ejects to the group list**, from inside
   `refresh()` itself so a group emptied by a tag edit, a missing file or a
   rescan is covered the same way. Only when there is no active search — one

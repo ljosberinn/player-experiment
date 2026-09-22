@@ -7,8 +7,9 @@ use rusqlite::{Connection, OptionalExtension, Row};
 
 use crate::error::AppResult;
 use crate::model::{
-    BrowseGroup, BrowseKind, LibraryStats, PlaylistKind, SortField, Track, TrackQuery,
+    BrowseGroup, BrowseKind, LibraryStats, PlaylistKind, ReleaseGroup, SortField, Track, TrackQuery,
 };
+use crate::scan::AUDIO_EXTENSIONS;
 
 /// The artist a track is filed under.
 ///
@@ -365,6 +366,21 @@ const BM25_WEIGHTS: &str = "10.0, 8.0, 6.0, 4.0, 2.0, 1.0";
 /// with the library, which is the one thing the paging design rests on not
 /// happening. `tests/perf.rs` guards the plan.
 fn order_by(scope: &Scope, query: &TrackQuery) -> String {
+    let within = sort_order_by(scope, query);
+    // A drill-in is drawn as release groups, so the release ordering wins and
+    // whatever the user clicked sorts inside it - which is what a sort means
+    // once the view is grouped. Outside a drill-in nothing is grouped and the
+    // ordering is untouched, so the indexed plan `tests/perf.rs` guards is the
+    // one the library still runs.
+    match query.browse {
+        Some(_) => format!("{}, {within}", drill_in_order()),
+        None => within,
+    }
+}
+
+/// The user's sort, which is the whole order outside a drill-in and the order
+/// inside one release within it.
+fn sort_order_by(scope: &Scope, query: &TrackQuery) -> String {
     // Relevance only exists while a search is running: bm25 needs the FTS
     // table in the query, and without one there is nothing to rank. Falling
     // back to the field's column keeps a stored "sort by relevance" harmless
@@ -609,6 +625,118 @@ pub fn browse_groups(
                 duration_ms: row.get(5)?,
                 cover_hash: row.get(6)?,
                 year: row.get(7)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(groups)
+}
+
+/// The container a file sits in, upper-cased, as an expression over one row.
+///
+/// Off the path rather than a column: [`AUDIO_EXTENSIONS`] admits one
+/// extension today, so a stored format would be one constant string in every
+/// row of every library. The arms are generated from that list so the two
+/// cannot drift, and an extension it does not name yields NULL rather than a
+/// guess.
+fn format_sql() -> String {
+    let arms = AUDIO_EXTENSIONS
+        .iter()
+        .map(|ext| {
+            format!(
+                "WHEN lower(tracks.path) LIKE '%.{ext}' THEN '{}'",
+                ext.to_uppercase()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("CASE {arms} END")
+}
+
+/// How the releases inside a drill-in are ordered, as aggregates over a group.
+///
+/// Chronological, because a discography is - the grid's alphabetical order
+/// answers a different question. Undated releases sort last for the reason
+/// every other NULL here does, and `group_id` closes the order so two
+/// same-named releases of one year cannot swap between calls.
+///
+/// **[`drill_in_order`] must stay the row-wise form of exactly this list.**
+/// The frontend cuts the rows into groups by a prefix sum over `track_count`,
+/// which indexes the wrong rows the moment the two disagree.
+const RELEASE_GROUP_ORDER: &str = "min(tracks.year) IS NULL, min(tracks.year) ASC, \
+     title COLLATE NOCASE ASC, group_id COLLATE NOCASE ASC";
+
+/// [`RELEASE_GROUP_ORDER`] over a row rather than over a group.
+///
+/// The same four terms, read off each row's own release through a window
+/// rather than off the group - `tracks.year` alone would not do, because a
+/// release whose files disagree about the year would straddle another release
+/// instead of sorting where its group sorts.
+///
+/// The partition folds case exactly as [`release_groups`] groups, so the two
+/// cut the rows the same way. **Change one and change the other**: the
+/// frontend finds a group's rows by a prefix sum over `track_count` and never
+/// reads a row to check.
+fn drill_in_order() -> String {
+    let identity = release_identity();
+    let over = format!("OVER (PARTITION BY {identity} COLLATE NOCASE)");
+    format!(
+        "min(tracks.year) {over} IS NULL, min(tracks.year) {over} ASC, \
+         min({GROUP_ALBUM}) {over} COLLATE NOCASE ASC, \
+         min({identity}) {over} COLLATE NOCASE ASC"
+    )
+}
+
+/// The releases inside `query`'s drill-in, oldest first.
+///
+/// The mirror image of [`browse_groups`]: that one strips the browse filter so
+/// the grid keeps listing every album, and this one keeps it, because the
+/// question is which releases are inside the view that is already open. Both
+/// run through the same [`scope`], so a search narrows the groups exactly as it
+/// narrows the rows and the counts match what the table draws.
+///
+/// Unpaged, for [`browse_groups`]'s reason: one drill-in is a discography, and
+/// the frontend virtualizes over the groups this returns.
+pub fn release_groups(conn: &Connection, query: &TrackQuery) -> AppResult<Vec<ReleaseGroup>> {
+    let scope = scope(conn, query)?;
+    let identity = release_identity();
+    let format = format_sql();
+
+    // `min()` over the labels for [`browse_groups`]'s reason: the group is cut
+    // on a case-folded identity, so no one row of it carries the label and a
+    // bare column would be an arbitrary row's spelling.
+    //
+    // The format is the release's only where its files agree on one - a rip
+    // half MP3 and half something else has no container to name, and printing
+    // either would be a claim about the other half. `count(format)` against
+    // `count(*)` for the same reason `various_titles` counts its covers: a file
+    // whose extension `AUDIO_EXTENSIONS` does not name is NULL here, which
+    // `count(DISTINCT)` skips rather than disagrees with.
+    let sql = format!(
+        "SELECT min({identity}) AS group_id, min({GROUP_ALBUM}) AS title, \
+         min({GROUP_ARTIST}), min(tracks.year), min(tracks.cover_hash), count(*), \
+         coalesce(sum(tracks.duration_ms), 0), \
+         CASE WHEN count(DISTINCT {format}) = 1 AND count({format}) = count(*) \
+              THEN min({format}) END, \
+         cast(round(avg(tracks.bitrate)) AS INTEGER) {} \
+         GROUP BY {identity} COLLATE NOCASE \
+         ORDER BY {RELEASE_GROUP_ORDER}",
+        scope.from_where
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let groups = stmt
+        .query_map(rusqlite::params_from_iter(scope.params.iter()), |row| {
+            Ok(ReleaseGroup {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                artist: row.get(2)?,
+                year: row.get(3)?,
+                cover_hash: row.get(4)?,
+                track_count: row.get::<_, i64>(5)? as u32,
+                duration_ms: row.get(6)?,
+                format: row.get(7)?,
+                bitrate: row.get(8)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2324,6 +2452,140 @@ mod tests {
         .unwrap();
 
         assert!(groups.len() > 1, "the album list must not filter itself");
+    }
+
+    /// The drill-in's own list, which is the opposite of the grid's: it keeps
+    /// the browse filter rather than stripping it.
+    fn releases(db: &Db, kind: BrowseKind, id: Option<&str>) -> Vec<ReleaseGroup> {
+        let conn = db.conn().unwrap();
+        release_groups(
+            &conn,
+            &TrackQuery {
+                browse: Some(BrowseFilter {
+                    kind,
+                    id: id.map(str::to_owned),
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_drill_in_lists_the_releases_inside_it_oldest_first() {
+        let (_dir, db) = browsable();
+
+        // Rock holds one track of the 2001 compilation and both discs of the
+        // 1985 album. A discography is chronological, so the grid's
+        // alphabetical order is not the one here.
+        let groups = releases(&db, BrowseKind::Genres, Some("Rock"));
+
+        assert_eq!(
+            groups
+                .iter()
+                .map(|g| (g.title.as_deref(), g.year, g.track_count))
+                .collect::<Vec<_>>(),
+            [
+                (Some("Double"), Some(1985), 2),
+                (Some("Comp"), Some(2001), 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn the_gutter_names_the_container_every_file_of_the_release_shares() {
+        let (_dir, db) = browsable();
+
+        let [double] = &releases(&db, BrowseKind::Artists, Some("Dio"))[..] else {
+            panic!("Dio has one release");
+        };
+        assert_eq!(double.format.as_deref(), Some("MP3"));
+    }
+
+    #[test]
+    fn a_release_whose_files_disagree_about_the_container_names_none() {
+        let (_dir, db) = browsable();
+        db.conn()
+            .unwrap()
+            .execute(
+                "INSERT INTO tracks (path, mtime, size, title, artist, album_artist, album,
+                                     year, added_at)
+                 VALUES ('/b/10.flac', 1, 1, 'D3', 'Dio', 'Dio', 'Double', 1985, 0)",
+                [],
+            )
+            .unwrap();
+
+        let [double] = &releases(&db, BrowseKind::Artists, Some("Dio"))[..] else {
+            panic!("Dio still has one release");
+        };
+        // Naming either half would be a claim about the other.
+        assert_eq!(double.track_count, 3);
+        assert_eq!(double.format, None);
+    }
+
+    #[test]
+    fn the_gutter_averages_the_bitrate_over_the_release() {
+        let (_dir, db) = browsable();
+        db.conn()
+            .unwrap()
+            .execute(
+                "UPDATE tracks SET bitrate = CASE path WHEN '/b/4.mp3' THEN 321 ELSE 128 END
+                  WHERE album = 'Double' AND album_artist = 'Dio'",
+                [],
+            )
+            .unwrap();
+
+        let [double] = &releases(&db, BrowseKind::Artists, Some("Dio"))[..] else {
+            panic!("Dio has one release");
+        };
+        // Rounded, not truncated: (321 + 128) / 2 is 224.5.
+        assert_eq!(double.bitrate, Some(225));
+    }
+
+    #[test]
+    fn a_release_carries_the_artist_the_view_itself_cannot_name() {
+        let (_dir, db) = browsable();
+
+        // A genre drill-in's heading says "Pop", so the compilation's own
+        // gutter is the only place its artist can be read.
+        let [comp] = &releases(&db, BrowseKind::Genres, Some("Pop"))[..] else {
+            panic!("Pop holds one release");
+        };
+        assert_eq!(comp.id, album_id("Comp", "Various Artists"));
+        assert_eq!(comp.artist.as_deref(), Some("Various Artists"));
+        assert_eq!(comp.cover_hash.as_deref(), Some("ca"));
+        assert_eq!(comp.duration_ms, 2000);
+    }
+
+    #[test]
+    fn a_drill_in_orders_its_rows_by_release_so_each_group_is_one_run() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            browse: Some(BrowseFilter {
+                kind: BrowseKind::Genres,
+                id: Some("Rock".to_owned()),
+            }),
+            ..Default::default()
+        };
+
+        // By artist alone Carol heads the view and the 1985 album straddles the
+        // compilation. The releases come first, oldest first, and the sort runs
+        // inside them - which is what lets the frontend cut the rows into
+        // groups by a prefix sum rather than by reading them.
+        let paths = query_tracks(&conn, &query)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.path)
+            .collect::<Vec<_>>();
+        assert_eq!(paths, ["/b/4.mp3", "/b/5.mp3", "/b/3.mp3"]);
+
+        let counts = release_groups(&conn, &query)
+            .unwrap()
+            .iter()
+            .map(|g| g.track_count)
+            .collect::<Vec<_>>();
+        assert_eq!(counts, [2, 1]);
     }
 
     #[test]

@@ -80,6 +80,7 @@ export function SongRow({
   drop,
   columns,
   actions,
+  height = ROW_HEIGHT,
 }: {
   /** Null while the page it belongs to is still in flight. */
   track: Track | null;
@@ -91,6 +92,14 @@ export function SongRow({
   drop: DropEdge;
   columns: ColumnDef[];
   actions: RowActions;
+  /**
+   * How tall this row is, for the drill-in, where the specimen draws a
+   * shorter row than the library's.
+   *
+   * A constant per view rather than a per-row fact, so it costs the prop
+   * stability this component rests on nothing.
+   */
+  height?: number;
 }) {
   const { onActivate, onReorder, onRemove, onRemoveFromLibrary, onContextMenu, setDropIndex } =
     actions;
@@ -119,7 +128,7 @@ export function SongRow({
       ]
         .filter(Boolean)
         .join(" ")}
-      style={{ height: ROW_HEIGHT, transform: `translateY(${top}px)` }}
+      style={{ height, transform: `translateY(${top}px)` }}
       onClick={(event) => {
         // The drag that just ended produced this click, and a reorder is not
         // also a selection.

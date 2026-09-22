@@ -887,6 +887,137 @@
   color: var(--muted);
 }
 
+/* ---------- a drill-in drawn as release groups ---------- */
+
+/* The measurements are 3f's: a `168px 1fr` group with a `16px` gap and
+   `14px 12px` of padding. They are written out rather than held in custom
+   properties because every `var()` in this sheet has to resolve to a token
+   `tokens.css` declares - see App.css.test.ts - and these are one component's
+   geometry rather than anything the design system names.
+
+   `calc(12px + 168px + 16px)` is spelled as its parts wherever the header has
+   to line up with the groups, so the sum cannot drift from the grid above
+   without the addends drifting too. */
+
+/* One header for every group rather than one per group: the gutter is a fixed
+   width, so each group's table begins at the same x and this is that inset.
+   Sticky for the reason the flat table's `thead` is - a table read by
+   scrolling needs its column names on screen. */
+.release-header-table {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-left: calc(12px + 168px + 16px);
+  min-width: calc(100% - (12px + 168px + 16px));
+}
+
+/* As wide as the widest group rather than as wide as the pane: the columns can
+   overflow horizontally, and a group's rule has to run the full width of what
+   it separates. */
+.release-groups {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Absolutely positioned for the reason rows are in the flat table: the
+   virtualizer places these, and its offsets come from `groupHeight` rather
+   than from measuring - see `releaseLayout.ts`.
+
+   The 2px rule between groups is `--rule` for the reason a dialog's section
+   rules are: the sheet builds structure out of lines rather than cards. It is
+   inside the height the virtualizer already counted, so it stays on the last
+   group too rather than making a group's height depend on its position. */
+.release-group {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 16px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 14px 12px;
+  border-bottom: 2px solid var(--rule);
+  box-sizing: border-box;
+}
+
+/* The cover beside the labels rather than above them, which is what keeps the
+   gutter to the 52px its cover is: stacked, the gutter would be taller than a
+   group of one track, and such a group would be sized by its gutter instead of
+   by its rows - which `groupHeight` does not account for and must not have to. */
+.release-gutter {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.release-cover,
+.release-cover-empty {
+  display: block;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  background: var(--skeleton);
+  box-shadow: var(--shadow);
+  object-fit: cover;
+}
+
+/* `min-width: 0` so a long album title ellipses inside the gutter rather than
+   pushing the cover out of it. */
+.release-labels {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.release-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-year,
+.release-format {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A group's table has no header of its own - the one above stands for all of
+   them - so `.song-table tbody` already lays its rows out and only the footer
+   needs saying. The body's height is set inline from the row count, because
+   the rows inside it are absolutely positioned and it would otherwise
+   collapse. */
+.release-group .song-table tfoot {
+  display: block;
+}
+
+/* The closing row: the group's count on the left and its total on the right,
+   under a rule. Quieter than a track row and heavier in weight, which is what
+   keeps it from reading as one more track. */
+.release-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 28px;
+  border-top: 1px solid var(--rule);
+  opacity: 0.72;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.release-total td {
+  padding: 0 6px;
+}
+
 /* ---------- song table ---------- */
 
 /* No fill of its own, and that is the point.

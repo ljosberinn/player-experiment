@@ -1,28 +1,20 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ContextMenu } from "../../components/ui/ContextMenu";
-import { revealTrack } from "../../ipc";
-import { useEditorStore } from "../editor/store";
-import { useLoveEntry } from "../lastfm/loveEntry";
 import { isTypingTarget } from "../player/shortcuts";
 import { nudgeTarget } from "../playlists/reorder";
-import { usePlaylistsStore } from "../playlists/store";
 import {
   dropIndexAt,
   edgeScrollSpeed,
   isTrackDragging,
   onTrackDragEnd,
 } from "../playlists/trackDrag";
-import { useTagsourceStore } from "../tagsource/store";
 import { ColumnHeader } from "./ColumnHeader";
-import { measureColumns } from "./columnFit";
-import { resolveColumns } from "./columns";
 import { rowIndicesOf } from "./pageCache";
-import { rowMenuItems } from "./rowMenu";
-import { type DropEdge, ROW_HEIGHT, type RowActions, SongRow } from "./SongRow";
+import { type DropEdge, ROW_HEIGHT, SongRow } from "./SongRow";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
+import { type SongTableHandlers, useSongTableWiring } from "./useSongTableWiring";
 
 /** Rows rendered beyond the viewport, so a fast flick shows content not gaps. */
 const OVERSCAN = 12;
@@ -33,8 +25,6 @@ const OVERSCAN = 12;
  * enough that dropping onto the first or last visible row is still possible.
  */
 const EDGE_SCROLL_BAND_PX = ROW_HEIGHT;
-/** How far in from a row's left edge a keyboard-opened menu is anchored. */
-const MENU_INSET = 8;
 
 /**
  * Real table markup rather than divs with ARIA roles: `role="grid"` gives
@@ -50,32 +40,7 @@ export function SongTable({
   onRemoveFromLibrary,
   onExport,
   nowPlayingId = null,
-}: {
-  /** Double-click or Enter on a row: play the library from that row. */
-  onActivate?: (rowIndex: number) => void;
-  /**
-   * Accepts a drag of rows dropped back onto the table.
-   *
-   * Absent means the view has no order of its own to rearrange - the library
-   * and any column-sorted view are derived orders, and dropping a row into one
-   * would have nothing to persist.
-   */
-  onReorder?: ((trackIds: number[], targetIndex: number) => void) | undefined;
-  /** Delete on a selection: take those rows out of the current playlist. */
-  onRemove?: ((trackIds: number[]) => void) | undefined;
-  /**
-   * Take those rows out of the library itself.
-   *
-   * Its own prop rather than a second meaning for `onRemove`, which keeps
-   * saying "out of this playlist": inside a static playlist both are on offer
-   * at once, and Delete has to pick the less destructive one.
-   */
-  onRemoveFromLibrary?: ((trackIds: number[]) => void) | undefined;
-  /**
-   * Export the rows named. Lives with the caller because it opens a save
-   * dialog, which is the shell's business rather than the table's.
-   */
-  onExport?: ((trackIds: number[]) => void) | undefined;
+}: SongTableHandlers & {
   nowPlayingId?: number | null;
 }) {
   // React Compiler declines to memoize any component holding a
@@ -85,61 +50,9 @@ export function SongTable({
   // see vite.config.ts.
   "use no memo";
 
-  const total = useLibraryStore((s) => s.total);
-  // Resolved here rather than in `App`, whose only use for the config was to
-  // hand the result down: subscribing where the columns are rendered keeps a
-  // width change - a drag, a fit - out of the shell's render entirely.
-  const columnConfig = useLibraryStore((s) => s.columns);
-  const fittedWidths = useLibraryStore((s) => s.fittedWidths);
-  // Hand-written, because this component is not compiled: a fresh array here
-  // would be a changed prop on all forty-odd rows for every render of the
-  // body, which is exactly what the split below is for.
-  const columns = useMemo(
-    () => resolveColumns(columnConfig, fittedWidths),
-    [columnConfig, fittedWidths],
-  );
-  const sortBy = useLibraryStore((s) => s.sortBy);
-  const direction = useLibraryStore((s) => s.direction);
-  const selection = useLibraryStore((s) => s.selection);
-  const rowAt = useLibraryStore((s) => s.rowAt);
-  // For the Love entry, which is handed a selection by id rather than by row.
-  const trackById = useLibraryStore((s) => s.trackById);
-  const ensureRange = useLibraryStore((s) => s.ensureRange);
-  const toggleSort = useLibraryStore((s) => s.toggleSort);
-  // Subscribing to `pages` is what re-renders rows when a page lands; `rowAt`
-  // reads from the store and would otherwise look unchanged to React.
-  const pages = useLibraryStore((s) => s.pages);
-  const fitPending = useLibraryStore((s) => s.fitPending);
-  const fitColumns = useLibraryStore((s) => s.fitColumns);
-  // A new query drops every cached page, so the visible range has to be
-  // fetched again - but the range itself has not moved, and neither has the
-  // row count when only the sort changed. Without this the effect below never
-  // re-runs and the table sits on placeholder rows forever.
-  const queryToken = useLibraryStore((s) => s.queryToken);
-
-  const playlistId = useLibraryStore((s) => s.playlistId);
-  const playlists = usePlaylistsStore((s) => s.playlists);
-  const addTracks = usePlaylistsStore((s) => s.addTracks);
-  const openEditor = useEditorStore((s) => s.open);
-  const openLookup = useTagsourceStore((s) => s.open);
-
   const scrollRef = useRef<HTMLDivElement>(null);
-  /** Where a reorder drop would land, as an index into the current order. */
-  const [dropIndex, setDropIndex] = useState<number | null>(null);
-  /**
-   * What the open row menu acts on.
-   *
-   * No longer where it is: Base UI's trigger derives the position from the
-   * event it owns. What stays is the part that was never about positioning -
-   * which rows the menu applies to, decided on the right-click before the menu
-   * opens.
-   */
-  const [menu, setMenu] = useState<{ trackIds: number[]; rowIndex: number } | null>(null);
 
-  // Built here rather than inside the items expression below: it subscribes,
-  // and a hook cannot live in a branch that only runs while a menu is open.
-  const loving = useLoveEntry(menu?.trackIds ?? [], trackById);
-
+  const total = useLibraryStore((s) => s.total);
   const virtualizer = useVirtualizer({
     count: total,
     getScrollElement: () => scrollRef.current,
@@ -147,20 +60,31 @@ export function SongTable({
     overscan: OVERSCAN,
   });
 
-  // Rebuilt only when one of the callers' handlers changes, so a scroll, a
-  // click or a dragover leaves every row's props `Object.is`-equal and React
-  // bails out on the cells beneath them.
-  const actions: RowActions = useMemo(
-    () => ({
-      onActivate,
-      onReorder,
-      onRemove,
-      onRemoveFromLibrary,
-      onContextMenu: setMenu,
-      setDropIndex,
-    }),
-    [onActivate, onReorder, onRemove, onRemoveFromLibrary],
+  // Stable across renders so the hook's keyboard listener is bound once.
+  const scrollToRow = useCallback(
+    (rowIndex: number) => virtualizer.scrollToIndex(rowIndex),
+    [virtualizer],
   );
+
+  const {
+    columns,
+    sortBy,
+    direction,
+    selection,
+    rowAt,
+    queryToken,
+    ensureRange,
+    toggleSort,
+    actions,
+    dropIndex,
+    setDropIndex,
+    setMenu,
+    menuItems,
+  } = useSongTableWiring({
+    scrollRef,
+    scrollToRow,
+    handlers: { onActivate, onReorder, onRemove, onRemoveFromLibrary, onExport },
+  });
 
   /**
    * Where the pointer is while a drag is over the list, and the frame loop
@@ -239,7 +163,7 @@ export function SongTable({
       unsubscribe();
       cancel();
     };
-  }, []);
+  }, [setDropIndex]);
 
   const items = virtualizer.getVirtualItems();
   const firstIndex = items[0]?.index ?? 0;
@@ -253,95 +177,23 @@ export function SongTable({
   }, [ensureRange, firstIndex, lastIndex, total, queryToken]);
 
   /**
-   * Fits the columns to a view that has just been opened.
+   * Nudges a selection up or down inside a playlist.
    *
-   * Once the first page has landed, not when the navigation happened: rows
-   * that have not arrived render a skeleton bar, and measuring those measures
-   * the shimmer. A view that lands no rows leaves the request outstanding -
-   * there is nothing to measure, and nothing to be wrong about either.
+   * Alt rather than a bare arrow: bare arrows are the player's seek and volume
+   * keys, and `shortcutFor` drops anything with a modifier - so an Alt chord
+   * cannot collide with them by construction. Only this view has it: a
+   * drill-in is ordered by release, which is not an order to rearrange.
    */
   useEffect(() => {
-    const table = scrollRef.current?.querySelector("table");
-    if (!fitPending || pages.size === 0 || table == null) {
-      return;
-    }
-    fitColumns(measureColumns(table, columnConfig.ids));
-  }, [fitPending, pages, fitColumns, columnConfig.ids]);
-
-  /**
-   * The keyboard routes into the two things a pointer had to itself: the row
-   * menu, and reordering a playlist.
-   *
-   * On the window rather than on a row, because neither has a row focused when
-   * it is wanted - Ctrl+A and a click in the sidebar both leave focus off the
-   * table, and the selection they leave behind is exactly what these act on.
-   * State is read through `getState` for the same reason `useSelectionShortcuts`
-   * does: the listener is bound once and must not see a selection from the
-   * render it was created in.
-   */
-  useEffect(() => {
-    /**
-     * Opens the row menu on `rowIndex` by handing the trigger the event it
-     * owns.
-     *
-     * A synthesized `contextmenu` rather than a second way in: `ContextMenu`
-     * derives its position from that event, and the row's own handler decides
-     * which rows the menu acts on. Both of those would have to be duplicated
-     * by any route that opened the menu directly, and the duplicate is what
-     * would drift.
-     */
-    const openMenuAt = (rowIndex: number) => {
-      virtualizer.scrollToIndex(rowIndex);
-      // The row may not be mounted: the selection can sit outside the window
-      // after a scroll, and the scroll above only renders it on the next frame.
-      requestAnimationFrame(() => {
-        const row = scrollRef.current?.querySelector<HTMLTableRowElement>(
-          `tr[aria-rowindex="${rowIndex + 1}"]`,
-        );
-        if (!row) {
-          return;
-        }
-        // Focused first, so closing the menu returns the keyboard to the row
-        // it was opened on rather than to the body.
-        row.focus();
-        const rect = row.getBoundingClientRect();
-        row.dispatchEvent(
-          new MouseEvent("contextmenu", {
-            bubbles: true,
-            cancelable: true,
-            clientX: rect.left + MENU_INSET,
-            clientY: rect.top + rect.height / 2,
-          }),
-        );
-      });
-    };
-
     const onKeyDown = (event: KeyboardEvent) => {
-      // A row handles its own keys first, and a text field keeps all of them.
       if (event.defaultPrevented || isTypingTarget(event.target)) {
         return;
       }
-
-      // Windows opens a context menu with the Menu key or Shift+F10, and the
-      // second exists because not every keyboard has the first.
-      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-        const { selection } = useLibraryStore.getState();
-        if (selection.ids.size === 0 || selection.anchorIndex === null) {
-          return;
-        }
-        event.preventDefault();
-        openMenuAt(selection.anchorIndex);
-        return;
-      }
-
-      // Alt rather than a bare arrow: bare arrows are the player's seek and
-      // volume keys, and `shortcutFor` drops anything with a modifier - so an
-      // Alt chord cannot collide with them by construction.
       if (!onReorder || !event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
         return;
       }
-      const { selection, pages, total: rowCount } = useLibraryStore.getState();
-      const indices = rowIndicesOf(pages, selection.ids);
+      const { selection: current, pages: cached, total: rowCount } = useLibraryStore.getState();
+      const indices = rowIndicesOf(cached, current.ids);
       if (indices === null) {
         return;
       }
@@ -350,12 +202,12 @@ export function SongTable({
         return;
       }
       event.preventDefault();
-      onReorder([...selection.ids], target);
+      onReorder([...current.ids], target);
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onReorder, virtualizer]);
+  }, [onReorder]);
 
   return (
     <div
@@ -404,38 +256,7 @@ export function SongTable({
               setMenu(null);
             }
           }}
-          items={
-            menu === null
-              ? []
-              : rowMenuItems({
-                  count: menu.trackIds.length,
-                  playlists,
-                  openPlaylist: playlists.find((one) => one.id === playlistId) ?? null,
-                  // The row under the pointer, whatever else is selected: it
-                  // is the one the lookup entries name, and the menu disables
-                  // them unless it is the only row.
-                  track: rowAt(menu.rowIndex),
-                  onPlay: () => onActivate?.(menu.rowIndex),
-                  onEdit: () => void openEditor(menu.trackIds),
-                  onLookup: () => void openLookup(menu.trackIds),
-                  onAddTo: (id) => void addTracks(id, menu.trackIds),
-                  onRemove: () => onRemove?.(menu.trackIds),
-                  // Passed through as undefined where the caller gave none, so
-                  // the entry is absent rather than present and inert - which
-                  // is also how the Edit menu keeps from carrying it.
-                  onRemoveFromLibrary: onRemoveFromLibrary
-                    ? () => onRemoveFromLibrary(menu.trackIds)
-                    : undefined,
-                  loving,
-                  onExport: () => onExport?.(menu.trackIds),
-                  // One id: the menu disables this entry unless exactly one row
-                  // is selected, so there is no question of which file to show.
-                  onReveal: () => void revealTrack(menu.trackIds[0] as number),
-                  // Nothing to report on failure: the browser either opened or
-                  // it did not, and the user can see which.
-                  onOpenUrl: (url) => void openUrl(url).catch(() => {}),
-                })
-          }
+          items={menuItems}
         >
           {items.map((item) => {
             const track = rowAt(item.index);
