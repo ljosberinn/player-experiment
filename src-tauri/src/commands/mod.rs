@@ -1393,6 +1393,21 @@ pub fn player_seek(player: State<'_, Player>, position_ms: i64) -> AppResult<()>
     player.send(Command::Seek { position_ms })
 }
 
+/// Ends the playing track as though it had run out. **Test-only.**
+///
+/// The e2e build plays a silent sink that never finishes on its own, so the
+/// queue advancing at a track's end - and repeat-one restarting the same song
+/// - have no route a driver can take. This is that route; the engine handles
+/// it with the same code the timer reaches.
+///
+/// Refused in any build a user could install; see `e2e_only`.
+#[tauri::command]
+pub fn e2e_end_track(player: State<'_, Player>) -> AppResult<()> {
+    crate::e2e_only("e2e_end_track")?;
+
+    player.send(Command::EndTrack)
+}
+
 /// Sets the volume and remembers it for the next launch.
 #[tauri::command]
 pub fn player_set_volume(

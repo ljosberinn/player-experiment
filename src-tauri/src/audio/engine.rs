@@ -53,6 +53,9 @@ pub enum Command {
     /// having moved since its last poll, and the sink decides whether that
     /// means anything.
     OutputChanged,
+    /// Ends the playing track as though its last sample had gone out.
+    /// **Test-only**; see [`Engine::end_track`].
+    EndTrack,
 }
 
 /// Something the owning thread should act on.
@@ -304,6 +307,7 @@ impl<S: AudioSink> Engine<S> {
             Command::SetMuted(muted) => self.set_muted(muted),
             Command::SetRepeatOne(repeat) => self.set_repeat_one(repeat),
             Command::OutputChanged => self.output_changed(),
+            Command::EndTrack => self.end_track(),
         }
     }
 
@@ -562,6 +566,26 @@ impl<S: AudioSink> Engine<S> {
             (true, Some(index)) => self.start(index),
             _ => self.step(1),
         }
+    }
+
+    /// The end of a track, on demand rather than on the clock. **Test-only.**
+    ///
+    /// `SilentSink` never reports itself finished while something is loaded,
+    /// and that is deliberate: a sink that ran out would advance the queue
+    /// underneath whatever spec was asserting on it (`sink.rs`). The cost is
+    /// that the two behaviours a *user* only ever sees at a track's end - the
+    /// queue advancing unasked, and repeat-one starting the same song again -
+    /// are unreachable from a driver without this.
+    ///
+    /// It calls exactly what [`Engine::tick`] calls when the sink says the
+    /// track is over, so what a spec drives is the real route from there on.
+    /// The sink's own end detection is not under test here; its Rust tests
+    /// own that.
+    fn end_track(&mut self) -> Vec<Event> {
+        if self.status != PlaybackStatus::Playing {
+            return Vec::new();
+        }
+        self.finished()
     }
 
     /// Loads and plays `index`, skipping over files that will not open.
@@ -1214,6 +1238,41 @@ mod tests {
         assert!(events.contains(&Event::StateChanged));
         assert_eq!(engine.state().track_id, Some(2));
         assert_eq!(engine.state().status, PlaybackStatus::Playing);
+    }
+
+    #[test]
+    fn ending_a_track_on_demand_advances_the_queue() {
+        // The same outcome as the test above, reached without a sink that runs
+        // out - which is what the e2e build has to work with.
+        let mut engine = engine_with(2);
+
+        let events = engine.handle(Command::EndTrack);
+
+        assert!(events.contains(&Event::StateChanged));
+        assert_eq!(engine.state().track_id, Some(2));
+        assert_eq!(engine.state().status, PlaybackStatus::Playing);
+    }
+
+    #[test]
+    fn ending_a_track_on_repeat_starts_the_same_one_again() {
+        let mut engine = engine_with(3);
+        engine.handle(Command::SetRepeatOne(true));
+
+        engine.handle(Command::EndTrack);
+
+        assert_eq!(engine.state().track_id, Some(1));
+        assert_eq!(engine.sink.loads, [track_path(1), track_path(1)]);
+    }
+
+    #[test]
+    fn ending_a_track_that_is_not_playing_does_nothing() {
+        // Otherwise a spec that pressed it twice, or pressed it against a
+        // paused player, would walk the queue forward without playing anything.
+        let mut engine = engine_with(2);
+        engine.handle(Command::Pause);
+
+        assert_eq!(engine.handle(Command::EndTrack), Vec::new());
+        assert_eq!(engine.state().track_id, Some(1));
     }
 
     #[test]
