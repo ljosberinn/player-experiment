@@ -58,6 +58,28 @@ function searchBox() {
   return browser.$(SEARCH);
 }
 
+/**
+ * Puts the caret in the search box, and waits until it is really there.
+ *
+ * The click alone is not enough to press a key against: it returns as soon as
+ * the driver has dispatched it, and a key sent before the field has taken
+ * focus goes to the window instead - which is the very thing every "in the
+ * search box instead" test below is asserting does not happen. Waited out
+ * against `document.activeElement` so that a key landing on the app is a
+ * failure of the app rather than of the click.
+ */
+async function focusSearch(): Promise<void> {
+  await searchBox().click();
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        (selector: string) => document.activeElement === document.querySelector(selector),
+        SEARCH,
+      ),
+    { timeout: 10_000, timeoutMsg: "the search box never took the caret" },
+  );
+}
+
 function snapshot(): Promise<{
   status: "stopped" | "playing" | "paused";
   track: { title: string } | null;
@@ -272,7 +294,7 @@ describe("the keys bound at the window", () => {
     it("types a space into the search box instead", async () => {
       await pausedOnTheLongest();
 
-      await searchBox().click();
+      await focusSearch();
       await browser.keys([" "]);
 
       expect(await searchBox().getValue()).toBe(" ");
@@ -314,7 +336,7 @@ describe("the keys bound at the window", () => {
       // an exact comparison against a wall clock would fail as a mystery.
       expect((await snapshot()).status).toBe("paused");
 
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a", "b"]);
       const before = (await snapshot()).positionMs;
 
@@ -349,7 +371,7 @@ describe("the keys bound at the window", () => {
     it("clears the search box instead, and leaves the selection alone", async () => {
       await row(0).click();
       await browser.waitUntil(async () => (await selectedCount()) === 1, { timeout: 10_000 });
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
       expect(await searchBox().getValue()).toBe("a");
 
@@ -367,8 +389,15 @@ describe("the keys bound at the window", () => {
 
   describe("ctrl+A, which selects the library", () => {
     it("selects every row", async () => {
+      // Clicked out of the search box before Escape is pressed, because the
+      // test above leaves the caret in it - and Escape there is the field's
+      // own key, which is exactly why it would not clear the selection here.
+      await row(0).click();
       await browser.keys(["Escape"]);
-      await browser.waitUntil(async () => (await selectedCount()) === 0, { timeout: 10_000 });
+      await browser.waitUntil(async () => (await selectedCount()) === 0, {
+        timeout: 10_000,
+        timeoutMsg: "the selection survived Escape",
+      });
 
       await dispatch("body", { key: "a", ctrlKey: true });
 
@@ -379,7 +408,7 @@ describe("the keys bound at the window", () => {
     });
 
     it("selects the text in the search box instead", async () => {
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
       const before = await selectedCount();
 
@@ -408,7 +437,7 @@ describe("the keys bound at the window", () => {
     });
 
     it("does nothing from the search box", async () => {
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
 
       await dispatch(SEARCH, { key: "i", ctrlKey: true });
@@ -438,7 +467,7 @@ describe("the keys bound at the window", () => {
     });
 
     it("does nothing from the search box", async () => {
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
 
       await browser.keys(["Delete"]);
@@ -485,7 +514,7 @@ describe("the keys bound at the window", () => {
     });
 
     it("still zooms from inside the search box", async () => {
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
 
       await dispatch(SEARCH, { key: "-", ctrlKey: true });
@@ -530,7 +559,7 @@ describe("the keys bound at the window", () => {
     });
 
     it("leaves alt+left to the search box", async () => {
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
 
       await dispatch(SEARCH, { key: "ArrowLeft", altKey: true });
@@ -554,7 +583,7 @@ describe("the keys bound at the window", () => {
       // why: a thumb on a mouse button is unambiguous where a hand on the
       // keyboard is not, so the side buttons work from inside a text field
       // where Alt+← does not.
-      await searchBox().click();
+      await focusSearch();
       await browser.keys(["a"]);
 
       await pressSideButton(SEARCH, 3);
