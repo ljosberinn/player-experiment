@@ -1123,6 +1123,33 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("keeps the drill-in header inside the pane it is inset into", () => {
+    // The header table is also a `.song-table`, whose `min-width: 100%` sits
+    // later in the sheet. Winning on order alone, it added the gutter inset
+    // on top of a full pane width and scrolled every drill-in sideways.
+    const candidates = all
+      .map((rule, order) => ({
+        selector: (rule.selector.split("*/").pop() ?? "").trim(),
+        body: rule.body,
+        order,
+      }))
+      .filter(
+        (rule) =>
+          [".song-table", ".release-header-table", ".song-table.release-header-table"].includes(
+            rule.selector,
+          ) && /min-width:/.test(rule.body),
+      );
+    const specificity = (selector: string) => selector.split(".").length - 1;
+    const winner = candidates.reduce((a, b) =>
+      specificity(b.selector) > specificity(a.selector) ||
+      (specificity(b.selector) === specificity(a.selector) && b.order > a.order)
+        ? b
+        : a,
+    );
+
+    expect(winner.body).toMatch(/min-width:\s*calc\(100% - /);
+  });
+
   it("leaves no caption buttons behind", () => {
     // Phase 119 handed the frame back to the OS. The rules that drew the
     // minimise, maximise and close glyphs are the one part of the old title

@@ -898,8 +898,11 @@
 /* One header for every group rather than one per group: the gutter is a fixed
    width, so each group's table begins at the same x and this is that inset.
    Sticky for the reason the flat table's `thead` is - a table read by
-   scrolling needs its column names on screen. */
-.release-header-table {
+   scrolling needs its column names on screen.
+
+   Compounded with `.song-table` so its `min-width` beats the later one there,
+   which would add the inset on top of a full pane and scroll sideways. */
+.song-table.release-header-table {
   position: sticky;
   top: 0;
   z-index: 1;
