@@ -20,9 +20,9 @@ use crate::log::{Fields, Log, Op};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, DropSummary, FilterGroup,
     LastfmConnection, LastfmImported, LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot,
-    Playlist, ReleaseCandidate, ReleaseDetail, ReleaseIdentity, ReleaseSelection, ReviewCounts,
-    ReviewEntry, ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary, Track,
-    TrackEdit, TrackQuery,
+    Playlist, ReleaseCandidate, ReleaseDetail, ReleaseGroup, ReleaseIdentity, ReleaseSelection,
+    ReviewCounts, ReviewEntry, ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary,
+    Track, TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags, tagsource};
@@ -325,6 +325,23 @@ pub fn browse_groups(
     log.op("tracks.browse").quiet().run(|| {
         let conn = db.conn()?;
         query::browse_groups(&conn, &query, kind)
+    })
+}
+
+/// The releases inside the open drill-in, in the order its rows are grouped.
+///
+/// The mirror image of [`browse_groups`]: this one keeps `query`'s browse
+/// filter, because the question is which releases are inside the view that is
+/// already open rather than what the tab holds.
+#[tauri::command]
+pub fn release_groups(
+    log: State<'_, Log>,
+    db: State<'_, Db>,
+    query: TrackQuery,
+) -> AppResult<Vec<ReleaseGroup>> {
+    log.op("tracks.releases").quiet().run(|| {
+        let conn = db.conn()?;
+        query::release_groups(&conn, &query)
     })
 }
 

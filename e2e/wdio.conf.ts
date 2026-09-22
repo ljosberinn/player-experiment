@@ -109,6 +109,11 @@ export const config: WebdriverIO.Config = {
     // and a list with no rows cannot alternate. Resizes the window and puts it
     // back, so it has to be somewhere the size it borrows is the default one.
     "./specs/browse-layout.test.ts",
+    // After `library` too, and before `virtualization` for the same reason
+    // `browse-layout` is: it drills into one of the fixture's three albums and
+    // asserts the height of the group that album is drawn as, which the
+    // synthetic library's untagged rows would not give.
+    "./specs/release-groups.test.ts",
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.
     "./specs/smart-playlists.test.ts",

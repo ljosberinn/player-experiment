@@ -96,6 +96,23 @@ vi.mock("./ipc", () => ({
   forgetRemovedTracks: vi.fn(async () => 0),
   moveInPlaylist: vi.fn(),
   browseGroups: vi.fn(async () => []),
+  // One release holding the three rows `renderWithLibrary` lands, so a
+  // drill-in draws exactly the rows the flat table used to - a drill-in is
+  // drawn as its releases since phase 120, and an empty release list is a
+  // drill-in with nothing in it.
+  releaseGroups: vi.fn(async () => [
+    {
+      id: "ShieldsGrizzly Bear",
+      title: "Shields",
+      artist: "Grizzly Bear",
+      year: 2012,
+      coverHash: null,
+      trackCount: 3,
+      durationMs: 0,
+      format: "MP3",
+      bitrate: 320,
+    },
+  ]),
   loadColumnConfig: vi.fn(async () => null),
   saveColumnConfig: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),

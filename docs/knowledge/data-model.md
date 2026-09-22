@@ -47,6 +47,29 @@ is why paging, sorting, search-within, "select all", the play queue, export and
 
 - **Placeholders are anonymous `?` bound in order**, so a clause can be added or
   dropped without renumbering its neighbours.
+- **A drill-in is grouped, and its `ORDER BY` says so.** With `browse` set,
+  `order_by` prefixes the user's sort with `drill_in_order` — the release's
+  year, title and identity, read off each row's own release through a window
+  partitioned on `release_identity()`. A window rather than `tracks.year`
+  because a release whose files disagree about the year would otherwise
+  straddle another one. The sort the user clicked then runs *inside* each
+  release, which is what a sort means once the view is grouped. Outside a
+  drill-in the ordering is untouched, so the indexed page plan `tests/perf.rs`
+  guards is still the library's.
+- **`release_groups` is `browse_groups` with the filter kept.** Both run
+  through `scope()`; the grid's list strips `browse` so opening an album cannot
+  collapse the album list to that album, and the drill-in's list keeps it
+  because the question is what is inside the view already open. Its ordering is
+  chronological rather than alphabetical, and **must match `drill_in_order`
+  exactly** — the frontend cuts rows into groups by a prefix sum over
+  `trackCount` and never reads a row to check.
+- **A release's format is read off the path, not stored.** `AUDIO_EXTENSIONS`
+  admits one extension, so a column would be one constant string in every row
+  of every library; the `CASE` arms are generated from that list instead. A
+  release names a container only where every one of its files agrees on one -
+  `count(DISTINCT …) = 1 AND count(…) = count(*)`, the second half because a
+  file with an unnamed extension is NULL, which `count(DISTINCT)` skips rather
+  than disagrees with.
 - **`browse` is a tag; `genre` is a branch.** `TrackQuery.browse` matches one
   exact `tracks.genre` string, which is what a genre tile holds. `TrackQuery.genre`
   is `db::genres::members` — every tag at or below a resolved label — which is

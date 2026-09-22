@@ -208,6 +208,7 @@ pub fn run() {
             commands::query_tracks,
             commands::count_tracks,
             commands::browse_groups,
+            commands::release_groups,
             commands::all_track_ids,
             commands::list_playlists,
             commands::create_playlist,

@@ -1,4 +1,4 @@
-import type { BrowseGroup, BrowseKind } from "../../ipc";
+import type { BrowseGroup, BrowseKind, ReleaseGroup } from "../../ipc";
 
 /**
  * What an untagged group is called.
@@ -98,4 +98,21 @@ export function groupId(group: BrowseGroup): string {
 export function groupMeta(group: BrowseGroup): string {
   const songs = `${group.trackCount} ${group.trackCount === 1 ? "song" : "songs"}`;
   return group.year === null || group.year === 0 ? songs : `${group.year} · ${songs}`;
+}
+
+/**
+ * The gutter's third line: the container and the rate, or whichever of the two
+ * the release knows.
+ *
+ * Joined rather than conditional on both, because the two go missing for
+ * unrelated reasons - a release whose files disagree about the container has
+ * none to name, and one scanned before bitrates were read has no rate - and
+ * losing the half that is known to the half that is not would be the line
+ * saying less than the library does. Null where it knows neither, so the
+ * gutter draws no empty row.
+ */
+export function releaseFormatLine(release: ReleaseGroup): string | null {
+  const parts = [release.format, release.bitrate === null ? null : `${release.bitrate} kbps`];
+  const known = parts.filter((part): part is string => part !== null);
+  return known.length === 0 ? null : known.join(" · ");
 }

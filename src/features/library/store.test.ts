@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BrowseGroup, Playlist, PlaylistKind, Track, TrackQuery } from "../../ipc";
+import type {
+  BrowseGroup,
+  Playlist,
+  PlaylistKind,
+  ReleaseGroup,
+  Track,
+  TrackQuery,
+} from "../../ipc";
 import {
   allTrackIds,
   browseGroups,
@@ -9,6 +16,7 @@ import {
   loadColumnConfig,
   onLibraryChanged,
   queryTracks,
+  releaseGroups,
   removeTracks,
   saveColumnConfig,
 } from "../../ipc";
@@ -27,6 +35,7 @@ vi.mock("../../ipc", () => ({
   queryTracks: vi.fn(),
   allTrackIds: vi.fn(),
   browseGroups: vi.fn(async () => []),
+  releaseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
   saveColumnConfig: vi.fn(async () => undefined),
   removeMissingTracks: vi.fn(async () => 0),
@@ -50,6 +59,7 @@ function stats(tracks: number) {
 const queryTracksMock = vi.mocked(queryTracks);
 const allTrackIdsMock = vi.mocked(allTrackIds);
 const browseGroupsMock = vi.mocked(browseGroups);
+const releaseGroupsMock = vi.mocked(releaseGroups);
 const loadColumnConfigMock = vi.mocked(loadColumnConfig);
 const saveColumnConfigMock = vi.mocked(saveColumnConfig);
 
@@ -68,6 +78,21 @@ function browseGroup(over: Partial<BrowseGroup> = {}): BrowseGroup {
     durationMs: 1000,
     coverHash: null,
     year: 2012,
+    ...over,
+  };
+}
+
+function releaseGroup(over: Partial<ReleaseGroup> = {}): ReleaseGroup {
+  return {
+    id: albumIdentity("Shields", "Grizzly Bear"),
+    title: "Shields",
+    artist: "Grizzly Bear",
+    year: 2012,
+    coverHash: null,
+    trackCount: 10,
+    durationMs: 1000,
+    format: "MP3",
+    bitrate: 320,
     ...over,
   };
 }
@@ -730,6 +755,34 @@ describe("browse tabs", () => {
     await useLibraryStore.getState().openGroup(browseGroup());
 
     expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+  });
+
+  it("loads the releases inside a drill-in, keeping the filter the grid list drops", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    releaseGroupsMock.mockResolvedValue([releaseGroup()]);
+
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    // The opposite of the grid list above: this one asks what is inside the
+    // view that is open, so dropping the filter would answer for the library.
+    expect(releaseGroupsMock.mock.calls.at(-1)?.[0].browse).toEqual({
+      kind: "albums",
+      id: albumIdentity("Shields", "Grizzly Bear"),
+    });
+    expect(useLibraryStore.getState().releases).toHaveLength(1);
+  });
+
+  it("clears the release list on the way out of a drill-in", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    releaseGroupsMock.mockResolvedValue([releaseGroup()]);
+    await useLibraryStore.getState().openGroup(browseGroup());
+    releaseGroupsMock.mockResolvedValue([]);
+
+    await useLibraryStore.getState().closeGroup();
+
+    // Stale groups would draw gutters over the grid for the moment before the
+    // next query lands.
+    expect(useLibraryStore.getState().releases).toEqual([]);
   });
 
   it("returns to the group list without changing tab", async () => {

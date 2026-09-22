@@ -16,6 +16,7 @@ import { useLastfmStore } from "./features/lastfm/store";
 import { BrowseView } from "./features/library/BrowseView";
 import { HistoryNav } from "./features/library/HistoryNav";
 import { useLibraryDrop } from "./features/library/libraryDrop";
+import { ReleaseGroups } from "./features/library/ReleaseGroups";
 import { ScanBar } from "./features/library/ScanBar";
 import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
@@ -412,6 +413,22 @@ export function App() {
             <p className="empty-state">
               No songs yet. Use <strong>Add Folders…</strong> to point Apex at your music.
             </p>
+          ) : browse !== null ? (
+            // A drill-in is drawn as its releases - one group for a release,
+            // a discography for an artist or a genre. The same rows and the
+            // same wiring as the table below; what differs is that it places
+            // them by group.
+            <ReleaseGroups
+              onActivate={(rowIndex) => void activateRow(rowIndex)}
+              onRemove={
+                editable && playlistId !== null
+                  ? (trackIds) => void removeTracks(playlistId, trackIds)
+                  : undefined
+              }
+              onRemoveFromLibrary={askRemoval}
+              onExport={(trackIds) => void runExport(exportChoice(trackIds, null))}
+              nowPlayingId={nowPlaying?.id ?? null}
+            />
           ) : (
             <SongTable
               onActivate={(rowIndex) => void activateRow(rowIndex)}

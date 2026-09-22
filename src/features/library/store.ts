@@ -13,6 +13,8 @@ import {
   onLibraryChanged,
   type Playlist,
   queryTracks,
+  type ReleaseGroup,
+  releaseGroups,
   removeMissingTracks,
   removeTracks,
   type SortDirection,
@@ -136,6 +138,19 @@ interface LibraryState {
   /** The albums, artists or genres of the open browse tab. */
   groups: BrowseGroup[];
   groupsLoading: boolean;
+  /**
+   * The releases inside the open drill-in, and empty outside one.
+   *
+   * The opposite question to `groups`: that one is what the tab holds, this
+   * one is what the view already open holds, so it keeps the browse filter
+   * `groups` deliberately drops. Also what decides whether the table draws
+   * itself as groups.
+   *
+   * Loaded beside `groups` and under the same token, because a search that
+   * narrows the rows narrows these too and the row counts they carry are what
+   * cuts the rows into groups - a stale list would index the wrong rows.
+   */
+  releases: ReleaseGroup[];
   /**
    * Which group each browse tab was last looking at.
    *
@@ -414,6 +429,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   statsPath: null,
   groups: [],
   groupsLoading: false,
+  releases: [],
   browseOffsets: NO_BROWSE_OFFSETS,
   browseListToken: 0,
   columns: DEFAULT_COLUMN_CONFIG,
@@ -591,7 +607,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (tab === "songs" || tab === "stats") {
       // Not merely skipped - cleared, so returning to a browse tab cannot show
       // the previous tab's groups for the moment before the query lands.
-      set({ groups: [], groupsLoading: false });
+      set({ groups: [], groupsLoading: false, releases: [] });
       return;
     }
 
@@ -599,11 +615,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       // Deliberately not the drill-in query: the list of albums must not be
       // filtered by the album already open, or there would be no way back.
-      const groups = await browseGroups({ ...queryFor(get()), browse: null }, tab);
+      const query = queryFor(get());
+      const groups = await browseGroups({ ...query, browse: null }, tab);
+      // The drill-in's own list, which keeps the filter the line above drops.
+      // Not asked for outside one: there is no drill-in to describe, and an
+      // empty list is what tells the table to draw flat.
+      const releases = query.browse === null ? [] : await releaseGroups(query);
       if (get().queryToken !== token) {
         return;
       }
-      set({ groups, groupsLoading: false });
+      set({ groups, groupsLoading: false, releases });
     } catch (cause) {
       if (get().queryToken !== token) {
         return;

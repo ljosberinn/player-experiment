@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BrowseGroup } from "../../ipc";
+import type { BrowseGroup, ReleaseGroup } from "../../ipc";
 import {
   albumIdentity,
   groupId,
@@ -7,6 +7,7 @@ import {
   groupSubtitle,
   groupTitle,
   MANY_ARTISTS_LABEL,
+  releaseFormatLine,
   unknownLabel,
 } from "./browse";
 
@@ -100,5 +101,38 @@ describe("browse labels", () => {
     // Rows scanned before the parser rejected `0000` keep their zero until
     // somebody rescans, so the guard here is the half that shows up today.
     expect(groupMeta(group({ trackCount: 12, year: 0 }))).toBe("12 songs");
+  });
+});
+
+describe("the gutter's format line", () => {
+  function release(over: Partial<ReleaseGroup> = {}): ReleaseGroup {
+    return {
+      id: albumIdentity("Shields", "Grizzly Bear"),
+      title: "Shields",
+      artist: "Grizzly Bear",
+      year: 2012,
+      coverHash: null,
+      trackCount: 10,
+      durationMs: 1000,
+      format: "MP3",
+      bitrate: 320,
+      ...over,
+    };
+  }
+
+  it("names the container and the rate", () => {
+    expect(releaseFormatLine(release())).toBe("MP3 · 320 kbps");
+  });
+
+  it("drops the half it does not have rather than the whole line", () => {
+    // A release whose files disagree about the container has no container to
+    // name, and one scanned before bitrates were read has no rate - neither is
+    // a reason to lose the other.
+    expect(releaseFormatLine(release({ format: null }))).toBe("320 kbps");
+    expect(releaseFormatLine(release({ bitrate: null }))).toBe("MP3");
+  });
+
+  it("is absent rather than empty when it knows neither", () => {
+    expect(releaseFormatLine(release({ format: null, bitrate: null }))).toBeNull();
   });
 });

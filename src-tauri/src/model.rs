@@ -231,6 +231,47 @@ pub struct BrowseGroup {
     pub year: Option<i64>,
 }
 
+/// One release inside a drill-in, and the rows it owns.
+///
+/// Not a [`BrowseGroup`]: that is the grid's list and answers "what does this
+/// tab hold", ordered alphabetically and never narrowed by the group already
+/// open. This answers "which releases are inside the view I am in", is ordered
+/// chronologically because a discography is, and carries the two things a
+/// gutter draws that a tile does not.
+///
+/// `id` has no null case. Only artists and genres have an untagged group; the
+/// release identity folds an absent tag to an empty string - see
+/// `query::release_identity`.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ReleaseGroup {
+    pub id: String,
+    pub title: Option<String>,
+    /// The artist the release is filed under, for the compilation inside a
+    /// genre drill-in that the view's own heading cannot name.
+    pub artist: Option<String>,
+    #[ts(type = "number | null")]
+    pub year: Option<i64>,
+    pub cover_hash: Option<String>,
+    pub track_count: u32,
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    /// The container every file in the release shares, upper-cased, or `None`
+    /// where they disagree.
+    ///
+    /// Read off the path rather than stored: `scan::AUDIO_EXTENSIONS` admits
+    /// one extension today, so a column would carry one constant string for
+    /// every row in every library until that list widens - and reading the
+    /// path stays right when it does.
+    pub format: Option<String>,
+    /// Mean bitrate over the release, rounded, as `stats::worst_by_bitrate`
+    /// takes it. The half of the gutter's format line that actually varies
+    /// while the library is MP3-only.
+    #[ts(type = "number | null")]
+    pub bitrate: Option<i64>,
+}
+
 /// Restricts the songs table to one browse group.
 ///
 /// Carried on [`TrackQuery`] rather than being a query of its own: drilling
