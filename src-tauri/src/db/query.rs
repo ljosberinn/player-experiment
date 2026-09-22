@@ -330,6 +330,8 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
         from_where.push_str(" JOIN tracks_fts ON tracks_fts.rowid = tracks.id");
         conditions.push("tracks_fts MATCH ?".to_owned());
         params.push(Box::new(match_expr));
+        // Sets what `tracks_fts.rank` computes; it filters nothing.
+        conditions.push(format!("tracks_fts.rank MATCH 'bm25({BM25_WEIGHTS})'"));
     }
 
     if !conditions.is_empty() {
@@ -345,7 +347,8 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
     })
 }
 
-/// Column weights for bm25, in the order the FTS table declares them:
+/// Column weights for the bm25 behind `tracks_fts.rank`, in the order the FTS
+/// table declares them:
 /// title, artist, album, album_artist, genre, comment.
 ///
 /// A hit in the title should outrank a hit buried in a comment, which an
@@ -389,7 +392,12 @@ fn sort_order_by(scope: &Scope, query: &TrackQuery) -> String {
         // Ascending bm25 is best-first - the scores are negative, and more
         // negative means a better match - so relevance deliberately ignores
         // the direction rather than offering a "worst match first" order.
-        return format!("bm25(tracks_fts, {BM25_WEIGHTS}), tracks.id ASC");
+        //
+        // The `rank` column rather than a `bm25()` call: a drill-in's window
+        // functions make SQLite move the FTS table into a subquery, and an
+        // auxiliary function left outside it fails with "unable to use function
+        // bm25 in the requested context". A column travels into it intact.
+        return "tracks_fts.rank, tracks.id ASC".to_owned();
     }
 
     // Position is likewise a property of the query, not of a track: the column
@@ -1496,6 +1504,25 @@ mod tests {
             rows.iter().map(|track| track.id).collect::<Vec<_>>(),
             "the play queue must match what the table shows"
         );
+    }
+
+    #[test]
+    fn relevance_ranks_inside_a_drill_in() {
+        let (_dir, db) = ranked();
+        let conn = db.conn().unwrap();
+        let query = TrackQuery {
+            browse: Some(BrowseFilter {
+                kind: BrowseKind::Artists,
+                id: Some("Filler".to_owned()),
+            }),
+            ..relevance_query("shields")
+        };
+
+        let found = query_tracks(&conn, &query).unwrap();
+        let ids = all_track_ids(&conn, &query).unwrap();
+
+        assert_eq!(paths(found.clone()), ["/r/2.mp3", "/r/1.mp3"]);
+        assert_eq!(ids, found.iter().map(|track| track.id).collect::<Vec<_>>());
     }
 
     /// The seeded library with tracks 1, 3 and 4 in a playlist, deliberately

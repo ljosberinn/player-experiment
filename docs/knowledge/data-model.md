@@ -88,7 +88,10 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   the whole library on every page. `tests/perf.rs` asserts the plan of the real
   statement — the columns with an index behind them must sort without one.
 - **`bm25` is weighted** so a title hit outranks one buried in a comment, and it
-  ignores sort direction — there is no useful "worst match first".
+  ignores sort direction — there is no useful "worst match first". It is read
+  through `tracks_fts.rank`, configured by `rank MATCH 'bm25(…)'`, never called
+  directly: a drill-in's window functions push the FTS table into a subquery,
+  where an auxiliary function call can no longer reach it.
 - **Row count is a separate `COUNT(*)`**, so the scrollbar is right without
   loading rows. `count_tracks` is a thin wrapper over `library_stats`, so the
   footer and the scrollbar cannot describe different views.
