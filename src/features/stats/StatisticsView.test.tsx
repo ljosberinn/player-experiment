@@ -173,4 +173,30 @@ describe("StatisticsView", () => {
 
     expect(await screen.findByText(/Nothing has been played yet/)).toBeInTheDocument();
   });
+
+  // Asserted through the tokens themselves rather than the "Showing" that
+  // leads them: the word is a bare text node beside them, so no element's text
+  // is ever just that, and a query for it would pass whether or not the line
+  // is drawn.
+  it("draws no token line while nothing is filtered", async () => {
+    render(<StatisticsView />);
+    await screen.findByRole("combobox", { name: "Range" });
+
+    expect(screen.queryByRole("button", { name: /^Clear / })).not.toBeInTheDocument();
+  });
+
+  it("says what is filtered, and puts it back when the token is cleared", async () => {
+    const user = userEvent.setup();
+    render(<StatisticsView />);
+    await screen.findByRole("combobox", { name: "Range" });
+
+    await choose("Range", "Last 12 months");
+
+    expect(await screen.findByText("last 12 months")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear last 12 months" }));
+
+    await waitFor(() => expect(showing("Range")).toBe("All time"));
+    expect(screen.queryByRole("button", { name: /^Clear / })).not.toBeInTheDocument();
+  });
 });

@@ -138,13 +138,16 @@ shell stays governed by the old file until the library covers it.
     so the rule is now that anything scrolling in `.dialog-body`'s place states
     `min-height: 0`. `--row-line` landed with it, a fourth and lightest border
     weight: 6e draws the frame and the line between two rows a step apart.
-- **Section 4b is two alternatives, and that is the asymmetry.** Its selects
-  read `All time` / `Either` / `Either` while its tokens read `last 12 months` /
-  `owned only`. Two forms of one control drawn in one frame contradict each
-  other; two forms carrying different figures, as in 4a, cannot. So 115 took the
-  selects and the token line is [122](../issues/upcoming/122-filter-tokens.md),
-  which has to decide which form the view wears — and what "+ add filter" even
-  opens, given that `StatsFilters` is a closed struct.
+- **Section 4b is one frame, not two alternatives.** It captions itself "Top:
+  labelled selects on one rule. Bottom: a token line", and the view wears both:
+  115 took the selects, [122](../issues/done/122-filter-tokens.md) the line
+  under them. The selects read `All time` / `Either` / `Either` while the tokens
+  read `last 12 months` / `owned only` because a token line draws only what is
+  off its default — at those values it is empty, and a specimen sheet cannot
+  show an empty row. The dashed "+ add filter" is the one part that did not
+  ship: `StatsFilters` is a closed struct and every facet it holds is already a
+  select above the line, so the chip has nothing to open until a facet exists
+  that the bar cannot express.
 - **The button primitive is now what a dialog's actions are.** Elsewhere every
   region still styles its own; `.repeat-button`, `.link-button` and
   `.history-button` are unrelated rules until their own issue migrates them.
@@ -185,7 +188,7 @@ Primitives the sheet specifies, against what exists:
 | `Select`, `SearchField`, `SegmentedControl` | **done, 111** — `Select` is Base UI; the segments are a native radio group |
 | `Slider`, `ProgressBar` | **`Slider` done, 111** (Base UI); **`ProgressBar` done, 117**, the rail `TaskLine` and 6f share. `Scrubber` and `VolumeControl` keep the transport's own treatment |
 | `StatRow`, `StatTiles` | **done, 115** — `charts/StatTile` retired into the two |
-| `FilterBar` | **done, 115** — `.stats-filters`. `FilterToken` is 122 |
+| `FilterBar` | **done, 115** — `.stats-filters`. **`FilterToken` done, 122** — `.filter-tokens` under it, no "+ add filter" |
 | `Streak` | **done, 116a** — with `Streaks.last_seven` behind its week |
 | `Heatmap` | **done, 116b** — stays in `charts/`, drawn by `library.css` |
 | `Leaderboard` | **done, 116c** — `charts/BarList`, drawn by `library.css` |
@@ -243,9 +246,9 @@ would both write is `library.css`, which is what 110 and 111 stacked for; here
 the blocks are three separate sections, so they ran off main in parallel.
 All three have landed.
 
-**122 comes after 115 rather than beside it.** Both are section 4b, and the
-question 122 opens — whether the view wears the selects or the tokens — is only
-answerable once the selects are drawn.
+**122 came after 115 rather than beside it.** Both are section 4b, and the
+question 122 opened — whether the view wears the selects or the tokens — was
+only answerable once the selects were drawn. It has landed: both.
 
 **120 is stacked on 114 and is not ready to start.** Both draw a track row, so
 the group's 28px row is the 32px row with two metrics changed rather than a
