@@ -136,37 +136,78 @@ describe("resizing a column", () => {
     const config = { ids: ["title", "artist"] as const, widths: {} };
     useLibraryStore.setState({ columns: { ids: [...config.ids], widths: {} } });
     render(
-      <table>
-        <thead>
-          <ColumnHeader
-            columns={resolveColumns({ ids: [...config.ids], widths: {} })}
-            sortBy="artist"
-            direction="asc"
-            onSort={vi.fn()}
-          />
-        </thead>
-        <tbody>
-          <tr>
-            <td className="song-cell" data-column="title">
-              short
-            </td>
-            <td className="song-cell" data-column="artist">
-              ignored, it is another column
-            </td>
-          </tr>
-          <tr>
-            <td className="song-cell" data-column="title">
-              the longest title on screen
-            </td>
-          </tr>
-        </tbody>
-      </table>,
+      <div className="song-body">
+        <table>
+          <thead>
+            <ColumnHeader
+              columns={resolveColumns({ ids: [...config.ids], widths: {} })}
+              sortBy="artist"
+              direction="asc"
+              onSort={vi.fn()}
+            />
+          </thead>
+          <tbody>
+            <tr>
+              <td className="song-cell" data-column="title">
+                short
+              </td>
+              <td className="song-cell" data-column="artist">
+                ignored, it is another column
+              </td>
+            </tr>
+            <tr>
+              <td className="song-cell" data-column="title">
+                the longest title on screen
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>,
     );
 
     fireEvent.doubleClick(screen.getByTestId("resize-title"));
 
     // 27 characters at ten pixels, plus the 10px of padding a cell carries.
     // The header, "Title", is narrower and does not decide it.
+    expect(resizeColumn).toHaveBeenCalledWith(
+      "title",
+      "the longest title on screen".length * 10 + 10,
+    );
+  });
+
+  it("fits to rows drawn in another table, as a drill-in draws them", () => {
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function (this: Range) {
+      const text = this.startContainer.textContent ?? "";
+      return { width: text.length * 10 } as DOMRect;
+    });
+    const resizeColumn = vi.fn(async () => undefined);
+    useLibraryStore.setState({ resizeColumn, columns: { ids: ["title"], widths: {} } });
+    render(
+      <div className="song-body">
+        <table>
+          <thead>
+            <ColumnHeader
+              columns={resolveColumns({ ids: ["title"], widths: {} })}
+              sortBy="title"
+              direction="asc"
+              onSort={vi.fn()}
+            />
+          </thead>
+        </table>
+        <table>
+          <tbody>
+            <tr>
+              <td className="song-cell" data-column="title">
+                the longest title on screen
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>,
+    );
+
+    fireEvent.doubleClick(screen.getByTestId("resize-title"));
+
     expect(resizeColumn).toHaveBeenCalledWith(
       "title",
       "the longest title on screen".length * 10 + 10,

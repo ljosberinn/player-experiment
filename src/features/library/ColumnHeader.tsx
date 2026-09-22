@@ -152,15 +152,17 @@ export function ColumnHeader({
    */
   const onResizeDoubleClick = (event: React.MouseEvent<HTMLElement>, id: SortField) => {
     event.stopPropagation();
-    const table = rowRef.current?.closest("table");
-    if (table == null) {
+    // The scroll container rather than the header's table, for the reason the
+    // fit on navigation gives: a drill-in draws its rows in other tables.
+    const body = rowRef.current?.closest(".song-body");
+    if (body == null) {
       return;
     }
 
     // The drag in progress, if any, is abandoned rather than committed - a
     // double-click is two presses, and the first left a `resize` behind.
     setResize(null);
-    void resizeColumn(id, measuredWidth(table, id));
+    void resizeColumn(id, measuredWidth(body, id));
   };
 
   const menuItems: MenuItem[] = [
