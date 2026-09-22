@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { taskEstimate, taskPercent, taskSummary } from "./taskSummary";
+import { taskEstimate, taskLines, taskPercent } from "./taskSummary";
 
 describe("the fraction", () => {
   /**
@@ -41,17 +41,23 @@ describe("the estimate", () => {
   });
 });
 
-describe("the line", () => {
-  it("names the task, how far it has got and how much longer", () => {
+describe("the two lines", () => {
+  it("puts what is running with how far it has got, and the estimate under it", () => {
     expect(
-      taskSummary({ label: "Looking up releases", done: 402, total: 8044, etaMs: 45 * 3_600_000 }),
-    ).toBe("Looking up releases · 5.00% · about 45 hours left");
+      taskLines({ label: "Looking up releases", done: 402, total: 8044, etaMs: 45 * 3_600_000 }),
+    ).toEqual({
+      headline: "Looking up releases · 5.00%",
+      estimate: "about 45 hours left",
+      ratio: 402 / 8044,
+    });
   });
 
   /** A task that has only just started has nothing to say but its name. */
   it("is the label alone when there is neither a fraction nor an estimate", () => {
-    expect(taskSummary({ label: "Looking up releases", done: 0, total: 0, etaMs: null })).toBe(
-      "Looking up releases",
-    );
+    expect(taskLines({ label: "Looking up releases", done: 0, total: 0, etaMs: null })).toEqual({
+      headline: "Looking up releases",
+      estimate: null,
+      ratio: 0,
+    });
   });
 });

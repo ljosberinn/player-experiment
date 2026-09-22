@@ -54,10 +54,24 @@ describe("the progress readout", () => {
 
     const line = browser.$(".sidebar-task");
     await line.waitForExist({ timeout: 10_000 });
+
+    // Read as markup rather than with `getText`, which returns the two lines
+    // run together - a `<br>` contributes no whitespace to it, so the one
+    // thing this asserts would be invisible to it.
+    //
     // Two decimals because one whole percent of this pass is eighty releases
     // and the better part of half an hour, and a figure that does not move for
-    // half an hour reads as hung.
-    await expect(line).toHaveText("Looking up releases · 5.00% · about 45 hours left");
+    // half an hour reads as hung. Two lines since 117, with the estimate under
+    // the label rather than on the end of it.
+    const lines = await browser.execute(() =>
+      (document.querySelector(".task-line-text")?.innerHTML ?? "")
+        .split("<br>")
+        .map((part) => part.trim()),
+    );
+
+    expect(lines).toEqual(["Looking up releases · 5.00%", "about 45 hours left"]);
+    // And the rail under them, filled to the same fraction they just printed.
+    await expect(browser.$(".sidebar-task .progress-fill")).toBeExisting();
 
     await capture("sidebar-task-progress");
   });

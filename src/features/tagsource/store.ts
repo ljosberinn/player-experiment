@@ -22,7 +22,14 @@ import {
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
 import { dismiss, notify, report } from "../shell/statusStore";
-import { allFields, type Fields, identityOf } from "./mapping";
+import {
+  type Assignment,
+  allFields,
+  defaultAssignment,
+  type Fields,
+  identityOf,
+  swapAssignment,
+} from "./mapping";
 
 /**
  * What the dialog is doing about the release it is on.
@@ -43,12 +50,12 @@ interface TagsourceState {
   /** The releases still to work through, or null when the dialog is closed. */
   queue: ReviewEntry[] | null;
   /**
-   * Which of them is on screen, or null for the table of all of them.
+   * Which of them the pane is on, or null when none is selected.
    *
-   * Only the review queue has a table: it is four hundred releases with a
-   * score each, and being handed the top of that stack is not the same as
-   * being able to pick out of it. A selection is a handful of releases the
-   * user just chose, in the order they chose them, so it opens on the first.
+   * Null used to mean "draw the table instead", which was the review queue's
+   * own screen. 118 put the queue in a column beside the pane, so both queues
+   * open on their first release and null is only what a decided release
+   * leaves behind.
    */
   index: number | null;
   /**
@@ -63,6 +70,14 @@ interface TagsourceState {
   stage: Stage;
   candidates: ReleaseCandidate[];
   detail: ReleaseDetail | null;
+  /**
+   * Which of the release's tracks each selected file is to be named after.
+   *
+   * In the store rather than in the pane that draws it, because Apply is in
+   * the dialog's footer and the footer is the pane's sibling. Empty until a
+   * candidate is picked, which is when there is a tracklist to map onto.
+   */
+  assignment: Assignment;
   fields: Fields;
   /** How far an apply has got, or null when none is running. */
   progress: WriteProgress | null;
@@ -81,12 +96,7 @@ interface TagsourceState {
   /** Opens the release at `index` of the review queue's table. */
   choose: (index: number) => Promise<void>;
   close: () => void;
-  /**
-   * Leaves this release alone for now: back to the table, or on to the next
-   * release of a selection, which has no table to go back to.
-   */
-  skip: () => Promise<void>;
-  /** Takes this release out of the queue for good, then back to the table. */
+  /** Takes this release out of the queue for good. */
   setAside: () => Promise<void>;
   /** Puts every set-aside release back in the queue. */
   restoreAside: () => Promise<void>;
@@ -98,12 +108,14 @@ interface TagsourceState {
   search: () => Promise<void>;
   /** Fetches a candidate's tracklist and moves to the confirm step. */
   pick: (mbid: string) => Promise<void>;
-  /** Returns from the confirm step to the results without refetching. */
+  /** Drops the picked candidate and puts the result list back, without refetching. */
   back: () => void;
+  /** Moves a file's track one row up or down, swapping it with its neighbour. */
+  swap: (row: number, other: number) => void;
   setFields: (fields: Fields) => void;
   /**
-   * Writes the confirmed mapping, then leaves the release behind: back to the
-   * table, or on to the next release of a selection.
+   * Writes the confirmed mapping, then leaves the release behind: nothing
+   * selected, or on to the next release of a selection.
    */
   apply: (edits: TrackEdit[]) => Promise<void>;
   /** Subscribes to `tags://progress`; returns its own teardown. */
@@ -140,7 +152,14 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
     if (entry === null) {
       return;
     }
-    set({ stage: "opening", candidates: [], detail: null, error: null, tracks: [] });
+    set({
+      stage: "opening",
+      candidates: [],
+      detail: null,
+      assignment: [],
+      error: null,
+      tracks: [],
+    });
     try {
       // Fetched rather than read from the page cache: the selection can name
       // rows a scroll has evicted, and the mapping is about to be built out of
@@ -173,18 +192,19 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
   };
 
   /**
-   * Back to the review queue's table, with the release's state cleared.
+   * Nothing selected, with the release's state cleared.
    *
    * The stage and the readout are part of that state: an apply is one of the
-   * ways back here, and the table is the dialog's own way out - a stage left
-   * at "applying" disables its Cancel and stops Escape closing it.
+   * ways back here, and an empty pane is the dialog's own way out - a stage
+   * left at "applying" disables its Cancel and stops Escape closing it.
    */
-  const toTable = () =>
+  const deselect = () =>
     set({
       index: null,
       tracks: [],
       candidates: [],
       detail: null,
+      assignment: [],
       error: null,
       stage: "opening",
       progress: null,
@@ -209,7 +229,7 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
       return;
     }
     set({ queue: rest });
-    toTable();
+    deselect();
   };
 
   return {
@@ -220,6 +240,7 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
     stage: "opening",
     candidates: [],
     detail: null,
+    assignment: [],
     fields: allFields(),
     progress: null,
     error: null,
@@ -254,7 +275,12 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         if (queue.length === 0) {
           return;
         }
-        set({ queue, index: null, fromReview: true, fields: allFields() });
+        // On the first release rather than on nothing. A review entry arrives
+        // with the pass's candidates, so `enter` reads its files and stops -
+        // selecting a row costs no request, which is the whole reason the
+        // queue can sit in a column the user clicks down.
+        set({ queue, index: 0, fromReview: true, fields: allFields() });
+        await enter();
       } catch (cause) {
         report(cause);
       }
@@ -276,20 +302,12 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         tracks: [],
         candidates: [],
         detail: null,
+        assignment: [],
         error: null,
         index: null,
         stage: "opening",
         progress: null,
       }),
-
-    skip: async () => {
-      const { fromReview, index } = get();
-      if (fromReview) {
-        toTable();
-        return;
-      }
-      await advance((index ?? 0) + 1);
-    },
 
     setAside: async () => {
       const entry = current(get());
@@ -305,7 +323,7 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         return;
       }
       // Only ever offered on the review queue, which is the only queue an
-      // entry persists in - so the table is always where this lands.
+      // entry persists in.
       decided();
     },
 
@@ -332,7 +350,7 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
       if (entry === null) {
         return;
       }
-      set({ stage: "searching", candidates: [], detail: null, error: null });
+      set({ stage: "searching", candidates: [], detail: null, assignment: [], error: null });
       try {
         const candidates = await tagsourceSearch(entry.album, entry.artist);
         // Guard against a queue that moved on while the request was in flight -
@@ -357,13 +375,19 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         if (current(get()) !== entry) {
           return;
         }
-        set({ detail, stage: "confirm" });
+        set({
+          detail,
+          assignment: defaultAssignment(get().tracks, detail.tracks),
+          stage: "confirm",
+        });
       } catch (cause) {
         set({ stage: "results", error: String(cause) });
       }
     },
 
-    back: () => set({ detail: null, stage: "results", error: null }),
+    back: () => set({ detail: null, assignment: [], stage: "results", error: null }),
+
+    swap: (row, other) => set({ assignment: swapAssignment(get().assignment, row, other) }),
 
     setFields: (fields) => set({ fields }),
 

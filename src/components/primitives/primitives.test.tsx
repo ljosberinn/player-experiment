@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
+import { ProgressBar } from "./ProgressBar";
+import { TaskLine } from "./TaskLine";
 
 /**
  * What jsdom can actually see.
@@ -65,5 +67,61 @@ describe("IconButton", () => {
       "aria-pressed",
       "false",
     );
+  });
+});
+
+describe("ProgressBar", () => {
+  it("draws anything under way as at least a sliver", () => {
+    // 0.22% of the rail is a quarter of a pixel, which is nothing at all - and
+    // "started" against "not started" is the one distinction a rail this short
+    // exists to make. The sheet draws the same three pixels.
+    const { container } = render(<ProgressBar ratio={0.0022} width={118} />);
+
+    expect(container.querySelector(".progress-fill")).toHaveStyle({ minWidth: "3px" });
+  });
+
+  it("draws nothing at all at nought", () => {
+    const { container } = render(<ProgressBar ratio={0} width={118} />);
+
+    expect(container.querySelector(".progress-fill")).toHaveStyle({ width: "0%", minWidth: "0px" });
+  });
+
+  it("cannot overrun its rail", () => {
+    // The ratio is a count over a total the producer revises as it discovers
+    // what there is to do.
+    const { container } = render(<ProgressBar ratio={1.4} width={118} />);
+
+    expect(container.querySelector(".progress-fill")).toHaveStyle({ width: "100%" });
+  });
+});
+
+describe("TaskLine", () => {
+  it("leaves the second line out rather than empty", () => {
+    // An estimate has no answer until there is history to draw one from, and
+    // an empty line still takes its height - the rail would sit a line lower
+    // for the first minute of every pass.
+    const { container } = render(
+      <TaskLine headline="Looking up releases · 0.22%" estimate={null} ratio={0.0022} />,
+    );
+
+    expect(container.querySelector(".task-line-text")).toHaveTextContent(
+      "Looking up releases · 0.22%",
+    );
+    expect(container.querySelectorAll("br")).toHaveLength(0);
+  });
+
+  it("puts the estimate on a line of its own", () => {
+    const { container } = render(
+      <TaskLine
+        headline="Looking up releases · 0.22%"
+        estimate="about 44 hours left"
+        ratio={0.0022}
+      />,
+    );
+
+    // One paragraph broken in two rather than two paragraphs: the pair is one
+    // readout, and the gap below it is the rail's.
+    expect(container.querySelectorAll("br")).toHaveLength(1);
+    expect(container.querySelector(".task-line-text")).toHaveTextContent("about 44 hours left");
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
+import { TaskLine } from "../../components/primitives/TaskLine";
 import { useBackgroundTaskStore } from "./backgroundTaskStore";
-import { taskSummary } from "./taskSummary";
+import { taskLines } from "./taskSummary";
 
 /**
  * What a task measured in hours looks like, at the foot of the sidebar.
@@ -43,8 +44,8 @@ export function BackgroundTaskProgress() {
   }
 
   return (
-    <p className="sidebar-task" role="status">
-      {taskSummary(task)}
-    </p>
+    <div className="sidebar-task" role="status">
+      <TaskLine {...taskLines(task)} />
+    </div>
   );
 }

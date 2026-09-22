@@ -47,9 +47,10 @@ describe("BackgroundTaskProgress", () => {
       emit?.({ label: "Looking up releases", done: 402, total: 8044, etaMs: 45 * 3_600_000 });
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Looking up releases · 5.00% · about 45 hours left",
-    );
+    const readout = screen.getByRole("status");
+
+    expect(readout).toHaveTextContent("Looking up releases · 5.00%");
+    expect(readout).toHaveTextContent("about 45 hours left");
   });
 
   /** The producer says `null` when it stops, whatever stopped it. */

@@ -342,9 +342,10 @@ absences are what nobody notices coming back — hence the guards in
     the shadow are the primitive's, and `App.css.test.ts` fails an `app.css`
     rule that restates one.
   - `DialogFooter`'s `lead` is the left-hand slot, and holds one of two things:
-    the action that leaves rather than completes ("Back to queue", ghost), or
-    the count the dialog has to state ("2 conditions · 116 songs match"). Never
-    both — a dialog either has somewhere to go back to or something to tally.
+    the action that leaves rather than completes (the lookup's Back to Results
+    and Search again, ghost), or the count the dialog has to state ("2
+    conditions · 116 songs match"). Never both — a dialog either has somewhere
+    to go back to or something to tally.
   - **The smart playlist editor's rule box is one grid**, `130px 130px 1fr
     30px`, so the field and operator selects line up down the column instead of
     each row packing its own flex. A rule is `display: contents` and its four
@@ -362,9 +363,13 @@ absences are what nobody notices coming back — hence the guards in
   settings' categories — passes `paned`: the popup takes a `height` and
   `overflow: hidden`, and `.dialog-body` inside it is the only scroll area, with
   `flex: 1` and the `min-height: 0` beside it that lets a column flex child
-  shrink below its content. Everything else is `flex: none` and stays put. A
-  second `max-height` scroller inside a paned dialog is the regression;
-  `App.css.test.ts` guards it.
+  shrink below its content. Everything else is `flex: none` and stays put.
+  **The box keeping one height is the rule, not the count of scroll areas in
+  it**: the lookup's body hands the scroll to its two columns, which is fine
+  because a column that scrolls inside a fixed track moves nothing. What
+  `App.css.test.ts` asks of anything that scrolls in the body's place is the
+  `min-height: 0`, without which a grid or flex child's automatic minimum is
+  its content and the box grows after all.
   - **Settings lays the same parts out as a grid**, with its rail of categories
     beside the body. The popup renders as Base UI's `Tabs.Root` through the
     primitive's `render`, so the `Tabs.List` and the one mounted `Tabs.Panel` —
@@ -612,36 +617,55 @@ absences are what nobody notices coming back — hence the guards in
   through them one at a time — search, pick, confirm, apply, next — because
   MusicBrainz allows one request a second and a folder-wide selection is dozens
   of releases. Each release applies as its own batch.
+- **The queue is a column beside the pane, not a screen in front of it** (118,
+  section 6e). `212px 1fr`, both columns scrolling inside themselves, so 243
+  releases are one dialog rather than 243. That is affordable because selecting
+  a row costs no request: `enter` reads the release's files and stops, and only
+  `pick` spends the rate-limited fetch. A pane that fetched the top candidate
+  as the selection moved would spend a round trip per arrow key, which is why
+  the candidate list is still a step and 6e draws what is after it.
+- **The pane's file column is drawn in every state** (section 6f). It is local
+  and known the moment `enter` resolves, so a search or a fetch in flight
+  leaves the MusicBrainz half as `.skeleton` and nothing else blank. No
+  spinner: a 56px `ProgressBar` and a line naming the step. The rail counts
+  four — the files, the candidates, the tracklist, the mapping — because a
+  search has no measured progress to report. The skeleton does not pulse,
+  unlike the sheet: the app's three other skeletons are deliberately static,
+  and the rail already says something is pending.
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.
 - **It is a fixed box, because a queue reuses it.** `advance` re-enters at
   `stage: "opening"` with no tracks, so a dialog sized by its contents collapsed
-  to its shortest state and grew back on every Skip — 270px each way, under the
-  pointer still resting on Skip. `.dialog.lookup` states `height: min(720px,
-  86vh)`, which is the tallest state it ever reached, so the largest step is
-  unchanged and only the short ones grow. Both rows of confirm actions are
-  pinned; Back and Apply are not merged into the queue's row, because Skip
-  Release discards and Apply writes.
+  to its shortest state and grew back on every step — 270px each way, under the
+  pointer still resting on the actions. `.dialog.lookup` states `height:
+  min(720px, 86vh)`, which is the tallest state it ever reached, so the largest
+  step is unchanged and only the short ones grow. One row of actions now:
+  Cancel, Set Aside and Apply on the right, and on the left whichever step back
+  is live — Back to Results while a candidate is picked, Search again while one
+  is not.
 - **The review queue is the same dialog on a different queue.** What the
   unattended pass would not write is a row in the sidebar under the playlists,
-  and clicking it opens the lookup on a table of those releases, sorted by the
-  score the pass decided on (`index: null` in the store). A row opens that
-  release with the candidates the pass already found, so it lands on the
-  results step rather than spending a rate-limited second and a half an entry.
-  They are a cache: every result list carries Search again. Apply and Set Aside
-  take the row out of the table and return to it, and the last one closes the
-  dialog. Back to Queue means "not now" and leaves the row where it was. Set
-  Aside is offered on that queue alone, because a selection's queue dies with
-  the dialog.
-- **A selection has no table.** It opens on its first release and Skip Release
-  walks on, with "release N of M" in the title — the table is for four hundred
-  scored releases, not for a handful the user just picked.
-- **The table's Match is not the results' top percentage.** It is
+  and clicking it opens the lookup on those releases, sorted by the score the
+  pass decided on. Both queues open on their first release; `index: null` is
+  now only what a decided release leaves behind, and the pane draws the prompt
+  for it. A row opens that release with the candidates the pass already found,
+  so it lands on the results step rather than spending a rate-limited second
+  and a half an entry. They are a cache: Search again is in the footer whenever
+  no candidate is picked. Apply and Set Aside take the row out of the queue and
+  select nothing, and the last one closes the dialog. Set Aside is offered on
+  that queue alone, because a selection's queue dies with the dialog, and
+  leaving a release alone is selecting another — which is why there is no Skip.
+- **A selection's queue is the same column.** It opens on its first release,
+  the caption counts them, and applying walks on to the next — the position is
+  not in the title any more, because the column on the left is the position.
+- **The queue's score is not the results' top percentage.** It is
   `release_lookup.score`, measured against the fetched tracklist with
-  durations; the result list shows the search's scores without them. Its Tracks
-  column is what explains a 97% in the queue: the pass also queues a release
-  whose track count disagrees, and that cell turns `--danger`.
+  durations; the result list shows the search's scores without them. 212px has
+  no room for the Tracks column that explained a 97%, so the disagreement
+  colours the score `--danger` instead: the pass also queues a release whose
+  track count disagrees, and that is why one above the bar is in the queue at
+  all.
 - **The readout at the foot of the sidebar is not `TaskProgress`.**
   `BackgroundTaskProgress` reads `task://progress`, stands for as long as its
   task runs, and prints a percentage to two decimals with an estimate — one
@@ -663,8 +687,8 @@ absences are what nobody notices coming back — hence the guards in
   after the command's own reply — two messages over one bridge, in no fixed
   order. `tagsource`'s `stage` is what disables the lookup's Cancel and stops
   Escape closing it, so every route back off a release resets it: `close` and
-  `toTable` both put it back to `"opening"` with `progress`, or an apply left
-  the review queue's table with no way out. `TaskProgress` owns the
+  `deselect` both put it back to `"opening"` with `progress`, or an apply left
+  the dialog with no way out. `TaskProgress` owns the
   subscription that fills the editor store and draws nothing from it:
   something mounted for the whole session has to subscribe, and doing it in
   the dialog would mean subscribing as the write it reports on is already

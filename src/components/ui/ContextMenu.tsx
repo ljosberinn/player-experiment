@@ -27,8 +27,32 @@ export type MenuItem =
        * what would un-grey it. Short: it shares the row with the label.
        */
       hint?: string | undefined;
+      /**
+       * The keystroke that does the same thing, written as the user's keyboard
+       * has it - `Ctrl+I`, `Del`.
+       *
+       * Only where a binding really exists. A menu that names a chord nothing
+       * listens for is worse than one that names none, and the specimen
+       * sheet's own `Ctrl+E` on Show in Explorer is one of those.
+       */
+      shortcut?: string | undefined;
       submenu?: MenuItem[] | undefined;
     };
+
+/**
+ * The ARIA spelling of a shortcut, from the one the menu prints.
+ *
+ * `aria-keyshortcuts` has a vocabulary - modifiers spelled out, the key last -
+ * and it is not what a Windows menu prints. Drawing one and announcing the
+ * other keeps the accessible name of an item its label, which is what every
+ * test and every screen reader looks it up by.
+ */
+function keyshortcuts(shortcut: string): string {
+  return shortcut
+    .split("+")
+    .map((part) => (part === "Ctrl" ? "Control" : part === "Del" ? "Delete" : part))
+    .join("+");
+}
 
 /**
  * A context menu over the region it applies to.
@@ -86,8 +110,8 @@ export function ContextMenu({
           region covers those rows too. */}
       {items.length === 0 ? null : (
         <Base.Portal>
-          <Base.Positioner className="context-positioner">
-            <Base.Popup className="context-menu" aria-label={label}>
+          <Base.Positioner className="menu-positioner">
+            <Base.Popup className="menu-popup" aria-label={label}>
               {items.map(renderMenuItem)}
             </Base.Popup>
           </Base.Positioner>
@@ -111,24 +135,24 @@ export function renderMenuItem(item: MenuItem, index: number) {
   if (item.kind === "separator") {
     // Keyed by index: a menu's items are a fixed list built at open time and
     // never reordered, and a separator has nothing else to key on.
-    return <Base.Separator key={`sep-${index}`} className="context-separator" />;
+    return <Base.Separator key={`sep-${index}`} className="menu-separator" />;
   }
 
   if (item.submenu) {
     return (
       <Base.SubmenuRoot key={item.label}>
-        <Base.SubmenuTrigger className="context-item has-submenu" disabled={item.disabled}>
-          {item.label}
-          <span className="context-arrow" aria-hidden="true">
+        <Base.SubmenuTrigger className="menu-item has-submenu" disabled={item.disabled}>
+          <span className="menu-label">{item.label}</span>
+          <span className="menu-arrow" aria-hidden="true">
             ▸
           </span>
         </Base.SubmenuTrigger>
         <Base.Portal>
-          <Base.Positioner className="context-positioner">
-            <Base.Popup className="context-menu" aria-label={item.label}>
+          <Base.Positioner className="menu-positioner">
+            <Base.Popup className="menu-popup" aria-label={item.label}>
               {item.submenu.length === 0 ? (
                 // A submenu that renders nothing looks broken; this explains it.
-                <div className="context-empty">No playlists yet</div>
+                <div className="menu-empty">No playlists yet</div>
               ) : (
                 item.submenu.map(renderMenuItem)
               )}
@@ -142,16 +166,24 @@ export function renderMenuItem(item: MenuItem, index: number) {
   return (
     <Base.Item
       key={item.label}
-      className="context-item"
+      className="menu-item"
       disabled={item.disabled}
+      aria-keyshortcuts={item.shortcut === undefined ? undefined : keyshortcuts(item.shortcut)}
       // Spelled out rather than left to the two text nodes: the accessible
       // name is their concatenation with no separator, so a hinted entry would
       // otherwise be announced as "LoveNeeds a last.fm account".
       aria-label={item.hint === undefined ? undefined : `${item.label}. ${item.hint}`}
       onClick={() => item.onSelect?.()}
     >
-      {item.label}
-      {item.hint === undefined ? null : <span className="context-hint">{item.hint}</span>}
+      <span className="menu-label">{item.label}</span>
+      {item.hint === undefined ? null : <span className="menu-hint">{item.hint}</span>}
+      {item.shortcut === undefined ? null : (
+        // Announced by `aria-keyshortcuts` above rather than read out of the
+        // row, so the item is still named after what it does.
+        <span className="menu-shortcut" aria-hidden="true">
+          {item.shortcut}
+        </span>
+      )}
     </Base.Item>
   );
 }

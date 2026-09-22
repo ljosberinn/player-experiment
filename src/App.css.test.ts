@@ -68,7 +68,7 @@ const HOVER_ALLOWED = [
   // Both spellings, because `.icon-button` does not contain `.button`.
   ".button",
   ".icon-button",
-  // `.context-item` used to be here: a menu's active entry follows the
+  // `.menu-item` used to be here: a menu's active entry follows the
   // pointer by definition. Phase 24 removed the need for the exception rather
   // than the behaviour - Base UI sets `data-highlighted` for the pointer and
   // the keyboard alike, so the rule is a state selector, not a hover one.
@@ -915,18 +915,22 @@ describe("the stylesheet", () => {
     expect(art?.body).toMatch(/object-fit:\s*cover/);
   });
 
-  it("gives a paned dialog one size and one scroller", () => {
+  it("gives a paned dialog one size, and every scroller inside it a floor", () => {
     // The lookup passed through six heights - 154px reading the files, 695px
     // confirming eleven - and it is centred, so every one of them moved both
-    // edges under the pointer resting on Skip. The box states a height and
-    // only `.dialog-body` scrolls; a second `overflow` anywhere inside is the
-    // regression, because then the buttons travel again.
+    // edges under the pointer resting on the actions. What fixed it was the
+    // box stating a height, not the count of scroll areas inside it: a column
+    // that scrolls within a fixed track moves nothing.
+    //
+    // So the rule this asserts is the one that was always the point. The box
+    // states a height, `.dialog-body` is the default scroller, and anything
+    // that scrolls in its place states `min-height: 0` - without which a grid
+    // or flex child's automatic minimum is its content, the column grows to
+    // fit and the footer is on the move again.
     const paned = all.find((one) => /(^|\s)\.dialog\.paned$/.test(one.selector));
     const body = all.find((one) => /(^|\s)\.dialog\.paned > \.dialog-body$/.test(one.selector));
 
     expect(paned?.body).toMatch(/overflow:\s*hidden/);
-    // A flex item's automatic minimum is its content, which is what makes an
-    // `overflow-y: auto` child of a column flex refuse to shrink.
     expect(body?.body).toMatch(/overflow-y:\s*auto/);
     expect(body?.body).toMatch(/min-height:\s*0/);
     expect(body?.body).toMatch(/flex:\s*1/);
@@ -935,6 +939,17 @@ describe("the stylesheet", () => {
 
     expect(lookup?.body, ".dialog.lookup should state a height").toMatch(/[^-]height:\s*min\(/);
 
+    // 118 put the queue in a column beside the pane, so the body hands the
+    // scroll to its two children rather than keeping it. Deliberate, and
+    // stated here so that a third region quietly taking it is not.
+    const lookupBody = all.find((one) =>
+      /(^|\s)\.dialog\.lookup > \.dialog-body$/.test(one.selector),
+    );
+
+    expect(lookupBody?.body, "the lookup's body hands the scroll to its columns").toMatch(
+      /overflow:\s*hidden/,
+    );
+
     const inside = all.filter(
       (one) => /(^|\s)\.lookup[\w-]*$/.test(one.selector) && !one.selector.includes(".dialog"),
     );
@@ -942,8 +957,25 @@ describe("the stylesheet", () => {
     // Counted, so that a selector this stops matching fails here rather than
     // quietly emptying the loop below.
     expect(inside.length).toBeGreaterThan(8);
+    const scrollers = inside.filter((one) => /overflow(-y)?:\s*(auto|scroll)/.test(one.body));
+
+    // The queue's list and the pane, and nothing else: the two columns the
+    // body gave the scroll to.
+    // `uncommented`, because `rules()` sweeps whatever precedes the brace -
+    // comments included - into the selector.
+    expect(scrollers.map((one) => uncommented(one.selector).trim())).toEqual([
+      ".lookup-queue-list",
+      ".lookup-pane",
+    ]);
+    for (const rule of scrollers) {
+      expect(rule.body, `${rule.selector} scrolls without a floor`).toMatch(/min-height:\s*0/);
+    }
+    // `overflow: hidden` for truncation is how the queue's album and the
+    // mapping's titles ellipsise, so it stays allowed; a scroller is not.
     for (const rule of inside) {
-      expect(rule.body, `${rule.selector} would be a second scroller`).not.toMatch(/overflow/);
+      expect(rule.body, `${rule.selector} scrolls sideways`).not.toMatch(
+        /overflow-x:\s*(auto|scroll)/,
+      );
     }
   });
 
@@ -992,6 +1024,28 @@ describe("the stylesheet", () => {
       .filter((selector) => /\.(stat-(row|tiles?|unit)|streak|heatmap|bar-list)\b/.test(selector));
 
     expect(drawn).toEqual([]);
+  });
+
+  it("keeps the menus' and the task line's own drawing out of `app.css`", () => {
+    // Section 05 is one drawing for both menus in the app and for the readout
+    // at the foot of the sidebar. `.sidebar-task` says where that readout
+    // goes - the foot of the sidebar is the app's decision, not the
+    // primitive's - and says nothing about what it looks like, which is the
+    // split 113 drew for the dialogs and 115 for the figures.
+    const drawn = rules(sources[3] ?? "")
+      .map((one) => uncommented(one.selector))
+      .filter((selector) => /\.(menu-[\w-]+|task-line|progress)\b/.test(selector));
+
+    expect(drawn).toEqual([]);
+
+    const placement = rules(sources[3] ?? "").find(
+      (one) => uncommented(one.selector).trim() === ".sidebar-task",
+    );
+
+    expect(placement, ".sidebar-task should still place the readout").toBeDefined();
+    expect(placement?.body, ".sidebar-task draws what `TaskLine` owns").not.toMatch(
+      /(^|;|\s)(color|font|font-size|line-height|background|border|box-shadow):/,
+    );
   });
 
   it("paints every ramp step either mark can ask for, and no more", () => {
@@ -1111,7 +1165,9 @@ describe("the stylesheet", () => {
     // a submenu is its own portalled popup that Floating UI anchors to the
     // item that opened it, so hand-written offsets would now fight it rather
     // than help. Their absence is the assertion.
-    for (const selector of [".context-row", ".context-submenu"]) {
+    // Named as phase 24 spelled them; 117 renamed the family to `.menu-*`,
+    // and neither of these came back under either spelling.
+    for (const selector of [".context-row", ".context-submenu", ".menu-row", ".menu-submenu"]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
       expect(rule, `${selector} should have gone with the hand-rolled menu`).toBeUndefined();
     }
@@ -1129,7 +1185,7 @@ describe("the stylesheet", () => {
     // Matched exactly rather than by suffix: `.icon-button.in-dialog` ends in
     // a word this list also holds, and a suffix match found *it* instead and
     // asserted that a 36px square positions itself.
-    for (const selector of [".dialog", ".dialog-backdrop", ".context-positioner", ".drag-badge"]) {
+    for (const selector of [".dialog", ".dialog-backdrop", ".menu-positioner", ".drag-badge"]) {
       const rule = all.find((one) => uncommented(one.selector).trim() === selector);
 
       expect(rule, `${selector} should exist`).toBeDefined();
@@ -1161,12 +1217,12 @@ describe("the stylesheet", () => {
     // that `HOVER_ALLOWED` grants it - and a `:hover` rule would now fight the
     // keyboard, lighting up two rows at once.
     const hovered = all
-      .filter((rule) => rule.selector.includes(".context-item"))
+      .filter((rule) => rule.selector.includes(".menu-item"))
       .filter((rule) => rule.selector.includes(":hover"))
       .map((rule) => rule.selector);
 
     expect(hovered).toEqual([]);
-    expect(css).toMatch(/\.context-item\[data-highlighted\]/);
+    expect(css).toMatch(/\.menu-item\[data-highlighted\]/);
   });
 
   it("gives form fields a border you can actually see", () => {
