@@ -242,6 +242,12 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   shape - empty small hours, busy evenings, heavier weekends - because evenly
   spaced they filled every hour of the week alike and the week clock
   photographed as a flat field.
+- **`tr.song-row.playing` marks the *current* track, not a running one.**
+  `Engine::stop` keeps its queue index — that is where Toggle resumes from — so
+  the snapshot still names the track and the row still wears the marker after a
+  `player_stop`. A spec that waits for the marker to appear after starting the
+  same row twice, or for it to go away after stopping, waits on something that
+  never changed. Wait on `player_snapshot`'s `status` instead.
 - **The driver delivers neither `contextmenu` nor `dblclick`** through the
   Actions API, and swallows **Shift+F10** on top of them. Dispatch the event
   React listens for, with the trigger's own coordinates;

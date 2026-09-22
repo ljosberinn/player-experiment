@@ -58,7 +58,11 @@ function searchBox() {
   return browser.$(SEARCH);
 }
 
-function snapshot(): Promise<{ status: "stopped" | "playing" | "paused"; positionMs: number }> {
+function snapshot(): Promise<{
+  status: "stopped" | "playing" | "paused";
+  track: { title: string } | null;
+  positionMs: number;
+}> {
   return invoke("player_snapshot");
 }
 
@@ -166,6 +170,13 @@ async function sortByTitle(): Promise<void> {
  * at six seconds, and it is the end of the queue, so a track that plays out
  * while this spec is working stops rather than advancing to something else and
  * moving the assertions underneath it.
+ *
+ * Waited out against the player rather than against `tr.song-row.playing`. That
+ * class marks the *current* track, not a running one: `Engine::stop` keeps its
+ * index, because that is where Toggle resumes from, so the snapshot still names
+ * the track and the row still wears the marker after a stop. Since this always
+ * plays the same row, the marker left over from the last time is already there
+ * and waiting for it returns before anything has loaded.
  */
 async function playLastRow(): Promise<void> {
   const index = LIBRARY.length - 1;
@@ -175,10 +186,13 @@ async function playLastRow(): Promise<void> {
       .querySelector(`tr.song-row[aria-rowindex='${rowIndex}']`)
       ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
   }, index + 1);
-  await browser.$("tr.song-row.playing").waitForExist({
-    timeout: 30_000,
-    timeoutMsg: `${LONGEST} never started playing`,
-  });
+  await browser.waitUntil(
+    async () => {
+      const player = await snapshot();
+      return player.status === "playing" && player.track?.title === LONGEST;
+    },
+    { timeout: 30_000, timeoutMsg: `${LONGEST} never started playing` },
+  );
 }
 
 async function waitForStatus(expected: "playing" | "paused" | "stopped"): Promise<void> {
@@ -202,7 +216,7 @@ async function waitForStatus(expected: "playing" | "paused" | "stopped"): Promis
  */
 async function pausedOnTheLongest(): Promise<void> {
   await invoke("player_stop");
-  await browser.$("tr.song-row.playing").waitForExist({ timeout: 15_000, reverse: true });
+  await waitForStatus("stopped");
   await playLastRow();
   await browser.$("button[aria-label='Pause']").click();
   await waitForStatus("paused");
