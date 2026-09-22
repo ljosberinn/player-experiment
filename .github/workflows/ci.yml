@@ -19,25 +19,45 @@ jobs:
   # cannot be satisfied by a job that never ran - `paths-ignore` at the workflow
   # level would leave a documentation-only PR permanently unmergeable once the
   # checks are required. What gets skipped is the expensive *steps* inside each
-  # job, so a prose change costs five runner startups instead of a full gate:
-  # about 4 billed minutes rather than 17.
+  # job.
   #
-  # It fails safe in the one direction that matters. Anything not recognised as
-  # prose counts as code, an unreadable file list counts as code, and a push
-  # counts as code. Only a changeset that is entirely documentation may skip.
+  # Two questions, and only the second shortens anything. All six jobs start
+  # within a second of each other and run in parallel, so the run is green when
+  # the slowest one is - `e2e` at 7m50 against `rust` at 6m19. Skipping `rust`
+  # on a frontend-only change therefore moves nothing; skipping `e2e` takes a
+  # run from about eight minutes to under two. The repository is public, so the
+  # unit here is waiting rather than money: GitHub-hosted minutes are free and
+  # every one of these runs reports zero billable milliseconds.
+  #
+  # `code` is the wider question - is anything here not prose - and every job
+  # reads it. `e2e` is the narrower one - does anything here reach the bundle
+  # the WebdriverIO suite drives - and only that job reads it. `e2e` being true
+  # implies `code` is.
+  #
+  # It fails safe in the one direction that matters. Anything not recognised
+  # counts as both, an unreadable file list counts as both, and a push counts
+  # as both.
   changes:
     name: changes
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.detect.outputs.code }}
+      e2e: ${{ steps.detect.outputs.e2e }}
     steps:
       - id: detect
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          everything() {
+            {
+              echo "code=true"
+              echo "e2e=true"
+            } >> "$GITHUB_OUTPUT"
+          }
+
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            everything
             echo "Not a pull request - running everything."
             exit 0
           fi
@@ -45,25 +65,53 @@ jobs:
           files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename') || files=""
 
           if [ -z "$files" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+            everything
             echo "Could not read the changed files - running everything."
             exit 0
           fi
 
           code=false
+          e2e=false
           while IFS= read -r file; do
+            # `case` patterns are not pathname expansion - `*` crosses `/` - so
+            # `docs/*` takes the whole tree and `src/*.test.ts` every test under
+            # it. The order below is load-bearing for the same reason: each arm
+            # is reached only by files the ones above it did not claim.
             case "$file" in
-              # A workflow change is code however it is spelled.
-              .github/*) code=true ;;
-              *.md|LICENSE) ;;
-              *) code=true ;;
+              # A workflow change is code however it is spelled - and
+              # `notices.test.ts` reads `release.yml`, so this is not merely
+              # caution.
+              .github/*) code=true; e2e=true ;;
+
+              # Reaches no job. `docs/` is markdown only today; a `.json`
+              # dropped in it would want `code` back, because Biome's
+              # `includes` is `**`.
+              docs/*|.githooks/*|*.md|LICENSE) ;;
+
+              # Code, but never code the built app contains: Biome parses all
+              # of it, `tsc` and Vitest see the tests, Storybook compiles the
+              # stories, and none of the three is in the bundle `npm run e2e`
+              # drives.
+              src/*.test.ts|src/*.test.tsx|src/*.stories.tsx|src/test/*|e2e/*.unit.test.ts) code=true ;;
+
+              # Tooling the gate reads and the app does not. `.vscode/` is
+              # gitignored bar `extensions.json`; the release-please pair is
+              # read by `version.test.ts` and nothing else; `deny.toml` is
+              # cargo-deny's own input.
+              .vscode/*|.storybook/*|deny.toml|.release-please-manifest.json|release-please-config.json) code=true ;;
+
+              *) code=true; e2e=true ;;
             esac
           done <<< "$files"
 
-          echo "code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo "code=$code"
+            echo "e2e=$e2e"
+          } >> "$GITHUB_OUTPUT"
           echo "Changed files:"
           echo "$files"
           echo "Full gate: $code"
+          echo "Drives the app: $e2e"
 
   frontend:
     name: frontend
@@ -230,23 +278,23 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v7
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
       - uses: actions/setup-node@v7
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
         with:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
       - uses: Swatinem/rust-cache@v2
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
         with:
           workspaces: src-tauri
           shared-key: e2e-build
           # See the `rust` job.
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: npm ci
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
       # @wdio/tauri-service's default `embedded` provider runs the WebDriver
       # server inside the app, so no tauri-driver or msedgedriver is needed.
       # The instrumentation is behind the `wdio` cargo feature and its
@@ -254,7 +302,7 @@ jobs:
       # neither. That overlay also sets `withGlobalTauri`, which the service
       # needs on every command - see docs/knowledge/gotchas.md, "Toolchain".
       - name: Build app (debug, e2e-instrumented)
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
         env:
           # Pulls @wdio/tauri-plugin into the bundle. Every other build leaves
           # that import in a dead branch, so it ships nowhere else.
@@ -270,7 +318,7 @@ jobs:
       # produce smaller pictures, not a red build. `viewport.ts` reports the
       # size it actually reached.
       - name: Give the runner a desktop-sized display
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
         continue-on-error: true
         shell: pwsh
         run: |
@@ -317,7 +365,7 @@ jobs:
           Write-Host "Display is now $($bounds.Width)x$($bounds.Height)"
 
       - name: Run WebDriver smoke suite
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.e2e == 'true'
         run: npm run e2e
       # Always, not only on failure: the suite now photographs what a feature
       # looks like, and the whole point of those is to be looked at while the
@@ -327,7 +375,7 @@ jobs:
       # the UI does is the cost that got pixel baselines rejected in phase 27,
       # and it buys nothing here - nothing is compared to them.
       - name: Upload screenshots
-        if: always() && needs.changes.outputs.code == 'true'
+        if: always() && needs.changes.outputs.e2e == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
@@ -341,7 +389,7 @@ jobs:
       # zip nobody opens. See scripts/screenshots.mjs for why this needs a
       # branch of its own rather than an API call.
       - name: Show the screenshots in the pull request
-        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.e2e == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}

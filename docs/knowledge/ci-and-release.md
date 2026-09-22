@@ -7,7 +7,7 @@ are required before merge:
 
 | Job | Runs |
 | --- | --- |
-| `changes` | path filter that decides which jobs are needed |
+| `changes` | path filter: `code` (is anything here not prose) and `e2e` (does anything here reach the built app) |
 | `frontend` (ubuntu) | `npm run tauri:parity`, `tsc --noEmit` for `src/` and `e2e/`, Biome, `vitest run --coverage` (80% threshold), `npm run build`, `npm run build-storybook` |
 | `rust` (windows) | `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test` under `TZ=EST5EDT`, and a check that committed bindings match the Rust types |
 | `cargo-deny` (ubuntu) | advisories, licences, sources, bans |
@@ -16,6 +16,34 @@ are required before merge:
 
 Caching is `Swatinem/rust-cache` plus the setup-node npm cache; a concurrency
 group cancels superseded runs.
+
+## What the gate costs
+
+Nothing, in money: the repository is public and GitHub-hosted minutes are free
+for public repositories. Every run reports `billable.total_ms` of zero. The
+unit is waiting.
+
+All six jobs start within a second of each other and run in parallel, so the
+run is green when the slowest is — `e2e` at about 7m50 against `rust` at 6m19.
+**`e2e` is the only job on the critical path.** Skipping any other job shortens
+nothing, which is why `changes` emits two booleans rather than one per job:
+
+- `code` — is anything here not prose. Every job's steps read it.
+- `e2e` — does anything here reach the bundle the WebdriverIO suite drives.
+  Only the `e2e` job reads it, and it being true implies `code` is.
+
+A stories-or-tests-only pull request skips `e2e` and goes from about eight
+minutes to under two. A documentation-only one skips everything and takes
+about one. Anything unrecognised counts as both, which is why new files need
+no arm to be classified correctly.
+
+`src/ci.test.ts` slices the `case` block out of `ci.yml` and runs it through
+`bash`, because a misclassification is silent — the gate stops checking
+something and still reports green.
+
+Deliberately **not** split further: `rust`, `frontend`, `cargo-deny` and
+`notices` all keep reading `code`. None is on the critical path, and each
+extra boolean is another way to stop checking something by accident.
 
 ## The cache budget
 
