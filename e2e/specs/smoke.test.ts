@@ -102,12 +102,17 @@ describe("application shell", () => {
 
   it("survives a play command with an empty queue", async () => {
     // A round trip through player_toggle: if the command were missing or the
-    // player thread had died, invoke would reject and the store would put the
-    // message in the alert region.
+    // player thread had died, invoke would reject and the store would report
+    // it.
+    //
+    // `.error-popup`, not `.content-error`, which is what this asserted until
+    // phase 123 and could never have failed: that class renders only inside
+    // `TagEditor`, `ReleaseLookup` and `CrashNotice`, none of which is mounted
+    // here. A player error surfaces in `ErrorPopover`.
     await browser.$("button[aria-label='Play']").click();
 
     await browser.pause(500);
-    await expect(browser.$(".content-error")).not.toBeExisting();
+    await expect(browser.$(".error-popup")).not.toBeExisting();
   });
 
   it("runs a search against FTS5 and clears it again", async () => {

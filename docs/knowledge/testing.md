@@ -15,7 +15,7 @@ current frontend coverage is well above it.
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Chart primitives | Vitest + RTL | geometry, never pixels: the plot rect a measured frame hands down, tick offsets, the clamp that keeps a tooltip inside the plot; empty and single-datum inputs for every scale, which is where domains collapse |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
-| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance |
+| e2e | WebdriverIO, CI only | launch, scan a seeded folder, play, sort, tabs, smart playlists, the log file on disk, crash notice, appearance, every window-bound key and the search box standing it down |
 
 Fixture mp3s are generated (silent frames, known tags) rather than committed
 audio: no encoder, no binary blobs, no licensing question. Rust generates its
@@ -290,3 +290,9 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 - Whether the OS delivers a media key to an unfocused window, or Shift+F10 and
   the Menu key to a focused one. The shortcut behind them is covered from a
   dispatched keydown down; the key press itself is not reachable from here.
+- Whether the OS delivers a *modifier chord* — Alt+←/→, Ctrl+A, Ctrl+I,
+  Ctrl+plus/minus/0 — or claims it first. `shortcuts.test.ts` presses the bare
+  keys for real and dispatches the chords, which still proves the two halves
+  worth proving: the listener is on `window`, and `isTypingTarget` decides
+  correctly from the event's target. The physical chord is the same gap as the
+  media keys above.
