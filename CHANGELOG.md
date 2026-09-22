@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.18.0](https://github.com/ljosberinn/player-experiment/compare/v0.17.1...v0.18.0) (2026-09-22)
+
+
+### Features
+
+* add Storybook and a token specimen sheet ([#233](https://github.com/ljosberinn/player-experiment/issues/233)) ([a093851](https://github.com/ljosberinn/player-experiment/commit/a093851570a0726b3ce753ee41de09c60a502f7b))
+* add the button, icon button and tag primitives ([#237](https://github.com/ljosberinn/player-experiment/issues/237)) ([1b65fc0](https://github.com/ljosberinn/player-experiment/commit/1b65fc06c95e9cacc4f2bc89fed57643c10d930a))
+* draw a drill-in as release groups ([#120](https://github.com/ljosberinn/player-experiment/issues/120)) ([#252](https://github.com/ljosberinn/player-experiment/issues/252)) ([7208337](https://github.com/ljosberinn/player-experiment/commit/7208337c8bd9c74f8c33773317d9ad28a4891187))
+* draw every control the browser used to draw ([#239](https://github.com/ljosberinn/player-experiment/issues/239)) ([3934d61](https://github.com/ljosberinn/player-experiment/commit/3934d615bfeb2a31b4cdf5682585dfcdd074ad3a))
+* draw one dialog instead of eight ([#242](https://github.com/ljosberinn/player-experiment/issues/242)) ([383d978](https://github.com/ljosberinn/player-experiment/commit/383d97806371a1aa4ec8c0b24404e2e65a91dc0e))
+* draw the app on a light ground as well as a dark one ([#235](https://github.com/ljosberinn/player-experiment/issues/235)) ([4df5518](https://github.com/ljosberinn/player-experiment/commit/4df5518cf53feda7f14b2539749cd2680df414fd))
+* draw the figures the specimen sheet draws ([#245](https://github.com/ljosberinn/player-experiment/issues/245)) ([aecf12b](https://github.com/ljosberinn/player-experiment/commit/aecf12b77a67d5b41aea7327db7e75e4123b3819))
+* draw the filters as a removable token line ([#122](https://github.com/ljosberinn/player-experiment/issues/122)) ([#257](https://github.com/ljosberinn/player-experiment/issues/257)) ([40e21b8](https://github.com/ljosberinn/player-experiment/commit/40e21b8cf9384a1ede3a8b318b92ce0dcad01757))
+* draw the heatmap the specimen sheet draws ([#116](https://github.com/ljosberinn/player-experiment/issues/116)b) ([#247](https://github.com/ljosberinn/player-experiment/issues/247)) ([b3b0c75](https://github.com/ljosberinn/player-experiment/commit/b3b0c75b8c5a2cddb32c6f7f73cde5c897295c74))
+* draw the leaderboard the specimen sheet draws ([#116](https://github.com/ljosberinn/player-experiment/issues/116)c) ([#248](https://github.com/ljosberinn/player-experiment/issues/248)) ([502e868](https://github.com/ljosberinn/player-experiment/commit/502e868eec0cb73eae725cc265d049e31369101d))
+* draw the menus and the task line the specimen sheet draws ([#117](https://github.com/ljosberinn/player-experiment/issues/117)) ([#249](https://github.com/ljosberinn/player-experiment/issues/249)) ([2c65074](https://github.com/ljosberinn/player-experiment/commit/2c65074210639c09f5ce6ae964268465006c7c95))
+* draw the row the specimen sheet draws ([#244](https://github.com/ljosberinn/player-experiment/issues/244)) ([e310fa4](https://github.com/ljosberinn/player-experiment/commit/e310fa49cdcde463df8047324e13bfe0480b50a6))
+* draw the streak the specimen sheet draws ([#116](https://github.com/ljosberinn/player-experiment/issues/116)a) ([#246](https://github.com/ljosberinn/player-experiment/issues/246)) ([d1986e2](https://github.com/ljosberinn/player-experiment/commit/d1986e2ba21eb188fcb40d9d1b5d0a17ccd9c938))
+* draw the whole app in Archivo ([#234](https://github.com/ljosberinn/player-experiment/issues/234)) ([c57a60b](https://github.com/ljosberinn/player-experiment/commit/c57a60b8a9fb610f54e77b11308dd53227868273))
+* fold punctuation and diacritics into match_key ([#241](https://github.com/ljosberinn/player-experiment/issues/241)) ([e1e9271](https://github.com/ljosberinn/player-experiment/commit/e1e9271e6b6f63287f44baebb74d3e5b7b32217a))
+* let the OS draw the frame ([#119](https://github.com/ljosberinn/player-experiment/issues/119)) ([#251](https://github.com/ljosberinn/player-experiment/issues/251)) ([a7892cd](https://github.com/ljosberinn/player-experiment/commit/a7892cd7c81c1e24daecb61638dbe5d8d824b8e4))
+* line the filter rules up down one grid ([#243](https://github.com/ljosberinn/player-experiment/issues/243)) ([3ba46e5](https://github.com/ljosberinn/player-experiment/commit/3ba46e556aad830939ff7134c6cb911b18404277))
+* move the selection with the arrows ([#121](https://github.com/ljosberinn/player-experiment/issues/121)) ([#256](https://github.com/ljosberinn/player-experiment/issues/256)) ([55ad91d](https://github.com/ljosberinn/player-experiment/commit/55ad91d83cfcee09d339795f53183c63fa57bd0b))
+* publish Storybook to GitHub Pages ([#240](https://github.com/ljosberinn/player-experiment/issues/240)) ([0fba31f](https://github.com/ljosberinn/player-experiment/commit/0fba31f087519e4f8fcb643f32d6bbdb317b5c29))
+* round no corner anywhere ([#236](https://github.com/ljosberinn/player-experiment/issues/236)) ([bbfe83c](https://github.com/ljosberinn/player-experiment/commit/bbfe83c0d42de3f142f95768398a417965a5bcc2))
+
+
+### Documentation
+
+* add an issue for publishing Storybook to GitHub Pages ([#238](https://github.com/ljosberinn/player-experiment/issues/238)) ([876984d](https://github.com/ljosberinn/player-experiment/commit/876984db929985eceb422dc47b18de0bc52d9677))
+* plan the move to the Apex component library ([#231](https://github.com/ljosberinn/player-experiment/issues/231)) ([385cef4](https://github.com/ljosberinn/player-experiment/commit/385cef4c8c6c96b61ae12661543cbaaed3564899))
+
 ## [0.17.1](https://github.com/ljosberinn/player-experiment/compare/v0.17.0...v0.17.1) (2026-09-20)
 
 
