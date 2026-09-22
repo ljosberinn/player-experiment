@@ -1,0 +1,52 @@
+name: Prune caches
+
+# Deletes a pull request's caches once it closes.
+#
+# A cache written on a pull request branch is readable only from that pull
+# request - never from main, never from another branch - while the 10 GB it
+# counts against is the whole repository's. Over the limit GitHub evicts the
+# least recently used entry, so a closed branch's leftovers evict the
+# main-branch caches that every run does restore from. See phase 126.
+#
+# What is left to collect here is the npm cache: `actions/setup-node` writes it
+# with no way to opt out, ~160 MB per pull request under a lockfile hash main
+# usually already holds. The Rust caches are handled at the source, with
+# `save-if` on `ci.yml`.
+#
+# `pull_request_target` rather than `pull_request`, for the same reason
+# `dependabot.yml` uses `workflow_run`: a workflow triggered by Dependabot gets
+# a read-only token and cannot delete anything - and Dependabot's pull requests
+# are the ones that churn the lockfile hardest. Nothing is checked out and
+# nothing from the branch is read, so running with a write token is safe here.
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: prune-caches-${{ github.event.pull_request.number }}
+
+jobs:
+  prune:
+    name: prune
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the caches this pull request wrote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids=$(gh api "repos/$REPO/actions/caches?ref=$REF&per_page=100" --jq '.actions_caches[].id')
+          if [ -z "$ids" ]; then
+            echo "No caches scoped to $REF."
+            exit 0
+          fi
+          for id in $ids; do
+            gh api -X DELETE "repos/$REPO/actions/caches/$id"
+            echo "Deleted cache $id."
+          done

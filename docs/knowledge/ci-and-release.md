@@ -17,6 +17,33 @@ are required before merge:
 Caching is `Swatinem/rust-cache` plus the setup-node npm cache; a concurrency
 group cancels superseded runs.
 
+## The cache budget
+
+A cache written on a pull request branch is readable **only from that pull
+request**. The 10 GB it counts against is the whole repository's, and over the
+limit GitHub evicts the least recently used entry — so caches nothing can
+restore from evict the main-branch ones every run does. At 10.05 GB across 67
+entries, 3.79 GB of it PR-scoped, that is what an 11-minute `rust` job was.
+
+- **`save-if: ${{ github.ref == 'refs/heads/main' }}`** on all three
+  `rust-cache` steps in `ci.yml`: restore everywhere, save only from main.
+  `push: main` is a full gate, so every merge repopulates all three.
+- **`save-if: false`** on `release.yml`'s. A release-profile target directory
+  is shared with no other job and stale by the next release.
+- **`.github/workflows/prune-caches.yml`** deletes a pull request's caches when
+  it closes. This collects the npm cache, which `setup-node` writes with no way
+  to opt out. `pull_request_target`, because a `pull_request` workflow
+  triggered by Dependabot gets a read-only token — the same constraint that
+  shapes `dependabot.yml`.
+
+The three Rust `shared-key`s stay distinct: `rust-tests`, `e2e-build` (debug,
+`wdio` feature) and the release profile compile different artifacts, and one
+key across them would evict on every alternation. `notices` keeps
+`cache-targets: false` — it never compiles and wants only the registry.
+
+Check it with `gh api repos/{owner}/{repo}/actions/cache/usage` and
+`gh cache list`.
+
 **Build warnings fail CI.** `vite.config.ts` turns every bundler warning into a
 thrown error — rolldown's since vite 8, rollup's before it; the `onwarn` hook is
 the same either way. Silencing a specific `warning.code` with a comment is allowed —

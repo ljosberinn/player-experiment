@@ -54,6 +54,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # Restore-only. This is the one job that compiles in the release
+          # profile, so its 1.08 GB is shared with nothing, and the next
+          # release is far enough away that the entry is stale when it is not
+          # already evicted - while the space it holds is space the pull
+          # request gate's caches are being evicted for.
+          save-if: false
       - run: npm ci
 
       # A real release build, not the `--debug --no-bundle` one the e2e job

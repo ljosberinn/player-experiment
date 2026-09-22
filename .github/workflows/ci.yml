@@ -122,6 +122,14 @@ jobs:
         with:
           workspaces: src-tauri
           shared-key: rust-tests
+          # Restore everywhere, save only from main. A cache written on a pull
+          # request branch can be read from nowhere else, so the ~1.8 GB the
+          # three Rust jobs wrote per run bought nothing and spent the
+          # repository's shared 10 GB budget - which GitHub trims by evicting
+          # least-recently-used entries, meaning the main-branch caches every
+          # run actually restores from. That is what a cold 11-minute `rust`
+          # job was. `push: main` is a full gate, so every merge repopulates.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         if: needs.changes.outputs.code == 'true'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
@@ -200,6 +208,8 @@ jobs:
           # downloads.
           shared-key: notices-metadata
           cache-targets: false
+          # See the `rust` job.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Production dependencies only. The package list comes from the lockfile,
       # so dev packages contribute nothing but install time - and there are
       # roughly five hundred of them against twenty-one that ship.
@@ -233,6 +243,8 @@ jobs:
         with:
           workspaces: src-tauri
           shared-key: e2e-build
+          # See the `rust` job.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: npm ci
         if: needs.changes.outputs.code == 'true'
       # @wdio/tauri-service's default `embedded` provider runs the WebDriver
