@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { SEEK_STEP_MS, shortcutFor, targetOwns, VOLUME_STEP } from "./shortcuts";
+import { SEEK_STEP_MS, shortcutFor, targetOwns } from "./shortcuts";
 import { usePlayerStore } from "./store";
 
 /**
@@ -37,12 +37,6 @@ export function usePlayerShortcuts(): void {
           return;
         case "seekBackward":
           void state.seek(state.positionMs - SEEK_STEP_MS);
-          return;
-        case "volumeUp":
-          void state.setVolume(state.volume + VOLUME_STEP);
-          return;
-        case "volumeDown":
-          void state.setVolume(state.volume - VOLUME_STEP);
       }
     };
 

@@ -62,12 +62,16 @@ attempts left `tauri-driver` hung and needing a manual kill.
 | --- | --- |
 | Space | Play / pause |
 | ← / → | Seek 5 s |
-| ↑ / ↓ | Volume ±5% |
+| ↑ / ↓ | Move the selection, in the song list or the sidebar |
 | Enter (on a row) | Play the view from that row |
 | Double-click (a row) | Play the view from that row |
 
 Media keys (play/pause, next, previous) work while the window has focus.
 Shortcuts stand down whenever focus is in a text field.
+
+Tab reaches the song list and the sidebar at whatever is selected there, and
+the arrows move from it. Volume has no key of its own: use the wheel over the
+rail, or the rail's own arrows once it has focus.
 
 Playback needs an output device. Without one the app still starts — it falls
 back to a silent sink and reports why on the first play, rather than refusing

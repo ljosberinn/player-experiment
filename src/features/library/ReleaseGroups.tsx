@@ -94,6 +94,8 @@ export function ReleaseGroups({
   const firstGroup = items[0]?.index ?? 0;
   const lastGroup = items[items.length - 1]?.index ?? 0;
 
+  const renderedRows = groupRowRange(releases, firstGroup, lastGroup);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: queryToken is a cache key, not a value this effect reads - it changes exactly when the cached pages are dropped, which is when the visible range must be fetched again even though the range itself has not moved.
   useEffect(() => {
     const range = groupRowRange(releases, firstGroup, lastGroup);
@@ -101,6 +103,21 @@ export function ReleaseGroups({
       void ensureRange(range.start, range.end);
     }
   }, [ensureRange, releases, firstGroup, lastGroup, queryToken]);
+
+  /**
+   * The one row Tab reaches, which the arrows then move from - `SongTable`'s
+   * rule, over the rows the visible groups happen to hold.
+   *
+   * Worth more here than there: a group renders every row it has, so without
+   * this Tab walks a whole album before it reaches the next one.
+   */
+  const anchor = selection.anchorIndex;
+  const tabStop =
+    renderedRows === null
+      ? null
+      : anchor !== null && anchor >= renderedRows.start && anchor <= renderedRows.end
+        ? anchor
+        : renderedRows.start;
 
   return (
     <div className="song-body release-body" ref={scrollRef} data-testid="song-scroll">
@@ -186,6 +203,7 @@ export function ReleaseGroups({
                         top={within * GROUP_ROW_HEIGHT}
                         height={GROUP_ROW_HEIGHT}
                         selected={track !== null && isSelected(selection, track.id)}
+                        focused={rowIndex === tabStop}
                         playing={track !== null && track.id === nowPlayingId}
                         // Nothing to drop here: this view has no order of its
                         // own to rearrange.

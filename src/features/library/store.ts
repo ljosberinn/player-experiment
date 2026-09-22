@@ -60,7 +60,13 @@ import {
   rowAt,
   trackById,
 } from "./pageCache";
-import { applyClick, type ClickModifiers, emptySelection, type Selection } from "./selection";
+import {
+  applyClick,
+  type ClickModifiers,
+  emptySelection,
+  type Selection,
+  stepAnchor,
+} from "./selection";
 
 /**
  * How long typing has to pause before the search actually runs.
@@ -335,6 +341,16 @@ interface LibraryState {
   clearSearch: () => Promise<void>;
   toggleSort: (field: SortField) => Promise<void>;
   clickRow: (rowIndex: number, id: number, modifiers: ClickModifiers) => void;
+  /**
+   * Moves the selection one row, and answers where it went so the caller can
+   * scroll and focus that row.
+   *
+   * Answers synchronously and writes the selection later, because the two
+   * halves need different things: scrolling and focusing need only an index,
+   * while the selection is ids and the target row's page may not be cached.
+   * Waiting for the id before scrolling would stall the list on a fetch.
+   */
+  moveAnchor: (delta: -1 | 1) => number | null;
   selectAll: () => Promise<void>;
   clearSelection: () => void;
   /** Every id matching the current query, in view order - the play queue. */
@@ -983,6 +999,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }));
   },
 
+  moveAnchor: (delta) => {
+    const { selection, total, queryToken } = get();
+    const target = stepAnchor(selection.anchorIndex, delta, total);
+    if (target === null) {
+      return null;
+    }
+    void selectWhenLoaded(target, selection.anchorIndex, queryToken);
+    return target;
+  },
+
   selectAll: async () => {
     // Ids, not rows: selecting everything must neither depend on what happens
     // to be cached nor be truncated by the backend's page cap.
@@ -1122,5 +1148,65 @@ async function applySearch(search: string): Promise<void> {
 const runSearch = debounce(() => {
   void applySearch(useLibraryStore.getState().searchInput);
 }, SEARCH_DEBOUNCE_MS);
+
+/**
+ * Makes `rowIndex` the selection once its page is there, unless the move was
+ * overtaken first.
+ *
+ * Waits on the store rather than on `ensureRange`, which resolves at once for
+ * a page already in flight - and after `moveAnchor`'s caller has scrolled to
+ * the target, that is the usual case rather than the exception, because the
+ * visible-range effect has just asked for the very page this needs.
+ *
+ * Overtaken means either a newer query - the row indices are into that query,
+ * so they mean nothing against another - or an anchor that has moved on since,
+ * which is a held arrow outrunning a fetch at a page boundary. Either way the
+ * answer is to write nothing: a step is dropped, and the next keypress starts
+ * from where the selection actually is.
+ */
+async function selectWhenLoaded(
+  rowIndex: number,
+  from: number | null,
+  token: number,
+): Promise<void> {
+  const current = () => {
+    const { selection, queryToken } = useLibraryStore.getState();
+    return queryToken === token && selection.anchorIndex === from;
+  };
+
+  const { pages, ensureRange } = useLibraryStore.getState();
+  let track = rowAt(pages, rowIndex);
+
+  if (track === null) {
+    void ensureRange(rowIndex, rowIndex);
+    track = await new Promise<Track | null>((resolve) => {
+      const page = pageIndexOf(rowIndex);
+      const unsubscribe = useLibraryStore.subscribe((next) => {
+        const landed = rowAt(next.pages, rowIndex);
+        if (landed !== null) {
+          unsubscribe();
+          resolve(landed);
+          return;
+        }
+        // Nothing left to wait for: either the move was overtaken, or the
+        // fetch finished and produced no such row. Without this the
+        // subscription would outlive a failed request forever.
+        if (!current() || !next.inFlight.has(page)) {
+          unsubscribe();
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  // Re-read rather than trusting the check above: the cached path never
+  // subscribed, and the awaited one resolves a microtask before this runs.
+  if (track === null || !current()) {
+    return;
+  }
+  useLibraryStore.setState({
+    selection: { ids: new Set([track.id]), anchorIndex: rowIndex },
+  });
+}
 
 export { PAGE_SIZE, pageIndexOf };

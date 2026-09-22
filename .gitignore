@@ -26,8 +26,10 @@ storybook-static
 *.sln
 *.sw?
 
-# Agent-local settings
-.claude
+# Agent-local settings, except the skills, which are the repo's own workflow
+# written down and belong with it.
+.claude/*
+!.claude/skills/
 
 # A local mirror of the claude.ai design projects, for reading and diffing.
 # The design is the remote's to hold - a copy in the tree would be a second

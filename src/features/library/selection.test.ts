@@ -6,6 +6,7 @@ import {
   pruneSelection,
   type Selection,
   selectionCount,
+  stepAnchor,
 } from "./selection";
 
 /** Rows 0..n map to ids 100..100+n, so index and id are never confusable. */
@@ -96,5 +97,25 @@ describe("selection helpers", () => {
     const selection = selected([100, 101], 0);
 
     expect(pruneSelection(selection, new Set([100, 101, 102]))).toBe(selection);
+  });
+});
+
+describe("stepAnchor", () => {
+  it("moves one row either way", () => {
+    expect(stepAnchor(5, 1, 100)).toBe(6);
+    expect(stepAnchor(5, -1, 100)).toBe(4);
+  });
+
+  it("clamps at both ends rather than running off the list", () => {
+    expect(stepAnchor(0, -1, 100)).toBe(0);
+    expect(stepAnchor(99, 1, 100)).toBe(99);
+  });
+
+  it("has nowhere to go without an anchor", () => {
+    expect(stepAnchor(null, 1, 100)).toBeNull();
+  });
+
+  it("has nowhere to go in an empty view", () => {
+    expect(stepAnchor(0, 1, 0)).toBeNull();
   });
 });

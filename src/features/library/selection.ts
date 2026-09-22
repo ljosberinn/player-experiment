@@ -55,6 +55,28 @@ export function applyClick(
   return { ids: new Set([id]), anchorIndex: rowIndex };
 }
 
+/**
+ * The row an arrow key moves the selection to, or null when there is none.
+ *
+ * Clamped rather than wrapping, and clamped rather than refused: at the last
+ * row a `null` would leave the keypress to the scroll container, so holding
+ * the key would move the selection down the list and then start scrolling
+ * past it. The anchor doubles as the cursor, which is why this takes one and
+ * answers one - a range extension needs a lead index of its own, and that is
+ * a decision for whoever asks for Shift+Arrow.
+ */
+export function stepAnchor(
+  anchorIndex: number | null,
+  delta: -1 | 1,
+  total: number,
+): number | null {
+  // An arrow with nothing selected is not a way to start a selection.
+  if (anchorIndex === null || total === 0) {
+    return null;
+  }
+  return Math.min(total - 1, Math.max(0, anchorIndex + delta));
+}
+
 export function isSelected(selection: Selection, id: number): boolean {
   return selection.ids.has(id);
 }

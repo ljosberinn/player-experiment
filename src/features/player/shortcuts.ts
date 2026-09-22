@@ -2,7 +2,13 @@ import type { PlayerShortcut } from "./types";
 
 /** How far the arrow keys move the playhead. */
 export const SEEK_STEP_MS = 5_000;
-/** How much the arrow keys, and the wheel over the rail, move the volume. */
+/**
+ * How much the wheel over the rail moves the volume.
+ *
+ * No keyboard route of its own since 121, which gave the bare up and down
+ * arrows to the track list. The rail still moves on them once it has focus -
+ * it is an `<input type="range">` and they are the keys it comes with.
+ */
 export const VOLUME_STEP = 0.05;
 
 /**
@@ -37,10 +43,6 @@ export function shortcutFor(event: {
       return "seekForward";
     case "ArrowLeft":
       return "seekBackward";
-    case "ArrowUp":
-      return "volumeUp";
-    case "ArrowDown":
-      return "volumeDown";
     default:
       return null;
   }

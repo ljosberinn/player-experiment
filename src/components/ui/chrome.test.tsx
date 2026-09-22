@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VOLUME_STEP } from "../../features/player/shortcuts";
@@ -355,5 +355,158 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("navigation", { name: "Library" })).toBeInTheDocument();
     expect(screen.getByText("Sources")).toBeInTheDocument();
+  });
+
+  describe("the keyboard across its sections", () => {
+    /** Two sections of rows, the way the real sidebar stacks them. */
+    function sources(current = "Releases") {
+      return (
+        <Sidebar>
+          <div className="sidebar-section">
+            <button type="button" className="sidebar-fold">
+              Library
+            </button>
+            <ul>
+              {["Songs", "Releases"].map((name) => (
+                <li key={name}>
+                  <button
+                    type="button"
+                    className="sidebar-item"
+                    aria-current={name === current ? "page" : undefined}
+                  >
+                    {name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="sidebar-section">
+            <ul>
+              <li>
+                <button type="button" className="sidebar-item">
+                  Party
+                </button>
+              </li>
+            </ul>
+          </div>
+        </Sidebar>
+      );
+    }
+
+    const row = (name: string) => screen.getByRole("button", { name });
+
+    it("gives the whole sidebar one tab stop, on the open source", () => {
+      render(sources());
+
+      expect(row("Releases")).toHaveAttribute("tabindex", "0");
+      expect(row("Songs")).toHaveAttribute("tabindex", "-1");
+      expect(row("Party")).toHaveAttribute("tabindex", "-1");
+    });
+
+    it("leaves the headings' own controls tabbable", () => {
+      render(sources());
+
+      // A fold is a control, not a place to go, and the arrows do not walk it.
+      expect(row("Library")).not.toHaveAttribute("tabindex", "-1");
+    });
+
+    it("walks every section with the arrows, not one section at a time", async () => {
+      render(sources());
+      row("Releases").focus();
+
+      await userEvent.keyboard("{ArrowDown}");
+
+      // Across the section boundary: `LibraryNav` chose buttons over a tablist
+      // precisely so the arrows could leave the library views behind.
+      expect(row("Party")).toHaveFocus();
+    });
+
+    it("goes back up again", async () => {
+      render(sources());
+      row("Party").focus();
+
+      await userEvent.keyboard("{ArrowUp}");
+
+      expect(row("Releases")).toHaveFocus();
+    });
+
+    it("claims the key at the ends, so it cannot reach the track list", async () => {
+      render(sources());
+      row("Party").focus();
+
+      const event = new KeyboardEvent("keydown", {
+        key: "ArrowDown",
+        cancelable: true,
+        bubbles: true,
+      });
+      row("Party").dispatchEvent(event);
+
+      expect(row("Party")).toHaveFocus();
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("moves focus without opening anything", async () => {
+      const onSelect = vi.fn();
+      render(
+        <Sidebar>
+          <button type="button" className="sidebar-item" aria-current="page" onClick={onSelect}>
+            Songs
+          </button>
+          <button type="button" className="sidebar-item" onClick={onSelect}>
+            Releases
+          </button>
+        </Sidebar>,
+      );
+      row("Songs").focus();
+
+      // A sidebar that navigated per arrow would re-query the library on every
+      // keypress; Enter and Space are what open a view.
+      await userEvent.keyboard("{ArrowDown}");
+
+      expect(row("Releases")).toHaveFocus();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("leaves the arrows to a rename field in the list", async () => {
+      render(
+        <Sidebar>
+          <button type="button" className="sidebar-item" aria-current="page">
+            Songs
+          </button>
+          <input aria-label="Rename" defaultValue="Party" />
+        </Sidebar>,
+      );
+      screen.getByLabelText("Rename").focus();
+
+      await userEvent.keyboard("{ArrowUp}");
+
+      expect(screen.getByLabelText("Rename")).toHaveFocus();
+    });
+
+    it("follows rows that arrive after the first render", async () => {
+      const { rerender } = render(
+        <Sidebar>
+          <button type="button" className="sidebar-item" aria-current="page">
+            Songs
+          </button>
+        </Sidebar>,
+      );
+
+      // Playlists load, sections fold, the review queue appears once a pass
+      // has queued something - none of it is there on the first render.
+      rerender(
+        <Sidebar>
+          <button type="button" className="sidebar-item">
+            Songs
+          </button>
+          <button type="button" className="sidebar-item" aria-current="page">
+            Party
+          </button>
+        </Sidebar>,
+      );
+
+      await waitFor(() => expect(row("Party")).toHaveAttribute("tabindex", "0"));
+      expect(row("Songs")).toHaveAttribute("tabindex", "-1");
+    });
   });
 });

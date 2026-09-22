@@ -761,7 +761,47 @@ absences are what nobody notices coming back — hence the guards in
   has already decided nothing happened. The side buttons navigate from inside
   the search box; Alt+←/→ stand down there like every other shortcut.
 - **Alt+Arrow nudges a selection within a playlist.** Bare arrows are seek and
-  volume, and `shortcutFor` drops any key pressed with a modifier — so an Alt
-  chord cannot collide with them by construction. A scattered selection is
-  refused rather than collapsed into a block the way a drop would: a drop shows
-  where it is going first, a nudge does not, and a reorder has no undo.
+  the selection, and every handler that takes one drops any key pressed with a
+  modifier — so an Alt chord cannot collide with them by construction. The
+  premise held when the bare pair was seek and volume and it holds now that it
+  is seek and the selection. A scattered selection is refused rather than
+  collapsed into a block the way a drop would: a drop shows where it is going
+  first, a nudge does not, and a reorder has no undo.
+- **Bare ↑/↓ move the track list's selection** (121), which is what took them
+  off the volume. The anchor doubles as the cursor: the arrow replaces the
+  selection with the row beside `anchorIndex`, moves the anchor there, scrolls
+  it in and focuses it. Clamped at both ends, and claimed there too — an
+  unclaimed arrow at the last row would scroll the container instead, so the
+  key would move the selection down the list and then start sliding past it.
+  Nothing selected leaves the key alone entirely.
+- **They live in `useSongTableWiring`, not `SongTable`.** The drill-in draws
+  the same rows against the same selection, and a keyboard that worked in one
+  view and not the other is the difference nobody could explain. Window-level
+  rather than on the row, for the row menu's reason: Ctrl+A and a click in the
+  sidebar both leave focus off the table, and the selection they leave behind
+  is what the arrows have to move.
+- **The selection is written after the row lands, not after `ensureRange`
+  resolves.** The selection is ids, so a move onto an uncached page has to wait
+  for the row — and `ensureRange` resolves at once for a page already in
+  flight, which after the move's own scroll is the usual case rather than the
+  exception, because the visible-range effect has just asked for that page. So
+  `moveAnchor` returns the target index synchronously, for the scroll and the
+  focus, and a store subscription writes the selection when the page arrives.
+  A wait that is overtaken — a newer query, or an anchor that moved on under a
+  held key — writes nothing and drops the step.
+- **One tab stop per list, not one per row.** Tab used to walk all forty rows
+  in the table's window, and every row of every visible group in the drill-in,
+  before it reached anything after them. Now the anchor row is the only tab
+  stop and the arrows move between rows. The anchor scrolled out of the window
+  falls back to the first rendered row: a selection outlives the pages behind
+  it, and a tab stop on a row nothing renders is a table the keyboard cannot
+  enter at all.
+- **The sidebar's tab stop is `aria-current`, and its arrows walk the whole
+  list.** `LibraryNav` chose buttons over a tablist for exactly this — "the
+  arrows have to walk the whole sidebar" — and a tablist would have owned them
+  one section at a time. `Sidebar` writes the `tabindex` onto the DOM over a
+  `MutationObserver` rather than taking a roving index as a prop: four
+  components draw those rows and none can see the others, and React sets no
+  `tabIndex` on them, so nothing there is fighting a render. The arrows move
+  focus only — Enter and Space open a view, and a sidebar that navigated per
+  keypress would re-query the library on each one.

@@ -76,6 +76,7 @@ export function SongRow({
   rowIndex,
   top,
   selected,
+  focused,
   playing,
   drop,
   columns,
@@ -88,6 +89,14 @@ export function SongRow({
   /** Its offset in the virtualized body, in pixels. */
   top: number;
   selected: boolean;
+  /**
+   * Whether this row is the list's single tab stop.
+   *
+   * A per-row fact like `selected`, and it moves on the same two rows per
+   * arrow press. Which row it is, is the view's to decide - it knows what it
+   * has rendered, and a tab stop nothing renders is a list Tab cannot reach.
+   */
+  focused: boolean;
   playing: boolean;
   drop: DropEdge;
   columns: ColumnDef[];
@@ -117,7 +126,11 @@ export function SongRow({
     <tr
       aria-rowindex={rowIndex + 1}
       aria-selected={track ? selected : undefined}
-      tabIndex={0}
+      // One tab stop for the whole list rather than one per row: Tab used to
+      // walk all forty rows in the window - every row of every visible group,
+      // in the drill-in - before it reached anything after the table. The
+      // arrows are what moves between rows now, which is what earns this.
+      tabIndex={focused ? 0 : -1}
       className={[
         "song-row",
         selected ? "selected" : "",
