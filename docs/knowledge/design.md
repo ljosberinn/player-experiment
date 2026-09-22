@@ -188,8 +188,9 @@ action reads as a target rather than a line of text".
 
 ## Layout
 
-- A 36px title bar: the mark, the menus, the version, the window buttons. It
-  keeps the drag and double-click-to-maximize behaviour and carries nothing else.
+- The OS draws the frame. Phase 119 dropped `decorations: false`, so the title,
+  the caption buttons, the system menu and snap layouts are the window's own.
+- A 36px app bar under it: the mark, the menus, the version, and nothing else.
 - A 78px transport strip: prev/play/next as one segmented block, playhead with
   elapsed and total, cover art and track text, mute and volume, repeat, search.
 - The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and

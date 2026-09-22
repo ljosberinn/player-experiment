@@ -1,6 +1,6 @@
 /* The app's own chrome, region by region.
    =========================================================================
-   Everything from the title bar down, in the order it was already in. Split
+   Everything from the app bar down, in the order it was already in. Split
    out of `App.css` in phase 108 so that a second ground did not push one
    sheet past three and a half thousand lines.
 
@@ -8,91 +8,54 @@
    `tokens.css` through `var()`. `App.css.test.ts` fails the build if one
    appears. */
 
-/* ---------- title bar ---------- */
+/* ---------- app bar ---------- */
 
 /* 36px, and carrying only the product identity since phase 35: the mark, the
-   menus, the version and the window buttons. Everything that used to ride here
-   - the transport, the now-playing display, the search field - is in the strip
-   below, which is what gives the menus the left edge the design draws them on.
+   menus and the version. Everything that used to ride here - the transport,
+   the now-playing display, the search field - is in the strip below, which is
+   what gives the menus the left edge the design draws them on.
+
+   It was the window's title bar until phase 119. `decorations: false` went, the
+   OS draws the frame above it, and the drag region and caption buttons went
+   with it - so what is left is the app's bar rather than the window's, which
+   is what it is now called.
 
    Flex rather than grid, from phase 34: it was a four-column grid holding four
    things, the brand and the menus made it more, and auto-placement put the
    overflow on a second row. A row that must not wrap should say so rather than
    be counted.
 
-   Translucent over a blur rather than filled. Flat today; phase 39 is what it
-   is for, when the extracted cover colours drift behind the window. */
-.titlebar {
+   Translucent over a blur rather than filled. The blur is over the app's own
+   blob layer, not the desktop - the window is not `transparent` - so the OS
+   frame above it neither shows through nor is shown through. Flat today;
+   phase 39 is what it is for, when the extracted cover colours drift behind
+   the window. */
+.appbar {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 20px;
   height: 36px;
-  padding-left: 14px;
+  /* Symmetric since phase 119. The right edge used to be the close button,
+     which ran flush into the corner of the window as a caption button must;
+     the version behind it needs the same inset the mark has. */
+  padding: 0 14px;
   background: var(--chrome-veil);
   backdrop-filter: blur(18px);
-  /* The separator is drawn inside the bar rather than as a border on it. A
-     border sits outside the 36px content box under `border-box`, so the
-     caption buttons - which fill that box - stopped half a pixel short of it
-     and left the line showing through the close button's red hover fill.
-     An inset shadow paints below the children, so a hovered button covers it
-     and every other part of the bar still shows it. */
-  box-shadow: inset 0 -1px 0 var(--chrome-border);
+  border-bottom: 1px solid var(--chrome-border);
 }
 
 /* Nothing on the bar shrinks. Without this a flex item refuses to go below its
    content width, which is how a bar of fixed controls overflows its window
    instead of squeezing the one part that can give. */
-.titlebar > * {
+.appbar > * {
   flex: none;
 }
 
-/* The version and the caption buttons, pushed to the far end together. A
-   wrapper rather than `margin-left: auto` on each: the version is absent for
-   the first frame of every launch, and two auto margins would share the free
-   space between them rather than one taking it. */
-.titlebar-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-left: auto;
-}
+/* The mark, the wordmark and the menus. The app bar carries the product
+   identity, which is what makes it the right home for the version too. */
 
-/* Full-height, flush into the corner. These were 34x30 from phase 13, a
-   deliberate choice at the time: the bar was tall enough to hold the status
-   display, and stretching the buttons down it made three oversized bands. The
-   bar is 36px now and the design draws 44x36 - the Windows caption size - so
-   the reason for the smaller cluster went with the taller bar. */
-.window-buttons {
-  display: flex;
-  height: 36px;
-}
-
-.window-buttons button {
-  width: 44px;
-  height: 36px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-family: "Segoe MDL2 Assets", "Segoe Fluent Icons", sans-serif;
-  font-size: 12px;
-  cursor: default;
-}
-
-.window-buttons button:hover {
-  background: var(--hover-veil);
-  color: var(--text);
-}
-
-.window-buttons button.close:hover {
-  background: var(--close-hover);
-  color: var(--on-danger);
-}
-
-/* The mark, the wordmark and the menus. The title bar carries the product
-   identity now, which is what makes it the right home for the version too. */
-
-.titlebar-brand {
+.appbar-brand {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -101,14 +64,14 @@
 /* An accent square with a play triangle in it, drawn rather than shipped: two
    boxes and a border trick, against one more binary asset that would need
    re-exporting every time the accent moves. */
-.titlebar-mark {
+.appbar-mark {
   position: relative;
   width: 17px;
   height: 17px;
   background: var(--accent);
 }
 
-.titlebar-mark::after {
+.appbar-mark::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -119,13 +82,17 @@
   border-left: 6px solid var(--on-accent);
 }
 
-.titlebar-wordmark {
+.appbar-wordmark {
   font-size: 12.5px;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
 
-.titlebar-version {
+/* Alone at the far end since phase 119 took the caption buttons, so the auto
+   margin is on it rather than on a wrapper: two items sharing the free space
+   was the only reason the wrapper existed. */
+.appbar-version {
+  margin-left: auto;
   color: var(--faint);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -169,9 +136,10 @@
 
 /* ---------- transport strip ---------- */
 
-/* The 78px band under the title bar, new in phase 35: the transport pill, the
+/* The 78px band under the app bar, new in phase 35: the transport pill, the
    playhead, what is playing, the volume and the search field. Everything on it
-   used to be crammed into the title bar, which exists to be a drag surface. */
+   used to be crammed into the bar above, which was the window's drag surface
+   until phase 119 gave that job back to the OS frame. */
 .transport-strip {
   display: flex;
   flex: none;
@@ -1963,7 +1931,7 @@ th.status {
    version - a total that shifts when a version number gets a digit longer
    would be worse than one sitting slightly off-centre. Hence the grid rather
    than flex with space-between. */
-/* 27px and translucent since phase 35, matching the title bar at the other end
+/* 27px and translucent since phase 35, matching the app bar at the other end
    of the window. What it says changed too: the line in the middle is now what
    the Songs view's heading used to carry, scoped to whatever is on screen. */
 .statusbar {
@@ -1987,13 +1955,6 @@ th.status {
 .statusbar-summary {
   grid-column: 2;
   grid-row: 1;
-}
-
-.statusbar-version {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Context menus
@@ -2145,8 +2106,9 @@ body:not(:focus-within) .sidebar-row.current {
   max-width: 456px;
 }
 
-/* The update prompt replaces the version in the corner rather than adding a
-   second thing to read. It is the only part of updating the user ever sees. */
+/* The corner is empty until there is an update - the version has been on the
+   app bar since phase 34 - so this is the only thing column 3 ever holds, and
+   the only part of updating the user ever sees. */
 .statusbar-update {
   grid-column: 3;
   grid-row: 1;

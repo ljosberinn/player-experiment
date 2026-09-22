@@ -24,9 +24,17 @@ const REQUIRED: ReadonlyArray<{ call: RegExp; permission: string }> = [
   { call: /\.setPosition\s*\(/, permission: "core:window:allow-set-position" },
   { call: /\.setSize\s*\(/, permission: "core:window:allow-set-size" },
   { call: /\.setTitle\s*\(/, permission: "core:window:allow-set-title" },
+  // The four the drawn title bar needed, kept after phase 119 gave the frame
+  // back to the OS and the capability dropped all four grants: the row is what
+  // makes reinstating one of these calls a failing test rather than an "not
+  // allowed by ACL" at runtime.
+  //
+  // `close` is anchored on the window handle for the reason `register` is
+  // anchored on `await `: `get().close()` closes a Zustand store's dialog in
+  // `tagsource/store.ts`, and a bare `/\.close\s*\(/` reports that as a caller.
   { call: /\.minimize\s*\(/, permission: "core:window:allow-minimize" },
   { call: /\.toggleMaximize\s*\(/, permission: "core:window:allow-toggle-maximize" },
-  { call: /\.close\s*\(/, permission: "core:window:allow-close" },
+  { call: /getCurrentWindow\(\)\.close\s*\(/, permission: "core:window:allow-close" },
   { call: /\.startDragging\s*\(/, permission: "core:window:allow-start-dragging" },
   // The plugin's own `default` set is deliberately empty - it grants nothing,
   // because the authors consider a global shortcut dangerous enough to be

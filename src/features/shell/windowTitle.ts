@@ -5,11 +5,12 @@ import { fileNameOf } from "../../lib/format";
 export const APP_TITLE = "Apex";
 
 /**
- * What the taskbar and Alt+Tab say the window is.
+ * What the frame, the taskbar and Alt+Tab say the window is.
  *
- * With `decorations: false` the title is invisible inside the app, so this is
- * the only place it shows - and the only place the app can say what it is
- * playing while it is behind something else.
+ * It was the taskbar and Alt+Tab alone until phase 119, when `decorations:
+ * false` went and the OS took the frame back - so this line is now also what
+ * the app says about itself while it is in front of you, not only while it is
+ * behind something else.
  *
  * The product name comes first because that is what the window is filed under:
  * a taskbar button is narrow, and a title starting with the song is a button

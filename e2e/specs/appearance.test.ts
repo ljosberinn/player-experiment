@@ -473,27 +473,23 @@ describe("appearance, in the engine that actually lays it out", () => {
     });
   }
 
-  it("keeps the whole title bar on one row, inside the window", async () => {
+  it("keeps the whole app bar on one row, inside the window", async () => {
     // The defect this exists for, found by looking at a screenshot rather than
-    // by any assertion: the title bar was a four-column grid holding four
-    // things, and phase 34 gave it seven. Grid auto-placement only moves
-    // forward, so the overflow started a second row - the window buttons ended
-    // up below the bar and the now-playing display was clipped off the right
-    // edge of the window. Every unit test passed.
+    // by any assertion: the bar was a four-column grid holding four things,
+    // and phase 34 gave it seven. Grid auto-placement only moves forward, so
+    // the overflow started a second row - the window buttons ended up below
+    // the bar and the now-playing display was clipped off the right edge of
+    // the window. Every unit test passed.
     const layout = await browser.execute(() => {
-      const bar = document.querySelector(".titlebar");
+      const bar = document.querySelector(".appbar");
       if (bar === null) {
         return null;
       }
-      // One level deep: the version and the caption buttons are wrapped in a
-      // `.titlebar-right` cluster, and measuring the wrapper alone would miss
-      // exactly the overflow this test exists to catch.
-      const boxes = Array.from(bar.children).flatMap((child) =>
-        child.className.toString().includes("titlebar-right")
-          ? Array.from(child.children)
-          : [child],
-      );
-      const children = boxes.map((child) => {
+      // Every child measured directly. The version used to be wrapped with the
+      // caption buttons in a `.titlebar-right` cluster, and unwrapping that was
+      // how this test saw the overflow it exists to catch; phase 119 took the
+      // buttons, and the wrapper went with them.
+      const children = Array.from(bar.children).map((child) => {
         const box = child.getBoundingClientRect();
         return {
           what: child.className.toString() || child.tagName,
@@ -519,10 +515,6 @@ describe("appearance, in the engine that actually lays it out", () => {
     // miss a real wrap. Centred children have one centre however tall they
     // are, and a wrapped one is a whole row away from it.
     //
-    // The caption cluster is measured with everything else here. It used to be
-    // excluded, because it pulled itself flush with the top of a bar tall
-    // enough to hold the status display; the bar is 36px now and the buttons
-    // run its full height, so its centre is the row's like every other.
     const middle = Math.min(...children.map((child) => child.middle));
     const wrapped = children
       .filter((child) => child.middle > middle + 12)
@@ -578,12 +570,12 @@ describe("appearance, in the engine that actually lays it out", () => {
 
   it("stacks the three bands of chrome at the heights the design draws", async () => {
     // The shell phase 35 built, measured rather than assumed: a 3px accent
-    // strip, a 36px title bar, a 78px transport strip, and a 27px footer at
+    // strip, a 36px app bar, a 78px transport strip, and a 27px footer at
     // the other end. Every one of these is stated in the stylesheet, so a
     // value that drifted would be a silent visual regression - the kind only
     // the screenshot catches, and only if somebody looks at it.
     const bands = await browser.execute(() =>
-      [".titlebar", ".transport-strip", ".statusbar"].map((selector) => {
+      [".appbar", ".transport-strip", ".statusbar"].map((selector) => {
         const element = document.querySelector(selector);
         return {
           selector,
@@ -593,14 +585,14 @@ describe("appearance, in the engine that actually lays it out", () => {
     );
 
     expect(bands).toEqual([
-      { selector: ".titlebar", height: 36 },
+      { selector: ".appbar", height: 36 },
       { selector: ".transport-strip", height: 78 },
       { selector: ".statusbar", height: 27 },
     ]);
   });
 
   it("keeps the whole transport strip on one row, inside the window", async () => {
-    // The same fault the title bar had, in the row that inherited its
+    // The same fault the app bar had, in the row that inherited its
     // passengers: the strip carries six controls including a 340px playhead
     // and a 200px search field, and a window narrow enough would wrap them.
     const layout = await browser.execute(() => {
@@ -612,7 +604,7 @@ describe("appearance, in the engine that actually lays it out", () => {
         const box = child.getBoundingClientRect();
         return {
           what: child.className.toString() || child.tagName,
-          // Centres, for the same reason the title bar above measures them:
+          // Centres, for the same reason the app bar above measures them:
           // this row holds a 58px pill beside a 14px playhead, so their tops
           // differ by twenty pixels while they sit in the same row.
           middle: Math.round(box.top + box.height / 2),
@@ -642,9 +634,9 @@ describe("appearance, in the engine that actually lays it out", () => {
   it("draws the accent strip along the top of the window", async () => {
     // Decoration, and the design's most recognisable single element. Drawn as
     // a pseudo-element, so it has no node to query - the height of the strip
-    // is the gap between the top of the window and the top of the title bar.
+    // is the gap between the top of the viewport and the top of the app bar.
     const offset = await browser.execute(() => {
-      const bar = document.querySelector(".titlebar");
+      const bar = document.querySelector(".appbar");
       return bar === null ? -1 : Math.round(bar.getBoundingClientRect().top);
     });
 

@@ -140,7 +140,7 @@
      sidebar's counts - which on a light ground means darker, not lighter. */
   --label: oklch(0.47 0.007 60);
   /* Quieter than anything else, and only for two things the design draws this
-     way: the version string on the title bar and a disabled sidebar item.
+     way: the version string on the app bar and a disabled sidebar item.
      2.32:1 - below AA for body text, which neither of these is. A disabled
      control is exempt by WCAG 1.4.3, and the version is incidental. */
   --faint: oklch(0.708 0.006 60); /* #a4a09d, the sheet's disabled text */

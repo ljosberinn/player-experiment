@@ -106,16 +106,21 @@ shell stays governed by the old file until the library covers it.
   which has to decide which form the view wears — and what "+ add filter" even
   opens, given that `StatsFilters` is a closed struct.
 - **The button primitive is now what a dialog's actions are.** Elsewhere every
-  region still styles its own; `.window-buttons`, `.repeat-button`,
-  `.link-button` and `.history-button` are unrelated rules until their own
-  issue migrates them.
+  region still styles its own; `.repeat-button`, `.link-button` and
+  `.history-button` are unrelated rules until their own issue migrates them.
+  `.window-buttons` was a fourth until 119 deleted it.
 - **Track list.** Done in 114. Section 03 holds one drawing, 3f, and the row
   treatment it applied comes from **7a** instead — the type specimen is the
   only place the sheet draws a playing row. 3f itself is 120, and it replaces
   the drill-in rather than the cover grid: the Releases view is a tile grid, so
   "grouped by release" was never a restyling of it.
-- **Titlebar.** `decorations: false` and a drawn 36px bar. The design assumes
-  the OS draws it.
+- **Titlebar.** Done in 119: `decorations: false` gone, the OS draws the frame,
+  and the 36px bar under it stopped being a title bar — `AppBar`, `.appbar*`,
+  carrying the mark, the menus and the version. The shell file does not
+  contradict the sheet here: it draws the window buttons behind an `sc-if`
+  toggle, so the frame was always a parameter there. This also closed the
+  frameless-window coverage gap, since the e2e build had pinned
+  `decorations: true` all along.
 
 ## How the components come out
 
@@ -167,7 +172,7 @@ Foundation first, then primitives, then the surfaces built out of them.
 
 ```
 106 Storybook ──────→ 112 Storybook on Pages ──── parallel
-119 Native titlebar ───────────────────────────── parallel
+119 Native titlebar ──────────────────────────── landed
 
 107 Archivo ─┐
 108 Grounds ─┼─→ 110 Buttons ─┐
