@@ -2025,6 +2025,7 @@ th.status {
   border: 0;
   background: transparent;
   color: inherit;
+  font: inherit;
   font-size: 14.5px;
   text-align: left;
 }

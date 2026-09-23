@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
+import { Button } from "../../components/primitives/Button";
 import { Checkbox } from "../../components/primitives/Checkbox";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import {
@@ -105,9 +106,9 @@ export function LibraryFolderSettings({
         <span className="settings-library-root">
           {/* The whole path in the tooltip, since the row truncates it. */}
           <span title={root ?? undefined}>{root ?? "None chosen"}</span>
-          <button type="button" aria-describedby="library-root-label" onClick={() => void choose()}>
+          <Button aria-describedby="library-root-label" onClick={() => void choose()}>
             {root === null ? "Choose…" : "Change…"}
-          </button>
+          </Button>
         </span>
       </div>
 

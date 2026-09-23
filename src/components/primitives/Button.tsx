@@ -30,8 +30,8 @@ export type ButtonKind = "primary" | "secondary" | "ghost" | "destructive";
  *
  * `ref` is forwarded because a dialog's Cancel is the button its popup opens
  * focused on, and Base UI reads that ref while the popup is opening - see
- * `ConfirmDialog`. It is the one prop here that exists for a caller's
- * plumbing rather than for the drawing.
+ * `ConfirmDialog`. It and the two `aria-` props are the ones here that exist
+ * for a caller's plumbing rather than for the drawing.
  */
 export function Button({
   kind = "secondary",
@@ -40,6 +40,8 @@ export function Button({
   title,
   onClick,
   ref,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
   children,
 }: {
   kind?: ButtonKind;
@@ -55,6 +57,9 @@ export function Button({
   title?: string | undefined;
   onClick?: () => void;
   ref?: Ref<HTMLButtonElement> | undefined;
+  /** For a label every row repeats, such as Remove down a list of folders. */
+  "aria-label"?: string | undefined;
+  "aria-describedby"?: string | undefined;
   children: ReactNode;
 }) {
   return (
@@ -65,6 +70,8 @@ export function Button({
       title={title}
       onClick={onClick}
       ref={ref}
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
     >
       {children}
     </button>

@@ -1,5 +1,6 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "../../components/primitives/Button";
 import { Checkbox } from "../../components/primitives/Checkbox";
 import {
   Dialog,
@@ -205,9 +206,7 @@ export function SettingsDialog({
         <h3>About</h3>
         <div className="settings-row">
           <span>Activity Log</span>
-          <button type="button" onClick={() => void showLog()}>
-            Show Log File
-          </button>
+          <Button onClick={() => void showLog()}>Show Log File</Button>
         </div>
       </Tabs.Panel>
 
