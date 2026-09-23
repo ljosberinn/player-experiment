@@ -169,7 +169,7 @@ describe("a drill-in drawn as release groups", () => {
 
     // The gutter is a fixed width, so every group's table starts at the same
     // x and one header is that inset.
-    expect(screen.getAllByRole("columnheader", { name: "Name" })).toHaveLength(1);
+    expect(screen.getAllByRole("columnheader", { name: "Title" })).toHaveLength(1);
   });
 
   it("fetches exactly the rows the groups on screen own", async () => {

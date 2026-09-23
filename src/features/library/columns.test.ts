@@ -87,6 +87,11 @@ describe("column rendering", () => {
     }
   });
 
+  it("prints a bit rate the way the release gutter does", () => {
+    expect(render("bitrate", track({ bitrate: 320 }))).toBe("320 kbps");
+    expect(render("bitrate", track({ bitrate: null }))).toBe("");
+  });
+
   it("renders numeric columns as text", () => {
     expect(render("year", track())).toBe("2012");
     expect(render("playCount", track())).toBe("7");
@@ -219,15 +224,33 @@ describe("column configuration", () => {
 
   it("drops column ids it no longer knows about", () => {
     // A column removed in a later version must not render as a blank.
-    const parsed = parseColumnConfig('{"ids":["title","fictional","artist"]}');
+    const parsed = parseColumnConfig('{"ids":["title","fictional","artist"],"version":1}');
 
     expect(parsed.ids).toEqual(["title", "artist"]);
   });
 
   it("drops duplicate ids, which would render one column twice", () => {
-    expect(parseColumnConfig('{"ids":["title","title","artist"]}').ids).toEqual([
+    expect(parseColumnConfig('{"ids":["title","title","artist"],"version":1}').ids).toEqual([
       "title",
       "artist",
+    ]);
+  });
+
+  it("gives a layout saved before #, Year and Bit Rate were defaults the ones it lacks", () => {
+    const parsed = parseColumnConfig('{"ids":["artist","year","title"]}');
+
+    expect(parsed.ids).toEqual(["trackNo", "artist", "year", "title", "bitrate"]);
+  });
+
+  it("gives them only once, so a column hidden afterwards stays hidden", () => {
+    const migrated = parseColumnConfig('{"ids":["title","artist"]}');
+    const hidden = toggleColumn(migrated, "year");
+
+    expect(parseColumnConfig(serializeColumnConfig(hidden)).ids).toEqual([
+      "trackNo",
+      "title",
+      "artist",
+      "bitrate",
     ]);
   });
 

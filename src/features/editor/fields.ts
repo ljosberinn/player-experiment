@@ -37,7 +37,7 @@ export interface FieldDef {
 }
 
 export const FIELDS: FieldDef[] = [
-  { id: "title", label: "Name", read: (t) => t.title },
+  { id: "title", label: "Title", read: (t) => t.title },
   { id: "artist", label: "Artist", read: (t) => t.artist, suggest: "artist" },
   { id: "album", label: "Album", read: (t) => t.album, suggest: "album" },
   { id: "albumArtist", label: "Album Artist", read: (t) => t.album_artist, suggest: "albumArtist" },

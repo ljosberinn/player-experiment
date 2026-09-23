@@ -99,7 +99,7 @@ describe("TagEditor", () => {
   it("shows one track's values", () => {
     open([track()]);
 
-    expect(screen.getByLabelText("Name")).toHaveValue("Maki");
+    expect(screen.getByLabelText("Title")).toHaveValue("Maki");
     expect(screen.getByLabelText("Year")).toHaveValue("2012");
     expect(screen.getByRole("dialog", { name: "Edit" })).toBeInTheDocument();
   });
@@ -453,7 +453,7 @@ describe("TagEditor", () => {
     // tick, so a synchronous `.focus()` here races it - and loses on a slow
     // runner, which sent Enter to the Name field instead. It passed locally and
     // failed on CI, which is the signature of this particular race.
-    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveFocus());
+    await waitFor(() => expect(screen.getByLabelText("Title")).toHaveFocus());
 
     screen.getByRole("button", { name: "Choose Artwork…" }).focus();
     await user.keyboard("{Enter}");
@@ -511,7 +511,7 @@ describe("TagEditor", () => {
 
       // Settle the dialog's own initial focus before taking it, for the same
       // reason as the Enter test above.
-      await waitFor(() => expect(screen.getByLabelText("Name")).toHaveFocus());
+      await waitFor(() => expect(screen.getByLabelText("Title")).toHaveFocus());
 
       // Save is the last control in the dialog.
       screen.getByRole("button", { name: "Save" }).focus();

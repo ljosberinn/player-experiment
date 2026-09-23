@@ -167,8 +167,8 @@ describe("SongTable", () => {
     // or screen readers announce an empty header for every row in the table.
     expect(headers.map((h) => h.textContent?.replace(/[▲▼]/g, ""))).toEqual([
       "Status",
-      "Name",
-      "Time",
+      "Title",
+      "Duration",
       "Artist",
     ]);
     // aria-sort lives on the header cell; the button inside it is the control.
@@ -215,7 +215,7 @@ describe("SongTable", () => {
     await renderTable();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: /Name/ }));
+    await user.click(screen.getByRole("button", { name: /Title/ }));
 
     await waitFor(() => {
       expect(useLibraryStore.getState()).toMatchObject({ sortBy: "title", direction: "asc" });
@@ -228,7 +228,7 @@ describe("SongTable", () => {
   it("flips to descending on a second click of the same header", async () => {
     await renderTable();
     const user = userEvent.setup();
-    const header = screen.getByRole("button", { name: /Name/ });
+    const header = screen.getByRole("button", { name: /Title/ });
 
     await user.click(header);
     await user.click(header);
@@ -527,7 +527,7 @@ describe("SongTable", () => {
     queryTracksMock.mockClear();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Name/ }));
+    await user.click(screen.getByRole("button", { name: /Title/ }));
 
     await waitFor(() => {
       expect(queryTracksMock).toHaveBeenCalledWith(expect.objectContaining({ sortBy: "title" }));
@@ -779,7 +779,7 @@ describe("SongTable", () => {
       await renderTable();
       const user = userEvent.setup();
 
-      await user.click(screen.getByRole("button", { name: /Name/ }));
+      await user.click(screen.getByRole("button", { name: /Title/ }));
       await waitFor(() => {
         expect(queryTracksMock).toHaveBeenCalledWith(expect.objectContaining({ sortBy: "title" }));
       });
