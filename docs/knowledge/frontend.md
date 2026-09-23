@@ -602,7 +602,8 @@ absences are what nobody notices coming back — hence the guards in
   constructors over it. Search and sort are deliberately *not* in an entry —
   search changes per keystroke, and the sort is derived so that going back into
   an album lands in track order rather than in whatever order it was left in.
-  The history itself lives in the library store, because a second store holding
+  A release opens in track order even mid-search, and leaving one mid-search
+  goes back to relevance rather than carrying its `#` out. The history itself lives in the library store, because a second store holding
   a copy of those three fields would drift out of step with them.
 - The **OS window title** follows the player: `Apex — <title> — <artist>`, back
   to `Apex` when nothing is playing. It shows in the frame, in Alt+Tab and in

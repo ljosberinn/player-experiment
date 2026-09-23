@@ -35,6 +35,7 @@ import {
   type FittedWidths,
   moveColumn,
   parseColumnConfig,
+  pinsTrackNo,
   resizeColumn,
   serializeColumnConfig,
   toggleColumn,
@@ -401,25 +402,27 @@ function sortForEntry(
   entry: HistoryEntry,
   crossesPlaylist: boolean,
 ): Partial<LibraryState> {
-  const opensIn: SortField =
-    entry.browse !== null && entry.tab === "albums" ? "trackNo" : defaultSortFor(entry.playlistId);
+  const opensRelease = pinsTrackNo(entry.browse);
+  const opensIn: SortField = opensRelease ? "trackNo" : defaultSortFor(entry.playlistId);
 
   // A search does not survive a playlist change, so a move that crosses one is
   // never the searching case however the box looked a moment ago.
   const searching = !crossesPlaylist && state.search.trim() !== "";
-  if (!searching) {
+  // A release reads as a tracklist whatever the search ranked or clicked.
+  if (!searching || opensRelease) {
     return { sortBy: opensIn, direction: "asc", sortBeforeSearch: null };
   }
   // A column chosen during the search is an explicit override; there is
-  // nothing left to restore and nothing to re-point. Unless it was the `#` a
-  // release pins, which the view being entered may not show.
-  if (state.sortBy !== "relevance") {
+  // nothing left to restore and nothing to re-point. Not the `#` of a release
+  // being left, which is the release's own order rather than a choice.
+  const leavesReleaseOrder = pinsTrackNo(state.browse) && state.sortBy === "trackNo";
+  if (state.sortBy !== "relevance" && !leavesReleaseOrder) {
     return { sortBy: visibleSort(displayedColumns(state.columns, entry.browse), state.sortBy) };
   }
   // Relevance ranking survives the move - the term is still on screen and
   // still the question being asked - but clearing the box now lands in the
   // natural order of the view being entered rather than the one being left.
-  return { sortBeforeSearch: { sortBy: opensIn, direction: "asc" } };
+  return { sortBy: "relevance", sortBeforeSearch: { sortBy: opensIn, direction: "asc" } };
 }
 
 /**
