@@ -5,7 +5,7 @@ import "./invoke";
 /**
  * The size a screenshot is worth taking at.
  *
- * The harness window is 1416×864 at zoom 1.0, which is a laptop. This app was
+ * The harness window is 1560×950 at zoom 1.0, which is a laptop. This app was
  * built for libraries of tens of thousands of songs, and a reviewer looking at
  * a photograph of that table currently sees about twenty rows of it.
  *

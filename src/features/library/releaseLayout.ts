@@ -13,26 +13,26 @@
  */
 
 /**
- * A row inside a group, which is shorter than the library's 32px row.
+ * A row inside a group, which is shorter than the library's 35px row.
  *
- * The specimen draws 3f at 28, and the closed-form height below is written in
+ * The specimen draws 3f at 28, a size larger here, and the closed-form height below is written in
  * terms of it.
  */
-export const GROUP_ROW_HEIGHT = 28;
+export const GROUP_ROW_HEIGHT = 31;
 
 /**
- * Everything in a group that is not a track row: `14 + 14` padding, the
+ * Everything in a group that is not a track row: `15 + 15` padding, the
  * closing row, and the 2px rule separating it from the next group.
  */
-export const GROUP_CHROME = 14 + 14 + GROUP_ROW_HEIGHT + 2;
+export const GROUP_CHROME = 15 + 15 + GROUP_ROW_HEIGHT + 2;
 
 /** What the layout needs of a release. */
 type Sized = { trackCount: number };
 
 /**
- * A group's height, which is `28n + 58`.
+ * A group's height, which is `31n + 63`.
  *
- * The 52px gutter never wins: at `n = 1` the table side is already 86.
+ * The 57px gutter never wins: at `n = 1` the table side is already 94.
  */
 export function groupHeight(trackCount: number): number {
   return GROUP_ROW_HEIGHT * trackCount + GROUP_CHROME;

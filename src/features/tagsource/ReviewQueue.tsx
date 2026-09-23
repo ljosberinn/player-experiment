@@ -4,7 +4,7 @@ import { ContextMenu } from "../../components/ui/ContextMenu";
 import { useTagsourceStore } from "./store";
 
 /** The sidebar's icon box, which `.sidebar-icon` sizes to match. */
-const ICON_SIZE = 15;
+const ICON_SIZE = 17;
 
 /**
  * The releases the unattended pass would not write, as a row in the source

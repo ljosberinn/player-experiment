@@ -50,14 +50,14 @@
      source both the estimate and the rendered row read from. A CSS copy would
      be a second number to keep in step, and the two drifting is what makes
      rows overlap. */
-  --control-height: 26px;
+  --control-height: 29px;
 
   /* One face for everything, vendored through `@fontsource` rather than
      fetched from Google Fonts, which an offline app cannot do and the CSP
      forbids. Figures are this face too, set `tabular-nums` wherever a number
      is read against another one. */
   font-family: Archivo, system-ui, -apple-system, sans-serif;
-  font-size: 14px;
+  font-size: 15.5px;
   /* Resolves against whichever block below won; custom properties are
      substituted at computed-value time, so this does not need repeating. */
   color: var(--text);
@@ -91,7 +91,7 @@
      search field's clear affordance. `--muted` on it is 4.22:1, which clears
      1.4.11's 3:1 for a control but not 4.5:1 - and nothing can fix that on
      this ground, because lifting it to 4.5 puts it within 1.02:1 of the field
-     it sits inside. It is a 19px glyph on a button, so 1.4.11 is the bar it is
+     it sits inside. It is a 21px glyph on a button, so 1.4.11 is the bar it is
      held to; see the guard. */
   --skeleton: oklch(0.895 0.004 60);
   --track: oklch(0.881 0.006 60); /* #dbd7d4, the sheet's "separator" */
@@ -275,7 +275,7 @@
      than a second one at the same weight. The sheet draws all three at its
      own `#9b9694` / `#5b5147`, which is `--field-border` and lands at 2.58:1
      and 2.57:1; a field can afford that because its fill and its text are
-     there too, and a 15px empty box cannot. 3.38:1 at the worst of the four
+     there too, and a 17px empty box cannot. 3.38:1 at the worst of the four
      surfaces here, 3.59:1 on dark. */
   --track-border: oklch(0.58 0.006 60);
   /* The inert part of a control that is partly filled: a switch's off track,
@@ -285,7 +285,7 @@
 
      A fill rather than an edge, so it carries no threshold of its own; the
      edge above is what makes the switch findable, and a slider is found by
-     its accent fill and its 11px ink knob. What it does have to clear is the
+     its accent fill and its 12px ink knob. What it does have to clear is the
      knob drawn *on* it: 3.17:1 under `--muted`. */
   --rail: oklch(0.81 0.006 60);
 

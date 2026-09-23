@@ -62,10 +62,10 @@ export function draggedWidth(startWidth: number, startX: number, x: number, min:
  * has to make room for on top of the text itself.
  *
  * One number for both because `.song-header-cell` and `.song-cell` are both
- * `5px` a side - the sheet's 10px between two columns. See `App.css`; a guard
+ * `6px` a side - the sheet's 10px between two columns, a size larger. See `App.css`; a guard
  * there keeps them in step.
  */
-export const CELL_PADDING_PX = 10;
+export const CELL_PADDING_PX = 12;
 
 /**
  * The width that fits the widest of `contents`.

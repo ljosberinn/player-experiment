@@ -24,7 +24,7 @@ import { type Assignment, buildEdits, type Fields, LOOKUP_FIELDS, mappedCount } 
 import { type Stage, useTagsourceStore } from "./store";
 
 /** The rail beside the status line, in pixels. Section 6f. */
-const RAIL = 56;
+const RAIL = 62;
 
 /**
  * The release lookup: pick a release out of the queue, pick a release out of

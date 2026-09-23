@@ -55,8 +55,8 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   be fixed at its first measurement.
 - **The measured element is the `<section>`, not the scroll container.** A row
   is as wide as the section; the container's `clientWidth` also counts
-  `.browse-body`'s 30px of padding on each side. Counting columns against those
-  extra 60px overflowed the grid sideways at about a quarter of all widths.
+  `.browse-body`'s 33px of padding on each side. Counting columns against those
+  extra 66px overflowed the grid sideways at about a quarter of all widths.
   `TILE_WIDTH` and `TILE_GAP` are separate constants for the same reason — `n`
   tiles need `n` widths and the `n - 1` gaps between them.
 - A reflow keeps the row height and changes what a row holds, so the scroll
@@ -84,7 +84,7 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   cannot drift in how a row behaves. What differs is only that one virtualizes
   over rows and the other over groups.
 - **A group's rows are a prefix sum, never a measurement.** `releaseLayout.ts`
-  gives a group the closed-form height `28n + 58` and the row range
+  gives a group the closed-form height `31n + 63` and the row range
   `[offset_i, offset_i + count_i)`, so every group is placed before any row of
   it has been fetched and nothing resizes when a page lands. This is only
   correct because the rows come back ordered by release: `query::order_by`
@@ -95,7 +95,7 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   grid asks what the tab holds and must not filter itself down to the album
   already open; the drill-in asks what is inside the view that *is* open. Same
   `scope()`, opposite treatment of one field.
-- **The drill-in's rows are 28px, the library's are 32px.** `SongRow` takes a
+- **The drill-in's rows are 31px, the library's are 35px.** `SongRow` takes a
   `height`, defaulting to `ROW_HEIGHT`. The specimen draws 3f shorter, and the
   closed-form height above is written in terms of the shorter one.
 - **A drill-in offers no reordering.** It is ordered by release, which is not
@@ -142,11 +142,11 @@ and every colour on screen is ours, which is what the design and
   drawing made of `<div>`s gets it on the same terms — and only while the
   drawing is up, since the table, the empty message and the skeleton are text
   a reader should reach rather than a picture.
-- **A chart is 180px unless it states its own size.** The fixed height is what
+- **A chart is 198px unless it states its own size.** The fixed height is what
   makes measuring terminate: left to size itself, the box would report a
   height, the svg would take it, the box would grow by the toggle and the
   observer would run again on a taller box every frame. `.chart-intrinsic` is
-  the other side of it — nobody measures a grid of 13px rows, so there is no
+  the other side of it — nobody measures a grid of 14px rows, so there is no
   loop to break, and the skeleton that holds its height has to be the grid
   rather than the shell's block.
 - **Loading outranks empty.** An aggregate in flight is not an aggregate of
@@ -202,7 +202,7 @@ and every colour on screen is ours, which is what the design and
   a `ChartShell` either, and for the half of that argument that survives the
   split: the label and the toggle are what a ranked list already has. Since
   116c its drawing is 4e's and lives in `library.css`, the way the heatmap's
-  does — 30px rows 3px apart, the fill spanning the row's whole height, the
+  does — 33px rows 3px apart, the fill spanning the row's whole height, the
   name at 600 against a tabular muted count. **4e's numbered list did not
   ship.** The sheet draws the same five rows twice, so it is a choice rather
   than a second form, and the bar is the one four panels already call.
@@ -218,7 +218,7 @@ and every colour on screen is ours, which is what the design and
   plot's height or width, which only the frame knows; `Bar`, its first real
   caller, is what found that out.
 - **`Heatmap` is categorical on both axes**, and since 116b it has no axis
-  component at all: the row names are a 22px column of the grid and the hours
+  component at all: the row names are a 24px column of the grid and the hours
   are five labels spread under it with `space-between`, which is 4d's
   `00 06 12 18 23`. The labels come from the columns the panel passed, so the
   axis and the show-as-table view say the same thing; the bands they sit over
@@ -372,8 +372,8 @@ absences are what nobody notices coming back — hence the guards in
     and Search again, ghost), or the count the dialog has to state ("2
     conditions · 116 songs match"). Never both — a dialog either has somewhere
     to go back to or something to tally.
-  - **The smart playlist editor's rule box is one grid**, `130px 130px 1fr
-    30px`, so the field and operator selects line up down the column instead of
+  - **The smart playlist editor's rule box is one grid**, `143px 143px 1fr
+    33px`, so the field and operator selects line up down the column instead of
     each row packing its own flex. A rule is `display: contents` and its four
     cells are the grid's own; the header line, the empty note and a nested
     group span `1 / -1`, the nested group being a box with a grid of its own so
@@ -406,7 +406,7 @@ absences are what nobody notices coming back — hence the guards in
   component, drawn by `styles/library.css`. What the sheet specifies rather
   than what a caller wanted: `Button` has four kinds and **at most one
   primary per surface**, `IconButton` has four sizes named for the four
-  places they belong (32px toolbar, 36px dialog, 30px filter rule, 20px
+  places they belong (35px toolbar, 40px dialog, 33px filter rule, 22px
   nudge), and `Tag` has
   four tones with `Count` beside it. The design names a tag and a badge
   separately and draws them identically, so this is one component — the same
@@ -415,8 +415,8 @@ absences are what nobody notices coming back — hence the guards in
     cannot be taken back, and it exists because phase 113 took away the
     `.modal-actions .destructive` rule it used to live in.
   - **`IconButton`'s dialog size wears `in-dialog`, not `dialog`.** The classes
-    are global, so a 36px button carrying `dialog` would pick up `.dialog`
-    itself — a fixed-position 912px box with a shadow.
+    are global, so a 40px button carrying `dialog` would pick up `.dialog`
+    itself — a fixed-position 1003px box with a shadow.
   - **`StatRow` and `StatTiles` take the whole set, not one figure.** Each
     renders one `<dl>` around all of them, so a grid of six is one group of
     six pairs rather than twelve unrelated announcements. Which form a figure
@@ -644,7 +644,7 @@ absences are what nobody notices coming back — hence the guards in
   MusicBrainz allows one request a second and a folder-wide selection is dozens
   of releases. Each release applies as its own batch.
 - **The queue is a column beside the pane, not a screen in front of it** (118,
-  section 6e). `212px 1fr`, both columns scrolling inside themselves, so 243
+  section 6e). `233px 1fr`, both columns scrolling inside themselves, so 243
   releases are one dialog rather than 243. That is affordable because selecting
   a row costs no request: `enter` reads the release's files and stops, and only
   `pick` spends the rate-limited fetch. A pane that fetched the top candidate
@@ -653,7 +653,7 @@ absences are what nobody notices coming back — hence the guards in
 - **The pane's file column is drawn in every state** (section 6f). It is local
   and known the moment `enter` resolves, so a search or a fetch in flight
   leaves the MusicBrainz half as `.skeleton` and nothing else blank. No
-  spinner: a 56px `ProgressBar` and a line naming the step. The rail counts
+  spinner: a 62px `ProgressBar` and a line naming the step. The rail counts
   four — the files, the candidates, the tracklist, the mapping — because a
   search has no measured progress to report. The skeleton does not pulse,
   unlike the sheet: the app's three other skeletons are deliberately static,
@@ -665,7 +665,7 @@ absences are what nobody notices coming back — hence the guards in
   `stage: "opening"` with no tracks, so a dialog sized by its contents collapsed
   to its shortest state and grew back on every step — 270px each way, under the
   pointer still resting on the actions. `.dialog.lookup` states `height:
-  min(720px, 86vh)`, which is the tallest state it ever reached, so the largest
+  min(792px, 86vh)`, which is the tallest state it ever reached, so the largest
   step is unchanged and only the short ones grow. One row of actions now:
   Cancel, Set Aside and Apply on the right, and on the left whichever step back
   is live — Back to Results while a candidate is picked, Search again while one
@@ -687,7 +687,7 @@ absences are what nobody notices coming back — hence the guards in
   not in the title any more, because the column on the left is the position.
 - **The queue's score is not the results' top percentage.** It is
   `release_lookup.score`, measured against the fetched tracklist with
-  durations; the result list shows the search's scores without them. 212px has
+  durations; the result list shows the search's scores without them. 233px has
   no room for the Tracks column that explained a 97%, so the disagreement
   colours the score `--danger` instead: the pass also queues a release whose
   track count disagrees, and that is why one above the bar is in the queue at

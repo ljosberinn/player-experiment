@@ -16,7 +16,7 @@ import { Icon } from "../icons/Icon";
  * a list next to the playlists - the arrows have to walk the whole sidebar.
  */
 /** The sidebar's icon box, which `.sidebar-icon` sizes to match. */
-const ICON_SIZE = 15;
+const ICON_SIZE = 17;
 
 /** Order only; the words are `VIEW_TITLES`, which the history arrows share. */
 const VIEWS: ViewTab[] = ["songs", "albums", "artists", "genres", "stats"];

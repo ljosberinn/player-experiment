@@ -754,7 +754,7 @@ describe("SongTable", () => {
     /** The width the widest rendered cell of `id` calls for. */
     function widestRendered(id: string): number {
       const cells = [...document.querySelectorAll(`td.song-cell[data-column="${id}"]`)];
-      return Math.max(...cells.map((cell) => (cell.textContent ?? "").length)) * 10 + 10;
+      return Math.max(...cells.map((cell) => (cell.textContent ?? "").length)) * 10 + 12;
     }
 
     it("fits every visible column once the first page has landed", async () => {

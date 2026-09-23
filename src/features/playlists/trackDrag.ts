@@ -14,7 +14,7 @@ import { DRAG_THRESHOLD_PX } from "../library/columnDrag";
  */
 
 /** Where the badge sits relative to the pointer, down and to the right. */
-const BADGE_OFFSET_PX = 14;
+const BADGE_OFFSET_PX = 15;
 
 /** A press that has not travelled far enough to be a drag yet. */
 interface Press {
@@ -74,7 +74,7 @@ export function onTrackDragEnd(listener: () => void): () => void {
  *
  * The press is module state rather than the row's, because the threshold can
  * be crossed over a *different* row: pointer events without capture go to
- * whatever is under the pointer, and four pixels is enough to leave a 26px row
+ * whatever is under the pointer, and four pixels is enough to leave a 35px row
  * that was pressed near its edge.
  */
 export function pressTrackRow(event: { clientX: number; clientY: number }, begin: () => number[]) {

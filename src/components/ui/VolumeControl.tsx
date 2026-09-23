@@ -79,7 +79,7 @@ export function VolumeControl({
         disabled={!onToggleMute}
         onClick={onToggleMute}
       >
-        <Icon name={muted ? "volume-muted" : "volume"} size={17} />
+        <Icon name={muted ? "volume-muted" : "volume"} size={19} />
       </button>
 
       {/* `onValueChange`, unlike the scrubber's `onValueCommitted`: volume is

@@ -40,7 +40,7 @@ export function StatsFilterTokens({ tab }: { tab: StatsTab }) {
               are four places the sheet states, and a chip is not one of them -
               a square box around this glyph would be taller than the chip. */}
           <button type="button" aria-label={`Clear ${phrase}`} onClick={() => setFilters(cleared)}>
-            <Icon name="remove" size={10} />
+            <Icon name="remove" size={11} />
           </button>
         </span>
       ))}

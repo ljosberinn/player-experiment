@@ -303,7 +303,7 @@ describe("a library with something in it", () => {
       };
     });
 
-    // 32px of pitch with the separator inside it, not 33: `ROW_HEIGHT` is what
+    // 35px of pitch with the separator inside it, not 36: `ROW_HEIGHT` is what
     // the virtualizer positions every row by, and a border that added to it
     // would drift the whole column by a pixel a row. Both states are collected
     // into one object so a failure names which of them is wrong.
@@ -315,8 +315,8 @@ describe("a library with something in it", () => {
           : `${measured.height}px ${measured.border} ${measured.size}`,
       ]),
     ).toEqual([
-      ["plain", "32px 1px 12.5px"],
-      ["playing", "32px 1px 12.5px"],
+      ["plain", "35px 1px 13.5px"],
+      ["playing", "35px 1px 13.5px"],
     ]);
 
     // The title is set against the rest of the row, and the playing row brings

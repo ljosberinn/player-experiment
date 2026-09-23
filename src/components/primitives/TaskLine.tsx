@@ -1,7 +1,7 @@
 import { ProgressBar } from "./ProgressBar";
 
 /** The sheet's measure for the rail, and the reason it is a measure at all. */
-const RAIL = 118;
+const RAIL = 130;
 
 export interface TaskLineProps {
   /** What is running, with how far it has got. */
@@ -20,7 +20,7 @@ export interface TaskLineProps {
  * "Looking up and filing releases · 0.22% · about 44 hours left" is one
  * sentence about three different things.
  *
- * The rail is a fixed 118px and not the width of whatever holds it. At the
+ * The rail is a fixed 130px and not the width of whatever holds it. At the
  * sidebar's width a pass that is a fifth of a percent in would be a mark two
  * pixels from the left edge of a rule running the whole way across, which
  * reads as an ornament rather than as a measure.

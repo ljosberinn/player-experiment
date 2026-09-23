@@ -12,7 +12,7 @@ export type RowStatus = "playing" | "missing" | null;
  * Narrow and fixed. Wide enough for a glyph at any zoom from phase 21, and
  * deliberately not resizable - there is nothing in it to reveal.
  */
-export const STATUS_COLUMN_WIDTH = 26;
+export const STATUS_COLUMN_WIDTH = 29;
 
 /**
  * `playing` rather than the id to compare against: a row is told whether it is

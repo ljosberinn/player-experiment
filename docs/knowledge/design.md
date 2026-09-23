@@ -35,6 +35,14 @@ Where the design and the built app disagree on a detail the design has not
 thought about, the app wins. Where they disagree on how something *looks*, the
 design wins.
 
+**The app is drawn a size larger than the sheet**, since
+[issue 129](../issues/done/129-everything-a-size-larger.md). Every length is the
+sheet's ×1.1: type to the nearest half pixel below 20px (12.5→13.5, 13→14.5),
+everything else to a whole pixel (36→40, 158→174). Hairlines, rules, focus
+rings and shadows keep the sheet's widths, and a sum is re-derived from its
+parts rather than scaled. The tables and measurements below are the sheet's, so
+a re-fetch compares against them directly.
+
 ## What the mockup is not
 
 - **Its table is a CSS grid with fixed tracks.** Ours is virtualized over 150k

@@ -99,7 +99,12 @@ Each of these cost real time once. They are here so they cost it once.
 - Scaling density by a factor: leave borders, radii and shadows alone. A 1.2px
   hairline is a blurry hairline. And move the virtualizer's constants with the
   CSS — a row that grows while the estimate does not makes rows overlap and the
-  scrollbar lie.
+  scrollbar lie. Three exceptions a scripted pass gets wrong: a border-trick
+  triangle is a shape and scales; a `transform-origin` on an SVG child is in
+  `viewBox` units and does not; and a sum (a tile around its cover, a knob
+  inside its switch) is re-derived from its scaled parts, since rounding does
+  not distribute. Sizes passed inline from TSX (`ROW_HEIGHT`, `<Icon size>`, a
+  `ProgressBar` width) are not in any stylesheet.
 - `oklch` steps are not binary-representable: round to one decimal or a label
   reads 100% while the value is 0.9999999999999999.
 - **A contrast ratio between two tokens is not the ratio on screen.** The chrome

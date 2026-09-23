@@ -42,7 +42,7 @@ export function RowStatusCell({ track, playing }: { track: Track | null; playing
  */
 function SpeakerIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
       <path d="M1 6h3l4-3.5v11L4 10H1z" fill="currentColor" />
       <path className="wave near" d="M10 5.5a4 4 0 0 1 0 5" fill="none" stroke="currentColor" />
       <path className="wave far" d="M12 3.5a7 7 0 0 1 0 9" fill="none" stroke="currentColor" />

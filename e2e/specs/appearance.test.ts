@@ -587,7 +587,7 @@ describe("appearance, in the engine that actually lays it out", () => {
 
   it("stacks the three bands of chrome at the heights the design draws", async () => {
     // The shell phase 35 built, measured rather than assumed: a 3px accent
-    // strip, a 36px app bar, a 78px transport strip, and a 27px footer at
+    // strip, a 40px app bar, an 86px transport strip, and a 30px footer at
     // the other end. Every one of these is stated in the stylesheet, so a
     // value that drifted would be a silent visual regression - the kind only
     // the screenshot catches, and only if somebody looks at it.
@@ -602,16 +602,16 @@ describe("appearance, in the engine that actually lays it out", () => {
     );
 
     expect(bands).toEqual([
-      { selector: ".appbar", height: 36 },
-      { selector: ".transport-strip", height: 78 },
-      { selector: ".statusbar", height: 27 },
+      { selector: ".appbar", height: 40 },
+      { selector: ".transport-strip", height: 86 },
+      { selector: ".statusbar", height: 30 },
     ]);
   });
 
   it("keeps the whole transport strip on one row, inside the window", async () => {
     // The same fault the app bar had, in the row that inherited its
-    // passengers: the strip carries six controls including a 340px playhead
-    // and a 200px search field, and a window narrow enough would wrap them.
+    // passengers: the strip carries six controls including a 374px playhead
+    // and a 220px search field, and a window narrow enough would wrap them.
     const layout = await browser.execute(() => {
       const strip = document.querySelector(".transport-strip");
       if (strip === null) {
@@ -622,8 +622,8 @@ describe("appearance, in the engine that actually lays it out", () => {
         return {
           what: child.className.toString() || child.tagName,
           // Centres, for the same reason the app bar above measures them:
-          // this row holds a 58px pill beside a 14px playhead, so their tops
-          // differ by twenty pixels while they sit in the same row.
+          // this row holds a 64px pill beside a 15px playhead, so their tops
+          // differ by twenty-four pixels while they sit in the same row.
           middle: Math.round(box.top + box.height / 2),
           right: Math.round(box.right),
         };

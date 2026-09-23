@@ -2,7 +2,7 @@
  * Webview zoom, not CSS scaling.
  *
  * `setZoom` scales the whole rendering while leaving CSS pixel coordinates
- * untouched: `ROW_HEIGHT` stays 26 at any zoom, `getBoundingClientRect` keeps
+ * untouched: `ROW_HEIGHT` stays 35 at any zoom, `getBoundingClientRect` keeps
  * returning CSS pixels, and the virtualizer needs no knowledge of the setting.
  * Under a CSS `transform` or `zoom` the rendered row and the estimate drift
  * apart, which shows up as overlapping rows and a scrollbar that lies. Text is
