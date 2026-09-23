@@ -160,7 +160,7 @@ describe("the tag editor's artwork", () => {
     // turned the dialog into a scroll area.
     await openEditorOn("Anchor");
 
-    expect(await artworkBox()).toEqual({ width: 120, height: 120 });
+    expect(await artworkBox()).toEqual({ width: 132, height: 132 });
 
     await capture("tag-editor-artwork");
   });
@@ -171,7 +171,7 @@ describe("the tag editor's artwork", () => {
     // box, which needs it to exist before there is anything in it.
     await openEditorOn("Drift");
 
-    expect(await artworkBox()).toEqual({ width: 120, height: 120 });
+    expect(await artworkBox()).toEqual({ width: 132, height: 132 });
     await expect(browser.$(".tag-cover-art-empty")).toExist();
     await expect(browser.$(".tag-cover-note")).toHaveText("No artwork.");
 
@@ -213,7 +213,7 @@ describe("the tag editor's artwork", () => {
       timeoutMsg: "the square never pointed at the staged image",
     });
     expect(await artworkDecoded()).toBe(true);
-    expect(await artworkBox()).toEqual({ width: 120, height: 120 });
+    expect(await artworkBox()).toEqual({ width: 132, height: 132 });
 
     await capture("tag-editor-dropped-artwork");
   });
@@ -239,6 +239,6 @@ describe("the tag editor's artwork", () => {
 
     // The caption changed; the box did not. That is the shape this phase is
     // for - the buttons under it do not move as the choice changes.
-    expect(await artworkBox()).toEqual({ width: 120, height: 120 });
+    expect(await artworkBox()).toEqual({ width: 132, height: 132 });
   });
 });
