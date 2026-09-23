@@ -1,8 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadUnattendedLookup, revealMainLog } from "../../ipc";
+import { listWatchFolders, loadUnattendedLookup, revealMainLog } from "../../ipc";
 import { choose, select, showing } from "../../test/select";
+import { useLastfmStore } from "../lastfm/store";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
 import { type SettingsCategory, SettingsDialog } from "./SettingsDialog";
@@ -64,6 +65,7 @@ describe("the Settings dialog", () => {
     useDynamicBackgroundStore.setState({ enabled: true });
     useLookupStore.setState({ enabled: false });
     useThemeStore.setState({ preference: "system", ground: "light" });
+    useLastfmStore.setState(useLastfmStore.getInitialState());
   });
 
   it("offers the three theme choices and reports the stored one", async () => {
@@ -226,6 +228,53 @@ describe("the Settings dialog", () => {
 
     expect(useLookupStore.getState().enabled).toBe(true);
     expect(lookup).toBeChecked();
+  });
+
+  // jsdom has no stylesheet, so a class is all this can check. The zoom
+  // stepper is the exception: `.statusbar-zoom button` draws it bare.
+  it.each<[string, SettingsCategory, () => void]>([
+    ["Appearance", "appearance", () => undefined],
+    [
+      "Library, with a folder watched",
+      "library",
+      () => vi.mocked(listWatchFolders).mockResolvedValueOnce(["C:\\Music"]),
+    ],
+    ["Online, disconnected", "online", () => undefined],
+    ["Online, connecting", "online", () => useLastfmStore.setState({ connecting: true })],
+    [
+      "Online, connected and imported",
+      "online",
+      () =>
+        useLastfmStore.setState({
+          configured: true,
+          username: "listener",
+          imported: { username: "listener", through: 1_700_000_000, resumable: false },
+        }),
+    ],
+    ["About", "about", () => undefined],
+  ])("draws every button in %s", async (_, category, arrange) => {
+    arrange();
+    render(<SettingsDialog category={category} onClose={vi.fn()} />);
+    // The watch list is read after the first render.
+    if (category === "library") {
+      await screen.findByRole("button", { name: "Stop watching C:\\Music" });
+    }
+
+    const buttons = [...pane().querySelectorAll("button")].filter(
+      (button) => button.closest(".statusbar-zoom") === null,
+    );
+
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      const name = button.getAttribute("aria-label") ?? button.textContent;
+      expect(button.classList.length, `${name} has no class`).toBeGreaterThan(0);
+      // `.button.primary` and its siblings draw nothing without `.button`.
+      if (!button.classList.contains("button")) {
+        expect(button.className, `${name} names a kind without .button`).not.toMatch(
+          /\b(primary|secondary|ghost|destructive)\b/,
+        );
+      }
+    }
   });
 
   it("reads the stored preference when it opens", async () => {
