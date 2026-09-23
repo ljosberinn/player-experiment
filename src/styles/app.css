@@ -999,12 +999,13 @@
   display: block;
 }
 
-/* The closing row: the group's count on the left and its total on the right,
-   under a rule. Quieter than a track row and heavier in weight, which is what
-   keeps it from reading as one more track. */
+/* The closing row: the group's count, and its total under Duration, under a
+   rule. Laid out on the row's columns rather than spread across the table,
+   which departs from 3f - there the total sat at the right edge, far from the
+   durations it adds up. Quieter than a track row and heavier in weight, which
+   is what keeps it from reading as one more track. */
 .release-total {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   height: 31px;
   border-top: 1px solid var(--rule);
@@ -1013,8 +1014,9 @@
   font-weight: 600;
 }
 
-.release-total td {
-  padding: 0 7px;
+/* With Duration hidden there is no column to sit under, so 3f's edge. */
+.release-total-end {
+  margin-left: auto;
 }
 
 /* ---------- song table ---------- */

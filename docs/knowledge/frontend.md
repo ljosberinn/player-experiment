@@ -108,6 +108,12 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
 - **The drill-in's rows are 31px, the library's are 35px.** `SongRow` takes a
   `height`, defaulting to `ROW_HEIGHT`. The specimen draws 3f shorter, and the
   closed-form height above is written in terms of the shorter one.
+- **A group's closing row is laid out on `columns`.** `ReleaseTotal` puts the
+  total in a cell at Duration's width and the count in one cell spanning the
+  columns before it, so both follow a reorder, a resize and a fit. A lone `#`
+  before Duration shortens the count to `#12`; with Duration first the count
+  trails it; with Duration hidden the total goes to the right edge. Its cells
+  carry no `data-column`, so the fit never measures them.
 - **A drill-in offers no reordering.** It is ordered by release, which is not
   an order there is anything to rearrange, so `ReleaseGroups` takes no
   `onReorder` and the Alt+Arrow nudge stays in `SongTable`. Removal from a

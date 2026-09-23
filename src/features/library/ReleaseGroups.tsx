@@ -5,6 +5,7 @@ import { coverUrl } from "../../ipc";
 import { formatDuration } from "../../lib/format";
 import { releaseFormatLine } from "./browse";
 import { ColumnHeader } from "./ColumnHeader";
+import type { ColumnDef } from "./columns";
 import {
   GROUP_ROW_HEIGHT,
   groupHeight,
@@ -12,6 +13,7 @@ import {
   groupOfRow,
   groupRowRange,
 } from "./releaseLayout";
+import { STATUS_COLUMN_WIDTH } from "./rowStatus";
 import { SongRow } from "./SongRow";
 import { isSelected } from "./selection";
 import { useLibraryStore } from "./store";
@@ -19,6 +21,70 @@ import { type SongTableHandlers, useSongTableWiring } from "./useSongTableWiring
 
 /** Groups rendered beyond the viewport, so a flick shows content not gaps. */
 const OVERSCAN = 2;
+
+/**
+ * A group's closing row, laid out on the row's columns so its total sits under
+ * Duration and follows it through a reorder, a resize and a fit.
+ *
+ * The count takes the columns before Duration as one cell, or trails it when
+ * there are none. A lone `#` there is too narrow for "12 songs", so the count
+ * reads `#12` instead.
+ */
+function ReleaseTotal({
+  columns,
+  trackCount,
+  durationMs,
+}: {
+  columns: ColumnDef[];
+  trackCount: number;
+  durationMs: number;
+}) {
+  const songs = `${trackCount} ${trackCount === 1 ? "song" : "songs"}`;
+  const total = formatDuration(durationMs);
+  const at = columns.findIndex((column) => column.id === "durationMs");
+  const spacer = <td className="song-cell status" style={{ width: STATUS_COLUMN_WIDTH }} />;
+
+  if (at === -1) {
+    return (
+      <tr className="release-total">
+        {spacer}
+        <td className="song-cell" colSpan={columns.length}>
+          {songs}
+        </td>
+        <td className="song-cell right release-total-end">{total}</td>
+      </tr>
+    );
+  }
+
+  const before = columns.slice(0, at);
+  const after = columns.slice(at + 1);
+  const duration = columns[at] as ColumnDef;
+  const leadWidth = before.reduce((sum, column) => sum + column.width, 0);
+  const trackNoAlone = before.length === 1 && before[0]?.id === "trackNo";
+
+  return (
+    <tr className="release-total">
+      {spacer}
+      {before.length === 0 ? null : trackNoAlone ? (
+        <td className="song-cell right" style={{ width: leadWidth }} aria-label={songs}>
+          #{trackCount}
+        </td>
+      ) : (
+        <td className="song-cell" colSpan={before.length} style={{ width: leadWidth }}>
+          {songs}
+        </td>
+      )}
+      <td className="song-cell right" style={{ width: duration.width }}>
+        {total}
+      </td>
+      {after.length === 0 && before.length > 0 ? null : (
+        <td className="song-cell" colSpan={Math.max(1, after.length)}>
+          {before.length === 0 ? songs : null}
+        </td>
+      )}
+    </tr>
+  );
+}
 
 /**
  * A drill-in drawn as its releases: a gutter naming each one, and its rows
@@ -218,12 +284,11 @@ export function ReleaseGroups({
                   {/* Per group, which is what keeps it from restating the
                       status bar: at one group the two coincide by arithmetic
                       rather than by saying the same thing. */}
-                  <tr className="release-total">
-                    <td>
-                      {group.trackCount} {group.trackCount === 1 ? "song" : "songs"}
-                    </td>
-                    <td>{formatDuration(group.durationMs)}</td>
-                  </tr>
+                  <ReleaseTotal
+                    columns={columns}
+                    trackCount={group.trackCount}
+                    durationMs={group.durationMs}
+                  />
                 </tfoot>
               </table>
             </section>
