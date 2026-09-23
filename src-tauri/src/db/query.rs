@@ -409,9 +409,16 @@ fn sort_order_by(scope: &Scope, query: &TrackQuery) -> String {
         return format!("playlist_tracks.position {direction}, tracks.id {direction}");
     }
 
-    let sort = format!("tracks.{}", query.sort_by.as_sql());
     let direction = query.direction.as_sql();
-    format!("{sort} {direction} NULLS LAST, tracks.id {direction}")
+    // `#` counts within a disc, so the disc comes first or a two-disc release
+    // interleaves. Coalesced as in [`RELEASE_ORDER`].
+    let disc = if query.sort_by == SortField::TrackNo {
+        format!("coalesce(tracks.disc_no, 1) {direction}, ")
+    } else {
+        String::new()
+    };
+    let sort = format!("tracks.{}", query.sort_by.as_sql());
+    format!("{disc}{sort} {direction} NULLS LAST, tracks.id {direction}")
 }
 
 /// The `ORDER BY` that decides which rows a smart playlist's cutoff keeps.
@@ -2620,6 +2627,41 @@ mod tests {
             .map(|g| g.track_count)
             .collect::<Vec<_>>();
         assert_eq!(counts, [2, 1]);
+    }
+
+    #[test]
+    fn a_track_number_sort_reads_disc_by_disc() {
+        let (_dir, db) = browsable();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE tracks SET track_no = CASE path WHEN '/b/4.mp3' THEN 2 ELSE 1 END
+              WHERE album = 'Double' AND album_artist = 'Dio'",
+            [],
+        )
+        .unwrap();
+
+        let paths = |direction| {
+            query_tracks(
+                &conn,
+                &TrackQuery {
+                    browse: Some(BrowseFilter {
+                        kind: BrowseKind::Albums,
+                        id: Some(album_id("Double", "Dio")),
+                    }),
+                    sort_by: SortField::TrackNo,
+                    direction,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .into_iter()
+            .map(|t| t.path)
+            .collect::<Vec<_>>()
+        };
+
+        // 1-2 before 2-1: by number alone the discs would interleave.
+        assert_eq!(paths(SortDirection::Asc), ["/b/4.mp3", "/b/5.mp3"]);
+        assert_eq!(paths(SortDirection::Desc), ["/b/5.mp3", "/b/4.mp3"]);
     }
 
     #[test]

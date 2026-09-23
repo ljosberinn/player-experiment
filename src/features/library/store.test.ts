@@ -1139,9 +1139,9 @@ describe("# inside a release", () => {
 
     await useLibraryStore.getState().showTab("songs");
 
-    // A sort clicked during a search survives the move, but this one was on a
-    // column only the release showed.
-    expect(useLibraryStore.getState().sortBy).toBe("title");
+    // A sort clicked during a search survives the move, but `#` is the
+    // release's own order, so the search's ranking takes over again.
+    expect(useLibraryStore.getState().sortBy).toBe("relevance");
   });
 
   it("leaves an artist's drill-in to the layout", async () => {
@@ -1341,16 +1341,37 @@ describe("navigation history", () => {
     expect(useLibraryStore.getState()).toMatchObject({ search: "", sortBy: "artist" });
   });
 
-  it("lands in the new view's natural order when the search is cleared there", async () => {
+  it("opens a release from a searched grid in track order, and keeps it", async () => {
     await useLibraryStore.getState().showTab("albums");
     await search("bear");
 
     await useLibraryStore.getState().openGroup(browseGroup());
-    await useLibraryStore.getState().clearSearch();
+    expect(useLibraryStore.getState()).toMatchObject({ sortBy: "trackNo", direction: "asc" });
 
-    // Relevance ranking survives the move - the term is still on screen - but
-    // clearing the box must not land in the album list's order.
+    await useLibraryStore.getState().clearSearch();
     expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+  });
+
+  it("opens a release in track order over a column clicked during the search", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await search("bear");
+    await useLibraryStore.getState().toggleSort("title");
+
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    expect(useLibraryStore.getState()).toMatchObject({ sortBy: "trackNo", direction: "asc" });
+  });
+
+  it("ranks by relevance again on leaving a release the search still runs in", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await search("bear");
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    await useLibraryStore.getState().closeGroup();
+    expect(useLibraryStore.getState().sortBy).toBe("relevance");
+
+    await useLibraryStore.getState().clearSearch();
+    expect(useLibraryStore.getState().sortBy).toBe("artist");
   });
 
   it("forgets a deleted playlist rather than offering to go back to it", async () => {
