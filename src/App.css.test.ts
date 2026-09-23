@@ -1123,6 +1123,16 @@ describe("the stylesheet", () => {
     }
   });
 
+  it("keeps a header and a cell on one line, which is what a fit measures", () => {
+    // A fit takes the widest line of each; a header allowed to wrap measures
+    // its longest word and is fitted to stay wrapped.
+    for (const selector of [".song-header-cell", ".song-cell"]) {
+      const rule = all.find((one) => one.selector.trim().endsWith(selector));
+
+      expect(rule?.body, `${selector} should not wrap`).toMatch(/white-space:\s*nowrap\s*;/);
+    }
+  });
+
   it("keeps the drill-in header inside the pane it is inset into", () => {
     // The header table is also a `.song-table`, whose `min-width: 100%` sits
     // later in the sheet. Winning on order alone, it added the gutter inset
