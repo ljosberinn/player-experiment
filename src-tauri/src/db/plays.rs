@@ -429,23 +429,36 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
         // order, this function stops being idempotent, and the guarded UPDATE
         // below rewrites the whole table on every run.
         let mut tracks = conn.prepare(
-            "SELECT id, artist, title FROM tracks ORDER BY missing_since IS NOT NULL, id",
+            "SELECT id, artist, title, album_artist FROM tracks
+              ORDER BY missing_since IS NOT NULL, id",
         )?;
         let mut insert =
             conn.prepare("INSERT OR IGNORE INTO temp.play_keys (key, track_id) VALUES (?1, ?2)")?;
 
+        // **The album artist is a fallback, inserted after every artist key.**
+        // last.fm credits the primary artist and moves a guest into the title,
+        // so `Prezident mit Absztrakkt` on the file is `Prezident` in the log,
+        // and the album artist is the one field that says so. Going second
+        // lets an artist key win any key both produce, so no link that is
+        // right today moves (issue 135).
+        let mut fallbacks: Vec<(String, i64)> = Vec::new();
         let mut rows = tracks.query([])?;
         while let Some(row) = rows.next()? {
             let id: i64 = row.get(0)?;
             let artist: Option<String> = row.get(1)?;
             let title: Option<String> = row.get(2)?;
-            let key = match_key(
-                artist.as_deref().unwrap_or_default(),
-                title.as_deref().unwrap_or_default(),
-            );
-            if key.is_empty() {
-                continue;
+            let album_artist: Option<String> = row.get(3)?;
+            let title = title.as_deref().unwrap_or_default();
+            let key = match_key(artist.as_deref().unwrap_or_default(), title);
+            if !key.is_empty() {
+                insert.execute(rusqlite::params![key, id])?;
             }
+            let fallback = match_key(album_artist.as_deref().unwrap_or_default(), title);
+            if !fallback.is_empty() && fallback != key {
+                fallbacks.push((fallback, id));
+            }
+        }
+        for (key, id) in &fallbacks {
             insert.execute(rusqlite::params![key, id])?;
         }
     }
@@ -632,13 +645,16 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
     Ok(true)
 }
 
-/// Which [`match_key`] the stored keys are expected to have been built with.
+/// Which [`match_key`] the stored keys are expected to have been built with,
+/// and which keys [`resolve`] links a track through.
 ///
 /// **Bump this whenever the fold changes what it folds together**, for the
 /// reason [`FOLD_VERSION`] gives - and more sharply, because this key is
 /// stored rather than derived on read. A library whose keys predate the fold
-/// does not half-link; it does not link at all.
-const MATCH_FOLD_VERSION: &str = "2";
+/// does not half-link; it does not link at all. Bump it too when `resolve`
+/// gives a track another key, as 3 did for the album artist: the stored keys
+/// stay put, but nothing else resolves at launch.
+const MATCH_FOLD_VERSION: &str = "3";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -1270,6 +1286,56 @@ mod tests {
         );
     }
 
+    /// A file whose artist field carries the guest. last.fm credits the
+    /// primary artist and moves the guest into the title, so only the album
+    /// artist produces the scrobble's key.
+    fn prometheus(conn: &Connection, id: i64) {
+        add_track(
+            conn,
+            id,
+            Some("Prezident mit Absztrakkt"),
+            Some("Prometheus"),
+        );
+        conn.execute(
+            "UPDATE tracks SET album_artist = 'Prezident' WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
+    }
+
+    fn played(conn: &Connection, started_at: i64, artist: &str, title: &str) {
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, match_key)
+             VALUES (?1, 'lastfm', ?2, ?3, ?4)",
+            rusqlite::params![started_at, artist, title, match_key(artist, title)],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_play_credited_to_the_album_artist_links_to_the_file() {
+        let (_dir, conn) = open();
+        prometheus(&conn, 1);
+        played(&conn, 10, "Prezident", "Prometheus");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(1));
+        assert_eq!(resolve(&conn).unwrap(), 0, "a second pass moves nothing");
+    }
+
+    /// The older id would win a single pass; the artist key has to win
+    /// regardless, or links that are right today move.
+    #[test]
+    fn an_artist_key_beats_another_tracks_album_artist_key() {
+        let (_dir, conn) = open();
+        prometheus(&conn, 1);
+        add_track(&conn, 2, Some("Prezident"), Some("Prometheus"));
+        played(&conn, 10, "Prezident", "Prometheus");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(2));
+    }
+
     /// `heading` is a spelling out of the user's own history and never an
     /// invented title: MusicBrainz calls this release `Addicts: Black Meddle,
     /// Part 2`, a fifth spelling none of the plays carry.
@@ -1481,6 +1547,20 @@ mod tests {
             },
             "and it is idempotent"
         );
+    }
+
+    /// Issue 135 widened what `resolve` links through without touching a
+    /// stored key, and nothing else resolves at launch.
+    #[test]
+    fn a_library_on_the_previous_fold_links_through_the_album_artist_once() {
+        let (_dir, mut conn) = open();
+        prometheus(&conn, 1);
+        played(&conn, 10, "Prezident", "Prometheus");
+        crate::db::settings::set(&conn, crate::db::settings::MATCH_FOLD, "2").unwrap();
+
+        assert!(refold_if_stale(&mut conn).unwrap().is_some());
+        assert_eq!(linked(&conn, 10), Some(1));
+        assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once");
     }
 
     /// A collision on `idx_plays_identity` is one song scrobbled twice in the

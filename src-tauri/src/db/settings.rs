@@ -93,7 +93,8 @@ pub const MUSICBRAINZ_READ_THROUGH: &str = "tracks.musicbrainzReadThrough";
 /// to be told once. A library that has already imported its history never
 /// runs the pass again otherwise.
 pub const ALBUM_FOLD: &str = "plays.albumFold";
-/// Which version of `db::plays::match_key` the stored keys were built with.
+/// Which version of `db::plays::match_key` the stored keys were built with,
+/// and of the keys `db::plays::resolve` links a track through.
 ///
 /// A version for [`ALBUM_FOLD`]'s reason, and unlike it the key is stored: it
 /// is a column on `plays` and `tracks` and the primary key of `loved`, so a
