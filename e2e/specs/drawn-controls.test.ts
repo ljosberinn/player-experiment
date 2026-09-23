@@ -109,6 +109,19 @@ describe("the drawn controls, for the reviewer", () => {
       await browser.$("#theme").waitForExist({ timeout: 10_000 });
 
       expect(await capture(`drawn-controls-settings-${ground}`)).toBe(true);
+
+      // The other panes, for their buttons: jsdom can check each has a class,
+      // but only a picture shows it is the sheet's secondary and not the
+      // engine's `ButtonFace`.
+      for (const category of ["Library", "Online", "About"]) {
+        await browser.$(`//*[@role='tab'][normalize-space()='${category}']`).click();
+        await browser.$(`//h3[normalize-space()='${category}']`).waitForExist({ timeout: 10_000 });
+        await expect(browser.$$(".settings-pane .button")).toBeElementsArrayOfSize({ gte: 1 });
+
+        expect(await capture(`drawn-controls-settings-${category.toLowerCase()}-${ground}`)).toBe(
+          true,
+        );
+      }
       await closeDialog("Done");
     });
   }

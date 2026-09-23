@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../../components/primitives/Button";
 import type { LastfmImport, WriteProgress } from "../../ipc";
 import { useLastfmStore } from "./store";
 
@@ -47,25 +48,21 @@ export function LastfmSettings() {
           {statusLine({ configured, username, connecting })}
         </span>
 
+        {/* Connect is a secondary like the rest: Done is the dialog's one
+            primary. */}
         {connected ? (
-          <button type="button" onClick={() => void disconnect()}>
-            Disconnect
-          </button>
+          <Button onClick={() => void disconnect()}>Disconnect</Button>
         ) : connecting ? (
-          <button type="button" onClick={cancelConnect}>
-            Cancel
-          </button>
+          <Button onClick={cancelConnect}>Cancel</Button>
         ) : (
-          <button
-            type="button"
-            className="primary"
+          <Button
             // A build with no key has nothing to connect to, so the button
             // says so by being unavailable rather than by failing when pressed.
             disabled={!configured}
             onClick={() => void connect()}
           >
             Connect
-          </button>
+          </Button>
         )}
       </div>
 
@@ -96,13 +93,9 @@ export function LastfmSettings() {
             disabled={importing}
             onChange={(event) => setDraft(event.target.value)}
           />
-          <button
-            type="button"
-            disabled={!canImport}
-            onClick={() => void importHistory(importName, false)}
-          >
+          <Button disabled={!canImport} onClick={() => void importHistory(importName, false)}>
             {imported?.resumable && sameAccount(imported, importName) ? "Resume" : "Import"}
-          </button>
+          </Button>
         </span>
       </div>
 
@@ -114,13 +107,9 @@ export function LastfmSettings() {
           <span className="settings-lastfm-note">
             Drops every imported play and fetches the history again.
           </span>
-          <button
-            type="button"
-            disabled={!canImport}
-            onClick={() => void importHistory(importName, true)}
-          >
+          <Button disabled={!canImport} onClick={() => void importHistory(importName, true)}>
             Re-import from Scratch
-          </button>
+          </Button>
         </div>
       )}
 

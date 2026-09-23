@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "../../components/primitives/Button";
 import { Select } from "../../components/primitives/Select";
 import {
   listWatchFolders,
@@ -127,13 +128,9 @@ export function WatchFolderSettings({ lockedRoot }: { lockedRoot: string | null 
               {folder === lockedRoot ? (
                 <span className="settings-folders-locked">Library folder</span>
               ) : (
-                <button
-                  type="button"
-                  aria-label={`Stop watching ${folder}`}
-                  onClick={() => void remove(folder)}
-                >
+                <Button aria-label={`Stop watching ${folder}`} onClick={() => void remove(folder)}>
                   Remove
-                </button>
+                </Button>
               )}
             </li>
           ))}
