@@ -32,16 +32,11 @@ const LIMIT = 1;
 
 const NAME = "One Song";
 
-/**
- * The titles on screen, in the order the table puts them.
- *
- * The status cell is skipped and the title is the first real column, the same
- * way `library.test.ts` reads a row - there is no per-column class to address.
- */
+/** The titles on screen, in the order the table puts them. */
 function titles(): Promise<string[]> {
   return browser.execute(() =>
     Array.from(document.querySelectorAll("tr.song-row")).map((one) =>
-      (one.querySelector("td.song-cell:not(.status)")?.textContent ?? "").trim(),
+      (one.querySelector("td.song-cell[data-column='title']")?.textContent ?? "").trim(),
     ),
   );
 }

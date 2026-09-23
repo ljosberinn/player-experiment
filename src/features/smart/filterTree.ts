@@ -42,7 +42,7 @@ export interface FieldDef {
  * enum cannot quietly go missing from the dropdown.
  */
 export const FIELDS: FieldDef[] = [
-  { id: "title", label: "Name" },
+  { id: "title", label: "Title" },
   { id: "artist", label: "Artist" },
   { id: "album", label: "Album" },
   { id: "albumArtist", label: "Album Artist" },
@@ -52,7 +52,7 @@ export const FIELDS: FieldDef[] = [
   { id: "year", label: "Year" },
   { id: "trackNo", label: "Track Number" },
   { id: "discNo", label: "Disc Number" },
-  { id: "durationMs", label: "Time (ms)" },
+  { id: "durationMs", label: "Duration (ms)" },
   { id: "bitrate", label: "Bit Rate" },
   { id: "sampleRate", label: "Sample Rate" },
   { id: "playCount", label: "Plays" },
@@ -311,14 +311,15 @@ export function setRule(root: FilterGroup, path: Path, rule: FilterRule): Filter
  * editor agreeing with it rather than the only thing enforcing it.
  */
 export const SORT_FIELDS: { id: SortField; label: string }[] = [
-  { id: "title", label: "Name" },
+  { id: "title", label: "Title" },
   { id: "artist", label: "Artist" },
   { id: "album", label: "Album" },
   { id: "albumArtist", label: "Album Artist" },
   { id: "genre", label: "Genre" },
   { id: "year", label: "Year" },
   { id: "trackNo", label: "Track Number" },
-  { id: "durationMs", label: "Time" },
+  { id: "durationMs", label: "Duration" },
+  { id: "bitrate", label: "Bit Rate" },
   { id: "addedAt", label: "Date Added" },
   { id: "playCount", label: "Plays" },
   { id: "lastPlayedAt", label: "Last Played" },

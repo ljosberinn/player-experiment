@@ -49,14 +49,13 @@ function rows(): Promise<{ title: string; time: string; artist: string; album: s
           Number(b.getAttribute("aria-rowindex") ?? 0),
       )
       .map((one) => {
-        const cells = Array.from(one.querySelectorAll("td.song-cell:not(.status)")).map(
-          (cell) => cell.textContent ?? "",
-        );
+        const cell = (column: string) =>
+          one.querySelector(`td.song-cell[data-column='${column}']`)?.textContent ?? "";
         return {
-          title: cells[0] ?? "",
-          time: cells[1] ?? "",
-          artist: cells[2] ?? "",
-          album: cells[3] ?? "",
+          title: cell("title"),
+          time: cell("durationMs"),
+          artist: cell("artist"),
+          album: cell("album"),
         };
       }),
   );
@@ -385,7 +384,7 @@ describe("a library with something in it", () => {
 
       const measured = await browser.execute(() =>
         Array.from(document.querySelectorAll("tr.song-row")).flatMap((one) => {
-          const cell = one.querySelector("td.song-cell:not(.status)");
+          const cell = one.querySelector("td.song-cell[data-column='title']");
           if (cell === null) {
             return [];
           }

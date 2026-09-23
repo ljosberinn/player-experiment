@@ -14,11 +14,11 @@ export interface ColumnDef {
  * construction - a column can't exist that the backend cannot order by.
  */
 export const ALL_COLUMNS: ColumnDef[] = [
-  { id: "title", label: "Name", width: 370, render: (t) => t.title ?? fileName(t.path) },
+  { id: "title", label: "Title", width: 370, render: (t) => t.title ?? fileName(t.path) },
   {
     id: "durationMs",
-    label: "Time",
-    width: 85,
+    label: "Duration",
+    width: 106,
     align: "right",
     render: (t) => formatDuration(t.duration_ms),
   },
@@ -26,6 +26,13 @@ export const ALL_COLUMNS: ColumnDef[] = [
   { id: "album", label: "Album", width: 238, render: (t) => t.album ?? "" },
   { id: "genre", label: "Genre", width: 172, render: (t) => t.genre ?? "" },
   { id: "year", label: "Year", width: 79, align: "right", render: (t) => t.year?.toString() ?? "" },
+  {
+    id: "bitrate",
+    label: "Bit Rate",
+    width: 100,
+    align: "right",
+    render: (t) => (t.bitrate === null ? "" : `${t.bitrate} kbps`),
+  },
   {
     id: "trackNo",
     label: "#",
@@ -44,7 +51,16 @@ export const ALL_COLUMNS: ColumnDef[] = [
   { id: "path", label: "Location", width: 422, render: (t) => t.path },
 ];
 
-export const DEFAULT_COLUMN_IDS: SortField[] = ["title", "durationMs", "artist", "album", "genre"];
+export const DEFAULT_COLUMN_IDS: SortField[] = [
+  "trackNo",
+  "title",
+  "durationMs",
+  "artist",
+  "album",
+  "genre",
+  "year",
+  "bitrate",
+];
 
 export function columnsFor(ids: SortField[]): ColumnDef[] {
   // Driven by `ids` rather than filtering ALL_COLUMNS, so the user's column
@@ -160,6 +176,23 @@ export function visibleSort(config: ColumnConfig, sortBy: SortField): SortField 
   return config.ids[0] ?? "title";
 }
 
+/** Tells a layout saved before a default-columns change from one saved after. */
+const COLUMN_CONFIG_VERSION = 1;
+
+/**
+ * A layout saved before #, Year and Bit Rate were defaults, given them once.
+ *
+ * Only where missing, and the rest of the order kept: this runs on the user's
+ * own arrangement, and the next save stamps the version so a column hidden
+ * afterwards stays hidden.
+ */
+function withVersionOneDefaults(ids: SortField[]): SortField[] {
+  const missing = (id: SortField) => !ids.includes(id);
+  const leading: SortField[] = missing("trackNo") ? ["trackNo"] : [];
+  const trailing = (["year", "bitrate"] as const).filter(missing);
+  return [...leading, ...ids, ...trailing];
+}
+
 /**
  * Reads a stored config, tolerating anything.
  *
@@ -177,7 +210,7 @@ export function parseColumnConfig(json: string | null): ColumnConfig {
     if (typeof raw !== "object" || raw === null) {
       return DEFAULT_COLUMN_CONFIG;
     }
-    const { ids, widths } = raw as { ids?: unknown; widths?: unknown };
+    const { ids, widths, version } = raw as { ids?: unknown; widths?: unknown; version?: unknown };
     const known = new Set(ALL_COLUMNS.map((column) => column.id));
     const parsedIds = Array.isArray(ids)
       ? ids.filter((id): id is SortField => typeof id === "string" && known.has(id as SortField))
@@ -196,12 +229,19 @@ export function parseColumnConfig(json: string | null): ColumnConfig {
       }
     }
     // Duplicates would render one column twice and break React keys.
-    return { ids: [...new Set(parsedIds)], widths: parsedWidths };
+    const unique = [...new Set(parsedIds)];
+    return {
+      ids:
+        typeof version === "number" && version >= COLUMN_CONFIG_VERSION
+          ? unique
+          : withVersionOneDefaults(unique),
+      widths: parsedWidths,
+    };
   } catch {
     return DEFAULT_COLUMN_CONFIG;
   }
 }
 
 export function serializeColumnConfig(config: ColumnConfig): string {
-  return JSON.stringify(config);
+  return JSON.stringify({ ...config, version: COLUMN_CONFIG_VERSION });
 }

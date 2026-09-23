@@ -667,7 +667,7 @@ describe("App playback", () => {
 
     // Sorting by a column makes the order derived, so a drop has nowhere to go.
     vi.mocked(moveInPlaylist).mockClear();
-    await user.click(screen.getByRole("button", { name: /Name/ }));
+    await user.click(screen.getByRole("button", { name: /Title/ }));
     await screen.findByText("Track 1");
     drop();
     expect(moveInPlaylist).not.toHaveBeenCalled();

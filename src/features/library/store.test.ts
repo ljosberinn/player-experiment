@@ -948,13 +948,13 @@ describe("column layout", () => {
   it("persists a change against the view it was made in", async () => {
     useLibraryStore.setState({ playlistId: 7 });
 
-    await useLibraryStore.getState().toggleColumn("year");
+    await useLibraryStore.getState().toggleColumn("path");
 
-    expect(saveColumnConfigMock).toHaveBeenCalledWith(7, expect.stringContaining("year"));
+    expect(saveColumnConfigMock).toHaveBeenCalledWith(7, expect.stringContaining("path"));
   });
 
   it("reads a playlist's own layout when it has one", async () => {
-    loadColumnConfigMock.mockResolvedValue('{"ids":["path"]}');
+    loadColumnConfigMock.mockResolvedValue('{"ids":["path"],"version":1}');
     useLibraryStore.setState({ playlistId: 7 });
 
     await useLibraryStore.getState().loadColumns();
@@ -966,7 +966,7 @@ describe("column layout", () => {
     // Falling back to the defaults instead would ignore a layout the user has
     // already chosen once; starting bare would be worse still.
     loadColumnConfigMock.mockImplementation(async (playlistId) =>
-      playlistId === null ? '{"ids":["album","year"]}' : null,
+      playlistId === null ? '{"ids":["album","year"],"version":1}' : null,
     );
     useLibraryStore.setState({ playlistId: 7 });
 
@@ -976,7 +976,7 @@ describe("column layout", () => {
   });
 
   it("reloads the layout when the view changes", async () => {
-    loadColumnConfigMock.mockResolvedValue('{"ids":["genre"]}');
+    loadColumnConfigMock.mockResolvedValue('{"ids":["genre"],"version":1}');
 
     await useLibraryStore.getState().showPlaylist(playlist(3));
 

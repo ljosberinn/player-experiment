@@ -56,7 +56,7 @@ describe("sorting versus dragging a header", () => {
     const moveColumn = vi.fn(async () => undefined);
     useLibraryStore.setState({ moveColumn });
     const { onSort } = renderHeader(["title", "artist", "album"]);
-    const header = screen.getByRole("button", { name: /Title|Name/ });
+    const header = screen.getByRole("button", { name: /Title/ });
 
     fireEvent.pointerDown(header, { button: 0, clientX: 0, pointerId: 1 });
     fireEvent.pointerMove(header, { clientX: DRAG_THRESHOLD_PX + 50, pointerId: 1 });
@@ -245,7 +245,7 @@ describe("the column menu", () => {
     renderHeader(["title", "artist"]);
     await openMenu();
 
-    expect(screen.getByRole("menuitem", { name: /✓\s*Name/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /✓\s*Title/ })).toBeInTheDocument();
     // Present but unmarked, so it can be switched on.
     expect(screen.getByRole("menuitem", { name: /Location/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /✓\s*Location/ })).not.toBeInTheDocument();
@@ -272,7 +272,7 @@ describe("the column menu", () => {
     // `aria-disabled`, not `toBeDisabled`: a menu item is a div with a role,
     // not a <button disabled>, and jest-dom's matcher only reads the native
     // attribute. This is the one screen readers announce anyway.
-    expect(screen.getByRole("menuitem", { name: /✓\s*Name/ })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: /✓\s*Title/ })).toHaveAttribute(
       "aria-disabled",
       "true",
     );

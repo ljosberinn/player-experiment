@@ -31,9 +31,14 @@ function contentWidth(cell: Element): number {
  * Visible rows only - see `fittedWidth`, which owns that compromise.
  */
 export function measuredWidth(table: Element, id: SortField): number {
-  const header = table.querySelector(`th[data-column="${id}"] .song-header-cell`);
+  const th = table.querySelector<HTMLElement>(`th[data-column="${id}"]`);
+  const header = th?.querySelector(".song-header-cell");
   const cells = table.querySelectorAll(`td.song-cell[data-column="${id}"]`);
-  const contents = [...(header === null ? [] : [header]), ...cells].map(contentWidth);
+  // The header's divider is a border inside the th's width, so its label gets
+  // that much less room than a cell in the same column.
+  const headerContents =
+    th == null || header == null ? [] : [contentWidth(header) + th.offsetWidth - th.clientWidth];
+  const contents = [...headerContents, ...[...cells].map(contentWidth)];
   return fittedWidth(contents, MIN_COLUMN_WIDTH);
 }
 

@@ -109,11 +109,9 @@ function opaqueOver(xFraction: number, yFraction: number): Promise<string[]> {
  */
 async function play(title: string): Promise<void> {
   const index = await browser.execute((wanted: string) => {
-    // The first cell past the status marker is Title, in the default layout
-    // this spec runs under. Cells carry no per-column class - see `rows()` in
-    // `library.test.ts`, which reads them by position for the same reason.
     const found = Array.from(document.querySelectorAll("tr.song-row")).find(
-      (row) => row.querySelector("td.song-cell:not(.status)")?.textContent?.trim() === wanted,
+      (row) =>
+        row.querySelector("td.song-cell[data-column='title']")?.textContent?.trim() === wanted,
     );
     return found?.getAttribute("aria-rowindex") ?? "";
   }, title);

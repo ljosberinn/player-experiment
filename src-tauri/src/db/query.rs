@@ -1171,22 +1171,29 @@ mod tests {
     fn untagged_rows_sort_last_in_both_directions() {
         let (_dir, db) = seeded();
         let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE tracks SET bitrate = 320 WHERE title IS NOT NULL",
+            [],
+        )
+        .unwrap();
 
-        for direction in [SortDirection::Asc, SortDirection::Desc] {
-            let tracks = query_tracks(
-                &conn,
-                &TrackQuery {
-                    sort_by: SortField::Title,
-                    direction,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            assert_eq!(
-                tracks.last().unwrap().path,
-                "/m/5.mp3",
-                "untagged row should sort last going {direction:?}"
-            );
+        for sort_by in [SortField::Title, SortField::Bitrate] {
+            for direction in [SortDirection::Asc, SortDirection::Desc] {
+                let tracks = query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        sort_by,
+                        direction,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                assert_eq!(
+                    tracks.last().unwrap().path,
+                    "/m/5.mp3",
+                    "untagged row should sort last by {sort_by:?} going {direction:?}"
+                );
+            }
         }
     }
 

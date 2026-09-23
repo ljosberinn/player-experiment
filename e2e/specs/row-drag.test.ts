@@ -109,7 +109,9 @@ function titles(): Promise<string[]> {
           Number(a.getAttribute("aria-rowindex") ?? 0) -
           Number(b.getAttribute("aria-rowindex") ?? 0),
       )
-      .map((one) => (one.querySelector("td.song-cell:not(.status)")?.textContent ?? "").trim()),
+      .map((one) =>
+        (one.querySelector("td.song-cell[data-column='title']")?.textContent ?? "").trim(),
+      ),
   );
 }
 

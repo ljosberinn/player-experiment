@@ -49,7 +49,7 @@ beforeEach(() => {
 
 describe("measuring one column", () => {
   it("takes the widest cell on screen, plus the padding it carries", () => {
-    const element = table({ title: "Name" }, [{ title: "short" }, { title: "the longest title" }]);
+    const element = table({ title: "Title" }, [{ title: "short" }, { title: "the longest title" }]);
 
     expect(measuredWidth(element, "title")).toBe("the longest title".length * 10 + CELL_PADDING_PX);
   });
@@ -62,8 +62,19 @@ describe("measuring one column", () => {
     );
   });
 
+  it("makes room for the header's divider, which a cell does not have", () => {
+    const element = table({ year: "Year" }, [{ year: "2015" }]);
+    const th = element.querySelector("th") as HTMLElement;
+    Object.defineProperty(th, "offsetWidth", { value: 80 });
+    Object.defineProperty(th, "clientWidth", { value: 79 });
+
+    // Without the pixel the label is one short of its box and ellipsizes,
+    // though nothing about it is cut.
+    expect(measuredWidth(element, "year")).toBe("Year".length * 10 + 1 + CELL_PADDING_PX);
+  });
+
   it("ignores the other columns' cells", () => {
-    const element = table({ title: "Name", artist: "Artist" }, [
+    const element = table({ title: "Title", artist: "Artist" }, [
       { title: "short", artist: "a very much longer artist name" },
     ]);
 
@@ -79,7 +90,7 @@ describe("measuring one column", () => {
 
 describe("measuring every visible column at once", () => {
   it("returns one width per column asked for", () => {
-    const element = table({ title: "Name", artist: "Artist" }, [
+    const element = table({ title: "Title", artist: "Artist" }, [
       { title: "Anchor", artist: "Blue Room" },
     ]);
 
@@ -90,7 +101,7 @@ describe("measuring every visible column at once", () => {
   });
 
   it("leaves out a column with nothing in the table to measure", () => {
-    const element = table({ title: "Name" }, [{ title: "Anchor" }]);
+    const element = table({ title: "Title" }, [{ title: "Anchor" }]);
 
     // A width invented for a column that is not rendered would be applied the
     // moment it was switched on, from a measurement of nothing.

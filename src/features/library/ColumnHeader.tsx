@@ -222,11 +222,12 @@ export function ColumnHeader({
               }}
             >
               {column.label}
-              {sortBy === column.id ? (
-                <span className="sort-arrow" aria-hidden="true">
-                  {direction === "asc" ? "▲" : "▼"}
-                </span>
-              ) : null}
+              <span
+                className={sortBy === column.id ? "sort-arrow" : "sort-arrow idle"}
+                aria-hidden="true"
+              >
+                {sortBy !== column.id || direction === "asc" ? "▲" : "▼"}
+              </span>
             </button>
 
             {/* Not a button: it is a drag handle with nothing to activate,

@@ -1078,11 +1078,22 @@
   text-transform: uppercase;
   text-align: left;
   cursor: default;
+  /* On one line like `.song-cell`, so a fit measures the whole label rather
+     than the widest line of a wrapped one - which kept "Bit Rate" wrapped. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .sort-arrow {
   margin-left: 6px;
   font-size: 13px;
+}
+
+/* Held in place on every header, so a column fitted while unsorted still has
+   room for the arrow once it is sorted by. */
+.sort-arrow.idle {
+  visibility: hidden;
 }
 
 .song-table tbody {
