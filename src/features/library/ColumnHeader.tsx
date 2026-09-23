@@ -4,7 +4,13 @@ import { ContextMenu, type MenuItem } from "../../components/ui/ContextMenu";
 import type { SortDirection, SortField } from "../../ipc";
 import { columnDropIndex, draggedWidth, isDrag } from "./columnDrag";
 import { measuredWidth } from "./columnFit";
-import { ALL_COLUMNS, type ColumnDef, MIN_COLUMN_WIDTH } from "./columns";
+import {
+  ALL_COLUMNS,
+  type ColumnDef,
+  MIN_COLUMN_WIDTH,
+  pinsTrackNo,
+  storedDropIndex,
+} from "./columns";
 import { STATUS_COLUMN_WIDTH } from "./rowStatus";
 import { useLibraryStore } from "./store";
 
@@ -42,7 +48,8 @@ export function ColumnHeader({
   direction: SortDirection;
   onSort: (id: SortField) => void;
 }) {
-  const visible = useLibraryStore((state) => state.columns.ids);
+  const stored = useLibraryStore((state) => state.columns.ids);
+  const pinned = useLibraryStore((state) => pinsTrackNo(state.browse));
   const toggleColumn = useLibraryStore((state) => state.toggleColumn);
   const moveColumn = useLibraryStore((state) => state.moveColumn);
   const resizeColumn = useLibraryStore((state) => state.resizeColumn);
@@ -61,20 +68,25 @@ export function ColumnHeader({
    */
   const swallowClick = useRef(false);
 
-  // `[data-column]` rather than every `th`: the status column is a fixed first
-  // header with no id, and counting it would offset every drop index by one.
+  const isPinned = (id: SortField) => pinned && id === "trackNo";
+  const draggable = columns.map((column) => column.id).filter((id) => !isPinned(id));
+
+  // Only the headers that can move: the status column and a pinned `#` are
+  // fixed, and counting either would offset every drop index by one.
   const headerBounds = () =>
-    Array.from(rowRef.current?.querySelectorAll("th[data-column]") ?? []).map((th) => {
-      const rect = th.getBoundingClientRect();
-      return { left: rect.left, right: rect.right };
-    });
+    Array.from(rowRef.current?.querySelectorAll("th[data-column]:not([data-pinned])") ?? []).map(
+      (th) => {
+        const rect = th.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      },
+    );
 
   const onHeaderPointerDown = (event: React.PointerEvent<HTMLElement>, id: SortField) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || isPinned(id)) {
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
-    const index = columns.findIndex((column) => column.id === id);
+    const index = draggable.indexOf(id);
     setDrag({ id, index, startX: event.clientX, moved: false, dropIndex: index });
   };
 
@@ -100,7 +112,7 @@ export function ColumnHeader({
     event.currentTarget.releasePointerCapture(event.pointerId);
     if (drag.moved) {
       swallowClick.current = true;
-      void moveColumn(drag.id, drag.dropIndex);
+      void moveColumn(drag.id, storedDropIndex(stored, draggable, drag.id, drag.dropIndex));
     }
     setDrag(null);
   };
@@ -170,9 +182,11 @@ export function ColumnHeader({
     ...ALL_COLUMNS.map((column) => ({
       // A check rather than a checkbox: the menu is a list of columns, and the
       // marker says which are on. Hiding the last one is refused by the store,
-      // so it is disabled here rather than failing silently when picked.
-      label: `${visible.includes(column.id) ? "✓ " : "    "}${column.label}`,
-      disabled: visible.length === 1 && visible[0] === column.id,
+      // so it is disabled here rather than failing silently when picked. A
+      // pinned `#` is on whatever the layout says, and switching it would
+      // change a layout this view does not show.
+      label: `${stored.includes(column.id) || isPinned(column.id) ? "✓ " : "    "}${column.label}`,
+      disabled: isPinned(column.id) || (stored.length === 1 && stored[0] === column.id),
       onSelect: () => void toggleColumn(column.id),
     })),
     { kind: "separator" as const },
@@ -203,6 +217,7 @@ export function ColumnHeader({
             key={column.id}
             scope="col"
             data-column={column.id}
+            data-pinned={isPinned(column.id) ? "true" : undefined}
             style={{ width }}
             data-dragging={drag?.moved && drag.id === column.id ? "true" : undefined}
             aria-sort={

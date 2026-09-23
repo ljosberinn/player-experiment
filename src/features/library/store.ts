@@ -31,6 +31,7 @@ import { albumIdentity } from "./browse";
 import {
   type ColumnConfig,
   DEFAULT_COLUMN_CONFIG,
+  displayedColumns,
   type FittedWidths,
   moveColumn,
   parseColumnConfig,
@@ -410,9 +411,10 @@ function sortForEntry(
     return { sortBy: opensIn, direction: "asc", sortBeforeSearch: null };
   }
   // A column chosen during the search is an explicit override; there is
-  // nothing left to restore and nothing to re-point.
+  // nothing left to restore and nothing to re-point. Unless it was the `#` a
+  // release pins, which the view being entered may not show.
   if (state.sortBy !== "relevance") {
-    return {};
+    return { sortBy: visibleSort(displayedColumns(state.columns, entry.browse), state.sortBy) };
   }
   // Relevance ranking survives the move - the term is still on screen and
   // still the question being asked - but clearing the box now lands in the
@@ -688,7 +690,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (get().playlistId !== playlistId) {
         return;
       }
-      set({ columns: config, sortBy: visibleSort(config, get().sortBy) });
+      set({
+        columns: config,
+        sortBy: visibleSort(displayedColumns(config, get().browse), get().sortBy),
+      });
     } catch {
       // A layout that will not load is not worth an error banner over the
       // table; the defaults are a working table.
@@ -702,7 +707,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
    */
   applyColumns: async (config) => {
     const previousSort = get().sortBy;
-    const sortBy = visibleSort(config, previousSort);
+    const sortBy = visibleSort(displayedColumns(config, get().browse), previousSort);
     set({ columns: config, sortBy });
 
     const { playlistId } = get();
@@ -748,7 +753,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Not through `applyColumns`: saving the defaults for this view would give
     // it a layout of its own again, and it should inherit like every other.
     const previousSort = get().sortBy;
-    const sortBy = visibleSort(DEFAULT_COLUMN_CONFIG, previousSort);
+    const sortBy = visibleSort(displayedColumns(DEFAULT_COLUMN_CONFIG, get().browse), previousSort);
     set({ columns: DEFAULT_COLUMN_CONFIG, fittedWidths: {}, sortBy });
     if (sortBy !== previousSort) {
       await get().refresh();

@@ -156,6 +156,25 @@ describe("a drill-in drawn as release groups", () => {
     expect(indices).toEqual(["1", "2", "3", "4", "5"]);
   });
 
+  it("draws # first whatever the layout says", async () => {
+    drilledInto([release("Shields", 2)]);
+    useLibraryStore.setState({ columns: { ids: ["title", "durationMs"], widths: {} } });
+    render(<ReleaseGroups />);
+    await act(async () => {
+      await useLibraryStore.getState().ensureRange(0, 20);
+    });
+    await waitFor(() => expect(document.querySelectorAll("tr.song-row").length).toBeGreaterThan(0));
+
+    const headers = [...document.querySelectorAll("th[data-column]")].map((th) =>
+      th.getAttribute("data-column"),
+    );
+    const cells = [...document.querySelectorAll("tr.song-row")][0]?.querySelectorAll(
+      "td[data-column]",
+    );
+    expect(headers).toEqual(["trackNo", "title", "durationMs"]);
+    expect([...(cells ?? [])].map((td) => td.getAttribute("data-column"))).toEqual(headers);
+  });
+
   it("closes each group with its own count and duration", async () => {
     await settled([release("Shields", 3)]);
 

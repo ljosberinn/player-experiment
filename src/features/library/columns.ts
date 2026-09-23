@@ -1,4 +1,4 @@
-import type { SortField, Track } from "../../ipc";
+import type { BrowseFilter, SortField, Track } from "../../ipc";
 import { formatDuration } from "../../lib/format";
 
 export interface ColumnDef {
@@ -174,6 +174,49 @@ export function visibleSort(config: ColumnConfig, sortBy: SortField): SortField 
     return sortBy;
   }
   return config.ids[0] ?? "title";
+}
+
+/** Whether a view shows `#` first whatever its layout says: inside a release. */
+export function pinsTrackNo(browse: BrowseFilter | null): boolean {
+  return browse?.kind === "albums";
+}
+
+/**
+ * The layout a view displays, which inside a release is the stored one with
+ * `#` moved or added to the front.
+ *
+ * Display-only: the stored config is never rewritten, so leaving the release
+ * shows `#` wherever the user put it, or not at all. Returned as-is elsewhere,
+ * so memoized consumers see the same object.
+ */
+export function displayedColumns(config: ColumnConfig, browse: BrowseFilter | null): ColumnConfig {
+  if (!pinsTrackNo(browse)) {
+    return config;
+  }
+  return { ...config, ids: ["trackNo", ...config.ids.filter((id) => id !== "trackNo")] };
+}
+
+/**
+ * `moveColumn`'s index for a column dropped at `dropIndex` among the headers
+ * that can be dragged, counted after removal.
+ *
+ * Translated through the column it lands in front of, because a pinned `#` may
+ * sit anywhere in the stored order and a plain count would be off by it.
+ */
+export function storedDropIndex(
+  stored: readonly SortField[],
+  draggable: readonly SortField[],
+  id: SortField,
+  dropIndex: number,
+): number {
+  const storedRest = stored.filter((existing) => existing !== id);
+  const shownRest = draggable.filter((existing) => existing !== id);
+  const before = shownRest[dropIndex];
+  if (before !== undefined) {
+    return storedRest.indexOf(before);
+  }
+  const last = shownRest.at(-1);
+  return last === undefined ? 0 : storedRest.indexOf(last) + 1;
 }
 
 /** Tells a layout saved before a default-columns change from one saved after. */

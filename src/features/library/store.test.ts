@@ -1092,6 +1092,69 @@ describe("column layout", () => {
   });
 });
 
+describe("# inside a release", () => {
+  const hidden = '{"ids":["title","artist"],"version":1}';
+
+  it("keeps the track order across a playlist boundary when the layout hides #", async () => {
+    loadColumnConfigMock.mockResolvedValue(hidden);
+    await useLibraryStore.getState().showPlaylist(playlist(5));
+
+    await useLibraryStore.getState().showTrackGroup({ ...track(1), album: "Double" });
+
+    expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+    // Pinned for display only: leaving the release shows the layout as stored.
+    expect(useLibraryStore.getState().columns.ids).toEqual(["title", "artist"]);
+  });
+
+  it("keeps the track order through a column change, without storing #", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    useLibraryStore.setState({ columns: { ids: ["title", "artist"], widths: {} } });
+    saveColumnConfigMock.mockClear();
+
+    await useLibraryStore.getState().toggleColumn("genre");
+
+    expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+    expect(saveColumnConfigMock).toHaveBeenCalledWith(
+      null,
+      expect.stringContaining('"ids":["title","artist","genre"]'),
+    );
+  });
+
+  it("keeps the track order through resetting every layout", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    await useLibraryStore.getState().resetAllColumns();
+
+    expect(useLibraryStore.getState().sortBy).toBe("trackNo");
+  });
+
+  it("does not carry a # sort out into a view that hides it", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().openGroup(browseGroup());
+    useLibraryStore.setState({ columns: { ids: ["title", "artist"], widths: {} } });
+    await search("bear");
+    await useLibraryStore.getState().toggleSort("trackNo");
+
+    await useLibraryStore.getState().showTab("songs");
+
+    // A sort clicked during a search survives the move, but this one was on a
+    // column only the release showed.
+    expect(useLibraryStore.getState().sortBy).toBe("title");
+  });
+
+  it("leaves an artist's drill-in to the layout", async () => {
+    useLibraryStore.setState({ columns: { ids: ["title", "artist"], widths: {} } });
+    await useLibraryStore.getState().showTab("artists");
+    await useLibraryStore.getState().openGroup(browseGroup());
+
+    await useLibraryStore.getState().toggleColumn("genre");
+
+    expect(useLibraryStore.getState().sortBy).toBe("artist");
+  });
+});
+
 describe("fitting the columns to a view", () => {
   it("does not persist a fit", async () => {
     saveColumnConfigMock.mockClear();

@@ -7,7 +7,7 @@ import { isTypingTarget } from "../player/shortcuts";
 import { usePlaylistsStore } from "../playlists/store";
 import { useTagsourceStore } from "../tagsource/store";
 import { measureColumns } from "./columnFit";
-import { resolveColumns } from "./columns";
+import { displayedColumns, resolveColumns } from "./columns";
 import { rowMenuItems } from "./rowMenu";
 import type { RowActions } from "./SongRow";
 import { useLibraryStore } from "./store";
@@ -53,7 +53,12 @@ export function useSongTableWiring({
   // Resolved here rather than in `App`, whose only use for the config was to
   // hand the result down: subscribing where the columns are rendered keeps a
   // width change - a drag, a fit - out of the shell's render entirely.
-  const columnConfig = useLibraryStore((s) => s.columns);
+  const storedConfig = useLibraryStore((s) => s.columns);
+  const browse = useLibraryStore((s) => s.browse);
+  const columnConfig = useMemo(
+    () => displayedColumns(storedConfig, browse),
+    [storedConfig, browse],
+  );
   const fittedWidths = useLibraryStore((s) => s.fittedWidths);
   const columns = useMemo(
     () => resolveColumns(columnConfig, fittedWidths),
