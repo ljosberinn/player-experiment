@@ -104,7 +104,24 @@ async function closeSettings(): Promise<void> {
  */
 async function chooseTheme(label: string): Promise<void> {
   await browser.$("#theme").click();
-  await browser.$(`[role='option']=${label}`).click();
+  const option = browser.$(`[role='option']=${label}`);
+  await option.waitForDisplayed({ timeout: 5000 });
+
+  // The driver's click is `el.click()` on the node and never hit-tests, so it
+  // chose options the dialog was drawn over until 127. This is the check a
+  // real pointer makes.
+  const onTop = await browser.execute((text: string) => {
+    const target = [...document.querySelectorAll("[role='option']")].find(
+      (one) => one.textContent?.trim() === text,
+    );
+    if (target === undefined) return false;
+    const box = target.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return Boolean(hit?.closest("[role='listbox']"));
+  }, label);
+  expect(onTop).toBe(true);
+
+  await option.click();
 
   // The popup is animated out rather than removed, so the next click has to
   // wait for it to stop covering the dialog.

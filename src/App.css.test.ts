@@ -1212,7 +1212,15 @@ describe("the stylesheet", () => {
     // Matched exactly rather than by suffix: `.icon-button.in-dialog` ends in
     // a word this list also holds, and a suffix match found *it* instead and
     // asserted that a 36px square positions itself.
-    for (const selector of [".dialog", ".dialog-backdrop", ".menu-positioner", ".drag-badge"]) {
+    const overlays = [
+      ".dialog",
+      ".dialog-backdrop",
+      ".menu-positioner",
+      ".select-positioner",
+      ".suggest-positioner",
+      ".drag-badge",
+    ];
+    for (const selector of overlays) {
       const rule = all.find((one) => uncommented(one.selector).trim() === selector);
 
       expect(rule, `${selector} should exist`).toBeDefined();
@@ -1225,6 +1233,18 @@ describe("the stylesheet", () => {
     const layer = (body: string | undefined) => Number(/z-index:\s*(\d+)/.exec(body ?? "")?.[1]);
 
     expect(layer(dialog?.body)).toBeGreaterThan(layer(backdrop?.body));
+
+    // A popup that opens from a field inside a dialog is a sibling of it in
+    // the body, so it layers above the dialog only by number. The select sat
+    // at 10 against the dialog's 11 from #239 to 127: open, keyboard-live,
+    // and drawn underneath.
+    for (const selector of [".select-positioner", ".suggest-positioner"]) {
+      const rule = all.find((one) => uncommented(one.selector).trim() === selector);
+
+      expect(layer(rule?.body), `${selector} must open above .dialog`).toBeGreaterThan(
+        layer(dialog?.body),
+      );
+    }
   });
 
   it("keeps the drag badge out of the pointer's way", () => {

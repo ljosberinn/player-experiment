@@ -551,9 +551,13 @@
 
 /* The list, which the sheet does not draw - it draws a select closed.
    Borrowed from the context menu rather than invented: the app already has
-   one answer to "a list of choices over the window", and two would drift. */
+   one answer to "a list of choices over the window", and two would drift.
+
+   60 beside `.suggest-positioner`, for its reason: the list is portalled to
+   the body, so a select inside a dialog opens above `.dialog` only by saying
+   so. */
 .select-positioner {
-  z-index: 10;
+  z-index: 60;
 }
 
 .select-popup {

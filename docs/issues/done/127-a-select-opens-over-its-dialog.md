@@ -2,12 +2,12 @@
 
 Every drawn `Select` in a dialog opens *under* the dialog. Both are portalled
 to `body`, and `.select-positioner` is `z-index: 10`
-([library.css:555](../../../src/styles/library.css#L555)) against `.dialog`'s
-`11` ([library.css:1320](../../../src/styles/library.css#L1320)). The list is
+([library.css:560](../../../src/styles/library.css#L560)) against `.dialog`'s
+`11` ([library.css:1324](../../../src/styles/library.css#L1324)). The list is
 open, so the trigger keeps `[data-popup-open]`'s accent edge and the arrow keys
 move a highlight in a listbox nobody can see. It has been this way since
 `.select-positioner` landed in #239. `.suggest-positioner` already states `60`
-for exactly this reason ([app.css:2490](../../../src/styles/app.css#L2490)).
+for exactly this reason ([app.css:2491](../../../src/styles/app.css#L2491)).
 
 Affected: Theme and Check For Changes in Settings, every select in
 `SmartPlaylistEditor` (match rules, field, condition, sort by, sort direction), and the
