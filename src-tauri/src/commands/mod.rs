@@ -1146,6 +1146,12 @@ pub fn save_column_config(
     }
 }
 
+#[tauri::command]
+pub fn reset_all_column_configs(db: State<'_, Db>) -> AppResult<()> {
+    let mut conn = db.conn()?;
+    playlists::forget_all_columns(&mut conn)
+}
+
 /// The stored webview zoom factor, or null if never set.
 ///
 /// Kept beside the window geometry rather than with the column layout: it is

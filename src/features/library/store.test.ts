@@ -18,6 +18,7 @@ import {
   queryTracks,
   releaseGroups,
   removeTracks,
+  resetAllColumnConfigs,
   saveColumnConfig,
 } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
@@ -38,6 +39,7 @@ vi.mock("../../ipc", () => ({
   releaseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
   saveColumnConfig: vi.fn(async () => undefined),
+  resetAllColumnConfigs: vi.fn(async () => undefined),
   removeMissingTracks: vi.fn(async () => 0),
   removeTracks: vi.fn(async () => 0),
   forgetRemovedTracks: vi.fn(async () => 0),
@@ -62,6 +64,7 @@ const browseGroupsMock = vi.mocked(browseGroups);
 const releaseGroupsMock = vi.mocked(releaseGroups);
 const loadColumnConfigMock = vi.mocked(loadColumnConfig);
 const saveColumnConfigMock = vi.mocked(saveColumnConfig);
+const resetAllColumnConfigsMock = vi.mocked(resetAllColumnConfigs);
 
 /** A playlist row; only the id and the kind are what these tests turn on. */
 function playlist(id: number, kind: PlaylistKind = "static"): Playlist {
@@ -1058,6 +1061,34 @@ describe("column layout", () => {
     // Left in place, "Reset Columns" would appear to do nothing at all to the
     // columns that had been fitted.
     expect(useLibraryStore.getState().fittedWidths).toEqual({});
+  });
+
+  it("forgets every view's layout and shows the defaults, without saving them here", async () => {
+    saveColumnConfigMock.mockClear();
+    useLibraryStore.setState({
+      playlistId: 7,
+      columns: { ids: ["path"], widths: { path: 900 } },
+      fittedWidths: { path: 400 },
+    });
+
+    await useLibraryStore.getState().resetAllColumns();
+
+    expect(resetAllColumnConfigsMock).toHaveBeenCalled();
+    expect(useLibraryStore.getState().columns).toEqual(DEFAULT_COLUMN_CONFIG);
+    expect(useLibraryStore.getState().fittedWidths).toEqual({});
+    // A saved copy would pin this playlist to the defaults, when it should
+    // follow the library's layout like every other playlist now does.
+    expect(saveColumnConfigMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves the layout on screen when forgetting every layout fails", async () => {
+    resetAllColumnConfigsMock.mockRejectedValueOnce(new Error("database is locked"));
+    useLibraryStore.setState({ columns: { ids: ["path"], widths: {} } });
+
+    await useLibraryStore.getState().resetAllColumns();
+
+    expect(useLibraryStore.getState().columns.ids).toEqual(["path"]);
+    expect(useStatusStore.getState().message).toContain("database is locked");
   });
 });
 

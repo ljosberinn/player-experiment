@@ -285,6 +285,21 @@ pub fn set_columns(conn: &Connection, id: i64, columns_json: &str) -> AppResult<
     Ok(())
 }
 
+/// Forgets every stored column layout: the library's and each playlist's.
+///
+/// Absent rather than rewritten to the defaults, so every playlist goes back
+/// to inheriting the library's layout the way a new one does.
+pub fn forget_all_columns(conn: &mut Connection) -> AppResult<()> {
+    let tx = conn.transaction()?;
+    tx.execute("UPDATE playlists SET columns_json = NULL", [])?;
+    tx.execute(
+        "DELETE FROM settings WHERE key = ?1",
+        [crate::db::settings::COLUMNS],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 /// How many songs each built-in holds.
 const BUILT_IN_LIMIT: u32 = 100;
 
@@ -611,7 +626,7 @@ pub fn move_tracks(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::Db;
+    use crate::db::{settings, Db};
 
     fn seeded() -> (tempfile::TempDir, Connection) {
         let dir = tempfile::tempdir().unwrap();
@@ -1212,6 +1227,21 @@ mod tests {
         );
         // Per playlist, not per app: configuring one must not configure the rest.
         assert_eq!(columns(&conn, other.id).unwrap(), None);
+    }
+
+    #[test]
+    fn forgetting_every_layout_clears_the_library_and_each_playlist() {
+        let (_dir, mut conn, playlist_id) = with_playlist();
+        let other = create(&conn, "Other", 0).unwrap();
+        set_columns(&conn, playlist_id, r#"{"ids":["title"]}"#).unwrap();
+        set_columns(&conn, other.id, r#"{"ids":["artist"]}"#).unwrap();
+        settings::set(&conn, settings::COLUMNS, r#"{"ids":["album"]}"#).unwrap();
+
+        forget_all_columns(&mut conn).unwrap();
+
+        assert_eq!(columns(&conn, playlist_id).unwrap(), None);
+        assert_eq!(columns(&conn, other.id).unwrap(), None);
+        assert_eq!(settings::get(&conn, settings::COLUMNS).unwrap(), None);
     }
 
     #[test]

@@ -245,6 +245,7 @@ pub fn run() {
             commands::reveal_track,
             commands::load_column_config,
             commands::save_column_config,
+            commands::reset_all_column_configs,
             commands::load_zoom,
             commands::save_zoom,
             commands::load_theme,
