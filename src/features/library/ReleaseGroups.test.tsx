@@ -183,6 +183,85 @@ describe("a drill-in drawn as release groups", () => {
     expect(footer.textContent).toContain("10:00");
   });
 
+  describe("the closing row", () => {
+    /** Renders one three-song group under `columns`, inside `kind`. */
+    async function closing(
+      columns: { ids: SortField[]; widths?: Partial<Record<SortField, number>> },
+      kind: "albums" | "artists" = "albums",
+    ) {
+      drilledInto([release("Shields", 3)]);
+      useLibraryStore.setState({
+        columns: { widths: {}, ...columns },
+        browse: { kind, id: albumIdentity("Shields", "Grizzly Bear") },
+      });
+      render(<ReleaseGroups />);
+      await act(async () => {
+        await useLibraryStore.getState().ensureRange(0, 20);
+      });
+      await waitFor(() =>
+        expect(document.querySelectorAll("tr.song-row").length).toBeGreaterThan(0),
+      );
+      return [...document.querySelectorAll(".release-total td")] as HTMLElement[];
+    }
+
+    const read = (cells: HTMLElement[]) =>
+      cells.map((td) => [td.textContent, td.style.width, td.className]);
+
+    it("puts the total under Duration and the count across the columns before it", async () => {
+      const cells = await closing({ ids: COLUMN_IDS });
+
+      // The status column, then `#` and Title as one cell, then Duration.
+      expect(read(cells)).toEqual([
+        ["", "29px", "song-cell status"],
+        ["3 songs", `${58 + 370}px`, "song-cell"],
+        ["10:00", "106px", "song-cell right"],
+      ]);
+      expect(cells[1]).toHaveAttribute("colspan", "2");
+    });
+
+    it("follows Duration's width and position", async () => {
+      const cells = await closing({
+        ids: ["title", "trackNo", "durationMs", "artist"],
+        widths: { durationMs: 140 },
+      });
+
+      // `#` pinned first, so Title sits between it and Duration here.
+      expect(read(cells).slice(1)).toEqual([
+        ["3 songs", `${58 + 370}px`, "song-cell"],
+        ["10:00", "140px", "song-cell right"],
+        ["", "", "song-cell"],
+      ]);
+    });
+
+    it("shortens the count to #n when # is all there is before Duration", async () => {
+      const cells = await closing({ ids: ["durationMs", "title"] });
+
+      expect(read(cells).slice(1, 3)).toEqual([
+        ["#3", "58px", "song-cell right"],
+        ["10:00", "106px", "song-cell right"],
+      ]);
+      expect(cells[1]).toHaveAccessibleName("3 songs");
+    });
+
+    it("puts the count after Duration when Duration is first", async () => {
+      const cells = await closing({ ids: ["durationMs", "title"] }, "artists");
+
+      expect(read(cells).slice(1)).toEqual([
+        ["10:00", "106px", "song-cell right"],
+        ["3 songs", "", "song-cell"],
+      ]);
+    });
+
+    it("puts the total at the right edge when Duration is hidden", async () => {
+      const cells = await closing({ ids: ["trackNo", "title"] });
+
+      expect(read(cells).slice(1)).toEqual([
+        ["3 songs", "", "song-cell"],
+        ["10:00", "", "song-cell right release-total-end"],
+      ]);
+    });
+  });
+
   it("draws one column header above the groups rather than one per group", async () => {
     await settled([release("Yellow House", 2, { year: 2006 }), release("Shields", 3)]);
 
