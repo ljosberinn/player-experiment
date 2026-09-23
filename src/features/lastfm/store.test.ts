@@ -5,16 +5,22 @@ import {
   lastfmCompleteConnect,
   lastfmDisconnect,
   lastfmImport,
-  lastfmLove,
-  lastfmLovedTracks,
   lastfmStatus,
+  lovedTracks,
   type WriteProgress,
 } from "../../ipc";
+import { useLovedStore } from "../love/store";
 import { useStatusStore } from "../shell/statusStore";
 import { POLL_INTERVAL_MS, POLL_TIMEOUT_MS, useLastfmStore } from "./store";
 
 vi.mock("../../ipc", () => ({
-  lastfmStatus: vi.fn(async () => ({ configured: true, username: null, queued: 0, import: null })),
+  lastfmStatus: vi.fn(async () => ({
+    configured: true,
+    username: null,
+    queued: 0,
+    lovesQueued: 0,
+    import: null,
+  })),
   lastfmBeginConnect: vi.fn(async () => ({
     token: "tok",
     authorizeUrl: "https://www.last.fm/api/auth/?api_key=KEY&token=tok",
@@ -22,8 +28,7 @@ vi.mock("../../ipc", () => ({
   lastfmCompleteConnect: vi.fn(async () => null),
   lastfmDisconnect: vi.fn(async () => undefined),
   lastfmImport: vi.fn(),
-  lastfmLovedTracks: vi.fn(async () => [] as number[]),
-  lastfmLove: vi.fn(async () => [] as number[]),
+  lovedTracks: vi.fn(async () => [] as number[]),
   onLastfmImport: vi.fn(async (handler: (progress: WriteProgress) => void) => {
     importHandler = handler;
     return () => {
@@ -42,11 +47,18 @@ vi.mock("../../ipc", () => ({
       queuedHandler = null;
     };
   }),
+  onLastfmLovesQueued: vi.fn(async (handler: (depth: number) => void) => {
+    lovesQueuedHandler = handler;
+    return () => {
+      lovesQueuedHandler = null;
+    };
+  }),
 }));
 
 /** The handler the mocked `onLastfmDisconnected` last registered. */
 let disconnectedHandler: (() => void) | null = null;
 let queuedHandler: ((depth: number) => void) | null = null;
+let lovesQueuedHandler: ((depth: number) => void) | null = null;
 let importHandler: ((progress: WriteProgress) => void) | null = null;
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
@@ -61,17 +73,19 @@ beforeEach(() => {
     username: null,
     connecting: false,
     queued: 0,
+    lovesQueued: 0,
     error: null,
     imported: null,
     importing: false,
     importProgress: null,
-    loved: new Set<number>(),
   });
+  useLovedStore.setState({ loved: new Set<number>() });
   useStatusStore.setState({ message: null, notice: null });
   asMock(lastfmStatus).mockResolvedValue({
     configured: true,
     username: null,
     queued: 0,
+    lovesQueued: 0,
     import: null,
   });
   asMock(lastfmBeginConnect).mockResolvedValue({
@@ -80,8 +94,7 @@ beforeEach(() => {
   });
   asMock(lastfmCompleteConnect).mockResolvedValue(null);
   asMock(lastfmDisconnect).mockResolvedValue(undefined);
-  asMock(lastfmLovedTracks).mockResolvedValue([]);
-  asMock(lastfmLove).mockResolvedValue([]);
+  asMock(lovedTracks).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -100,6 +113,7 @@ describe("the last.fm store", () => {
       configured: true,
       username: "listener",
       queued: 3,
+      lovesQueued: 0,
       import: null,
     });
 
@@ -114,6 +128,7 @@ describe("the last.fm store", () => {
       configured: true,
       username: "listener",
       queued: 3,
+      lovesQueued: 0,
       import: null,
     });
 
@@ -131,6 +146,15 @@ describe("the last.fm store", () => {
     // Including back to nothing: a count the pane cannot clear is a count that
     // worries the user forever.
     queuedHandler?.(0);
+    expect(useLastfmStore.getState().queued).toBe(0);
+  });
+
+  it("follows the love backlog apart from the plays", async () => {
+    await useLastfmStore.getState().watch();
+
+    lovesQueuedHandler?.(2);
+
+    expect(useLastfmStore.getState().lovesQueued).toBe(2);
     expect(useLastfmStore.getState().queued).toBe(0);
   });
 
@@ -332,6 +356,7 @@ describe("the last.fm store", () => {
         configured: true,
         username: null,
         queued: 0,
+        lovesQueued: 0,
         import: stopped,
       });
 
@@ -343,102 +368,15 @@ describe("the last.fm store", () => {
     });
   });
 
-  describe("the loved set", () => {
-    it("reads the whole set, which is what the song menu asks of it", async () => {
-      asMock(lastfmLovedTracks).mockResolvedValue([4, 9]);
-
-      await useLastfmStore.getState().loadLoved();
-
-      expect([...useLastfmStore.getState().loved]).toEqual([4, 9]);
+  it("re-reads the loved set after an import, which takes in the account's loves", async () => {
+    asMock(lastfmImport).mockResolvedValue({
+      imported: 1,
+      state: { username: "listener", through: 1, resumable: false },
     });
+    asMock(lovedTracks).mockResolvedValue([7]);
 
-    it("leaves the set alone when the read fails", async () => {
-      // An empty set would make every menu offer Love on a song the user has
-      // already loved, and nobody asked for this read.
-      useLastfmStore.setState({ loved: new Set([4]) });
-      asMock(lastfmLovedTracks).mockRejectedValue("no");
+    await useLastfmStore.getState().importHistory("listener", false);
 
-      await useLastfmStore.getState().loadLoved();
-
-      expect([...useLastfmStore.getState().loved]).toEqual([4]);
-    });
-
-    it("answers before last.fm has confirmed it", async () => {
-      let finish: (ids: number[]) => void = () => {};
-      asMock(lastfmLove).mockReturnValue(
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-      );
-
-      const loving = useLastfmStore.getState().love([4], true);
-      expect(useLastfmStore.getState().loved.has(4)).toBe(true);
-
-      finish([4]);
-      await loving;
-      expect([...useLastfmStore.getState().loved]).toEqual([4]);
-    });
-
-    it("takes the backend's set over its own guess", async () => {
-      // Two library rows can share one match key, so loving either loves both
-      // - which the window has no way to work out for itself.
-      asMock(lastfmLove).mockResolvedValue([4, 11]);
-
-      await useLastfmStore.getState().love([4], true);
-
-      expect([...useLastfmStore.getState().loved]).toEqual([4, 11]);
-    });
-
-    it("drops the row again on an unlove", async () => {
-      useLastfmStore.setState({ loved: new Set([4]) });
-      let finish: (ids: number[]) => void = () => {};
-      asMock(lastfmLove).mockReturnValue(
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-      );
-
-      const unloving = useLastfmStore.getState().love([4], false);
-      expect(useLastfmStore.getState().loved.has(4)).toBe(false);
-
-      finish([]);
-      await unloving;
-      expect(lastfmLove).toHaveBeenCalledWith([4], false);
-    });
-
-    it("reports a refusal and settles the set by asking", async () => {
-      // The user pressed this, so the failure is reported - and the backend
-      // stops at the first refusal, so what it kept is neither set.
-      useLastfmStore.setState({ loved: new Set([4]) });
-      asMock(lastfmLove).mockRejectedValue("last.fm is not answering.");
-      asMock(lastfmLovedTracks).mockResolvedValue([4, 9]);
-
-      await useLastfmStore.getState().love([9, 12], true);
-
-      expect(useStatusStore.getState().message).toMatch(/not answering/);
-      expect([...useLastfmStore.getState().loved]).toEqual([4, 9]);
-    });
-
-    it("falls back to what it had when even the read fails", async () => {
-      useLastfmStore.setState({ loved: new Set([4]) });
-      asMock(lastfmLove).mockRejectedValue("no");
-      asMock(lastfmLovedTracks).mockRejectedValue("no");
-
-      await useLastfmStore.getState().love([9], true);
-
-      expect([...useLastfmStore.getState().loved]).toEqual([4]);
-    });
-
-    it("re-reads the set after an import, which replaces it wholesale", async () => {
-      asMock(lastfmImport).mockResolvedValue({
-        imported: 1,
-        state: { username: "listener", through: 1, resumable: false },
-      });
-      asMock(lastfmLovedTracks).mockResolvedValue([7]);
-
-      await useLastfmStore.getState().importHistory("listener", false);
-
-      expect([...useLastfmStore.getState().loved]).toEqual([7]);
-    });
+    expect([...useLovedStore.getState().loved]).toEqual([7]);
   });
 });

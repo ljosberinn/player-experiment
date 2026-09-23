@@ -171,7 +171,7 @@ export function renderMenuItem(item: MenuItem, index: number) {
       aria-keyshortcuts={item.shortcut === undefined ? undefined : keyshortcuts(item.shortcut)}
       // Spelled out rather than left to the two text nodes: the accessible
       // name is their concatenation with no separator, so a hinted entry would
-      // otherwise be announced as "LoveNeeds a last.fm account".
+      // otherwise be announced as "LoveNo artist and title".
       aria-label={item.hint === undefined ? undefined : `${item.label}. ${item.hint}`}
       onClick={() => item.onSelect?.()}
     >

@@ -733,6 +733,49 @@ DELETE FROM release_lookup
    AND release_mbid IS NOT NULL
    AND release_mbid NOT IN (SELECT release_mbid FROM tracks WHERE release_mbid IS NOT NULL);
 "#,
+    // 18 - the loved set is kept here, with or without last.fm
+    //
+    // Loves made in the app are local state, and a connected account mirrors
+    // them. See `docs/issues/done/134-love-is-kept-in-the-library.md`.
+    //
+    // `tracks.match_key` reverses 14's "no column carries the key": membership
+    // went through `plays.track_id`, so a song never played could be loved
+    // but never shown as loved. NULL here; `plays::refold` fills it, because
+    // the fold is Rust-side for the reason 16 gives.
+    //
+    // `remote` is whether last.fm reported the key. A refresh removes only
+    // those: a love made here that last.fm stores under an autocorrected
+    // spelling never comes back under this one, and must not be taken for an
+    // unlove. Every existing row came from an import or was sent by
+    // `lastfm::love`, so all of them are last.fm's.
+    //
+    // `loved.syncedWith` names the account `remote` describes, which for an
+    // upgraded library is the one its set was imported from.
+    //
+    // `love_queue` holds the latest intent per song, not a history: loving and
+    // unloving twice offline sends one call.
+    r#"
+ALTER TABLE lastfm_loved RENAME TO loved;
+ALTER TABLE loved ADD COLUMN remote INTEGER NOT NULL DEFAULT 0;
+UPDATE loved SET remote = 1;
+
+ALTER TABLE tracks ADD COLUMN match_key TEXT;
+CREATE INDEX idx_tracks_match_key ON tracks(match_key);
+
+INSERT INTO settings (key, value)
+SELECT 'loved.syncedWith', json_extract(value, '$.username')
+  FROM settings
+ WHERE key = 'lastfm.import' AND json_extract(value, '$.username') IS NOT NULL;
+
+CREATE TABLE love_queue (
+    match_key   TEXT PRIMARY KEY,
+    artist      TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    loved       INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    next_try_at INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
+"#,
 ];
 
 #[cfg(test)]
@@ -1034,8 +1077,8 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute_batch(super::MIGRATIONS.last().unwrap())
-            .unwrap();
+        // Migration 17, by index: the list has grown past it.
+        conn.execute_batch(super::MIGRATIONS[16]).unwrap();
 
         let left: Vec<String> = conn
             .prepare("SELECT album FROM release_lookup ORDER BY album")
@@ -1045,5 +1088,40 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(left, vec!["Loveless".to_owned(), "Tremolo".to_owned()]);
+    }
+
+    /// Migration 18 on a library that loved songs through an import: every
+    /// love stays, as last.fm's, synced with the account it was imported from.
+    #[test]
+    fn an_upgraded_library_keeps_its_loves_as_last_fms() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join("library.sqlite3")).unwrap();
+        for sql in super::MIGRATIONS.iter().take(17) {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.execute("INSERT INTO lastfm_loved (match_key) VALUES ('a')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('lastfm.import', '{\"username\":\"listener\"}')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute_batch(super::MIGRATIONS[17]).unwrap();
+
+        let (key, remote): (String, bool) = conn
+            .query_row("SELECT match_key, remote FROM loved", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((key.as_str(), remote), ("a", true));
+        let synced: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'loved.syncedWith'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(synced, "listener");
     }
 }

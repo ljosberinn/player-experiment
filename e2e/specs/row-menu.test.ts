@@ -239,14 +239,26 @@ describe("the row menu", () => {
     await expect(browser.$("tr.song-row")).toBeExisting();
   });
 
-  it("offers no Love on a build with no last.fm key", async () => {
-    // Every CI build is compiled without one, so this is the state the suite
-    // can actually reach - and it is the property the whole feature rests on:
-    // no key, nothing on offer. Absent rather than greyed, because there is no
-    // account to connect and no question the entry would answer.
+  it("loves a song on a build with no last.fm key, and unloves it again", async () => {
+    // Every CI build is compiled without a key, which is the case issue 134
+    // is for: the love is kept in the library, with nobody to tell. Unloved
+    // again before the end, because the library is shared with every spec
+    // after this one.
     await openRowMenu();
+    await browser.$(menuItem("Song actions", "Love")).click();
+    await browser.$("//*[@role='menu']").waitForExist({ timeout: 10_000, reverse: true });
 
-    expect(await itemsOf("Song actions")).not.toContain("Love");
+    // Reopened rather than trusted: the entry reads the set the backend
+    // answered with, so Unlove here is the round trip having happened.
+    await openRowMenu();
+    await browser
+      .$(menuItem("Song actions", "Unlove"))
+      .waitForExist({ timeout: 10_000, timeoutMsg: "the love never took" });
+    await browser.$(menuItem("Song actions", "Unlove")).click();
+    await browser.$("//*[@role='menu']").waitForExist({ timeout: 10_000, reverse: true });
+
+    await openRowMenu();
+    expect(await itemsOf("Song actions")).toContain("Love");
   });
 
   it("opens the tag editor on Edit, titled the same as the entry", async () => {

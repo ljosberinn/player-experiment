@@ -1539,6 +1539,7 @@ pub fn lastfm_status(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Lastfm
             configured: lastfm::credentials().is_some(),
             username: lastfm::auth::stored_session(&conn)?.map(|session| session.username),
             queued: lastfm::queue::depth(&conn)?,
+            loves_queued: lastfm::love::depth(&conn)?,
             import: lastfm::import::status(&conn)?,
         })
     })
@@ -1604,6 +1605,10 @@ pub async fn lastfm_import(
                 |imported| Fields::new().add("imported", imported),
             );
         invalidate::announce(&app);
+        // The first sync with an account queues what it lacks.
+        if let Some(scrobbler) = app.state::<Option<lastfm::Scrobbler>>().as_ref() {
+            scrobbler.flush();
+        }
 
         let imported = outcome?;
         let state = lastfm::import::status(&conn)?.ok_or_else(|| {
@@ -1614,16 +1619,14 @@ pub async fn lastfm_import(
     .await
 }
 
-/// Every library track last.fm holds a love for.
+/// Every library track the loved set resolves to.
 ///
 /// The whole set in one answer, because the window holds it as a set: the
 /// right-click menu has to say `Love` or `Unlove` the instant it opens, and a
-/// round trip per row under the pointer is not that. Measured at 53 ms over a
-/// 237,675-play log, which is a startup cost and a per-toggle one, not a
-/// per-row one.
+/// round trip per row under the pointer is not that.
 #[tauri::command]
-pub fn lastfm_loved_tracks(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Vec<i64>> {
-    log.op("lastfm.loved_tracks")
+pub fn loved_tracks(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<Vec<i64>> {
+    log.op("loved.tracks")
         .quiet()
         .run(|| crate::db::loved::tracks(&db.conn()?))
 }
@@ -1631,42 +1634,36 @@ pub fn lastfm_loved_tracks(log: State<'_, Log>, db: State<'_, Db>) -> AppResult<
 /// Loves or unloves a selection, and answers with the set as it now stands.
 ///
 /// The set rather than nothing, so the window never has to guess: two library
-/// rows can share one `match_key`, and loving either loves both. Returned on
-/// the way out of the same call the user pressed, so the menu's optimistic
-/// answer is replaced by the truth rather than merely left standing.
+/// rows can share one `match_key`, and loving either loves both.
 ///
-/// Off the IPC thread: this is one signed request per song, over the network.
+/// Local, and needs no key: a connected account is told through the love
+/// queue, and a failure there is a backlog in the Settings pane rather than a
+/// refusal here - the love already stands.
 #[tauri::command]
-pub async fn lastfm_love(
+pub fn set_loved(
     app: tauri::AppHandle,
+    db: State<'_, Db>,
+    scrobbler: State<'_, Option<lastfm::Scrobbler>>,
     track_ids: Vec<i64>,
     loved: bool,
 ) -> AppResult<Vec<i64>> {
-    blocking("last.fm love", move || {
-        let (transport, credentials) = lastfm_ready()?;
-        let conn = app.state::<Db>().conn()?;
-
-        let was_connected = lastfm::auth::stored_session(&conn)?.is_some();
-        let outcome = op(&app, "lastfm.love")
+    let mut conn = db.conn()?;
+    // No scrobbler is a build with no key, whatever session a keyed build
+    // left behind: nothing could ever send what was queued.
+    let connected = scrobbler.is_some() && lastfm::auth::stored_session(&conn)?.is_some();
+    // A Loved rule is a smart playlist's membership, so a love changes what
+    // one holds.
+    let queued = announcing(
+        &app,
+        op(&app, "loved.set")
             .add("tracks", track_ids.len())
-            .add("loved", loved)
-            .run(|| lastfm::love::set(transport, &credentials, &conn, &track_ids, loved));
-
-        // An account that went away during the call: `love::set` forgets a
-        // key last.fm rejected, and the Account menu would go on claiming it
-        // until the next launch. Read back rather than matched on the error,
-        // because the fact worth reporting is that the session is gone.
-        if outcome.is_err() && was_connected && lastfm::auth::stored_session(&conn)?.is_none() {
-            let _ = app.emit("lastfm://disconnected", ());
-        }
-        outcome?;
-
-        // A Loved rule is a smart playlist's membership, so a love changes
-        // what one holds.
-        invalidate::announce(&app);
-        crate::db::loved::tracks(&conn)
-    })
-    .await
+            .add("loved", loved),
+        || lastfm::love::set(&mut conn, &track_ids, loved, connected),
+    )?;
+    if let (true, Some(scrobbler)) = (queued, scrobbler.as_ref()) {
+        scrobbler.flush();
+    }
+    crate::db::loved::tracks(&conn)
 }
 
 /// The transport and credentials, or a message saying which is missing.
@@ -1729,6 +1726,9 @@ pub async fn lastfm_complete_connect(
                 lastfm::auth::Poll::Authorized(session) => {
                     let conn = app.state::<Db>().conn()?;
                     lastfm::auth::store_session(&conn, &session)?;
+                    if let Some(scrobbler) = app.state::<Option<lastfm::Scrobbler>>().as_ref() {
+                        scrobbler.refresh_loved();
+                    }
                     Ok(Some(session.username))
                 }
             }

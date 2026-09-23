@@ -629,7 +629,7 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
         "UPDATE tracks SET title = ?2, artist = ?3, album = ?4, album_artist = ?5,
                            genre = ?6, comment = ?7, year = ?8, track_no = ?9, disc_no = ?10,
                            release_mbid = ?11, release_group_mbid = ?12, release_type = ?13,
-                           cover_hash = ?14, mtime = ?15, size = ?16
+                           cover_hash = ?14, mtime = ?15, size = ?16, match_key = ?17
          WHERE id = ?1",
         rusqlite::params![
             track_id,
@@ -652,6 +652,7 @@ fn sync_row(conn: &Connection, track_id: i64, path: &Path) -> AppResult<()> {
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_secs() as i64),
             metadata.len() as i64,
+            crate::db::plays::track_key(tags.artist.as_deref(), tags.title.as_deref()),
         ],
     )?;
     Ok(())

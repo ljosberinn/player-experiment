@@ -262,6 +262,12 @@ pub enum Notice {
     /// How many plays are waiting to be sent. Zero included: the settings pane
     /// has to be able to stop saying it.
     Queued(u32),
+    /// How many loves and unloves are waiting, for [`Notice::Queued`]'s
+    /// reason.
+    LovesQueued(u32),
+    /// The loved set took in what last.fm holds, so the window's copy and any
+    /// smart playlist with a Loved rule are out of date.
+    Loved,
 }
 
 impl Service {
@@ -370,9 +376,59 @@ impl Service {
                 break;
             }
         }
+        // Read again: a batch the key was rejected for has already forgotten
+        // it, and a love sent with it would only be rejected the same way.
+        if auth::stored_session(&conn)?.is_some() {
+            self.send_loves(&conn, &session.key)?;
+        }
 
         (self.on_notice)(Notice::Queued(queue::depth(&conn)?));
+        (self.on_notice)(Notice::LovesQueued(love::depth(&conn)?));
         Ok(())
+    }
+
+    /// Sends what the love queue holds, one call per song, until it is empty
+    /// or something stops it - the same rule [`Self::send_batch`] drains by.
+    fn send_loves(&self, conn: &Connection, session_key: &str) -> AppResult<()> {
+        let now = (self.now)();
+        for queued in love::due(conn, now)? {
+            match self.call(conn, love::params(&self.credentials, session_key, &queued)) {
+                Ok(_) => love::delivered(conn, &queued)?,
+                Err(error) if error.transient() => {
+                    love::defer(conn, &queued, now)?;
+                    break;
+                }
+                // Already forgotten by `call`, and every row after this one
+                // would be refused for it too.
+                Err(error) if error.needs_reconnect() => break,
+                // A song last.fm does not know, a malformed request: the same
+                // answer forever, so it is not kept.
+                Err(_) => love::delivered(conn, &queued)?,
+            }
+        }
+        Ok(())
+    }
+
+    /// Brings the loved set in step with the connected account.
+    ///
+    /// The queue drains first, so as few keys as possible are still pending
+    /// when last.fm's set is taken in, and again after, for what the first
+    /// sync with an account queued for it.
+    pub fn refresh_loved(&self) -> AppResult<()> {
+        self.flush()?;
+        let mut conn = self.db.conn()?;
+        let Some(session) = auth::stored_session(&conn)? else {
+            return Ok(());
+        };
+        let pause = |wait| std::thread::sleep(wait);
+        let import = import::Import {
+            transport: self.transport.as_ref(),
+            api_key: self.credentials.api_key,
+            pause: &pause,
+        };
+        import.loved(&mut conn, &session.username)?;
+        (self.on_notice)(Notice::Loved);
+        self.flush()
     }
 
     /// One batch, and what to do with each row afterwards.
@@ -584,10 +640,12 @@ enum Job {
         track_id: i64,
         started_at: i64,
     },
-    /// Send whatever the queue has been holding. Sent once at startup, which
-    /// is what makes "queued offline, sent on the next launch" true without
-    /// waiting for another play.
+    /// Send whatever the queues have been holding.
     Flush,
+    /// Flush, then take in the account's loved tracks. Sent once at startup,
+    /// which is what makes "queued offline, sent on the next launch" true
+    /// without waiting for another play, and again on connecting.
+    RefreshLoved,
 }
 
 /// Handle to the scrobbler thread.
@@ -596,6 +654,10 @@ enum Job {
 /// work is blocking, the caller must never wait on it, and the thread that
 /// produces the events - the player thread - is the one thread in the app that
 /// must not stall. Sending is fire-and-forget.
+///
+/// Cloned rather than shared: the player thread holds one for plays and the
+/// commands reach another through app state for loves and connecting.
+#[derive(Clone)]
 pub struct Scrobbler {
     jobs: Sender<Job>,
 }
@@ -654,6 +716,9 @@ impl Scrobbler {
                             .add("track", track_id)
                             .run(|| service.played(track_id, started_at)),
                         Job::Flush => log.op("lastfm.flush").run(|| service.flush()),
+                        Job::RefreshLoved => log
+                            .op("lastfm.refresh_loved")
+                            .run(|| service.refresh_loved()),
                     };
                 }
             })
@@ -663,13 +728,18 @@ impl Scrobbler {
         // Before anything plays: a queue left behind by the last session is
         // the case this whole phase exists for, and waiting for the next song
         // to drain it would mean an app closed after one is never drained.
-        scrobbler.flush();
+        scrobbler.refresh_loved();
         scrobbler
     }
 
-    /// Asks the thread to drain the queue.
+    /// Asks the thread to drain the queues.
     pub fn flush(&self) {
         let _ = self.jobs.send(Job::Flush);
+    }
+
+    /// Asks the thread to drain the queues and take in the loved tracks.
+    pub fn refresh_loved(&self) {
+        let _ = self.jobs.send(Job::RefreshLoved);
     }
 
     pub fn now_playing(&self, track_id: i64, started_at: i64) {
@@ -1219,6 +1289,125 @@ mod tests {
         assert!(params.contains(&("artist[49]".to_owned(), "Artist 49".to_owned())));
         // And the signature over them sorts `artist[10]` before `artist[1]`,
         // which `sign::tests` pins as its own vector.
+    }
+
+    /// Loves track 1 through the local path, queued for the account.
+    fn love_queued(db: &Db, loved: bool) {
+        let mut conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE tracks SET match_key = ?1 WHERE id = 1",
+            [crate::db::plays::match_key("Blue Room", "Harbour")],
+        )
+        .unwrap();
+        love::set(&mut conn, &[1], loved, true).unwrap();
+    }
+
+    #[test]
+    fn a_queued_love_goes_out_on_the_flush() {
+        let (_dir, db) = library();
+        connect(&db);
+        love_queued(&db, true);
+        let transport = FakeTransport::always(r#"{}"#);
+        let log = transport.log();
+
+        service(db.clone(), transport).service.flush().unwrap();
+
+        assert_eq!(log.param(0, "method").as_deref(), Some("track.love"));
+        assert_eq!(log.param(0, "artist").as_deref(), Some("Blue Room"));
+        assert_eq!(love::depth(&db.conn().unwrap()).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_love_made_offline_stays_loved_and_waits() {
+        let (_dir, db) = library();
+        connect(&db);
+        love_queued(&db, true);
+        let transport =
+            FakeTransport::always_failing(TransportError::Unreachable("offline".to_owned()));
+
+        service(db.clone(), transport).service.flush().unwrap();
+
+        let conn = db.conn().unwrap();
+        assert_eq!(love::depth(&conn).unwrap(), 1);
+        assert_eq!(crate::db::loved::tracks(&conn).unwrap(), vec![1]);
+    }
+
+    #[test]
+    fn a_dead_key_stops_the_love_queue_and_disconnects_once() {
+        let (_dir, db) = library();
+        connect(&db);
+        love_queued(&db, true);
+        let transport = FakeTransport::always(
+            r#"{"error":9,"message":"Invalid session key - Please re-authenticate"}"#,
+        );
+
+        let watched = service(db.clone(), transport);
+        watched.service.flush().unwrap();
+
+        assert_eq!(watched.disconnects.load(Ordering::SeqCst), 1);
+        assert_eq!(auth::stored_session(&db.conn().unwrap()).unwrap(), None);
+        assert_eq!(
+            love::depth(&db.conn().unwrap()).unwrap(),
+            1,
+            "kept for the next account"
+        );
+    }
+
+    #[test]
+    fn a_love_last_fm_refuses_for_good_is_not_kept() {
+        let (_dir, db) = library();
+        connect(&db);
+        love_queued(&db, true);
+        let transport = FakeTransport::always(r#"{"error":6,"message":"Track not found"}"#);
+
+        service(db.clone(), transport).service.flush().unwrap();
+
+        assert_eq!(love::depth(&db.conn().unwrap()).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_refresh_takes_in_the_account_and_says_so() {
+        let (_dir, db) = library();
+        connect(&db);
+        let loved_page = r#"{"lovedtracks":{"track":[{"name":"Harbour","artist":{"name":"Blue Room"}}],
+            "@attr":{"page":"1","totalPages":"1"}}}"#;
+        let transport = FakeTransport::scripted(vec![Ok(loved_page.to_owned())]);
+        let notices = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = Arc::clone(&notices);
+        let service = Service::with_clock(
+            db.clone(),
+            Box::new(transport),
+            TEST_CREDENTIALS,
+            Box::new(move |notice| seen.lock().unwrap().push(notice)),
+            Box::new(|| PLAY_AT),
+        );
+        {
+            let conn = db.conn().unwrap();
+            conn.execute(
+                "UPDATE tracks SET match_key = ?1 WHERE id = 1",
+                [crate::db::plays::match_key("Blue Room", "Harbour")],
+            )
+            .unwrap();
+        }
+
+        service.refresh_loved().unwrap();
+
+        assert_eq!(
+            crate::db::loved::tracks(&db.conn().unwrap()).unwrap(),
+            vec![1]
+        );
+        assert!(notices.lock().unwrap().contains(&Notice::Loved));
+    }
+
+    #[test]
+    fn a_refresh_with_no_account_asks_nothing() {
+        let (_dir, db) = library();
+        let transport = FakeTransport::scripted(Vec::new());
+        let log = transport.log();
+
+        service(db, transport).service.refresh_loved().unwrap();
+
+        assert_eq!(log.count(), 0);
     }
 
     #[test]

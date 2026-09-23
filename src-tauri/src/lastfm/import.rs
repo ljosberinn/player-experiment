@@ -122,7 +122,7 @@ impl Import<'_> {
     ///
     /// `plays::resolve` and `plays::regroup` run when the run ends, finished
     /// or not: the pages already committed are plays like any other, and
-    /// until both have run they are unlinked and ungrouped. The loved set is
+    /// until both have run they are unlinked and ungrouped. The loved tracks are
     /// fetched only once the history is complete.
     pub fn run(
         &self,
@@ -234,11 +234,12 @@ impl Import<'_> {
         read_page(&value).map_err(|error| AppError::Internal(error.to_string()))
     }
 
-    /// Replaces the loved set with what last.fm holds now.
+    /// Takes in what last.fm holds loved for `username`; see
+    /// [`super::love::absorb`] for what that does to the set.
     ///
-    /// Every page before any write, so a fetch that fails part-way keeps the
-    /// set the last import left rather than a partial one.
-    fn loved(&self, conn: &mut Connection, username: &str) -> AppResult<()> {
+    /// Every page before any write, so a fetch that fails part-way leaves the
+    /// set as it was rather than half-synced.
+    pub fn loved(&self, conn: &mut Connection, username: &str) -> AppResult<()> {
         let mut keys = BTreeSet::new();
         let mut page = 1;
         loop {
@@ -270,10 +271,7 @@ impl Import<'_> {
             (self.pause)(THROTTLE);
         }
 
-        let tx = conn.transaction()?;
-        crate::db::loved::replace(&tx, &keys.into_iter().collect::<Vec<_>>())?;
-        tx.commit()?;
-        Ok(())
+        super::love::absorb(conn, username, &keys)
     }
 
     /// One request, asked again on a failure a later attempt can get past.
@@ -835,17 +833,18 @@ mod tests {
         assert_eq!(outcome.unwrap(), 1);
     }
 
+    fn loved_keys(conn: &Connection) -> Vec<String> {
+        conn.prepare("SELECT match_key FROM loved ORDER BY match_key")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    }
+
     #[test]
-    fn the_loved_set_is_replaced_rather_than_merged() {
+    fn with_no_account_an_import_only_adds_loves() {
         let (_dir, mut conn) = open();
-        let loved_keys = |conn: &Connection| -> Vec<String> {
-            conn.prepare("SELECT match_key FROM lastfm_loved ORDER BY match_key")
-                .unwrap()
-                .query_map([], |row| row.get(0))
-                .unwrap()
-                .collect::<rusqlite::Result<_>>()
-                .unwrap()
-        };
         let empty = || Ok(page(0, 0, "[]"));
 
         let first = FakeTransport::scripted(vec![empty(), Ok(loved(&[("A", "a"), ("B", "b")]))]);
@@ -854,11 +853,31 @@ mod tests {
             first.param(1, "method").as_deref(),
             Some("user.getLovedTracks")
         );
+
+        let second = FakeTransport::scripted(vec![empty(), Ok(loved(&[("B", "b")]))]);
+        import(&mut conn, &second, false).0.unwrap();
         assert_eq!(
             loved_keys(&conn),
-            [plays::match_key("A", "a"), plays::match_key("B", "b")]
+            [plays::match_key("A", "a"), plays::match_key("B", "b")],
+            "nobody's account says A was unloved here"
         );
+    }
 
+    #[test]
+    fn for_the_connected_account_an_import_brings_in_unloves() {
+        let (_dir, mut conn) = open();
+        super::super::auth::store_session(
+            &conn,
+            &super::super::auth::Session {
+                username: "listener".to_owned(),
+                key: "sk".to_owned(),
+            },
+        )
+        .unwrap();
+        let empty = || Ok(page(0, 0, "[]"));
+
+        let first = FakeTransport::scripted(vec![empty(), Ok(loved(&[("A", "a"), ("B", "b")]))]);
+        import(&mut conn, &first, false).0.unwrap();
         let second = FakeTransport::scripted(vec![empty(), Ok(loved(&[("B", "b")]))]);
         import(&mut conn, &second, false).0.unwrap();
         assert_eq!(loved_keys(&conn), [plays::match_key("B", "b")]);

@@ -658,23 +658,32 @@ export function lastfmImport(username: string, fresh: boolean): Promise<LastfmIm
 }
 
 /**
- * Every library track last.fm holds a love for.
+ * Every library track the loved set resolves to.
  *
  * The whole set in one call, because the right-click menu has to say Love or
  * Unlove the instant it opens and a round trip per row is not that.
  */
-export function lastfmLovedTracks(): Promise<number[]> {
-  return invoke<number[]>("lastfm_loved_tracks");
+export function lovedTracks(): Promise<number[]> {
+  return invoke<number[]>("loved_tracks");
 }
 
 /**
  * Loves or unloves a selection, answering with the set as it now stands.
  *
- * The set rather than nothing: two library rows can share one match key, and
- * loving either loves both.
+ * Local, and works on every build: a connected last.fm account is told in the
+ * background. The set rather than nothing: two library rows can share one
+ * match key, and loving either loves both.
  */
-export function lastfmLove(trackIds: number[], loved: boolean): Promise<number[]> {
-  return invoke<number[]>("lastfm_love", { trackIds, loved });
+export function setLoved(trackIds: number[], loved: boolean): Promise<number[]> {
+  return invoke<number[]>("set_loved", { trackIds, loved });
+}
+
+/**
+ * The loved set moved without the window asking: last.fm's loves came in, or
+ * an upgraded library's songs were given the key the set resolves through.
+ */
+export function onLovedChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("loved://changed", () => handler());
 }
 
 /** How far an import has got: scrobbles read, of about how many. */
@@ -690,6 +699,11 @@ export function onLastfmImport(handler: (progress: WriteProgress) => void): Prom
  */
 export function onLastfmQueued(handler: (depth: number) => void): Promise<UnlistenFn> {
   return listen<number>("lastfm://queued", (event) => handler(event.payload));
+}
+
+/** How many loves and unloves last.fm has not taken yet, for the same reason. */
+export function onLastfmLovesQueued(handler: (depth: number) => void): Promise<UnlistenFn> {
+  return listen<number>("lastfm://loves-queued", (event) => handler(event.payload));
 }
 
 /**

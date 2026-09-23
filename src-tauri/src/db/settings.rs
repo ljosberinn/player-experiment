@@ -96,14 +96,17 @@ pub const ALBUM_FOLD: &str = "plays.albumFold";
 /// Which version of `db::plays::match_key` the stored keys were built with.
 ///
 /// A version for [`ALBUM_FOLD`]'s reason, and unlike it the key is stored: it
-/// is a column on `plays` and the whole primary key of `lastfm_loved`, so a
-/// widened fold links nothing at all until `db::plays::refold` rewrites both.
+/// is a column on `plays` and `tracks` and the primary key of `loved`, so a
+/// widened fold links nothing at all until `db::plays::refold` rewrites them.
 pub const MATCH_FOLD: &str = "plays.matchFold";
 /// Where the last.fm import stands, as `lastfm::import::State` JSON.
 ///
 /// Not exportable: it names an account and describes this library's copy of
 /// its history.
 pub const LASTFM_IMPORT: &str = "lastfm.import";
+/// Which last.fm account the loved set's `remote` keys describe; see
+/// `lastfm::love::absorb`. Not exportable: it names a person.
+pub const LOVED_SYNCED_WITH: &str = "loved.syncedWith";
 
 /// The last.fm session key. **Stored unencrypted, on purpose.**
 ///

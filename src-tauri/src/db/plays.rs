@@ -60,6 +60,13 @@ pub fn match_key(artist: &str, title: &str) -> String {
     format!("{artist}{SEPARATOR}{title}")
 }
 
+/// [`match_key`] as `tracks.match_key` stores it: `None` rather than empty, so
+/// an untagged file is never in the loved set by sharing a blank key with it.
+pub fn track_key(artist: Option<&str>, title: Option<&str>) -> Option<String> {
+    let key = match_key(artist.unwrap_or_default(), title.unwrap_or_default());
+    (!key.is_empty()).then_some(key)
+}
+
 /// The identity two spellings of one album share, or empty for a play with no
 /// album to group.
 ///
@@ -631,18 +638,22 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// reason [`FOLD_VERSION`] gives - and more sharply, because this key is
 /// stored rather than derived on read. A library whose keys predate the fold
 /// does not half-link; it does not link at all.
-const MATCH_FOLD_VERSION: &str = "1";
+const MATCH_FOLD_VERSION: &str = "2";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
 ///
-/// `plays` recomputes from its own `artist` and `title`. `lastfm_loved` has
-/// neither column, so it folds the stored key in place, a side at a time: the
-/// new fold refines the old one, so folding an old key again lands where
+/// `plays` and `tracks` recompute from their own `artist` and `title`. `loved`
+/// has neither column, so it folds the stored key in place, a side at a time:
+/// the new fold refines the old one, so folding an old key again lands where
 /// folding the original tags would - but [`squeeze`] eats [`SEPARATOR`], so
 /// the key cannot be folded whole.
 ///
-/// **Both tables are read to the end before either is written.** The `plays`
+/// `tracks` counts its rows apart from the rest: a key written for the first
+/// time is how migration 18's column is backfilled, and the caller has to know
+/// the loved set moved.
+///
+/// **Every table is read to the end before any is written.** The `plays`
 /// pass updates the table its own cursor is reading, and `UPDATE OR REPLACE`
 /// can delete a row the cursor has not reached yet.
 ///
@@ -650,7 +661,7 @@ const MATCH_FOLD_VERSION: &str = "1";
 /// of one song scrobbled in the same second are one play, and dropping the
 /// loser is what that index is for. Nothing carries a foreign key onto
 /// `plays.id`, so the dropped row orphans nothing.
-pub fn refold(conn: &mut Connection) -> AppResult<u32> {
+pub fn refold(conn: &mut Connection) -> AppResult<Refolded> {
     let tx = conn.transaction()?;
 
     let mut rewritten: Vec<(i64, String)> = Vec::new();
@@ -665,9 +676,24 @@ pub fn refold(conn: &mut Connection) -> AppResult<u32> {
         }
     }
 
+    let mut retagged: Vec<(i64, Option<String>)> = Vec::new();
+    {
+        let mut statement = tx.prepare("SELECT id, artist, title, match_key FROM tracks")?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let folded = track_key(
+                row.get::<_, Option<String>>(1)?.as_deref(),
+                row.get::<_, Option<String>>(2)?.as_deref(),
+            );
+            if folded != row.get::<_, Option<String>>(3)? {
+                retagged.push((row.get(0)?, folded));
+            }
+        }
+    }
+
     let mut refolded: Vec<(String, String)> = Vec::new();
     {
-        let mut statement = tx.prepare("SELECT match_key FROM lastfm_loved")?;
+        let mut statement = tx.prepare("SELECT match_key FROM loved")?;
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
             let stored: String = row.get(0)?;
@@ -689,24 +715,45 @@ pub fn refold(conn: &mut Connection) -> AppResult<u32> {
             moved += 1;
         }
 
+        let mut retag = tx.prepare("UPDATE tracks SET match_key = ?2 WHERE id = ?1")?;
+        for (id, folded) in &retagged {
+            retag.execute(rusqlite::params![id, folded])?;
+        }
+
         // Insert before delete, so a fold that lands on a key already loved
-        // keeps the love rather than dropping both spellings of it.
-        let mut insert =
-            tx.prepare("INSERT OR IGNORE INTO lastfm_loved (match_key) VALUES (?1)")?;
-        let mut delete = tx.prepare("DELETE FROM lastfm_loved WHERE match_key = ?1")?;
+        // keeps the love rather than dropping both spellings of it. The
+        // `remote` flag travels with the key: it is still the song last.fm
+        // reported.
+        let mut insert = tx.prepare(
+            "INSERT OR IGNORE INTO loved (match_key, remote)
+             SELECT ?1, remote FROM loved WHERE match_key = ?2",
+        )?;
+        let mut delete = tx.prepare("DELETE FROM loved WHERE match_key = ?1")?;
         for (stored, folded) in &refolded {
-            insert.execute([folded])?;
+            insert.execute([folded, stored])?;
             delete.execute([stored])?;
             moved += 1;
         }
     }
 
     tx.commit()?;
-    Ok(moved)
+    Ok(Refolded {
+        moved,
+        tracks: retagged.len() as u32,
+    })
+}
+
+/// What [`refold`] rewrote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Refolded {
+    /// Plays and loved keys.
+    pub moved: u32,
+    /// Library tracks, whose keys are what the loved set resolves through.
+    pub tracks: u32,
 }
 
 /// Runs [`refold`] if this library's keys predate [`MATCH_FOLD_VERSION`],
-/// answering whether it did.
+/// answering what it rewrote, or `None` when the keys were current.
 ///
 /// A marker rather than a migration, in [`regroup_if_stale`]'s shape and for
 /// its reason.
@@ -716,16 +763,16 @@ pub fn refold(conn: &mut Connection) -> AppResult<u32> {
 /// at the keys would leave every newly foldable play unlinked until the user
 /// next scanned or imported. Before the marker, so a failure in either is
 /// retried on the next launch.
-pub fn refold_if_stale(conn: &mut Connection) -> AppResult<bool> {
+pub fn refold_if_stale(conn: &mut Connection) -> AppResult<Option<Refolded>> {
     use crate::db::settings;
 
     if settings::get(conn, settings::MATCH_FOLD)?.as_deref() == Some(MATCH_FOLD_VERSION) {
-        return Ok(false);
+        return Ok(None);
     }
-    refold(conn)?;
+    let refolded = refold(conn)?;
     resolve(conn)?;
     settings::set(conn, settings::MATCH_FOLD, MATCH_FOLD_VERSION)?;
-    Ok(true)
+    Ok(Some(refolded))
 }
 
 #[cfg(test)]
@@ -1418,15 +1465,22 @@ mod tests {
             "the old key holds the apostrophes apart"
         );
 
-        assert!(refold_if_stale(&mut conn).unwrap());
+        assert!(refold_if_stale(&mut conn).unwrap().is_some());
         assert_eq!(
             keys(&conn, "plays"),
             [match_key("The Devil's Blood", "Die Old")]
         );
         assert_eq!(linked(&conn, 10), Some(1), "and the pass resolves itself");
 
-        assert!(!refold_if_stale(&mut conn).unwrap(), "once per fold");
-        assert_eq!(refold(&mut conn).unwrap(), 0, "and it is idempotent");
+        assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once per fold");
+        assert_eq!(
+            refold(&mut conn).unwrap(),
+            Refolded {
+                moved: 0,
+                tracks: 0
+            },
+            "and it is idempotent"
+        );
     }
 
     /// A collision on `idx_plays_identity` is one song scrobbled twice in the
@@ -1455,14 +1509,14 @@ mod tests {
         );
     }
 
-    /// `lastfm_loved` is keyed by `match_key` and has no tags to recompute
-    /// from, so the pass folds the stored key a side at a time - and
-    /// `squeeze` would eat the separator if it were folded whole.
+    /// `loved` is keyed by `match_key` and has no tags to recompute from, so
+    /// the pass folds the stored key a side at a time - and `squeeze` would
+    /// eat the separator if it were folded whole.
     #[test]
     fn a_loved_key_is_refolded_in_place() {
         let (_dir, mut conn) = open();
         conn.execute(
-            "INSERT INTO lastfm_loved (match_key) VALUES (?1)",
+            "INSERT INTO loved (match_key, remote) VALUES (?1, 1)",
             [stale_key("The Devil\u{2019}s Blood", "Die Old")],
         )
         .unwrap();
@@ -1471,8 +1525,36 @@ mod tests {
 
         let folded = match_key("The Devil's Blood", "Die Old");
         assert!(folded.contains(SEPARATOR), "the separator survives");
-        assert_eq!(keys(&conn, "lastfm_loved"), [folded]);
-        assert_eq!(refold(&mut conn).unwrap(), 0, "and it is idempotent");
+        assert_eq!(keys(&conn, "loved"), std::slice::from_ref(&folded));
+        let remote: bool = conn
+            .query_row(
+                "SELECT remote FROM loved WHERE match_key = ?1",
+                [&folded],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(remote, "still the song last.fm reported");
+        assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
+    }
+
+    /// Migration 18 adds `tracks.match_key` empty, and this pass is what fills
+    /// it: the key is a Rust fold SQL cannot express.
+    #[test]
+    fn a_track_with_no_key_yet_is_given_one() {
+        let (_dir, mut conn) = open();
+        add_track(&conn, 1, Some("Blue Room"), Some("Harbour"));
+        add_track(&conn, 2, None, Some("Untitled"));
+
+        assert_eq!(refold(&mut conn).unwrap().tracks, 1);
+
+        let stored: Vec<Option<String>> = conn
+            .prepare("SELECT match_key FROM tracks ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(stored, [Some(match_key("Blue Room", "Harbour")), None]);
     }
 
     #[test]

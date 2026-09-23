@@ -750,14 +750,16 @@ absences are what nobody notices coming back — hence the guards in
   words in the trailing column a menu elsewhere gives a shortcut, and the item
   carries an explicit `aria-label` because an accessible name is the plain
   concatenation of its text nodes — without one, Love with a hint is announced
-  as "LoveNeeds a last.fm account".
+  as "LoveNo artist and title".
 - **Love is one hook, two menus.** `useLoveEntry` gives the right-click menu and
   the Edit menu the same answer, subscribed rather than read once: a menu opened
   after a love has to say Unlove, and `getState()` would leave the bar one press
-  behind. The store holds the loved set whole, because `rowMenuItems` is pure
-  and synchronous and a round trip per row under the pointer is not that. The
-  set moves optimistically and is replaced by what the backend answers with —
-  two library rows can share one match key, so loving either loves both.
+  behind. `useLovedStore` holds the loved set whole, because `rowMenuItems` is
+  pure and synchronous and a round trip per row under the pointer is not that.
+  It is its own store, not the last.fm one: Love is offered on every build, and
+  last.fm only mirrors it. The set moves optimistically and is replaced by what
+  the backend answers with — two library rows can share one match key, so
+  loving either loves both — and is re-read on `loved://changed`.
 - **A row the table no longer caches counts as loveable.** A selection outlives
   the pages behind it, and greying the entry because a page was evicted would
   make the menu's answer depend on how far the user has scrolled; the backend

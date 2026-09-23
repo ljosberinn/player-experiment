@@ -21,6 +21,7 @@ export function LastfmSettings() {
   const username = useLastfmStore((s) => s.username);
   const connecting = useLastfmStore((s) => s.connecting);
   const queued = useLastfmStore((s) => s.queued);
+  const lovesQueued = useLastfmStore((s) => s.lovesQueued);
   const error = useLastfmStore((s) => s.error);
   const connect = useLastfmStore((s) => s.connect);
   const cancelConnect = useLastfmStore((s) => s.cancelConnect);
@@ -72,6 +73,12 @@ export function LastfmSettings() {
         <p className="settings-lastfm-note" aria-live="polite">
           {queued === 1 ? "1 play is" : `${queued} plays are`} recorded and waiting to be sent. They
           go out with the next song, or the next time the app starts.
+        </p>
+      )}
+      {lovesQueued === 0 ? null : (
+        <p className="settings-lastfm-note" aria-live="polite">
+          {lovesQueued === 1 ? "1 love is" : `${lovesQueued} loves are`} waiting to be sent. They
+          stay loved here, and go out the next time last.fm answers.
         </p>
       )}
 

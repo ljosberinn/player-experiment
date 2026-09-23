@@ -23,6 +23,7 @@ edit a shipped one.
 | 15 | no schema: deletes the MusicBrainz id backfill's two `settings` flags, retired by the pass that reads the release type too |
 | 16 | `album_groups` — which album spellings are one album |
 | 17 | a fifth `release_lookup.status`, `unwritable` — matched with certainty, and the files would not take it. Another whole-table rebuild for 10's reason, plus a **repair**: every `resolved` row whose `release_mbid` is on no track is deleted, because it records a write that never happened |
+| 18 | `lastfm_loved` renamed `loved`, with `remote` (last.fm reported the key; every existing row is set); `tracks.match_key`, indexed, filled by `plays::refold`; `love_queue`; and `loved.syncedWith` seeded from the import's username |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -343,12 +344,18 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   matches every untagged file — so a side that is punctuation alone (`!!!`,
   the title `?`) keeps its unfolded spelling rather than becoming that.
 - **`plays.matchFold` is which fold the stored keys were built with**, in
-  `ALBUM_FOLD`'s shape and bumped for its reason. `match_key` lives in two
-  columns — `plays.match_key` and the whole of `lastfm_loved.match_key` — so a
-  widened fold links nothing until a pass rewrites both, and `plays::refold` is
-  that pass. It runs `resolve` itself, because nothing else runs `resolve` at
-  launch. `lastfm_loved` has no artist and title to recompute from and folds
-  the stored key a side at a time, the separator held out of `squeeze`.
+  `ALBUM_FOLD`'s shape and bumped for its reason. `match_key` lives in three
+  columns — `plays.match_key`, `tracks.match_key` and the whole of
+  `loved.match_key` — so a widened fold links nothing until a pass rewrites
+  them, and `plays::refold` is that pass. It runs `resolve` itself, because
+  nothing else runs `resolve` at launch. `loved` has no artist and title to
+  recompute from and folds the stored key a side at a time, the separator held
+  out of `squeeze`. Version 2 exists to backfill `tracks.match_key` after
+  migration 18; the thread that runs it emits `loved://changed` when a track
+  key moved, because the window read the set before it ran.
+- **`tracks.match_key` is written wherever artist or title is** - the scan's
+  insert and update, and `tags::write::sync_row` - as `plays::track_key`,
+  which is NULL rather than empty for an untagged file.
 - **`plays::resolve` rebuilds `track_id` for the whole log**, wherever
   `tag_values::rebuild` runs, for the reason that module gives at length. One
   key names several tracks routinely — the album copy and the compilation copy
@@ -425,19 +432,39 @@ leaves for the next one's `from=`. It is not exportable.
   free, and a row is skipped when its second already holds a `local` play.
 - **Re-import from scratch deletes the `lastfm` rows** in the same transaction
   that resets the state. That is how a scrobble deleted on last.fm leaves.
-- **`lastfm_loved` is replaced, never merged.** It is fetched in full only after
-  the history finishes, then swapped in one transaction, so a failed fetch keeps
-  the old set. `ListenQuery.loved` and the smart-playlist field `Loved` both
-  filter on `plays.match_key` against it.
-- **The set has a second writer.** `db::loved` owns the table: `replace` is the
-  import, `remember`/`forget` are the user loving a song from the song menu,
-  written before last.fm has been asked and put back if it refuses (102). No
-  queue - a scrobble has a timestamp that expires, a love is a present-tense
-  preference.
-- **Membership resolves through the play log** - `db::loved::MEMBERS`, the one
-  copy of that subquery, read both by the smart field and by the command the
-  window asks for the whole set. Nothing maps a `match_key` to a track except
-  `plays.track_id`; 101 measured a resolved link table as gaining zero rows.
+- **The loved tracks come last**, fetched in full only after the history
+  finishes, and taken in by `lastfm::love::absorb` in one transaction, so a
+  failed fetch leaves the set as it was.
+
+## The loved set
+
+`loved(match_key, remote)` is user data held only here (134): a love works on
+every build, with no key and no account, and a library export carries it as
+`tracks[].loved`.
+
+- **Membership resolves through `tracks.match_key`** - `db::loved::MEMBERS`,
+  the one copy of that subquery, read by the smart field and by the command
+  the window asks for the whole set. A song never played is as lovable as any
+  other, and a key no track carries surfaces when the song is added.
+  `ListenQuery.loved` filters `plays.match_key` against the same table.
+- **`set_loved` writes the set and never takes it back.** With a connected
+  account it also puts the song in `love_queue`, one row per song holding the
+  latest intent, which `Service::flush` drains beside the scrobbles with their
+  backoff and attempt cap. There is no age limit: a love has no timestamp for
+  last.fm to refuse.
+- **A sync is three-way.** `absorb` for the connected account upserts what
+  last.fm reports as `remote = 1` and removes only `remote` keys it no longer
+  reports - an unlove made on the website. A love made here that last.fm
+  autocorrected comes back under another key and never under this one, so it
+  is not taken for an unlove. Keys still in `love_queue` are left alone.
+- **The first sync with an account pushes what it lacks, once.** When
+  `loved.syncedWith` names another account or none, every key becomes local,
+  each one last.fm lacks and a track carries is queued as a love, and the
+  marker is set.
+- **Any other username only adds** - an import of someone else's history, or
+  one made with no account connected.
+- **A sync runs** at launch while connected and on connecting (the scrobbler's
+  `RefreshLoved`, which flushes first), and at the tail of an import.
 
 ## Statistics
 
@@ -512,12 +539,9 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
   search inside it would search the whole library.
 - **Not every field is a column.** A `FilterFieldKind::Boolean` field is a
   fact about the row that `compile_rule` answers with a subquery, above
-  everything that assumes a column - `Loved` reaches `lastfm_loved` through
-  `plays.track_id`, and reads "Loved is" with no value at all. `IS NOT NULL`
-  sits inside that subquery so `NOT IN` never meets a NULL.
-- **The editor disables `Loved` without a connected account**, because the
-  loved set arrives with a history import and a rule over an empty one is
-  unanswerable rather than wrong.
+  everything that assumes a column - `Loved` reaches `loved` through
+  `tracks.match_key`, and reads "Loved is" with no value at all. The subquery
+  selects `tracks.id`, so `NOT IN` never meets a NULL.
 - **A new `FilterField` is forward-incompatible for exports** - see
   [export-schema.md](export-schema.md).
 - The backend validates every filter by compiling it before storing.

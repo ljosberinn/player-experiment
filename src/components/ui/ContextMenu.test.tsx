@@ -95,12 +95,10 @@ describe("ContextMenu", () => {
     // Real text in the item rather than a tooltip: a disabled entry that does
     // not say what would un-grey it leaves the user guessing, and a title
     // attribute is not read out.
-    await open([{ label: "Love", disabled: true, hint: "Needs a last.fm account" }]);
+    await open([{ label: "Love", disabled: true, hint: "No artist and title" }]);
 
-    expect(
-      screen.getByRole("menuitem", { name: "Love. Needs a last.fm account" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Needs a last.fm account")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Love. No artist and title" })).toBeInTheDocument();
+    expect(screen.getByText("No artist and title")).toBeInTheDocument();
   });
 
   it("draws a shortcut without letting it into the item's name", async () => {

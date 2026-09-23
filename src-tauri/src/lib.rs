@@ -133,20 +133,23 @@ pub fn run() {
             let (volume, muted) = db
                 .conn()
                 .and_then(|conn| Ok((settings::volume(&conn)?, settings::muted(&conn)?)))?;
+            let scrobbler = start_scrobbler(app.handle().clone(), db.clone(), log.clone());
             app.manage(start_player(
                 app.handle().clone(),
                 db.clone(),
+                scrobbler.clone(),
                 volume,
                 muted,
                 log.clone(),
             ));
+            app.manage(scrobbler);
             // One lock for everything that rewrites rows from files on disk,
             // so the unattended pass can tell whether it would be racing a
             // scan or a write the user started.
             let lock = scan::ScanLock::default();
             normalize_covers(db.clone(), lock.clone(), log.clone());
             read_musicbrainz_tags(db.clone(), lock.clone(), log.clone());
-            fold_the_log(db.clone(), log.clone());
+            fold_the_log(app.handle().clone(), db.clone(), log.clone());
             watch_library(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             library_pass(app.handle().clone(), db.clone(), lock.clone(), log.clone());
             app.manage(lock);
@@ -298,8 +301,8 @@ pub fn run() {
             commands::lastfm_complete_connect,
             commands::lastfm_disconnect,
             commands::lastfm_import,
-            commands::lastfm_loved_tracks,
-            commands::lastfm_love,
+            commands::loved_tracks,
+            commands::set_loved,
             commands::last_crash,
             commands::acknowledge_crash,
             commands::reveal_crash_log,
@@ -471,12 +474,13 @@ fn read_musicbrainz_tags(db: Db, lock: scan::ScanLock, log: log::Log) {
 /// The keys go first: that pass is the one that leaves plays unlinked until it
 /// runs.
 ///
-/// No `ScanLock`: they read `plays` and write `plays`, `album_groups` and
-/// links, and touch neither a file nor a track row. Nothing announces either -
-/// the Statistics view reads both when it next opens, and a library whose
-/// grouping moved between one launch and the next has no panel on screen to
-/// refresh.
-fn fold_the_log(db: Db, log: log::Log) {
+/// No `ScanLock`: they read `plays` and write `plays`, `album_groups`, links
+/// and `tracks.match_key`, and touch neither a file nor a tag. Nothing
+/// announces for the log - the Statistics view reads both when it next opens,
+/// and a library whose grouping moved between one launch and the next has no
+/// panel on screen to refresh. A track key is different: it is what the loved
+/// set resolves through, and the window read that set before this ran.
+fn fold_the_log(app: tauri::AppHandle, db: Db, log: log::Log) {
     let _ = std::thread::Builder::new()
         .name("plays-fold".to_owned())
         .spawn(move || {
@@ -486,8 +490,17 @@ fn fold_the_log(db: Db, log: log::Log) {
                 .and_then(|mut conn| db::plays::refold_if_stale(&mut conn))
             {
                 // Every launch after the one that ran the fold.
-                Ok(false) => {}
-                Ok(true) => op.succeeded(log::Fields::new()),
+                Ok(None) => {}
+                Ok(Some(refolded)) => {
+                    if refolded.tracks > 0 {
+                        announce_loved(&app);
+                    }
+                    op.succeeded(
+                        log::Fields::new()
+                            .add("moved", refolded.moved)
+                            .add("tracks", refolded.tracks),
+                    );
+                }
                 Err(error) => op.failed(&error),
             }
 
@@ -503,12 +516,51 @@ fn fold_the_log(db: Db, log: log::Log) {
         });
 }
 
+/// Tells the window the loved set moved under it, and every view that
+/// might hold a smart playlist with a Loved rule.
+fn announce_loved(app: &tauri::AppHandle) {
+    let _ = app.emit("loved://changed", ());
+    crate::commands::announce_library_changed(app);
+}
+
+/// Starts the last.fm thread, or nothing in a build with no key.
+///
+/// Managed as app state, and a clone handed to the player thread: plays reach
+/// it from there, and loves and connecting from commands.
+fn start_scrobbler(app: tauri::AppHandle, db: Db, log: log::Log) -> Option<lastfm::Scrobbler> {
+    lastfm::Scrobbler::start(
+        db,
+        log,
+        Box::new(move |notice| {
+            // None of these was asked for, so none is an error popover. One
+            // stops the Account menu claiming an account that no longer works;
+            // the counts go to the settings pane.
+            let _ = match notice {
+                lastfm::Notice::Disconnected => app.emit("lastfm://disconnected", ()),
+                lastfm::Notice::Queued(depth) => app.emit("lastfm://queued", depth),
+                lastfm::Notice::LovesQueued(depth) => app.emit("lastfm://loves-queued", depth),
+                lastfm::Notice::Loved => {
+                    announce_loved(&app);
+                    Ok(())
+                }
+            };
+        }),
+    )
+}
+
 /// Starts the player thread and forwards its events to the webview.
 ///
 /// The sink is opened here so a machine with no audio device still gets a
 /// running app: playback commands then fail loudly instead of the window
 /// refusing to open. CI runners are exactly that machine.
-fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool, log: log::Log) -> Player {
+fn start_player(
+    app: tauri::AppHandle,
+    db: Db,
+    scrobbler: Option<lastfm::Scrobbler>,
+    volume: f32,
+    muted: bool,
+    log: log::Log,
+) -> Player {
     // The e2e build can ask for a sink that succeeds without hardware. On the
     // runner the branch below would take the `NullSink` path, where every load
     // fails - so a test could never reach a playing row, which is exactly the
@@ -519,7 +571,7 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool, log: lo
             audio::sink::SilentSink::new(),
             volume,
             muted,
-            forward(app, db, log),
+            forward(app, db, scrobbler, log),
         );
     }
 
@@ -529,7 +581,7 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool, log: lo
             // watcher needs the same stream-error flag the sink was opened
             // with, and the channel it sends into only exists after `spawn`.
             let faulted = sink.faulted();
-            let player = Player::spawn(sink, volume, muted, forward(app, db, log));
+            let player = Player::spawn(sink, volume, muted, forward(app, db, scrobbler, log));
             player.watch_output(faulted);
             player
         }
@@ -554,26 +606,11 @@ fn start_player(app: tauri::AppHandle, db: Db, volume: f32, muted: bool, log: lo
 fn forward(
     app: tauri::AppHandle,
     db: Db,
+    // `None` in a build with no last.fm key - no thread, no channel, and
+    // nothing on the played path that was not there before.
+    scrobbler: Option<lastfm::Scrobbler>,
     log: log::Log,
 ) -> impl FnMut(&Event, &audio::EngineState) + Send + 'static {
-    // Owned by this closure, which lives on the player thread, rather than
-    // managed as app state: nothing else has a reason to reach it, and the two
-    // events that feed it arrive here. `None` in a build with no last.fm key -
-    // no thread, no channel, and nothing on the played path that was not there
-    // before.
-    let scrobbler = lastfm::Scrobbler::start(db.clone(), log.clone(), {
-        let app = app.clone();
-        Box::new(move |notice| {
-            // Neither of these was asked for, so neither is an error popover.
-            // One stops the Account menu claiming an account that no longer
-            // works; the other is a count in the settings pane.
-            let _ = match notice {
-                lastfm::Notice::Disconnected => app.emit("lastfm://disconnected", ()),
-                lastfm::Notice::Queued(depth) => app.emit("lastfm://queued", depth),
-            };
-        })
-    });
-
     move |event, state| match event {
         Event::StateChanged => {
             if let Ok(conn) = db.conn() {

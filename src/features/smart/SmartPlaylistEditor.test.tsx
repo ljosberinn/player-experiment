@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type FilterGroup, type SmartOrder, suggestTagValues } from "../../ipc";
 import { choose, offered, offers, select, showing } from "../../test/select";
-import { useLastfmStore } from "../lastfm/store";
 import { emptyFilter, noOrder } from "./filterTree";
 import { SmartPlaylistEditor } from "./SmartPlaylistEditor";
 
@@ -53,18 +52,8 @@ const lovedIs: FilterGroup = {
   children: [{ type: "rule", field: "loved", op: "is", value: { kind: "none" } }],
 };
 
-/** A build with a key and an account, which is what Loved needs. */
-function connected() {
-  useLastfmStore.setState({ configured: true, username: "listener" });
-}
-
 describe("the Loved field", () => {
-  beforeEach(() => {
-    useLastfmStore.setState({ configured: false, username: null });
-  });
-
   it("renders no value input, because the rule is the whole question", async () => {
-    connected();
     open(lovedIs);
 
     expect(showing("Condition 1 on Loved")).toBe("is");
@@ -72,7 +61,6 @@ describe("the Loved field", () => {
   });
 
   it("saves without a value", async () => {
-    connected();
     const { onSave, user } = open(lovedIs);
 
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -80,35 +68,11 @@ describe("the Loved field", () => {
     expect(onSave).toHaveBeenCalledWith("Recent", lovedIs, noOrder);
   });
 
-  it("cannot be picked on a build with no key, and says so", async () => {
-    open(artistIs("Rome"));
-
-    expect(await offers("Field for condition 1", "Loved")).toBe(false);
-    expect(screen.getByText(/carries no last.fm key/)).toBeInTheDocument();
-  });
-
-  it("cannot be picked until an account is connected, and says which", async () => {
-    useLastfmStore.setState({ configured: true, username: null });
-    open(artistIs("Rome"));
-
-    expect(await offers("Field for condition 1", "Loved")).toBe(false);
-    expect(screen.getByText(/Connect a last.fm account/)).toBeInTheDocument();
-  });
-
-  it("is offered without comment once an account is connected", async () => {
-    connected();
+  it("is offered on every build, with no key and no account", async () => {
     open(artistIs("Rome"));
 
     expect(await offers("Field for condition 1", "Loved")).toBe(true);
     expect(screen.queryByText(/last.fm/)).not.toBeInTheDocument();
-  });
-
-  it("still shows the field a saved filter selected after a disconnect", async () => {
-    // Disabling the option stops it being picked afresh; it must not erase a
-    // rule the user built while they were connected.
-    open(lovedIs);
-
-    expect(showing("Field for condition 1")).toBe("Loved");
   });
 });
 

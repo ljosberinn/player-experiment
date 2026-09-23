@@ -22,6 +22,7 @@ import { SearchBox } from "./features/library/SearchBox";
 import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore, VIEW_TITLES } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
+import { useLovedStore } from "./features/love/store";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
 import { PlayerRepeat } from "./features/player/PlayerRepeat";
 import { PlayerScrubber } from "./features/player/PlayerScrubber";
@@ -71,8 +72,9 @@ export function App() {
   // Launch lifecycle, and nothing else: who is connected is `AppMenus`'
   // business. Both are actions, so they cost no renders where they are.
   const loadLastfm = useLastfmStore((s) => s.load);
-  const loadLoved = useLastfmStore((s) => s.loadLoved);
   const watchLastfm = useLastfmStore((s) => s.watch);
+  const loadLoved = useLovedStore((s) => s.load);
+  const watchLoved = useLovedStore((s) => s.watch);
   const updateStatus = useUpdaterStore((s) => s.status);
   const updateVersion = useUpdaterStore((s) => s.version);
   const installUpdate = useUpdaterStore((s) => s.install);
@@ -142,29 +144,33 @@ export function App() {
     // One SQLite read, and the only thing last.fm does unbidden: it decides
     // whether the Account menu opens at all. Nothing leaves the machine.
     void loadLastfm();
-    // The set the song menu reads to say Love or Unlove. Local too: it is the
-    // last import's answer, held in SQLite.
+    // The set the song menu reads to say Love or Unlove. Local too.
     void loadLoved();
   }, [loadDynamicBg, loadLastfm, loadLoved]);
 
   useEffect(() => {
-    // The one thing last.fm reports without being asked: the stored key has
-    // been rejected and forgotten, so the Account menu must stop claiming an
-    // account. Same teardown dance as the player subscription below.
-    let stop: UnlistenFn | undefined;
+    // What last.fm reports without being asked: the stored key has been
+    // rejected and forgotten, so the Account menu must stop claiming an
+    // account; and its loves arriving, which move the set the menus read.
+    // Same teardown dance as the player subscription below.
+    const stops: UnlistenFn[] = [];
     let cancelled = false;
-    void watchLastfm().then((off) => {
-      if (cancelled) {
-        off();
-      } else {
-        stop = off;
-      }
-    });
+    for (const watch of [watchLastfm, watchLoved]) {
+      void watch().then((off) => {
+        if (cancelled) {
+          off();
+        } else {
+          stops.push(off);
+        }
+      });
+    }
     return () => {
       cancelled = true;
-      stop?.();
+      for (const stop of stops) {
+        stop();
+      }
     };
-  }, [watchLastfm]);
+  }, [watchLastfm, watchLoved]);
 
   useEffect(() => {
     // `connect` resolves to its own teardown, which may land after unmount.

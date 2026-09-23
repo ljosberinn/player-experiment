@@ -100,10 +100,12 @@ impl Plays {
             None => {}
         }
         match query.loved {
-            Some(true) => conditions
-                .push("plays.match_key IN (SELECT match_key FROM lastfm_loved)".to_owned()),
-            Some(false) => conditions
-                .push("plays.match_key NOT IN (SELECT match_key FROM lastfm_loved)".to_owned()),
+            Some(true) => {
+                conditions.push("plays.match_key IN (SELECT match_key FROM loved)".to_owned())
+            }
+            Some(false) => {
+                conditions.push("plays.match_key NOT IN (SELECT match_key FROM loved)".to_owned())
+            }
             None => {}
         }
 
@@ -1645,7 +1647,7 @@ mod tests {
             1
         );
         conn.execute(
-            "INSERT INTO lastfm_loved (match_key) VALUES (?1)",
+            "INSERT INTO loved (match_key) VALUES (?1)",
             [match_key("Nobody", "Nothing")],
         )
         .unwrap();

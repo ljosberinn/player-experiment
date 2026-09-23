@@ -28,6 +28,11 @@ username: string | null,
  */
 queued: number, 
 /**
+ * Loves and unloves made here that last.fm has not taken yet, for the
+ * same line's reason.
+ */
+lovesQueued: number, 
+/**
  * Where the history import stands, or null if none has run.
  */
 import: LastfmImport | null, };
