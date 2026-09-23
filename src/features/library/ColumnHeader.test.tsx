@@ -289,4 +289,15 @@ describe("the column menu", () => {
     // Someone who hid five columns needs a way back that is not "guess which".
     expect(resetColumns).toHaveBeenCalled();
   });
+
+  it("offers a way back to the defaults for every view at once", async () => {
+    const resetAllColumns = vi.fn(async () => undefined);
+    useLibraryStore.setState({ resetAllColumns });
+    renderHeader(["path"]);
+    const user = await openMenu();
+
+    await user.click(screen.getByRole("menuitem", { name: "Reset All Columns" }));
+
+    expect(resetAllColumns).toHaveBeenCalled();
+  });
 });

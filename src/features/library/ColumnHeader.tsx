@@ -47,6 +47,7 @@ export function ColumnHeader({
   const moveColumn = useLibraryStore((state) => state.moveColumn);
   const resizeColumn = useLibraryStore((state) => state.resizeColumn);
   const resetColumns = useLibraryStore((state) => state.resetColumns);
+  const resetAllColumns = useLibraryStore((state) => state.resetAllColumns);
 
   const rowRef = useRef<HTMLTableRowElement>(null);
   const [drag, setDrag] = useState<HeaderDrag | null>(null);
@@ -176,6 +177,7 @@ export function ColumnHeader({
     })),
     { kind: "separator" as const },
     { label: "Reset Columns", onSelect: () => void resetColumns() },
+    { label: "Reset All Columns", onSelect: () => void resetAllColumns() },
   ];
 
   return (

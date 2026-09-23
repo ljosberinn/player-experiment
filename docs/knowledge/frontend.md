@@ -44,6 +44,9 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   The fit consumes the flag once the first page has landed, because rows that
   have not arrived render a skeleton and measuring those measures the shimmer.
   "Reset Columns" drops the fit with the config, or it appears to do nothing.
+- **"Reset All Columns" forgets every stored layout** — `library.columns` and
+  each playlist's `columns_json` — rather than writing the defaults anywhere,
+  so every playlist goes back to inheriting the library's layout.
 
 ## The browse views
 

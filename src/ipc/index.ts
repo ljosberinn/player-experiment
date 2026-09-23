@@ -289,6 +289,11 @@ export function saveColumnConfig(playlistId: number | null, configJson: string):
   return invoke<void>("save_column_config", { playlistId, configJson });
 }
 
+/** Forgets the library's layout and every playlist's, so all read as never set. */
+export function resetAllColumnConfigs(): Promise<void> {
+  return invoke<void>("reset_all_column_configs");
+}
+
 /** The stored webview zoom factor, or null if it has never been set. */
 export function loadZoom(): Promise<string | null> {
   return invoke<string | null>("load_zoom");

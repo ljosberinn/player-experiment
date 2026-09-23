@@ -17,6 +17,7 @@ import {
   releaseGroups,
   removeMissingTracks,
   removeTracks,
+  resetAllColumnConfigs,
   type SortDirection,
   type SortField,
   saveColumnConfig,
@@ -287,6 +288,11 @@ interface LibraryState {
   resizeColumn: (id: SortField, width: number) => Promise<void>;
   /** Puts the columns back to the defaults for this view. */
   resetColumns: () => Promise<void>;
+  /**
+   * Forgets the layout of every view, the library's and each playlist's, and
+   * shows the defaults here.
+   */
+  resetAllColumns: () => Promise<void>;
   /**
    * Fits the visible columns to `widths`, consuming the pending flag.
    *
@@ -730,6 +736,23 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // at all to the columns that were fitted.
     set({ fittedWidths: {} });
     await get().applyColumns(DEFAULT_COLUMN_CONFIG);
+  },
+
+  resetAllColumns: async () => {
+    try {
+      await resetAllColumnConfigs();
+    } catch (cause) {
+      report(cause);
+      return;
+    }
+    // Not through `applyColumns`: saving the defaults for this view would give
+    // it a layout of its own again, and it should inherit like every other.
+    const previousSort = get().sortBy;
+    const sortBy = visibleSort(DEFAULT_COLUMN_CONFIG, previousSort);
+    set({ columns: DEFAULT_COLUMN_CONFIG, fittedWidths: {}, sortBy });
+    if (sortBy !== previousSort) {
+      await get().refresh();
+    }
   },
 
   fitColumns: (widths) => set({ fittedWidths: widths, fitPending: false }),
