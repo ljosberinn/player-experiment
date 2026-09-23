@@ -62,6 +62,17 @@ describe("measuring one column", () => {
     );
   });
 
+  it("makes room for the header's divider, which a cell does not have", () => {
+    const element = table({ year: "Year" }, [{ year: "2015" }]);
+    const th = element.querySelector("th") as HTMLElement;
+    Object.defineProperty(th, "offsetWidth", { value: 80 });
+    Object.defineProperty(th, "clientWidth", { value: 79 });
+
+    // Without the pixel the label is one short of its box and ellipsizes,
+    // though nothing about it is cut.
+    expect(measuredWidth(element, "year")).toBe("Year".length * 10 + 1 + CELL_PADDING_PX);
+  });
+
   it("ignores the other columns' cells", () => {
     const element = table({ title: "Title", artist: "Artist" }, [
       { title: "short", artist: "a very much longer artist name" },
