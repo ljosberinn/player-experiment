@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ColumnHeader } from "./ColumnHeader";
 import { DRAG_THRESHOLD_PX } from "./columnDrag";
-import { ALL_COLUMNS, resolveColumns } from "./columns";
+import { ALL_COLUMNS, displayedColumns, resolveColumns } from "./columns";
 import { useLibraryStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -228,6 +228,91 @@ describe("resizing a column", () => {
     // Otherwise the header travels with the divider.
     expect(moveColumn).not.toHaveBeenCalled();
     expect(resizeColumn).toHaveBeenCalled();
+  });
+});
+
+describe("# pinned inside a release", () => {
+  const release = { kind: "albums" as const, id: "Shields" };
+
+  function renderRelease(ids: Parameters<typeof resolveColumns>[0]["ids"], onSort = vi.fn()) {
+    const config = { ids, widths: {} };
+    useLibraryStore.setState({ columns: config, browse: release });
+    render(
+      <table>
+        <thead>
+          <ColumnHeader
+            columns={resolveColumns(displayedColumns(config, release))}
+            sortBy="trackNo"
+            direction="asc"
+            onSort={onSort}
+          />
+        </thead>
+      </table>,
+    );
+    return { onSort };
+  }
+
+  it("drops a header where the pointer is, though # is stored elsewhere", () => {
+    // Each header 100px wide in the order drawn: status, #, Title, Artist, Album.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const index = [...(this.parentElement?.children ?? [])].indexOf(this);
+      return { left: index * 100, right: index * 100 + 100 } as DOMRect;
+    });
+    const moveColumn = vi.fn(async () => undefined);
+    useLibraryStore.setState({ moveColumn });
+    renderRelease(["title", "artist", "album", "trackNo"]);
+    const header = screen.getByRole("button", { name: /Title/ });
+
+    // Past Artist's midpoint, short of Album's.
+    fireEvent.pointerDown(header, { button: 0, clientX: 250, pointerId: 1 });
+    fireEvent.pointerMove(header, { clientX: 360, pointerId: 1 });
+    fireEvent.pointerUp(header, { clientX: 360, pointerId: 1 });
+
+    // Before Album in the stored order, which is where # does not count.
+    expect(moveColumn).toHaveBeenCalledWith("title", 1);
+  });
+
+  it("does not drag #, and still sorts by it", () => {
+    const moveColumn = vi.fn(async () => undefined);
+    useLibraryStore.setState({ moveColumn });
+    const { onSort } = renderRelease(["title", "artist"]);
+    const header = screen.getByRole("button", { name: /#/ });
+
+    fireEvent.pointerDown(header, { button: 0, clientX: 0, pointerId: 1 });
+    fireEvent.pointerMove(header, { clientX: 200, pointerId: 1 });
+    fireEvent.pointerUp(header, { clientX: 200, pointerId: 1 });
+    fireEvent.click(header);
+
+    expect(moveColumn).not.toHaveBeenCalled();
+    expect(onSort).toHaveBeenCalledWith("trackNo");
+  });
+
+  it("marks # on and cannot switch it off, though the layout hides it", async () => {
+    renderRelease(["title", "artist"]);
+    fireEvent.contextMenu(screen.getAllByRole("columnheader")[0] as HTMLElement, {
+      clientX: 10,
+      clientY: 10,
+    });
+
+    expect(await screen.findByRole("menuitem", { name: /✓\s*#/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("still refuses to hide the only column the layout has", async () => {
+    renderRelease(["title"]);
+    fireEvent.contextMenu(screen.getAllByRole("columnheader")[0] as HTMLElement, {
+      clientX: 10,
+      clientY: 10,
+    });
+
+    expect(await screen.findByRole("menuitem", { name: /✓\s*Title/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 });
 

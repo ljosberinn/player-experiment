@@ -27,8 +27,15 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
 - `ROW_HEIGHT` lives in `SongRow.tsx`, beside the row it is the height of, and
   the virtualizer imports it — a CSS copy would be a second number to keep in
   step. Change one, change both.
-- `headerBounds()` queries `th[data-column]`: the status column has no id and
-  counting it offsets every drag-to-reorder drop index.
+- `headerBounds()` queries `th[data-column]:not([data-pinned])`: the status
+  column and a pinned `#` cannot move, and counting either offsets every
+  drag-to-reorder drop index.
+- **A release drill-in pins `#` first**, display-only: `displayedColumns`
+  derives it from the stored `ColumnConfig`, which is never rewritten, and
+  every `visibleSort` call goes through it so `trackNo` survives inside the
+  release. A drop is counted among what is on screen, so `storedDropIndex`
+  translates it through the neighbour it lands before — the stored order may
+  hold `#` anywhere.
 - **Double-clicking a divider fits the column to the rows on screen**, measured
   with a `Range` over each cell's contents (`columnFit.ts`) — the cells clip with
   `ellipsis`, and a clipped element's `scrollWidth` omits the padding on the

@@ -6,12 +6,14 @@ import {
   columnsFor,
   DEFAULT_COLUMN_CONFIG,
   DEFAULT_COLUMN_IDS,
+  displayedColumns,
   MIN_COLUMN_WIDTH,
   moveColumn,
   parseColumnConfig,
   resizeColumn,
   resolveColumns,
   serializeColumnConfig,
+  storedDropIndex,
   toggleColumn,
   visibleSort,
 } from "./columns";
@@ -203,6 +205,70 @@ describe("column configuration", () => {
   it("leaves query-level sorts alone, since they have no column either way", () => {
     expect(visibleSort(config(["artist"]), "relevance")).toBe("relevance");
     expect(visibleSort(config(["artist"]), "position")).toBe("position");
+  });
+
+  it("pins # first inside a release, whatever the layout says", () => {
+    const release = { kind: "albums" as const, id: "Shields" };
+
+    expect(displayedColumns(config(["title", "artist"]), release).ids).toEqual([
+      "trackNo",
+      "title",
+      "artist",
+    ]);
+    expect(displayedColumns(config(["title", "trackNo", "artist"]), release).ids).toEqual([
+      "trackNo",
+      "title",
+      "artist",
+    ]);
+  });
+
+  it("shows the layout as stored everywhere else", () => {
+    const layout = config(["title", "trackNo"], { trackNo: 90 });
+
+    expect(displayedColumns(layout, null)).toBe(layout);
+    expect(displayedColumns(layout, { kind: "artists", id: "Grizzly Bear" })).toBe(layout);
+  });
+
+  it("keeps widths for a pinned # the layout hides", () => {
+    const layout = config(["title"], { trackNo: 90 });
+
+    expect(displayedColumns(layout, { kind: "albums", id: "Shields" }).widths).toEqual({
+      trackNo: 90,
+    });
+  });
+
+  it("drops a column before the neighbour it lands in front of on screen", () => {
+    // `#` shown first but stored between Title and Artist: counting the drop
+    // into the stored order directly would leave Title where it was.
+    const stored: SortField[] = ["title", "trackNo", "artist", "album"];
+    const draggable: SortField[] = ["title", "artist", "album"];
+
+    expect(storedDropIndex(stored, draggable, "title", 1)).toBe(2);
+    expect(moveColumn(config(stored), "title", 2).ids).toEqual([
+      "trackNo",
+      "artist",
+      "title",
+      "album",
+    ]);
+    expect(storedDropIndex(stored, draggable, "album", 0)).toBe(0);
+  });
+
+  it("drops a column dragged to the end after the last one on screen", () => {
+    const stored: SortField[] = ["title", "artist", "trackNo"];
+
+    expect(storedDropIndex(stored, ["title", "artist"], "title", 1)).toBe(1);
+  });
+
+  it("counts a drop into the stored order unchanged when nothing is pinned", () => {
+    const ids: SortField[] = ["title", "artist", "album", "genre"];
+
+    for (const [id, drop] of [
+      ["title", 2],
+      ["genre", 0],
+      ["artist", 3],
+    ] as const) {
+      expect(storedDropIndex(ids, ids, id, drop)).toBe(drop);
+    }
   });
 
   it("round-trips through storage", () => {
