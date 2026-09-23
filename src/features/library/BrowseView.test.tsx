@@ -32,8 +32,8 @@ function group(over: Partial<BrowseGroup> = {}): BrowseGroup {
 
 const initial = useLibraryStore.getState();
 
-/** `.browse-body`'s `padding: 0 30px 30px` in `App.css`. */
-const BODY_PADDING = 60;
+/** `.browse-body`'s `padding: 0 33px 33px` in `App.css`. */
+const BODY_PADDING = 66;
 
 /**
  * jsdom reports every element as zero-sized, so the virtualizer would render
@@ -206,7 +206,7 @@ describe("BrowseView", () => {
 
     const { container } = render(<BrowseView kind="albums" />);
 
-    // 200px fits one 168px tile and nothing of a second.
+    // 200px fits one 186px tile and nothing of a second.
     expect(rowsIn(container)).toHaveLength(8);
 
     stubLayout(600, 800);
@@ -222,9 +222,9 @@ describe("BrowseView", () => {
 
   it("counts the columns against the row's width, not the padding around it", () => {
     useLibraryStore.setState({ groups: groups(8) });
-    // Two tiles need 346px and three need 524, so a 520px row holds two. The
-    // container reports 580, which is where a third tile came from - and it
-    // then hung 4px past the last one the user could see.
+    // Two tiles need 383px and three need 580, so a 520px row holds two. The
+    // container reports 586, which is where a third tile came from - and it
+    // then hung 60px past the last one the user could see.
     stubLayout(600, 520);
 
     const { container } = render(<BrowseView kind="albums" />);
@@ -240,7 +240,7 @@ describe("BrowseView", () => {
     const { container } = render(<BrowseView kind="albums" />);
     const scroll = screen.getByTestId("browse-scroll");
     // Four columns, so row 5 starts at group 20.
-    scroll.scrollTop = 5 * 235;
+    scroll.scrollTop = 5 * 260;
 
     stubLayout(600, 400);
     act(() => {
@@ -251,7 +251,7 @@ describe("BrowseView", () => {
 
     // Two columns now, and group 20 is row 10. Without the correction the
     // offset would still say row 5, which is group 10 under the new width.
-    expect(scroll.scrollTop).toBe(10 * 235);
+    expect(scroll.scrollTop).toBe(10 * 260);
     expect(rowsIn(container)).not.toHaveLength(0);
   });
 
@@ -318,7 +318,7 @@ describe("where each tab was left", () => {
     const first = render(<BrowseView kind="albums" />);
     const scroll = screen.getByTestId("browse-scroll");
     // Row 8 of four columns: group 32 is at the top.
-    scroll.scrollTop = 8 * 235;
+    scroll.scrollTop = 8 * 260;
     act(() => {
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
@@ -327,7 +327,7 @@ describe("where each tab was left", () => {
     expect(useLibraryStore.getState().browseOffsets.albums).toBe(32);
 
     render(<BrowseView kind="albums" />);
-    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 260);
   });
 
   it("opens a different tab at the top rather than at the other one's offset", () => {
@@ -336,7 +336,7 @@ describe("where each tab was left", () => {
 
     const albums = render(<BrowseView kind="albums" />);
     const scroll = screen.getByTestId("browse-scroll");
-    scroll.scrollTop = 8 * 235;
+    scroll.scrollTop = 8 * 260;
     act(() => {
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
@@ -355,7 +355,7 @@ describe("where each tab was left", () => {
 
     const first = render(<BrowseView kind="albums" />);
     const scroll = screen.getByTestId("browse-scroll");
-    scroll.scrollTop = 8 * 235;
+    scroll.scrollTop = 8 * 260;
     act(() => {
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
@@ -365,7 +365,7 @@ describe("where each tab was left", () => {
     stubLayout(600, 400);
     render(<BrowseView kind="albums" />);
 
-    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(16 * 235);
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(16 * 260);
   });
 
   it("waits for the groups before restoring, and does not restore twice", () => {
@@ -381,7 +381,7 @@ describe("where each tab was left", () => {
       useLibraryStore.setState({ groups: groups(80) });
     });
     const scroll = screen.getByTestId("browse-scroll");
-    expect(scroll.scrollTop).toBe(8 * 235);
+    expect(scroll.scrollTop).toBe(8 * 260);
 
     // A later group list is the user scrolling somewhere else's problem, not a
     // second restore of a position they have moved on from.
@@ -402,7 +402,7 @@ describe("where each tab was left", () => {
 
     render(<BrowseView kind="albums" />);
 
-    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 260);
   });
 
   it("survives the extra mount and unmount StrictMode runs in development", () => {
@@ -423,7 +423,7 @@ describe("where each tab was left", () => {
     });
 
     expect(useLibraryStore.getState().browseOffsets.albums).toBe(32);
-    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 235);
+    expect(screen.getByTestId("browse-scroll").scrollTop).toBe(8 * 260);
   });
 
   it("goes back to the top when a search changes what every tab lists", () => {
@@ -432,7 +432,7 @@ describe("where each tab was left", () => {
 
     const open = render(<BrowseView kind="albums" />);
     const scroll = screen.getByTestId("browse-scroll");
-    scroll.scrollTop = 8 * 235;
+    scroll.scrollTop = 8 * 260;
     act(() => {
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });

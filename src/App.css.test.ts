@@ -1100,8 +1100,8 @@ describe("the stylesheet", () => {
     // that sized itself would move every time a version string got a digit
     // longer or a menu label changed.
     for (const [selector, height] of [
-      [".appbar", 36],
-      [".statusbar", 27],
+      [".appbar", 40],
+      [".statusbar", 30],
     ] as const) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
       expect(rule?.body, `${selector} should state its height`).toMatch(
@@ -1113,12 +1113,12 @@ describe("the stylesheet", () => {
   it("pads a header and a cell by the same amount a fitted width assumes", () => {
     // `CELL_PADDING_PX` in `columnDrag.ts` is what double-clicking a divider
     // adds to the widest text it measured. It is one number for both because
-    // both are 5px a side; change either here and the fit clips or gaps.
+    // both are 6px a side; change either here and the fit clips or gaps.
     for (const selector of [".song-header-cell", ".song-cell"]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
 
       expect(rule?.body, `${selector} should state its padding`).toMatch(
-        /padding:\s*\S+\s+5px\s*;/,
+        /padding:\s*\S+\s+6px\s*;/,
       );
     }
   });

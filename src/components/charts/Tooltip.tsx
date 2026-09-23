@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
  * somewhere wrong to find out where it goes. `.chart-tooltip` caps its width
  * to the same number - change one, change both.
  */
-export const TOOLTIP_WIDTH = 160;
+export const TOOLTIP_WIDTH = 176;
 
 export interface TooltipProps {
   /** Where the tooltip points, in the plot's coordinates. */

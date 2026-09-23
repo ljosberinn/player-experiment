@@ -64,20 +64,20 @@ describe("a drill-in drawn as release groups", () => {
   });
 
   it("is exactly as tall as the arithmetic says", async () => {
-    // 14 + 14 padding, three 28px rows (two tracks and the closing row), and
+    // 15 + 15 padding, three 31px rows (two tracks and the closing row), and
     // the 2px rule. If this drifts, the virtualizer places every group after
     // the first at the wrong offset and the view tears as it scrolls.
-    await expect((await box(".release-group")).height).toBe(114);
+    await expect((await box(".release-group")).height).toBe(125);
   });
 
   it("never lets the gutter decide the height", async () => {
     const group = await box(".release-group");
     const gutter = await box(".release-gutter");
 
-    // The claim the 52px cover rests on: stacked above its labels the gutter
+    // The claim the 57px cover rests on: stacked above its labels the gutter
     // would be taller than a group of one track, and `groupHeight` - which
     // knows nothing about the gutter - would be short for every such group.
-    expect(gutter.height).toBeLessThanOrEqual(group.height - 28);
+    expect(gutter.height).toBeLessThanOrEqual(group.height - 31);
   });
 
   it("lines the one column header up with every group's table", async () => {

@@ -8,8 +8,8 @@ import type { ReactNode } from "react";
  * the `:indeterminate` state, and it is what a test finds by role. Only its
  * drawing is replaced - `appearance: none` on the input itself could not hold
  * a tick at the sheet's stroke, so the input goes transparent over a `<span>`
- * that is drawn instead. **That span is the 24px hit area** and the mark
- * inside it is 15px; see `library.css`.
+ * that is drawn instead. **That span is the 26px hit area** and the mark
+ * inside it is 17px; see `library.css`.
  *
  * Not Base UI, unlike `Select`, `Slider` and `Switch`. There is no behaviour
  * here the platform does not already have, and a headless checkbox would be a
@@ -71,8 +71,8 @@ export function Checkbox({
         <svg
           className="checkbox-tick"
           aria-hidden="true"
-          width="10"
-          height="10"
+          width="11"
+          height="11"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

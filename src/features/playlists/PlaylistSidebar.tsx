@@ -192,7 +192,7 @@ export function PlaylistSidebar({
         >
           <Icon
             name={playlist.kind === "smart" ? "smart-playlist" : "playlist"}
-            size={15}
+            size={17}
             className="sidebar-icon"
           />
           <span className="sidebar-label">{playlist.name}</span>

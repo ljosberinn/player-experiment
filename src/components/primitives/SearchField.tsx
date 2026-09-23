@@ -29,7 +29,7 @@ export function SearchField({
 }) {
   return (
     <span className="search-field">
-      <Icon name="search" size={13} className="search-field-glyph" />
+      <Icon name="search" size={14} className="search-field-glyph" />
       <input
         id={id}
         type="search"

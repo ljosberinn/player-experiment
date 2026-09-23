@@ -12,10 +12,10 @@ import { useLibraryStore } from "./store";
  * has rendered anything, and a grid whose rows resize as covers load would
  * reflow under the scroll position.
  */
-const TILE_WIDTH = 168;
-const TILE_GAP = 10;
-const TILE_HEIGHT = 235;
-const LIST_ROW_HEIGHT = 41;
+const TILE_WIDTH = 186;
+const TILE_GAP = 11;
+const TILE_HEIGHT = 260;
+const LIST_ROW_HEIGHT = 46;
 const OVERSCAN = 6;
 
 /**
@@ -68,8 +68,8 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
 
   // The section is measured rather than the scroll container around it: a row
   // is as wide as the section, while the container's `clientWidth` also counts
-  // `.browse-body`'s 30px of padding on each side. Counting columns against
-  // those extra 60px overflowed the grid at every width where the surplus was
+  // `.browse-body`'s 33px of padding on each side. Counting columns against
+  // those extra 66px overflowed the grid at every width where the surplus was
   // less than one tile - about a quarter of them, the maximised window among
   // them.
   const attachRow = useCallback((element: HTMLElement | null) => {

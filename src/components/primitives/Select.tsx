@@ -57,7 +57,7 @@ export function Select<Value extends string>({
     >
       <Base.Trigger id={id} aria-label={label} className="select">
         <Base.Value className="select-value" />
-        <Base.Icon className="select-chevron" render={<Icon name="expand" size={12} />} />
+        <Base.Icon className="select-chevron" render={<Icon name="expand" size={13} />} />
       </Base.Trigger>
 
       <Base.Portal>

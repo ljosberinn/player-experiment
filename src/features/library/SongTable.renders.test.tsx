@@ -37,14 +37,15 @@ vi.mock("../../ipc", () => ({
 const COLUMN_IDS: SortField[] = ["title", "durationMs", "artist", "album", "genre"];
 const ROWS = 500;
 const BODY_HEIGHT = 900;
-const ROW_HEIGHT = 32;
+const ROW_HEIGHT = 35;
 /**
  * The window plus overscan at `BODY_HEIGHT`, which is what the counts are per.
  *
- * 47 until 114 took the row from 26px to 32px. The counts below are per row
- * crossed rather than per window, so they did not move with it.
+ * 47 until 114 took the row from 26px to 32px, and 41 until 129 took it to
+ * 35px. The counts below are per row crossed rather than per window, so they
+ * did not move with it.
  */
-const WINDOW_ROWS = 41;
+const WINDOW_ROWS = 38;
 
 function track(id: number): Track {
   return {

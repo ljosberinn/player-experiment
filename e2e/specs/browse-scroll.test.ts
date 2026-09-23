@@ -21,8 +21,8 @@ function view(name: string) {
 }
 
 /** `TILE_HEIGHT` and `LIST_ROW_HEIGHT` in `BrowseView.tsx`. */
-const TILE_HEIGHT = 235;
-const LIST_ROW_HEIGHT = 41;
+const TILE_HEIGHT = 260;
+const LIST_ROW_HEIGHT = 46;
 
 const SCROLL = "[data-testid='browse-scroll']";
 

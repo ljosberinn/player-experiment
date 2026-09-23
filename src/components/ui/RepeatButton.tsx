@@ -30,7 +30,7 @@ export function RepeatButton({
       disabled={!onToggle}
       onClick={onToggle}
     >
-      <Icon name="repeat-one" size={15} />
+      <Icon name="repeat-one" size={17} />
     </button>
   );
 }

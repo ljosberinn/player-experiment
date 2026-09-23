@@ -56,9 +56,9 @@ describe("Donut", () => {
     expect(paths).toHaveLength(3);
     expect(paths.map((path) => path.getAttribute("d"))).not.toContain("");
     // Half the total is the half-turn sweep flag and a finish on the far side
-    // of the ring; the last slice closing on `0,-152` is the total adding up.
-    expect(paths[0]?.getAttribute("d")).toContain("A152,152,0,1,1,0,152");
-    expect(paths[2]?.getAttribute("d")).toContain("0,-152");
+    // of the ring; the last slice closing on `0,-151` is the total adding up.
+    expect(paths[0]?.getAttribute("d")).toContain("A151,151,0,1,1,0,151");
+    expect(paths[2]?.getAttribute("d")).toContain("0,-151");
     // Queried off the DOM rather than through `getByTitle`: the frame makes
     // the svg `role="img"`, so nothing inside it answers an accessible query.
     expect(paths[0]?.querySelector("title")?.textContent).toBe("metal: 50 tracks");

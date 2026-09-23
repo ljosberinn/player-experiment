@@ -40,7 +40,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 14px;
+  padding: 9px 15px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
@@ -48,7 +48,7 @@
      one of its own - so every button rule in this app states this, and the
      Archivo guard cannot see a family that was never declared. Phase 111. */
   font: inherit;
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 800;
   line-height: 1.2;
   text-align: center;
@@ -98,10 +98,10 @@
 }
 
 /* Narrower padding than the other two: it has no edge, so the label is the
-   whole control and 14px either side would read as a gap rather than as a
+   whole control and 15px either side would read as a gap rather than as a
    target. */
 .button.ghost {
-  padding: 8px 6px;
+  padding: 9px 7px;
   color: var(--accent-deep);
 }
 
@@ -159,8 +159,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 35px;
+  height: 35px;
   padding: 0;
   border: 1px solid var(--menu-border);
   background: transparent;
@@ -173,28 +173,28 @@
 }
 
 .icon-button.in-dialog {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
 }
 
 /* Recessive for the same reason the nudge pair is: it removes one line of a
    filter rather than answering the dialog, and a column of full-ink crosses
    down the right of the rule grid would read as the content. */
 .icon-button.in-rule {
-  width: 30px;
-  height: 30px;
+  width: 33px;
+  height: 33px;
   color: var(--muted);
 }
 
 /* Recessive, because it sits inside a row of data rather than on the chrome:
    two arrows at full ink beside every line would read as the content. */
 .icon-button.nudge {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   color: var(--muted);
 }
 
-/* 20px drawn, 24px pressable. The mark is what the row has space for; the
+/* 22px drawn, 26px pressable. The mark is what the row has space for; the
    target is what a pointer needs, and the two do not have to be the same
    rectangle. `::after` rather than padding, which would grow the mark. */
 .icon-button.nudge::after {
@@ -232,15 +232,15 @@
    thing is what `--dim` was folded into `--muted` to avoid. The tone says
    what it means; `Tag` is the only component.
 
-   `display: inline-flex` rather than `inline-block`: the box is 10.5px text
+   `display: inline-flex` rather than `inline-block`: the box is 11.5px text
    at 800 with a letter-spaced tail, and the trailing space of `.06em` would
    otherwise sit inside the fill and push the glyph off centre. */
 .tag {
   display: inline-flex;
   align-items: center;
-  padding: 4px 7px;
+  padding: 4px 8px;
   border: 1px solid transparent;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.06em;
@@ -275,11 +275,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  padding: 3px 6px;
+  min-width: 22px;
+  padding: 3px 7px;
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -294,8 +294,8 @@
    the platform's and only the pixels are ours. The switch is the one
    exception - there is no native element to keep - and it is Base UI.
 
-   The marks are 15px and the targets are 24px. The transparent input carries
-   the 24px, centred over a mark smaller than it: the same split the 20px
+   The marks are 17px and the targets are 26px. The transparent input carries
+   the 26px, centred over a mark smaller than it: the same split the 22px
    nudge button makes with an `::after`, made here with the control itself
    because here there is a real element to grow.
 
@@ -310,31 +310,31 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  /* The row is a target tall even where the mark is 15px, so a column of
+  gap: 9px;
+  /* The row is a target tall even where the mark is 17px, so a column of
      these cannot pack closer than a pointer can hit. */
-  min-height: 24px;
-  font-size: 13px;
+  min-height: 26px;
+  font-size: 14.5px;
   line-height: 1.45;
   cursor: default;
 }
 
-/* The control itself, still here and still doing the work - transparent, 24px
-   square, over the 15px mark it is drawn as. Every state below is selected
+/* The control itself, still here and still doing the work - transparent, 26px
+   square, over the 17px mark it is drawn as. Every state below is selected
    off its pseudo-classes rather than off a class React would have to keep in
    step with them. */
 .checkbox input,
 .radio input {
   position: absolute;
-  top: calc(50% - 12px);
+  top: calc(50% - 13px);
   left: -4.5px;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   margin: 0;
   opacity: 0;
 }
 
-/* The ring goes on the mark rather than on the 24px box the input is: an
+/* The ring goes on the mark rather than on the 26px box the input is: an
    outline 4.5px clear of the thing it points at reads as a ring around the
    label. Dropped and replaced in the same place, so no state is left without
    one. */
@@ -349,8 +349,8 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
   border: 1.5px solid var(--track-border);
   color: var(--on-accent);
 }
@@ -398,7 +398,7 @@
 
 .checkbox input:indeterminate + .checkbox-box .checkbox-bar {
   display: block;
-  width: 8px;
+  width: 9px;
   height: 2px;
   background: currentcolor;
 }
@@ -411,11 +411,11 @@
 }
 
 /* Drawn always and hidden when off, rather than mounted by React: the dot has
-   to sit dead centre of a 15px box, and a box that is empty in one state and
+   to sit dead centre of a 17px box, and a box that is empty in one state and
    holds a child in the other is two layouts to keep agreeing. */
 .radio-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   background: var(--accent);
   visibility: hidden;
 }
@@ -438,15 +438,15 @@
 .switch-row {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  font-size: 13px;
+  gap: 10px;
+  font-size: 14.5px;
   line-height: 1.45;
   cursor: default;
 }
 
-/* 34 by 18 with the knob inset 2px, which here is a 1px edge and a 1px gap
+/* 37 by 20 with the knob inset 2px, which here is a 1px edge and a 1px gap
    rather than the sheet's 2px of padding. The box and the travel are the
-   sheet's to the pixel; what the split buys is an edge at 3:1, without which
+   sheet's a size larger; what the split buys is an edge at 3:1, without which
    the off state is a pale bar at 1.69:1 on the chrome and the control cannot
    be found at all. */
 .switch {
@@ -454,8 +454,8 @@
   flex: none;
   align-items: center;
   justify-content: flex-start;
-  width: 34px;
-  height: 18px;
+  width: 37px;
+  height: 20px;
   padding: 1px;
   border: 1px solid var(--track-border);
   background: var(--rail);
@@ -465,7 +465,7 @@
 .switch[data-checked] {
   justify-content: flex-end;
   /* The edge takes the colour of the fill rather than going away, so the box
-     stays 34px between the two states. */
+     stays 37px between the two states. */
   border-color: var(--accent);
   background: var(--accent);
 }
@@ -475,8 +475,8 @@
    already reaches for the muted tone instead, so this is the sheet's own
    answer applied to both. 3.17:1 and 3.10:1. */
 .switch-knob {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   background: var(--muted);
 }
 
@@ -500,14 +500,14 @@
 .search-field {
   display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 24px;
-  padding: 7px 9px;
+  gap: 8px;
+  min-height: 26px;
+  padding: 8px 10px;
   border: 1px solid var(--field-border);
   background: var(--field);
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: 14.5px;
   line-height: 1;
   text-align: left;
   cursor: default;
@@ -530,7 +530,7 @@
      sheet's drawing. `space-between` rather than a margin, so a long value
      pushes the chevron to the edge instead of past it. */
   justify-content: space-between;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
 }
 
@@ -564,7 +564,7 @@
   min-width: var(--anchor-width);
   max-height: var(--available-height, 60vh);
   overflow-y: auto;
-  padding: 5px;
+  padding: 6px;
   border: 1px solid var(--menu-border);
   background: var(--chrome);
   box-shadow: var(--shadow);
@@ -572,9 +572,9 @@
 }
 
 .select-item {
-  padding: 6px 12px;
+  padding: 7px 13px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 14.5px;
   white-space: nowrap;
   cursor: default;
 }
@@ -634,7 +634,7 @@
    brings a border, padding and margin of its own; all three go. */
 .segmented {
   display: inline-flex;
-  min-height: 24px;
+  min-height: 26px;
   margin: 0;
   padding: 0;
   border: 1px solid var(--menu-border);
@@ -657,9 +657,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  padding: 7px 13px;
+  padding: 8px 14px;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   line-height: 1;
   cursor: default;
@@ -701,16 +701,16 @@
 .slider {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
 }
 
 .slider-control {
   display: flex;
   flex: 1;
   align-items: center;
-  /* The knob stands 4px above a 3px rail, so the control needs the height the
+  /* The knob stands 4.5px above a 3px rail, so the control needs the height the
      rail has not got or the mark is clipped by whatever is above it. */
-  min-height: 19px;
+  min-height: 21px;
 }
 
 /* No edge, unlike the transport's rails. What identifies this control is the
@@ -730,19 +730,19 @@
 }
 
 /* Square and ink, which is the sheet's own drawing and is deliberately not
-   the transport's knob. Standing 4px above a 3px rail leaves it overhanging
-   both edges, which is what makes an 11px mark read as a handle rather than
+   the transport's knob. Standing 4.5px above a 3px rail leaves it overhanging
+   both edges, which is what makes a 12px mark read as a handle rather than
    as a bead threaded on the line. */
 .slider-knob {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   background: var(--text);
 }
 
 .slider-readout {
   flex: none;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -768,23 +768,23 @@
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 20px;
   margin: 0;
   border-top: 2px solid var(--rule);
-  padding-top: 12px;
+  padding-top: 13px;
 }
 
 .stat-row dt {
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
 }
 
 .stat-row dd {
   margin: 0;
   color: var(--text);
-  font-size: 28px;
+  font-size: 31px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
@@ -803,14 +803,14 @@
 }
 
 .stat-tile {
-  padding: 12px;
+  padding: 13px;
   background: var(--surface);
 }
 
 .stat-tile dt {
-  margin-bottom: 8px;
+  margin-bottom: 9px;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.11em;
   line-height: 1;
@@ -820,16 +820,16 @@
 .stat-tile-value {
   margin: 0;
   color: var(--text);
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .stat-tile-caption {
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
 }
 
@@ -843,13 +843,13 @@
    where every unit is a word and the number is the answer; on a tile it is
    the sheet's per-cent sign, which is part of the figure and drawn as one. */
 .stat-unit {
-  font-size: 16px;
+  font-size: 17.5px;
   font-weight: 800;
   color: var(--muted);
 }
 
 .stat-tile-value .stat-unit {
-  font-size: 15px;
+  font-size: 16.5px;
   color: inherit;
 }
 
@@ -858,7 +858,7 @@
 .streak {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
 /* The row's rule and padding are `.stat-row`'s, and the figures are a step
@@ -866,23 +866,23 @@
    beside them. */
 .streak-figures {
   display: flex;
-  gap: 44px;
+  gap: 48px;
   margin: 0;
   border-top: 2px solid var(--rule);
-  padding-top: 12px;
+  padding-top: 13px;
 }
 
 .streak-figures dt {
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
 }
 
 .streak-figures dd {
   margin: 0;
   color: var(--text);
-  font-size: 26px;
+  font-size: 29px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -890,11 +890,11 @@
 
 /* Qualified because it has to beat `.streak-figures dd`: the span is a second
    definition of the same term, so it is that selector's match too and would
-   otherwise be drawn at 26px and 800. */
+   otherwise be drawn at 29px and 800. */
 .streak-figures .streak-span {
-  margin-top: 5px;
+  margin-top: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1;
 }
@@ -903,18 +903,18 @@
 .streak-week {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
 }
 
 .streak-caption {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
 
 .streak-week {
-  margin-top: 6px;
+  margin-top: 7px;
 }
 
 /* `--track` is the transport's rail, which is what the sheet calls its
@@ -927,7 +927,7 @@
    track's extent is what the fill is read as a share of, and a day without
    plays is half of what the strip says. Both are invisible without it. */
 .streak-track {
-  height: 10px;
+  height: 11px;
   border: 1px solid var(--track-border);
   background: var(--track);
 }
@@ -941,7 +941,7 @@
 .streak-days {
   display: flex;
   gap: 3px;
-  margin-top: 9px;
+  margin-top: 10px;
 }
 
 /* Equal shares rather than a width: seven days is the whole week whatever the
@@ -949,7 +949,7 @@
    sits under. */
 .streak-day {
   flex: 1;
-  height: 22px;
+  height: 24px;
   border: 1px solid var(--track-border);
   background: var(--track);
 }
@@ -963,22 +963,22 @@
 
 /* ---------- 4d · heatmap ---------- */
 
-/* Every length in this block is stated by the sheet and none of them is a
+/* Every length in this block is the sheet's, a size larger, and none of them is a
    share of the panel, which is the whole reason the grid is HTML and the
-   chart around it is `.chart-intrinsic`: seven 13px rows come to about 117px
-   whatever room the view had, and an svg scaled into a 180px box would draw
+   chart around it is `.chart-intrinsic`: seven 14px rows come to about 129px
+   whatever room the view had, and an svg scaled into a 198px box would draw
    them at nearly twice that. */
 .heatmap-row {
   display: grid;
-  grid-template-columns: 22px 1fr;
-  gap: 6px;
+  grid-template-columns: 24px 1fr;
+  gap: 7px;
   align-items: center;
   margin-bottom: 2px;
 }
 
 .heatmap-day {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 400;
   line-height: 1;
 }
@@ -1004,7 +1004,7 @@
 }
 
 .heatmap-cell {
-  height: 13px;
+  height: 14px;
 }
 
 /* A row of the same grid, so the labels start where the cells do rather than
@@ -1022,7 +1022,7 @@
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 400;
   line-height: 1;
 }
@@ -1085,15 +1085,15 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
-  height: 30px;
-  padding: 0 9px;
+  height: 33px;
+  padding: 0 10px;
   border: none;
   background: none;
   color: var(--text);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13.5px;
   text-align: left;
 }
 
@@ -1121,9 +1121,9 @@
 /* The artist behind an album, which 4e does not draw: a second name at the
    row's own weight and size would read as a second row. */
 .bar-list-secondary {
-  margin-left: 8px;
+  margin-left: 9px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -1136,9 +1136,9 @@
 }
 
 .bar-list-caption {
-  margin: 6px 0 0;
+  margin: 7px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* No shimmer, for `ChartFrame`'s reason: the table's skeleton rows animate and
@@ -1151,7 +1151,7 @@
 }
 
 .bar-list-skeleton {
-  height: 30px;
+  height: 33px;
   background: var(--chrome-border);
 }
 
@@ -1169,12 +1169,12 @@
   outline: none;
 }
 
-/* 226px as a floor rather than the sheet's fixed measure. File holds two
+/* 249px as a floor rather than the sheet's fixed measure. File holds two
    entries and would stand two thirds empty at a fixed width, and "Get Tags
    from MusicBrainz…" is within a few pixels of 226 at this size - a zoom step
    up and a fixed panel would clip it. */
 .menu-popup {
-  min-width: 226px;
+  min-width: 249px;
   max-height: var(--available-height, 60vh);
   overflow-y: auto;
   margin: 0;
@@ -1187,7 +1187,7 @@
   border: 1px solid var(--menu-border);
   box-shadow: var(--shadow);
   outline: none;
-  font-size: 12.5px;
+  font-size: 13.5px;
   line-height: 1;
 }
 
@@ -1195,9 +1195,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 19px;
+  gap: 21px;
   width: 100%;
-  padding: 7px 12px;
+  padding: 8px 13px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -1249,7 +1249,7 @@
 }
 
 .menu-empty {
-  padding: 7px 12px;
+  padding: 8px 13px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -1283,9 +1283,9 @@
 .task-line {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1.35;
   /* So a figure to two decimal places does not jitter as it counts. */
   font-variant-numeric: tabular-nums;
@@ -1312,7 +1312,7 @@
 /* The box, and nothing that is inside it.
 
    No padding: each region below pads itself, because a paned dialog's header
-   keeps the 18px edge and its body gives it up so a column can reach the
+   keeps the 20px edge and its body gives it up so a column can reach the
    sides. `--menu-border` rather than `--chrome-border`, which is the edge the
    eight dialogs wore until 113 and is a step lighter than the sheet's. */
 .dialog {
@@ -1324,7 +1324,7 @@
   z-index: 11;
   display: flex;
   flex-direction: column;
-  width: min(912px, 92vw);
+  width: min(1003px, 92vw);
   max-height: 86vh;
   overflow: auto;
   border: 1px solid var(--menu-border);
@@ -1351,8 +1351,8 @@
 .dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 18px;
+  gap: 11px;
+  padding: 15px 20px;
 }
 
 /* A flex item's automatic minimum is its content, which is what makes an
@@ -1371,9 +1371,9 @@
 .dialog-header {
   display: flex;
   align-items: baseline;
-  gap: 9px;
+  gap: 10px;
   flex: none;
-  padding: 18px 18px 12px;
+  padding: 20px 20px 13px;
   border-bottom: 2px solid var(--rule);
 }
 
@@ -1381,18 +1381,18 @@
    carries two things on one baseline, and the sheet tightens the header that
    has to hold both. */
 .dialog.paned > .dialog-header {
-  padding: 16px 18px 12px;
+  padding: 18px 20px 13px;
 }
 
 .dialog-header h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18.5px;
   font-weight: 800;
   line-height: 1.1;
 }
 
 .dialog.paned > .dialog-header h2 {
-  font-size: 16px;
+  font-size: 17.5px;
 }
 
 /* What the dialog is about, beside what it is called. Muted and light where
@@ -1401,7 +1401,7 @@
 .dialog-caption {
   margin: 0;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 400;
   line-height: 1;
 }
@@ -1410,15 +1410,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 18px 18px;
+  gap: 11px;
+  padding: 13px 20px 20px;
   border-top: 2px solid var(--rule);
 }
 
 /* The body has already given the sides up, so the footer keeps the edge on
    its own and drops the extra step at the bottom the unpaned form has. */
 .dialog.paned > .dialog-footer {
-  padding: 12px 18px;
+  padding: 13px 20px;
 }
 
 /* Drawn whether or not it holds anything: the row is `space-between`, and
@@ -1427,12 +1427,12 @@
 .dialog-lead {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
 }
 
 .dialog-actions {
   display: flex;
-  gap: 8px;
+  gap: 9px;
 }
 
 /* The count a dialog has to state - "2 conditions · 116 songs match". Smaller
@@ -1441,7 +1441,7 @@
 .dialog-status {
   margin: 0;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 400;
   line-height: 1;
 }

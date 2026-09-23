@@ -17,10 +17,11 @@ use crate::tags::Cover;
 
 /// The longest edge stored artwork is reduced to.
 ///
-/// The largest place a cover is drawn is the browse grid's tile at 158 CSS px;
-/// `MAX_ZOOM` is 2 and Windows display scaling stacks on top of that, so
-/// roughly 474 device pixels at the very top end. It is also exactly Cover Art
-/// Archive's `-500` size, so a cover fetched from there needs no resample.
+/// The largest place a cover is drawn is the browse grid's tile at 174 CSS px;
+/// `MAX_ZOOM` is 2 and Windows display scaling stacks on top of that, so 522
+/// device pixels at 150%. Kept at 500 regardless: it is exactly Cover Art
+/// Archive's `-500` size, so a cover fetched from there needs no resample, and
+/// 4% of upscaling at the far corner of the zoom range does not show.
 const MAX_EDGE: u32 = 500;
 
 /// Quality of the re-encode. Measured over a real library's 5,799 covers:

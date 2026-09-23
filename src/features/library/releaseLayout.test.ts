@@ -14,11 +14,11 @@ function group(trackCount: number) {
 
 describe("release group layout", () => {
   it("gives a group a height that can be computed rather than measured", () => {
-    // 14 + 14 padding, (n + 1) * 28 for the rows and the closing row, and the
+    // 15 + 15 padding, (n + 1) * 31 for the rows and the closing row, and the
     // 2px rule. Closed-form is the point: the virtualizer places every group
     // before any row of it has arrived.
-    expect(groupHeight(1)).toBe(86);
-    expect(groupHeight(10)).toBe(338);
+    expect(groupHeight(1)).toBe(94);
+    expect(groupHeight(10)).toBe(373);
     expect(groupHeight(10) - groupHeight(9)).toBe(GROUP_ROW_HEIGHT);
   });
 

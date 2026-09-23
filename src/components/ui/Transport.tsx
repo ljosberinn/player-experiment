@@ -35,7 +35,7 @@ export function Transport({
         disabled={!onPrevious}
         onClick={onPrevious}
       >
-        <Icon name="previous" size={18} />
+        <Icon name="previous" size={20} />
       </button>
 
       <button
@@ -45,7 +45,7 @@ export function Transport({
         disabled={!onPlayPause}
         onClick={onPlayPause}
       >
-        <Icon name={playing ? "pause" : "play"} size={22} />
+        <Icon name={playing ? "pause" : "play"} size={24} />
       </button>
 
       <button
@@ -55,7 +55,7 @@ export function Transport({
         disabled={!onNext}
         onClick={onNext}
       >
-        <Icon name="next" size={18} />
+        <Icon name="next" size={20} />
       </button>
     </div>
   );

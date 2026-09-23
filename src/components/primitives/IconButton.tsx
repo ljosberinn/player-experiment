@@ -11,14 +11,14 @@ import type { IconName } from "../icons/registry";
  */
 export type IconButtonPlace = "toolbar" | "dialog" | "rule" | "nudge";
 
-/** The glyph each place draws, from the sheet. The 30px box gets 11px, the 20px one 9px. */
-const GLYPH: Record<IconButtonPlace, number> = { toolbar: 14, dialog: 14, rule: 11, nudge: 9 };
+/** The glyph each place draws, the sheet's a size larger. The 33px box gets 12px, the 22px one 10px. */
+const GLYPH: Record<IconButtonPlace, number> = { toolbar: 15, dialog: 15, rule: 12, nudge: 10 };
 
 /**
  * `in-dialog` rather than `dialog`, which is the box this button sits in.
  * Class names are global here, so an icon button that wore `dialog` would pick
- * up `.dialog` itself - a fixed-position 912px box with a shadow - and the
- * only sign of it would be a 36px control drawn over the middle of the window.
+ * up `.dialog` itself - a fixed-position 1003px box with a shadow - and the
+ * only sign of it would be a 40px control drawn over the middle of the window.
  */
 const CLASS: Record<IconButtonPlace, string> = {
   toolbar: "icon-button",

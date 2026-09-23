@@ -13,7 +13,7 @@ import type { RowActions } from "./SongRow";
 import { useLibraryStore } from "./store";
 
 /** How far in from a row's left edge a keyboard-opened menu is anchored. */
-const MENU_INSET = 8;
+const MENU_INSET = 9;
 
 /** The row-level callbacks a view's owner supplies. */
 export type SongTableHandlers = {

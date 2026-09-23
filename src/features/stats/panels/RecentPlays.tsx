@@ -9,7 +9,7 @@ import { StatsPanel } from "./StatsPanel";
 const PAGE = 100;
 /** Rows before the end at which the next page is asked for. */
 const LOOKAHEAD = 20;
-const ROW_HEIGHT = 28;
+const ROW_HEIGHT = 31;
 const OVERSCAN = 8;
 
 /**

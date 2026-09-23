@@ -15,7 +15,7 @@ export interface ChartMargin {
   readonly left: number;
 }
 
-export const CHART_MARGIN: ChartMargin = { top: 8, right: 8, bottom: 20, left: 40 };
+export const CHART_MARGIN: ChartMargin = { top: 9, right: 9, bottom: 22, left: 44 };
 
 /**
  * The margin a chart with no axis takes instead.
@@ -25,7 +25,7 @@ export const CHART_MARGIN: ChartMargin = { top: 8, right: 8, bottom: 20, left: 4
  * plot to line up - an axis gutter under a donut is a ring drawn off-centre
  * in its own panel.
  */
-export const RADIAL_MARGIN: ChartMargin = { top: 8, right: 8, bottom: 8, left: 8 };
+export const RADIAL_MARGIN: ChartMargin = { top: 9, right: 9, bottom: 9, left: 9 };
 
 /** The plot rect, in pixels, once the margins are taken off the measurement. */
 export interface PlotRect {

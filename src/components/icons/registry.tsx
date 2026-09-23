@@ -67,7 +67,7 @@ export type IconName =
  * Filled for the transport, outlined everywhere else.
  *
  * The transport glyphs were solid CSS shapes and the design draws them solid;
- * an outlined play triangle inside a 44px accent circle reads as a hole in it.
+ * an outlined play triangle inside a 48px accent circle reads as a hole in it.
  * The rest of the app's icons were strokes and stay strokes.
  */
 export const ICONS: Record<IconName, Glyph> = {
@@ -90,8 +90,8 @@ export const ICONS: Record<IconName, Glyph> = {
   genres: (props) => <TagIcon {...props} />,
   stats: (props) => <ChartBarIcon {...props} />,
   review: (props) => <ListChecksIcon {...props} />,
-  // Bold, and the one pair here that needs saying: they are drawn at 9px
-  // inside a 20px nudge button, where a regular-weight caret is a smudge.
+  // Bold, and the one pair here that needs saying: they are drawn at 10px
+  // inside a 22px nudge button, where a regular-weight caret is a smudge.
   "move-up": (props) => <CaretUpIcon weight="bold" {...props} />,
   "move-down": (props) => <CaretDownIcon weight="bold" {...props} />,
   // The same caret at regular weight, and a separate name because it means
@@ -100,6 +100,6 @@ export const ICONS: Record<IconName, Glyph> = {
   expand: (props) => <CaretDownIcon {...props} />,
   search: (props) => <MagnifyingGlassIcon {...props} />,
   // Bold, like the nudge carets and for the same reason: it is drawn at
-  // 11px inside a rule row, where a regular-weight cross is a smudge.
+  // 12px inside a rule row, where a regular-weight cross is a smudge.
   remove: (props) => <XIcon weight="bold" {...props} />,
 };
