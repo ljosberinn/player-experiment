@@ -4,6 +4,7 @@ import {
   type BrowseFilter,
   type BrowseGroup,
   type BrowseKind,
+  type BuiltIn,
   browseGroups,
   forgetRemovedTracks,
   INVALIDATE_DEBOUNCE_MS,
@@ -231,6 +232,12 @@ interface LibraryState {
    * view actually reads.
    */
   history: History;
+  /**
+   * Which playlist ids are built-ins, told by the playlists store on each load.
+   * Back and forward know a playlist only by id, and `showPlaylist` says why
+   * this store does not go and ask.
+   */
+  builtIns: Partial<Record<number, BuiltIn>>;
 
   /** Records where a browse tab was left. See `browseOffsets`. */
   rememberBrowseOffset: (kind: BrowseKind, topGroup: number) => void;
@@ -338,6 +345,7 @@ interface LibraryState {
   forward: () => Promise<void>;
   /** Drops a deleted playlist's entries, so back cannot land on one. */
   forgetPlaylist: (playlistId: number) => void;
+  setBuiltIns: (playlists: Playlist[]) => void;
   ensureRange: (startIndex: number, endIndex: number) => Promise<void>;
   rowAt: (rowIndex: number) => Track | null;
   /** A cached row by id, for the menu bar, which knows a selection by id. */
@@ -382,6 +390,36 @@ function queryFor(
   };
 }
 
+type Sort = { sortBy: SortField; direction: SortDirection };
+
+/** The order each built-in is locked to, as `db::playlists::definition` stores it. */
+const BUILT_IN_SORT: Record<BuiltIn, Sort> = {
+  favorites: { sortBy: "artist", direction: "asc" },
+  mostPlayed: { sortBy: "playCount", direction: "desc" },
+  recentlyAdded: { sortBy: "addedAt", direction: "desc" },
+};
+
+/** The sort `playlistId` is locked to, or null for any view the user can sort. */
+function lockedSort(state: Pick<LibraryState, "builtIns">, playlistId: number | null): Sort | null {
+  const builtIn = playlistId === null ? undefined : state.builtIns[playlistId];
+  return builtIn === undefined ? null : BUILT_IN_SORT[builtIn];
+}
+
+/** The sort to keep under `config`: `visibleSort`, except that a lock holds. */
+function sortUnder(state: LibraryState, config: ColumnConfig, sortBy: SortField): SortField {
+  return lockedSort(state, state.playlistId) === null
+    ? visibleSort(displayedColumns(config, state.browse), sortBy)
+    : sortBy;
+}
+
+/**
+ * Where the current view's layout is stored: its own playlist's row, or the
+ * library's for a built-in, which has no layout of its own.
+ */
+function layoutOwner(state: LibraryState): number | null {
+  return lockedSort(state, state.playlistId) === null ? state.playlistId : null;
+}
+
 /** The order a view is in before anyone sorts it. */
 function defaultSortFor(playlistId: number | null): SortField {
   // A playlist's own order is the point of it, so that is what it opens in;
@@ -402,6 +440,10 @@ function sortForEntry(
   entry: HistoryEntry,
   crossesPlaylist: boolean,
 ): Partial<LibraryState> {
+  const locked = lockedSort(state, entry.playlistId);
+  if (locked !== null) {
+    return { ...locked, sortBeforeSearch: null };
+  }
   const opensRelease = pinsTrackNo(entry.browse);
   const opensIn: SortField = opensRelease ? "trackNo" : defaultSortFor(entry.playlistId);
 
@@ -467,6 +509,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   sortBeforeSearch: null,
   selection: emptySelection,
   loading: false,
+  builtIns: {},
   queryToken: 0,
   // Seeded with the view the app opens in, so the first navigation has
   // somewhere to go back to.
@@ -681,22 +724,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   loadColumns: async () => {
     const { playlistId } = get();
+    const owner = layoutOwner(get());
     try {
-      const stored = await loadColumnConfig(playlistId);
+      const stored = await loadColumnConfig(owner);
       // A playlist that has never been configured inherits the library's
       // layout rather than opening bare - any layout beats no columns.
       const config =
-        stored === null && playlistId !== null
+        stored === null && owner !== null
           ? parseColumnConfig(await loadColumnConfig(null))
           : parseColumnConfig(stored);
       // The view may have changed while this was in flight.
       if (get().playlistId !== playlistId) {
         return;
       }
-      set({
-        columns: config,
-        sortBy: visibleSort(displayedColumns(config, get().browse), get().sortBy),
-      });
+      set({ columns: config, sortBy: sortUnder(get(), config, get().sortBy) });
     } catch {
       // A layout that will not load is not worth an error banner over the
       // table; the defaults are a working table.
@@ -710,12 +751,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
    */
   applyColumns: async (config) => {
     const previousSort = get().sortBy;
-    const sortBy = visibleSort(displayedColumns(config, get().browse), previousSort);
+    const sortBy = sortUnder(get(), config, previousSort);
     set({ columns: config, sortBy });
 
-    const { playlistId } = get();
     try {
-      await saveColumnConfig(playlistId, serializeColumnConfig(config));
+      await saveColumnConfig(layoutOwner(get()), serializeColumnConfig(config));
     } catch (cause) {
       // Worth saying: the layout is on screen, so silence would look like it
       // saved and it would be gone next launch.
@@ -756,7 +796,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Not through `applyColumns`: saving the defaults for this view would give
     // it a layout of its own again, and it should inherit like every other.
     const previousSort = get().sortBy;
-    const sortBy = visibleSort(displayedColumns(DEFAULT_COLUMN_CONFIG, get().browse), previousSort);
+    const sortBy = sortUnder(get(), DEFAULT_COLUMN_CONFIG, previousSort);
     set({ columns: DEFAULT_COLUMN_CONFIG, fittedWidths: {}, sortBy });
     if (sortBy !== previousSort) {
       await get().refresh();
@@ -929,6 +969,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set((state) => ({ history: dropPlaylistEntries(state.history, playlistId) }));
   },
 
+  setBuiltIns: (playlists) => {
+    const builtIns: Partial<Record<number, BuiltIn>> = {};
+    for (const playlist of playlists) {
+      if (playlist.builtIn !== null) {
+        builtIns[playlist.id] = playlist.builtIn;
+      }
+    }
+    set({ builtIns });
+  },
+
   ensureRange: async (startIndex, endIndex) => {
     const { pages, inFlight, total, queryToken: token } = get();
     if (total === 0) {
@@ -1002,6 +1052,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   toggleSort: async (field) => {
+    if (lockedSort(get(), get().playlistId) !== null) {
+      return;
+    }
     const { sortBy, direction } = get();
     set({
       sortBy: field,
@@ -1113,12 +1166,16 @@ function tagged(value: string | null): string | null {
 /**
  * Which tab a source opens in.
  *
- * A smart playlist is a question about the library and its answer reads as
+ * A built-in is a list in its own order, so it lands on the table. Any other
+ * smart playlist is a question about the library and its answer reads as
  * releases, so it lands there whatever was open. Everything else carries the
  * open tab over, except Statistics: that is not a grouping a playlist can be
  * shown in, so opening one from there lands on the table.
  */
 function landingTab(current: ViewTab, playlist: Playlist | null): ViewTab {
+  if (playlist?.builtIn != null) {
+    return "songs";
+  }
   if (playlist?.kind === "smart") {
     return "albums";
   }
@@ -1161,7 +1218,9 @@ async function applySearch(search: string): Promise<void> {
     ...forgetBrowseOffsets(state),
   };
 
-  if (nowSearching && !wasSearching) {
+  // A built-in keeps its order while searching, as the backend does.
+  const locked = lockedSort(state, state.playlistId) !== null;
+  if (nowSearching && !wasSearching && !locked) {
     next.sortBeforeSearch = { sortBy, direction };
     next.sortBy = "relevance";
   } else if (!nowSearching && wasSearching) {

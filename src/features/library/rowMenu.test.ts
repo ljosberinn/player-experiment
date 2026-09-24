@@ -3,7 +3,7 @@ import type { Playlist } from "../../ipc";
 import { type Loving, lovingFor, rowMenuItems } from "./rowMenu";
 
 function playlist(id: number, name: string, kind: Playlist["kind"] = "static"): Playlist {
-  return { id, name, kind, trackCount: 0, createdAt: 0 };
+  return { id, name, kind, trackCount: 0, createdAt: 0, builtIn: null };
 }
 
 const noop = () => {};

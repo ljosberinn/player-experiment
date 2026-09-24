@@ -34,11 +34,11 @@ vi.mock("../../ipc", () => ({
 }));
 
 function playlist(id: number, name: string, trackCount = 0): Playlist {
-  return { id, name, kind: "static", trackCount, createdAt: 0 };
+  return { id, name, kind: "static", trackCount, createdAt: 0, builtIn: null };
 }
 
 function smart(id: number, name: string, trackCount = 0): Playlist {
-  return { id, name, kind: "smart", trackCount, createdAt: 0 };
+  return { id, name, kind: "smart", trackCount, createdAt: 0, builtIn: null };
 }
 
 /**
@@ -84,6 +84,21 @@ describe("PlaylistSidebar", () => {
 
     expect(await screen.findByRole("button", { name: "Evening" })).toHaveTextContent("4");
     expect(screen.getByRole("button", { name: "Focus" })).toHaveTextContent("9");
+  });
+
+  it("leaves the built-ins to LIBRARY", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      playlist(1, "Evening", 4),
+      { ...smart(2, "Most Played", 9), builtIn: "mostPlayed" },
+      { ...smart(3, "Favorites", 2), builtIn: "favorites" },
+    ]);
+    render(<PlaylistSidebar />);
+
+    expect(await screen.findByRole("button", { name: "Evening" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Most Played" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Favorites" })).not.toBeInTheDocument();
+    // With only built-ins among the smart ones, the section reads as empty.
+    expect(screen.getByText(/None yet/)).toBeInTheDocument();
   });
 
   it("says nothing at all when there are none", async () => {
@@ -402,7 +417,7 @@ describe("PlaylistSidebar", () => {
   it("offers Edit Filter on a smart playlist only", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([
       playlist(1, "Evening", 4),
-      { id: 3, name: "Recent", kind: "smart", trackCount: 7, createdAt: 0 },
+      { id: 3, name: "Recent", kind: "smart", trackCount: 7, createdAt: 0, builtIn: null },
     ]);
     render(<PlaylistSidebar />);
     const user = userEvent.setup();

@@ -68,7 +68,7 @@ const resetAllColumnConfigsMock = vi.mocked(resetAllColumnConfigs);
 
 /** A playlist row; only the id and the kind are what these tests turn on. */
 function playlist(id: number, kind: PlaylistKind = "static"): Playlist {
-  return { id, name: `Playlist ${id}`, kind, trackCount: 0, createdAt: 0 };
+  return { id, name: `Playlist ${id}`, kind, trackCount: 0, createdAt: 0, builtIn: null };
 }
 
 function browseGroup(over: Partial<BrowseGroup> = {}): BrowseGroup {
@@ -375,6 +375,76 @@ describe("showPlaylist", () => {
     await useLibraryStore.getState().showPlaylist(playlist(5));
 
     expect(useLibraryStore.getState().tab).toBe("songs");
+  });
+});
+
+describe("a built-in playlist", () => {
+  const mostPlayed: Playlist = { ...playlist(7, "smart"), builtIn: "mostPlayed" };
+
+  beforeEach(() => {
+    useLibraryStore.getState().setBuiltIns([playlist(5), mostPlayed]);
+  });
+
+  it("opens on its songs, from Releases and from Statistics", async () => {
+    await useLibraryStore.getState().showTab("albums");
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+    expect(useLibraryStore.getState().tab).toBe("songs");
+
+    await useLibraryStore.getState().showTab("stats");
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+    expect(useLibraryStore.getState().tab).toBe("songs");
+  });
+
+  it("opens in its own order, and back returns to it", async () => {
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+    expect(useLibraryStore.getState()).toMatchObject({ sortBy: "playCount", direction: "desc" });
+
+    await useLibraryStore.getState().showTab("songs");
+    await useLibraryStore.getState().back();
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      playlistId: 7,
+      sortBy: "playCount",
+      direction: "desc",
+    });
+  });
+
+  it("does not re-sort when a header is clicked", async () => {
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+    queryTracksMock.mockClear();
+
+    await useLibraryStore.getState().toggleSort("title");
+
+    expect(useLibraryStore.getState()).toMatchObject({ sortBy: "playCount", direction: "desc" });
+    expect(queryTracksMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps its order while searching", async () => {
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+
+    useLibraryStore.getState().setSearch("bear");
+    await useLibraryStore.getState().commitSearch();
+
+    expect(useLibraryStore.getState().sortBy).toBe("playCount");
+  });
+
+  it("keeps its order when its sorted column is not shown", async () => {
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+
+    // Plays is not a default column.
+    await useLibraryStore.getState().toggleColumn("title");
+
+    expect(useLibraryStore.getState().sortBy).toBe("playCount");
+  });
+
+  it("reads and writes the library's column layout", async () => {
+    await useLibraryStore.getState().showPlaylist(mostPlayed);
+    expect(loadColumnConfigMock).toHaveBeenCalledWith(null);
+    expect(loadColumnConfigMock).not.toHaveBeenCalledWith(7);
+
+    await useLibraryStore.getState().toggleColumn("playCount");
+
+    expect(saveColumnConfigMock).toHaveBeenCalledWith(null, expect.any(String));
   });
 });
 

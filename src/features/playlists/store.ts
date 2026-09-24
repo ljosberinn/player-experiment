@@ -116,7 +116,9 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   load: async () => {
     dismiss();
     try {
-      set({ playlists: await listPlaylists() });
+      const playlists = await listPlaylists();
+      set({ playlists });
+      useLibraryStore.getState().setBuiltIns(playlists);
     } catch (cause) {
       report(cause);
     }

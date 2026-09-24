@@ -843,6 +843,39 @@ pub struct Playlist {
     pub track_count: i64,
     #[ts(type = "number")]
     pub created_at: i64,
+    pub built_in: Option<BuiltIn>,
+}
+
+/// A smart playlist every library ships with, drawn under LIBRARY rather than
+/// with the user's own and locked against change.
+///
+/// Stored in `playlists.built_in` as [`BuiltIn::as_sql`], which a partial
+/// unique index holds to one row per key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum BuiltIn {
+    Favorites,
+    MostPlayed,
+    RecentlyAdded,
+}
+
+impl BuiltIn {
+    pub const ALL: [Self; 3] = [Self::Favorites, Self::MostPlayed, Self::RecentlyAdded];
+
+    pub fn as_sql(self) -> &'static str {
+        match self {
+            Self::Favorites => "favorites",
+            Self::MostPlayed => "mostPlayed",
+            Self::RecentlyAdded => "recentlyAdded",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|built_in| built_in.as_sql() == value)
+    }
 }
 
 /// What the player is doing right now.

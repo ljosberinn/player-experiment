@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::{AppError, AppResult};
-use crate::model::{FilterGroup, Playlist, PlaylistKind, SmartOrder};
+use crate::model::{BuiltIn, FilterGroup, Playlist, PlaylistKind, SmartOrder};
 
 /// Spacing between consecutive positions.
 ///
@@ -38,7 +38,8 @@ fn normalize_name(name: &str) -> AppResult<String> {
 
 const SELECT: &str = "SELECT playlists.id, playlists.name, playlists.kind, playlists.created_at, \
                       (SELECT count(*) FROM playlist_tracks \
-                       WHERE playlist_tracks.playlist_id = playlists.id) \
+                       WHERE playlist_tracks.playlist_id = playlists.id), \
+                      playlists.built_in \
                       FROM playlists";
 
 fn row_to_playlist(row: &rusqlite::Row<'_>) -> rusqlite::Result<Playlist> {
@@ -52,6 +53,11 @@ fn row_to_playlist(row: &rusqlite::Row<'_>) -> rusqlite::Result<Playlist> {
         kind: PlaylistKind::parse(&kind).unwrap_or(PlaylistKind::Static),
         created_at: row.get(3)?,
         track_count: row.get(4)?,
+        // Unreadable reads as none, for the reason `kind` falls back.
+        built_in: row
+            .get::<_, Option<String>>(5)?
+            .as_deref()
+            .and_then(BuiltIn::parse),
     })
 }
 
@@ -186,18 +192,10 @@ pub fn set_smart(
     order: &SmartOrder,
     now: i64,
 ) -> AppResult<()> {
-    match get(conn, id)? {
-        None => {
-            return Err(AppError::Internal(
-                "That playlist no longer exists.".to_owned(),
-            ))
-        }
-        Some(playlist) if playlist.kind != PlaylistKind::Smart => {
-            return Err(AppError::Internal(
-                "A static playlist's contents are the tracks in it, not a filter.".to_owned(),
-            ))
-        }
-        Some(_) => {}
+    if require_own(conn, id)?.kind != PlaylistKind::Smart {
+        return Err(AppError::Internal(
+            "A static playlist's contents are the tracks in it, not a filter.".to_owned(),
+        ));
     }
     crate::smart::compile(filter, now)?;
     validate_order(order)?;
@@ -300,71 +298,91 @@ pub fn forget_all_columns(conn: &mut Connection) -> AppResult<()> {
     Ok(())
 }
 
-/// How many songs each built-in holds.
-const BUILT_IN_LIMIT: u32 = 100;
-
-/// The smart playlists a library starts with.
-///
-/// Ordinary smart playlists, seeded once and then owned by the user: they can
-/// be renamed, edited and deleted like any other, and nothing anywhere
-/// special-cases them afterwards. That is only expressible because a smart
-/// playlist can now carry a sort and a cutoff - "Most Played" is not a filter,
-/// it is an ordering and a hundred.
-///
-/// Runs once per library, guarded by a settings flag rather than by looking for
-/// the playlists themselves. Checking for them would mean a user who deletes
-/// Most Played gets it back at the next launch, which is not what deleting
-/// something means.
-pub fn seed_built_ins(conn: &Connection, at: i64) -> AppResult<()> {
-    use crate::db::settings;
+/// A built-in's name, filter and order: the definition `ensure_built_ins`
+/// writes and the query layer locks the view to.
+fn definition(built_in: BuiltIn) -> (&'static str, FilterGroup, SmartOrder) {
     use crate::model::{
         Combinator, FilterField, FilterNode, FilterOp, FilterRule, FilterValue, SmartSort,
         SortDirection, SortField,
     };
 
-    if settings::get(conn, settings::PLAYLISTS_SEEDED)?.is_some() {
-        return Ok(());
-    }
-    // Written first, so a failure part-way through leaves a library with one
-    // built-in rather than one that tries again and ends up with three.
-    settings::set(conn, settings::PLAYLISTS_SEEDED, "1")?;
-
-    let top = |field| SmartOrder {
-        sort: Some(SmartSort {
-            field,
-            direction: SortDirection::Desc,
-        }),
-        limit: Some(BUILT_IN_LIMIT),
+    let rule = |field, op, value| FilterGroup {
+        combinator: Combinator::All,
+        children: vec![FilterNode::Rule(FilterRule { field, op, value })],
+    };
+    let order = |field, direction, limit| SmartOrder {
+        sort: Some(SmartSort { field, direction }),
+        limit,
     };
 
-    // No rules at all: every song is a candidate, and the cutoff does the work.
-    create_smart(
-        conn,
-        "Recently Added",
-        &FilterGroup::default(),
-        &top(SortField::AddedAt),
-        at,
-    )?;
+    match built_in {
+        BuiltIn::Favorites => (
+            "Favorites",
+            rule(FilterField::Loved, FilterOp::Is, FilterValue::None),
+            order(SortField::Artist, SortDirection::Asc, None),
+        ),
+        // `plays > 0` is not redundant next to the cutoff: without it a library
+        // with nothing played yet would show a hundred arbitrary songs under the
+        // heading "Most Played", which is worse than showing none.
+        BuiltIn::MostPlayed => (
+            "Most Played",
+            rule(
+                FilterField::PlayCount,
+                FilterOp::GreaterThan,
+                FilterValue::Number { number: 0 },
+            ),
+            order(SortField::PlayCount, SortDirection::Desc, Some(100)),
+        ),
+        BuiltIn::RecentlyAdded => (
+            "Recently Added",
+            FilterGroup::default(),
+            order(SortField::AddedAt, SortDirection::Desc, Some(1000)),
+        ),
+    }
+}
 
-    // `plays > 0` is not redundant next to the cutoff: without it a library
-    // with nothing played yet would show a hundred arbitrary songs under the
-    // heading "Most Played", which is worse than showing none.
-    create_smart(
-        conn,
-        "Most Played",
-        &FilterGroup {
-            combinator: Combinator::All,
-            children: vec![FilterNode::Rule(FilterRule {
-                field: FilterField::PlayCount,
-                op: FilterOp::GreaterThan,
-                value: FilterValue::Number { number: 0 },
-            })],
-        },
-        &top(SortField::PlayCount),
-        at,
-    )?;
-
+/// Gives the library every built-in, each holding its current definition.
+///
+/// Rewritten on every launch rather than only inserted: a built-in cannot be
+/// edited, so its stored filter and order are a copy of [`definition`], and
+/// rewriting them is what lets a later build change one.
+pub fn ensure_built_ins(conn: &Connection, at: i64) -> AppResult<()> {
+    for built_in in BuiltIn::ALL {
+        let (name, filter, order) = definition(built_in);
+        conn.execute(
+            "INSERT INTO playlists (built_in, name, kind, filter_json, sort_json, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT (built_in) WHERE built_in IS NOT NULL DO UPDATE
+                SET name = excluded.name,
+                    filter_json = excluded.filter_json,
+                    sort_json = excluded.sort_json
+              WHERE (name, filter_json, sort_json)
+                 IS NOT (excluded.name, excluded.filter_json, excluded.sort_json)",
+            rusqlite::params![
+                built_in.as_sql(),
+                name,
+                PlaylistKind::Smart.as_sql(),
+                to_json(&filter)?,
+                order_to_json(&order)?,
+                at
+            ],
+        )?;
+    }
     Ok(())
+}
+
+/// The playlist behind `id`, refused if it is gone or built in.
+fn require_own(conn: &Connection, id: i64) -> AppResult<Playlist> {
+    match get(conn, id)? {
+        None => Err(AppError::Internal(
+            "That playlist no longer exists.".to_owned(),
+        )),
+        Some(playlist) if playlist.built_in.is_some() => Err(AppError::Internal(format!(
+            "{} is built into the library and cannot be changed.",
+            playlist.name
+        ))),
+        Some(playlist) => Ok(playlist),
+    }
 }
 
 fn to_json(filter: &FilterGroup) -> AppResult<String> {
@@ -374,21 +392,22 @@ fn to_json(filter: &FilterGroup) -> AppResult<String> {
 
 pub fn rename(conn: &Connection, id: i64, name: &str) -> AppResult<()> {
     let name = normalize_name(name)?;
-    let changed = conn.execute(
+    require_own(conn, id)?;
+    conn.execute(
         "UPDATE playlists SET name = ?2 WHERE id = ?1",
         rusqlite::params![id, name],
     )?;
-    if changed == 0 {
-        return Err(AppError::Internal(
-            "That playlist no longer exists.".to_owned(),
-        ));
-    }
     Ok(())
 }
 
 /// Deletes a playlist. Its membership goes with it (ON DELETE CASCADE); the
 /// tracks themselves are untouched.
+///
+/// One already gone is not an error: deleting it has happened.
 pub fn delete(conn: &Connection, id: i64) -> AppResult<()> {
+    if get(conn, id)?.is_some() {
+        require_own(conn, id)?;
+    }
     conn.execute("DELETE FROM playlists WHERE id = ?1", [id])?;
     Ok(())
 }
@@ -1122,72 +1141,103 @@ mod tests {
         }
     }
 
+    fn built_in(conn: &Connection, key: BuiltIn) -> Playlist {
+        list(conn)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.built_in == Some(key))
+            .unwrap()
+    }
+
     #[test]
-    fn a_fresh_library_gets_the_two_built_ins() {
+    fn a_fresh_library_gets_the_three_built_ins() {
         let (_dir, conn) = seeded();
-        seed_built_ins(&conn, 1_700_000_000).unwrap();
+        ensure_built_ins(&conn, 1_700_000_000).unwrap();
 
         let names: Vec<String> = list(&conn).unwrap().into_iter().map(|p| p.name).collect();
-        assert_eq!(names, ["Most Played", "Recently Added"]);
-
-        let built_ins = list(&conn).unwrap();
-        for playlist in &built_ins {
+        assert_eq!(names, ["Favorites", "Most Played", "Recently Added"]);
+        for key in BuiltIn::ALL {
+            let playlist = built_in(&conn, key);
             assert_eq!(playlist.kind, PlaylistKind::Smart);
-            let stored = order(&conn, playlist.id).unwrap();
-            assert_eq!(stored.limit, Some(BUILT_IN_LIMIT));
-            assert_eq!(
-                stored.sort.map(|sort| sort.direction),
-                Some(crate::model::SortDirection::Desc)
-            );
+            assert_eq!(order(&conn, playlist.id).unwrap(), definition(key).2);
         }
     }
 
     #[test]
-    fn seeding_twice_does_not_produce_four_playlists() {
+    fn ensuring_twice_does_not_produce_six_playlists() {
         let (_dir, conn) = seeded();
-        seed_built_ins(&conn, 0).unwrap();
-        seed_built_ins(&conn, 0).unwrap();
+        ensure_built_ins(&conn, 0).unwrap();
+        ensure_built_ins(&conn, 0).unwrap();
 
-        assert_eq!(list(&conn).unwrap().len(), 2);
+        assert_eq!(list(&conn).unwrap().len(), 3);
     }
 
     #[test]
-    fn a_built_in_the_user_deleted_stays_deleted() {
+    fn a_built_in_cannot_be_renamed_edited_or_deleted() {
         let (_dir, conn) = seeded();
-        seed_built_ins(&conn, 0).unwrap();
-        let most_played = list(&conn)
-            .unwrap()
-            .into_iter()
-            .find(|p| p.name == "Most Played")
-            .unwrap();
+        ensure_built_ins(&conn, 0).unwrap();
+        let recent = built_in(&conn, BuiltIn::RecentlyAdded);
 
-        delete(&conn, most_played.id).unwrap();
-        // The next launch. Deleting something has to mean deleting it, which is
-        // why the guard is a flag rather than a check for the playlists.
-        seed_built_ins(&conn, 0).unwrap();
+        assert!(rename(&conn, recent.id, "My Newest").is_err());
+        assert!(set_smart(&conn, recent.id, &year_is(2012), &SmartOrder::default(), 0).is_err());
+        assert!(delete(&conn, recent.id).is_err());
 
-        let names: Vec<String> = list(&conn).unwrap().into_iter().map(|p| p.name).collect();
-        assert_eq!(names, ["Recently Added"]);
+        assert_eq!(
+            get(&conn, recent.id).unwrap().unwrap().name,
+            "Recently Added"
+        );
+        assert_eq!(
+            order(&conn, recent.id).unwrap(),
+            definition(BuiltIn::RecentlyAdded).2
+        );
     }
 
     #[test]
-    fn the_built_ins_are_ordinary_playlists_the_user_owns() {
+    fn a_missing_built_in_is_re_created() {
         let (_dir, conn) = seeded();
-        seed_built_ins(&conn, 0).unwrap();
-        let recent = list(&conn)
-            .unwrap()
-            .into_iter()
-            .find(|p| p.name == "Recently Added")
+        ensure_built_ins(&conn, 0).unwrap();
+        let most_played = built_in(&conn, BuiltIn::MostPlayed);
+        conn.execute("DELETE FROM playlists WHERE id = ?1", [most_played.id])
             .unwrap();
 
-        // Nothing special-cases them: renaming and re-filtering both work, and
-        // that is the point of building them out of sort and limit rather than
-        // out of a flag on the row.
-        rename(&conn, recent.id, "My Newest").unwrap();
-        set_smart(&conn, recent.id, &year_is(2012), &SmartOrder::default(), 0).unwrap();
+        ensure_built_ins(&conn, 0).unwrap();
 
-        assert_eq!(get(&conn, recent.id).unwrap().unwrap().name, "My Newest");
-        assert_eq!(order(&conn, recent.id).unwrap(), SmartOrder::default());
+        assert_eq!(built_in(&conn, BuiltIn::MostPlayed).name, "Most Played");
+    }
+
+    #[test]
+    fn a_stale_definition_is_rewritten() {
+        let (_dir, conn) = seeded();
+        ensure_built_ins(&conn, 0).unwrap();
+        let recent = built_in(&conn, BuiltIn::RecentlyAdded);
+        conn.execute(
+            "UPDATE playlists SET name = 'Old', sort_json = NULL WHERE id = ?1",
+            [recent.id],
+        )
+        .unwrap();
+
+        ensure_built_ins(&conn, 0).unwrap();
+
+        assert_eq!(
+            get(&conn, recent.id).unwrap().unwrap().name,
+            "Recently Added"
+        );
+        assert_eq!(
+            order(&conn, recent.id).unwrap(),
+            definition(BuiltIn::RecentlyAdded).2
+        );
+    }
+
+    #[test]
+    fn favorites_holds_the_loved_songs() {
+        let (_dir, conn) = seeded();
+        ensure_built_ins(&conn, 0).unwrap();
+        conn.execute("UPDATE tracks SET match_key = 'k' || id", [])
+            .unwrap();
+        conn.execute("INSERT INTO loved (match_key) VALUES ('k2'), ('k5')", [])
+            .unwrap();
+
+        assert_eq!(built_in(&conn, BuiltIn::Favorites).track_count, 2);
     }
 
     #[test]

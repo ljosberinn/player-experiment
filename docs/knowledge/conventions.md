@@ -69,7 +69,7 @@
   focus, so a reflex Enter destroys nothing.
 - **Changing source resets the view.** Opening a playlist clears the search and
   selection, and lands on the tab its kind asks for - Releases for a smart
-  playlist, the open tab for a static one.
+  playlist, Songs for a built-in, the open tab for a static one.
 - **A sidebar item is named for its destination, not its size** — the count is
   visible but `aria-hidden`.
 - **Icon-only cells are not labels**: visually-hidden text, and never colour as

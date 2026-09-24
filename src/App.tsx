@@ -339,6 +339,7 @@ export function App() {
             // highlighted rows would be two answers to one question.
             active={playlistId === null ? tab : null}
             onSelect={(view) => void showTab(view)}
+            onExport={(playlist) => void runExport(exportChoice([], playlist))}
           />
           <PlaylistSidebar onExport={(playlist) => void runExport(exportChoice([], playlist))} />
           {/* Under the playlists because it is the same kind of thing: a place
@@ -404,7 +405,9 @@ export function App() {
               <strong>{currentPlaylistName}</strong> is empty.{" "}
               {editable
                 ? "Drag songs from your library onto it in the sidebar."
-                : "Nothing in your library matches its filter yet."}
+                : currentPlaylist?.builtIn === "favorites"
+                  ? "Love a song to add it here."
+                  : "Nothing in your library matches its filter yet."}
             </p>
           ) : total === 0 && search !== "" ? (
             // An empty library and an empty result set are different problems,

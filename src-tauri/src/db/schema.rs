@@ -776,6 +776,34 @@ CREATE TABLE love_queue (
     next_try_at INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
 "#,
+    // 19 - Favorites, Most Played and Recently Added are built in
+    //
+    // See `docs/issues/done/137-built-in-playlists.md`. A seed from
+    // `seed_built_ins` whose name, filter and order are still the seed's is
+    // claimed; one the user touched stays theirs, and `ensure_built_ins` adds
+    // the built-in beside it. `min(id)` because nothing stopped a second
+    // identical row, and the index takes one.
+    //
+    // The seed's `playlists.seeded` flag goes with it: a built-in cannot be
+    // deleted, so there is nothing left for it to remember.
+    r#"
+ALTER TABLE playlists ADD COLUMN built_in TEXT;
+CREATE UNIQUE INDEX idx_playlists_built_in ON playlists(built_in) WHERE built_in IS NOT NULL;
+
+UPDATE playlists SET built_in = 'recentlyAdded'
+ WHERE id = (SELECT min(id) FROM playlists
+              WHERE kind = 'smart' AND name = 'Recently Added'
+                AND filter_json = '{"combinator":"all","children":[]}'
+                AND sort_json = '{"sort":{"field":"addedAt","direction":"desc"},"limit":100}');
+
+UPDATE playlists SET built_in = 'mostPlayed'
+ WHERE id = (SELECT min(id) FROM playlists
+              WHERE kind = 'smart' AND name = 'Most Played'
+                AND filter_json = '{"combinator":"all","children":[{"type":"rule","field":"playCount","op":"greaterThan","value":{"kind":"number","number":0}}]}'
+                AND sort_json = '{"sort":{"field":"playCount","direction":"desc"},"limit":100}');
+
+DELETE FROM settings WHERE key = 'playlists.seeded';
+"#,
 ];
 
 #[cfg(test)]
@@ -1123,5 +1151,94 @@ mod tests {
             )
             .unwrap();
         assert_eq!(synced, "listener");
+    }
+
+    /// Migration 19 on a library `seed_built_ins` seeded, with one seed left
+    /// alone and one renamed: the first becomes the built-in, the second stays
+    /// the user's and the built-in is added beside it.
+    #[test]
+    fn an_untouched_seed_is_claimed_and_an_edited_one_stays_the_users() {
+        use crate::model::{
+            BuiltIn, Combinator, FilterField, FilterGroup, FilterNode, FilterOp, FilterRule,
+            FilterValue, SmartOrder, SmartSort, SortDirection, SortField,
+        };
+        use rusqlite::OptionalExtension;
+
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join("library.sqlite3")).unwrap();
+        for sql in super::MIGRATIONS.iter().take(18) {
+            conn.execute_batch(sql).unwrap();
+        }
+        // Serialized here rather than copied from the migration, so the
+        // literals it matches on are proven to be what the seed wrote.
+        let top = |field| SmartOrder {
+            sort: Some(SmartSort {
+                field,
+                direction: SortDirection::Desc,
+            }),
+            limit: Some(100),
+        };
+        let played = FilterGroup {
+            combinator: Combinator::All,
+            children: vec![FilterNode::Rule(FilterRule {
+                field: FilterField::PlayCount,
+                op: FilterOp::GreaterThan,
+                value: FilterValue::Number { number: 0 },
+            })],
+        };
+        let seed = |name: &str, filter: &FilterGroup, order: &SmartOrder| {
+            conn.execute(
+                "INSERT INTO playlists (name, kind, filter_json, sort_json, created_at)
+                 VALUES (?1, 'smart', ?2, ?3, 0)",
+                rusqlite::params![
+                    name,
+                    serde_json::to_string(filter).unwrap(),
+                    serde_json::to_string(order).unwrap()
+                ],
+            )
+            .unwrap();
+            conn.last_insert_rowid()
+        };
+        let recent = seed(
+            "Recently Added",
+            &FilterGroup::default(),
+            &top(SortField::AddedAt),
+        );
+        let renamed = seed("My Most Played", &played, &top(SortField::PlayCount));
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('playlists.seeded', '1')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute_batch(super::MIGRATIONS[18]).unwrap();
+        crate::db::playlists::ensure_built_ins(&conn, 0).unwrap();
+
+        let claimed = crate::db::playlists::get(&conn, recent).unwrap().unwrap();
+        assert_eq!(claimed.built_in, Some(BuiltIn::RecentlyAdded));
+        assert_eq!(
+            crate::db::playlists::order(&conn, recent).unwrap().limit,
+            Some(1000)
+        );
+        let kept = crate::db::playlists::get(&conn, renamed).unwrap().unwrap();
+        assert_eq!(kept.built_in, None);
+
+        let mut built_ins: Vec<_> = crate::db::playlists::list(&conn)
+            .unwrap()
+            .into_iter()
+            .filter_map(|playlist| playlist.built_in)
+            .map(BuiltIn::as_sql)
+            .collect();
+        built_ins.sort_unstable();
+        assert_eq!(built_ins, ["favorites", "mostPlayed", "recentlyAdded"]);
+        let flag: Option<String> = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'playlists.seeded'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(flag, None);
     }
 }

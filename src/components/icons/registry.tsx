@@ -1,7 +1,10 @@
 import { CaretDownIcon } from "@phosphor-icons/react/CaretDown";
 import { CaretUpIcon } from "@phosphor-icons/react/CaretUp";
 import { ChartBarIcon } from "@phosphor-icons/react/ChartBar";
+import { ClockIcon } from "@phosphor-icons/react/Clock";
+import { FireIcon } from "@phosphor-icons/react/Fire";
 import { GearSixIcon } from "@phosphor-icons/react/GearSix";
+import { HeartIcon } from "@phosphor-icons/react/Heart";
 import { ListChecksIcon } from "@phosphor-icons/react/ListChecks";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react/MagnifyingGlass";
 import { MusicNotesIcon } from "@phosphor-icons/react/MusicNotes";
@@ -56,6 +59,9 @@ export type IconName =
   | "artists"
   | "genres"
   | "stats"
+  | "favorites"
+  | "most-played"
+  | "recently-added"
   | "review"
   | "move-up"
   | "move-down"
@@ -89,6 +95,9 @@ export const ICONS: Record<IconName, Glyph> = {
   artists: (props) => <UserSoundIcon {...props} />,
   genres: (props) => <TagIcon {...props} />,
   stats: (props) => <ChartBarIcon {...props} />,
+  favorites: (props) => <HeartIcon {...props} />,
+  "most-played": (props) => <FireIcon {...props} />,
+  "recently-added": (props) => <ClockIcon {...props} />,
   review: (props) => <ListChecksIcon {...props} />,
   // Bold, and the one pair here that needs saying: they are drawn at 10px
   // inside a 22px nudge button, where a regular-weight caret is a smudge.

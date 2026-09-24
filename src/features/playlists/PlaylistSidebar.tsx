@@ -92,8 +92,10 @@ export function PlaylistSidebar({
     };
   }, [watch]);
 
-  const smart = playlists.filter((playlist) => playlist.kind === "smart");
-  const statics = playlists.filter((playlist) => playlist.kind !== "smart");
+  // Built-ins are drawn by `LibraryNav`.
+  const own = playlists.filter((playlist) => playlist.builtIn === null);
+  const smart = own.filter((playlist) => playlist.kind === "smart");
+  const statics = own.filter((playlist) => playlist.kind !== "smart");
 
   /**
    * One row: the item, its right-click menu, and its drop behaviour.

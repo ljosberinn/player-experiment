@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useLibraryStore } from "../../features/library/store";
 import { VOLUME_STEP } from "../../features/player/shortcuts";
-import type { Track } from "../../ipc";
+import { usePlaylistsStore } from "../../features/playlists/store";
+import type { BuiltIn, Playlist, Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { AppBar } from "./AppBar";
 import { LibraryNav } from "./LibraryNav";
@@ -341,6 +343,60 @@ describe("LibraryNav", () => {
 
     await user.click(screen.getByRole("button", { name: "Statistics" }));
     expect(onSelect).toHaveBeenCalledWith("stats");
+  });
+
+  describe("with the built-ins", () => {
+    const builtIn = (id: number, name: string, key: BuiltIn): Playlist => ({
+      id,
+      name,
+      kind: "smart",
+      trackCount: 3,
+      createdAt: 0,
+      builtIn: key,
+    });
+    const initialLibrary = useLibraryStore.getState();
+
+    beforeEach(() => {
+      usePlaylistsStore.setState({
+        playlists: [
+          builtIn(3, "Recently Added", "recentlyAdded"),
+          { id: 4, name: "Mix", kind: "static", trackCount: 3, createdAt: 0, builtIn: null },
+          builtIn(2, "Most Played", "mostPlayed"),
+          builtIn(1, "Favorites", "favorites"),
+        ],
+      });
+      useLibraryStore.setState({ ...initialLibrary, playlistId: 2, showPlaylist: vi.fn() });
+    });
+
+    it("draws them under Statistics, in a fixed order", () => {
+      render(<LibraryNav active={null} onSelect={() => {}} />);
+
+      const names = screen.getAllByRole("button").map((button) => button.textContent);
+      expect(names.slice(4)).toEqual(["Statistics", "Favorites", "Most Played", "Recently Added"]);
+    });
+
+    it("marks the open one and opens the one clicked", async () => {
+      const user = userEvent.setup();
+      render(<LibraryNav active={null} onSelect={() => {}} />);
+
+      expect(screen.getByRole("button", { name: "Most Played" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      await user.click(screen.getByRole("button", { name: "Favorites" }));
+      expect(useLibraryStore.getState().showPlaylist).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1 }),
+      );
+    });
+
+    it("offers Play and Export only", async () => {
+      render(<LibraryNav active={null} onSelect={() => {}} />);
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Favorites" }));
+
+      const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+      expect(items).toEqual(["Play", "Export…"]);
+    });
   });
 });
 

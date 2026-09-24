@@ -74,7 +74,12 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   the group that was at the top and drops the virtualizer's size cache.
 - Lists stripe by **data index**, not `:nth-child` — the rows are absolutely
   positioned, so DOM order is the visible window rather than the list.
-- **A smart playlist opens on Releases, a static one on whatever was open.**
+- **A smart playlist opens on Releases, a static one on whatever was open,
+  and a built-in on Songs.** A built-in is drawn under LIBRARY by `LibraryNav`,
+  not with the user's playlists, and is locked: the store opens it in
+  `BUILT_IN_SORT`, `toggleSort` and a search leave that alone, and its columns
+  are the library's. The playlists store tells the library store which ids are
+  built-ins on each load, because back and forward know a playlist only by id.
   The landing tab is the kind's, which is why `showPlaylist` takes the
   `Playlist` row rather than an id - the library store has no business reading
   the playlists store to find it out. A smart playlist is a question about the

@@ -129,7 +129,7 @@ pub fn run() {
             // starts with is a product decision, and the storage layer opening
             // a database should not be the thing that has an opinion about it.
             db.conn()
-                .and_then(|conn| db::playlists::seed_built_ins(&conn, now_seconds()))?;
+                .and_then(|conn| db::playlists::ensure_built_ins(&conn, now_seconds()))?;
             let (volume, muted) = db
                 .conn()
                 .and_then(|conn| Ok((settings::volume(&conn)?, settings::muted(&conn)?)))?;
