@@ -471,8 +471,12 @@ function Source({
                 className="lookup-result"
                 onClick={() => onPick(candidate.mbid)}
               >
-                <span className="lookup-result-title">{candidate.title}</span>
-                <span className="lookup-result-artist">{candidate.artist}</span>
+                <span className="lookup-result-title" title={candidate.title}>
+                  {candidate.title}
+                </span>
+                <span className="lookup-result-artist" title={candidate.artist}>
+                  {candidate.artist}
+                </span>
                 <span className="lookup-result-detail">{describe(candidate)}</span>
                 {/* Sorted by, so it earns a column rather than a tooltip: it is
                     what says the second result fits the files better than the
@@ -562,18 +566,22 @@ function Mapping({
   busy: boolean;
   onSwap: (row: number, other: number) => void;
 }) {
+  const discs = tracks.some((track) => (track.disc_no ?? 1) > 1);
+
   return (
     <table className="lookup-map">
       <thead>
         <tr>
+          {/* Both counts in the heads, so a release with a file too many or a
+              track too few reads off them before a row is compared. */}
           <th scope="col" className="lookup-eyebrow">
-            File
+            {`File · ${tracks.length}`}
           </th>
           <th scope="col">
             <span className="visually-hidden">Reorder</span>
           </th>
           <th scope="col" className="lookup-eyebrow">
-            MusicBrainz
+            {detail === null ? "MusicBrainz" : `MusicBrainz · ${detail.tracks.length}`}
           </th>
         </tr>
       </thead>
@@ -589,7 +597,12 @@ function Mapping({
               className={detail !== null && remote === null ? "unmapped" : undefined}
             >
               <td>
-                <span className="lookup-map-title">{name}</span>
+                <span className="lookup-map-title">
+                  {track.track_no === null
+                    ? "— "
+                    : `${discs ? `${track.disc_no ?? 1}-` : ""}${track.track_no}. `}
+                  {name}
+                </span>
                 <span className="lookup-map-detail">{formatDuration(track.duration_ms)}</span>
               </td>
               <td className="lookup-map-move">

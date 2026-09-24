@@ -412,8 +412,9 @@ absences are what nobody notices coming back — hence the guards in
   `flex: 1` and the `min-height: 0` beside it that lets a column flex child
   shrink below its content. Everything else is `flex: none` and stays put.
   **The box keeping one height is the rule, not the count of scroll areas in
-  it**: the lookup's body hands the scroll to its two columns, which is fine
-  because a column that scrolls inside a fixed track moves nothing. What
+  it**: the lookup's body hands the scroll to its two columns, and the pane
+  caps its candidate list, which is fine because a region that scrolls inside a
+  fixed track moves nothing. What
   `App.css.test.ts` asks of anything that scrolls in the body's place is the
   `min-height: 0`, without which a grid or flex child's automatic minimum is
   its content and the box grows after all.
@@ -679,7 +680,10 @@ absences are what nobody notices coming back — hence the guards in
   four — the files, the candidates, the tracklist, the mapping — because a
   search has no measured progress to report. The skeleton does not pulse,
   unlike the sheet: the app's three other skeletons are deliberately static,
-  and the rail already says something is pending.
+  and the rail already says something is pending. A file row leads with its
+  own track number the way a MusicBrainz row does — `disc-` once any file is
+  past disc 1 — and the two heads count their sides, so a mismatch reads off
+  them.
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.
@@ -687,8 +691,12 @@ absences are what nobody notices coming back — hence the guards in
   `stage: "opening"` with no tracks, so a dialog sized by its contents collapsed
   to its shortest state and grew back on every step — 270px each way, under the
   pointer still resting on the actions. `.dialog.lookup` states `height:
-  min(792px, 86vh)`, which is the tallest state it ever reached, so the largest
-  step is unchanged and only the short ones grow. One row of actions now:
+  max(min(792px, 86vh), 80vh)` — the tallest state it ever reached, or 80% of
+  a tall window — so the largest step is unchanged and only the short ones
+  grow. It is `min(1200px, 92vw)` wide, which is what puts the eight WRITE
+  boxes on one line at the default window (139). The candidate list is capped
+  at five results and scrolls inside itself, the one scroller in the pane:
+  a result is three unwrapped lines, so the cap is a calc. One row of actions now:
   Cancel, Set Aside and Apply on the right, and on the left whichever step back
   is live — Back to Results while a candidate is picked, Search again while one
   is not.
