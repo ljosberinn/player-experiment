@@ -45,6 +45,7 @@ let session: Session | null = null;
  * the sort.
  */
 let swallowClick = false;
+const startListeners = new Set<() => void>();
 const endListeners = new Set<() => void>();
 
 /** Whether a track drag is in progress. */
@@ -55,6 +56,15 @@ export function isTrackDragging(): boolean {
 /** What the drag in progress is carrying, or nothing if there is no drag. */
 export function trackDragIds(): number[] {
   return session === null ? [] : [...session.ids];
+}
+
+/**
+ * Called when a press becomes a drag, for a target that is only laid out while
+ * one is in progress.
+ */
+export function onTrackDragStart(listener: () => void): () => void {
+  startListeners.add(listener);
+  return () => void startListeners.delete(listener);
 }
 
 /**
@@ -205,6 +215,9 @@ function onPointerMove(event: PointerEvent): void {
     return;
   }
   session = { ids, badge: createBadge(ids.length, event.clientX, event.clientY) };
+  for (const listener of startListeners) {
+    listener();
+  }
 }
 
 /**

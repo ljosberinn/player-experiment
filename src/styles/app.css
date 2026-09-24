@@ -2246,6 +2246,13 @@ th.status {
   color: var(--accent);
 }
 
+.sidebar-dropzone.collapsed {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+}
+
 /* Native feel pass - the stateful half.
    -------------------------------------------------------------------------
    Down here because these have to out-specify the component rules above. */
