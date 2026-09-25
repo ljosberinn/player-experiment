@@ -27,7 +27,7 @@ const BACKOFF_SECONDS: [i64; 5] = [60, 300, 1_800, 7_200, 21_600];
 ///
 /// A backstop for a failure that time does not fix but that this build cannot
 /// classify - the age limit below is the rule that normally applies first.
-const MAX_ATTEMPTS: i64 = 12;
+pub(super) const MAX_ATTEMPTS: i64 = 12;
 
 /// Older than this and last.fm will not take it, so nor will the queue.
 ///
@@ -137,7 +137,7 @@ pub fn defer(conn: &Connection, ids: &[i64], now: i64) -> AppResult<()> {
 }
 
 /// How long after `attempts` failures to wait.
-fn backoff(attempts: i64) -> i64 {
+pub(super) fn backoff(attempts: i64) -> i64 {
     let index = usize::try_from(attempts).unwrap_or(0);
     BACKOFF_SECONDS[index.min(BACKOFF_SECONDS.len() - 1)]
 }

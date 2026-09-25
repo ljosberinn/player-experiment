@@ -68,6 +68,8 @@ One dedicated **scrobbler thread** owns the last.fm transport and drains an
 `mpsc` channel of jobs, the same shape as the player: the player thread produces
 `Played` and `NowPlaying` and must never wait on a socket, so it hands over a
 track id and moves on. In a build with no last.fm key the thread does not exist.
+Its handle is app state as `Option<lastfm::Scrobbler>`, and a clone rides on
+the player thread: loves and connecting reach it from commands.
 
 **A history import is not the scrobbler's.** `lastfm_import` runs
 `lastfm::import` through `commands::blocking` on the shared transport, one run
@@ -77,15 +79,16 @@ attempts at one page with its cursor committed, so the next Import resumes. It
 announces on `library://changed` whether it finished or stopped: every page it
 got through is committed and linked.
 
-**Neither is a love.** `lastfm_love` runs `lastfm::love` through
-`commands::blocking`, one signed request per song - `track.love` has no batch
-form. It is the one last.fm call the user pressed a control to make, so unlike
-a scrobble it is not queued and its failure is reported. It writes
-`db::loved` first and puts the row back if the request is refused, stops at the
-first refusal rather than working through the rest, and answers with the loved
-set as it now stands so the window never has to guess. A key last.fm rejects is
-forgotten there, and the command emits `lastfm://disconnected` when the session
-it started with is gone by the end.
+**A love is local first.** `set_loved` writes `db::loved` on every build, with
+no key and no account, and answers with the loved set as it now stands so the
+window never has to guess. With a connected account it also queues each song in
+`love_queue` and sends the scrobbler a `Flush`, which drains it beside the
+scrobbles, one `track.love` or `track.unlove` per song. A failure there is a
+backlog on `lastfm://loves-queued`, never a refusal: the love already stands.
+The scrobbler's `RefreshLoved` - at launch and on connecting - flushes, takes
+in the account's loved tracks through `lastfm::love::absorb`, and emits
+`loved://changed`, which the window answers by re-reading the set. See
+[data-model](data-model.md#the-loved-set).
 
 One dedicated audio thread owns the `rodio` sink and receives an `mpsc` command
 enum. It emits `player://position` (throttled ~4/s), `player://state`,

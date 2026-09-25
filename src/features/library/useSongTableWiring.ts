@@ -2,7 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { type RefObject, useEffect, useMemo, useState } from "react";
 import { revealTrack } from "../../ipc";
 import { useEditorStore } from "../editor/store";
-import { useLoveEntry } from "../lastfm/loveEntry";
+import { useLoveEntry } from "../love/loveEntry";
 import { isTypingTarget } from "../player/shortcuts";
 import { usePlaylistsStore } from "../playlists/store";
 import { useTagsourceStore } from "../tagsource/store";

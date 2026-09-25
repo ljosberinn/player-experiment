@@ -64,6 +64,7 @@ and meant to be scripted against.
 | `addedAt` | integer | When the scan first saw the file. |
 | `playCount` | integer | |
 | `lastPlayedAt` | integer or null | |
+| `loved` | boolean | Whether the song is in the loved set. Absent from exports written before it was added. |
 
 ## `playlists[]`
 

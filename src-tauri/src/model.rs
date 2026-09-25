@@ -1104,6 +1104,9 @@ pub struct LastfmStatus {
     /// something is wrong is the least the user is owed for a feature that
     /// works in the background.
     pub queued: u32,
+    /// Loves and unloves made here that last.fm has not taken yet, for the
+    /// same line's reason.
+    pub loves_queued: u32,
     /// Where the history import stands, or null if none has run.
     pub import: Option<LastfmImport>,
 }

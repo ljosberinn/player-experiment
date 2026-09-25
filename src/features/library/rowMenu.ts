@@ -5,17 +5,8 @@ import { albumLinks, artistLinks, linkArtist } from "./externalLinks";
 /** What the lookup entries need off a row; the rest of a `Track` is irrelevant. */
 export type LinkableTrack = Pick<Track, "artist" | "album_artist" | "album">;
 
-/**
- * What the Love entry needs to know about the selection.
- *
- * Absent on a build with no last.fm key: the entry is then not greyed but
- * gone, the way the lookup entries are absent rather than greyed when the tag
- * they would open is empty. There is no account to connect and no question the
- * entry would answer.
- */
+/** What the Love entry needs to know about the selection. */
 export interface Loving {
-  /** Whether an account is connected. */
-  connected: boolean;
   /**
    * Whether every selected row is already loved, so the entry is the way back
    * out. A mixed selection reads as not loved: Love is the act that makes the
@@ -27,7 +18,7 @@ export interface Loving {
    * Whether every selected row carries both an artist and a title.
    *
    * `plays::match_key` has no key for a song missing either, so a love could
-   * be sent but never remembered, and the backend refuses the selection whole.
+   * never be remembered, and the backend refuses the selection whole.
    */
   keyed: boolean;
   onToggle: (loved: boolean) => void;
@@ -37,7 +28,7 @@ export interface Loving {
 type LoveableTrack = Pick<Track, "artist" | "title">;
 
 /**
- * The Love entry's state, or nothing on a build with no last.fm key.
+ * The Love entry's state, or nothing with nothing selected.
  *
  * Pure so both menus that offer the entry - the right-click menu and the Edit
  * menu - decide it the same way, and so the rules are testable without a
@@ -51,25 +42,19 @@ type LoveableTrack = Pick<Track, "artist" | "title">;
 export function lovingFor({
   ids,
   trackById,
-  configured,
-  connected,
   loved,
   onToggle,
 }: {
   ids: number[];
   /** A cached row, or null where the table no longer holds its page. */
   trackById: (id: number) => LoveableTrack | null;
-  /** Whether this build carries a last.fm API key at all. */
-  configured: boolean;
-  connected: boolean;
   loved: ReadonlySet<number>;
   onToggle: (loved: boolean) => void;
 }): Loving | undefined {
-  if (!configured || ids.length === 0) {
+  if (ids.length === 0) {
     return undefined;
   }
   return {
-    connected,
     loved: ids.every((id) => loved.has(id)),
     keyed: ids.every((id) => {
       const track = trackById(id);
@@ -221,20 +206,16 @@ export function rowMenuItems({
 /**
  * The one entry that is a toggle: Love, or the way back out of one.
  *
- * Greyed rather than absent for both refusals, unlike the lookup entries
- * below: each names a thing the user can go and change - connect an account,
- * tag the file - and a question worth answering is worth showing.
+ * Greyed rather than absent when refused, unlike the lookup entries below: it
+ * names a thing the user can go and change - tag the file - and a question
+ * worth answering is worth showing.
  */
 function loveItem(loving: Loving, count: number, songs: string): MenuItem {
   const verb = loving.loved ? "Unlove" : "Love";
   const label = count === 1 ? verb : `${verb} ${songs}`;
 
-  if (!loving.connected) {
-    return { label, disabled: true, hint: "Needs a last.fm account" };
-  }
   if (!loving.keyed) {
-    // Never remembered locally, so the set would disagree with last.fm from
-    // the moment the love landed. The backend refuses it for the same reason.
+    // No key to remember the love under. The backend refuses it too.
     return {
       label,
       disabled: true,

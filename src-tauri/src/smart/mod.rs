@@ -518,35 +518,35 @@ mod tests {
         (dir, db)
     }
 
-    /// The seeded library with a play log and a loved set over it.
+    /// The seeded library with a loved set over it.
     ///
-    /// Four shapes, because the subquery has to tell them apart: a track whose
-    /// play is loved, a track whose play is not, a track with no play at all,
-    /// and a loved play that resolved to no track - an imported scrobble for
-    /// something the library does not hold, which is 70 of the 285 rows on the
-    /// real library and the reason `track_id IS NOT NULL` is inside the
-    /// subquery.
+    /// No plays: a song is loved whether or not it was ever heard. The set
+    /// holds one key a track carries, and one no track does - a love for a song
+    /// the library does not hold yet.
     fn seeded_with_loved() -> (tempfile::TempDir, Db) {
-        use crate::db::plays::match_key;
+        use crate::db::plays::{match_key, track_key};
 
         let (dir, db) = seeded();
         {
             let conn = db.conn().unwrap();
-            let play = |started_at: i64, artist: &str, title: &str, track: Option<i64>| {
+            let tracks: Vec<(i64, Option<String>, Option<String>)> = conn
+                .prepare("SELECT id, artist, title FROM tracks")
+                .unwrap()
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap();
+            for (id, artist, title) in tracks {
                 conn.execute(
-                    "INSERT INTO plays (started_at, source, artist, title, match_key, track_id)
-                     VALUES (?1, 'lastfm', ?2, ?3, ?4, ?5)",
-                    rusqlite::params![started_at, artist, title, match_key(artist, title), track],
+                    "UPDATE tracks SET match_key = ?2 WHERE id = ?1",
+                    rusqlite::params![id, track_key(artist.as_deref(), title.as_deref())],
                 )
                 .unwrap();
-            };
-            play(NOW - 10, "Guitar", "Maki", Some(1));
-            play(NOW - 20, "Grizzly Bear", "Half Gate", Some(3));
-            play(NOW - 30, "Nobody", "Nothing At All", None);
+            }
 
             for (artist, title) in [("Guitar", "Maki"), ("Nobody", "Nothing At All")] {
                 conn.execute(
-                    "INSERT INTO lastfm_loved (match_key) VALUES (?1)",
+                    "INSERT INTO loved (match_key) VALUES (?1)",
                     [match_key(artist, title)],
                 )
                 .unwrap();
@@ -1008,12 +1008,11 @@ mod tests {
         );
     }
 
-    /// Everything else, and *everything* else: a track whose plays are not
-    /// loved, and a track with no play row at all, both belong here. The loved
-    /// play that resolved to no track has to leave this list alone - a NULL in
-    /// the `NOT IN` list would empty it entirely.
+    /// Everything else, and *everything* else: an untagged track has no key
+    /// and belongs here too, and the loved key no track carries has to leave
+    /// this list alone.
     #[test]
-    fn not_loved_keeps_the_tracks_with_no_plays() {
+    fn not_loved_keeps_every_other_track() {
         let (_dir, db) = seeded_with_loved();
 
         assert_eq!(

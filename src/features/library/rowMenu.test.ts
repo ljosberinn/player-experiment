@@ -274,11 +274,9 @@ describe("rowMenuItems", () => {
 });
 
 describe("the Love entry", () => {
-  const loving: Loving = { connected: true, loved: false, keyed: true, onToggle: vi.fn() };
+  const loving: Loving = { loved: false, keyed: true, onToggle: vi.fn() };
 
   it("is absent where the caller offers none", () => {
-    // A build with no last.fm key. Not greyed: there is no account to connect
-    // and no question the entry would answer.
     expect(labels(items())).not.toContain("Love");
   });
 
@@ -304,28 +302,15 @@ describe("the Love entry", () => {
     expect(onToggle).toHaveBeenCalledWith(false);
   });
 
-  it("says why it is greyed with no account connected", () => {
-    const found = entry(items({ loving: { ...loving, connected: false } }), "Love");
-    expect(found?.disabled).toBe(true);
-    expect(found?.hint).toBe("Needs a last.fm account");
-    expect(found?.onSelect).toBeUndefined();
-  });
-
   it("says why it is greyed for a song with no artist and title", () => {
-    // No `match_key`, so the love could be sent but never remembered.
+    // No `match_key`, so the love could never be remembered.
     const found = entry(items({ loving: { ...loving, keyed: false } }), "Love");
     expect(found?.disabled).toBe(true);
     expect(found?.hint).toBe("No artist and title");
+    expect(found?.onSelect).toBeUndefined();
 
     const several = entry(items({ count: 4, loving: { ...loving, keyed: false } }), "Love 4 Songs");
     expect(several?.hint).toBe("One has no artist and title");
-  });
-
-  it("puts a missing account ahead of a missing tag", () => {
-    // Connect first: it is the one of the two that is not about this song, and
-    // naming the tag would send the user to fix the wrong thing.
-    const found = entry(items({ loving: { ...loving, connected: false, keyed: false } }), "Love");
-    expect(found?.hint).toBe("Needs a last.fm account");
   });
 });
 
@@ -340,17 +325,15 @@ describe("lovingFor", () => {
     return lovingFor({
       ids: [1],
       trackById: lookup({ 1: tagged }),
-      configured: true,
-      connected: true,
       loved: new Set<number>(),
       onToggle: noop,
       ...over,
     });
   }
 
-  it("offers nothing on a build with no key, or with nothing selected", () => {
-    expect(state({ configured: false })).toBeUndefined();
+  it("offers nothing with nothing selected, and something on every build otherwise", () => {
     expect(state({ ids: [] })).toBeUndefined();
+    expect(state()).toBeDefined();
   });
 
   it("is loved only when every selected row is", () => {

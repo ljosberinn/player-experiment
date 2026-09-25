@@ -102,6 +102,9 @@ pub struct ExportTrack {
     pub added_at: i64,
     pub play_count: i64,
     pub last_played_at: Option<i64>,
+    /// Whether the song is in the loved set. Kept only here since issue 134,
+    /// so an export is the one copy of it outside the database.
+    pub loved: bool,
 }
 
 impl From<Track> for ExportTrack {
@@ -124,6 +127,7 @@ impl From<Track> for ExportTrack {
             added_at: track.added_at,
             play_count: track.play_count,
             last_played_at: track.last_played_at,
+            loved: false,
         }
     }
 }
@@ -182,7 +186,7 @@ pub fn build(
     let total = count_for(conn, scope)?;
     on_progress(WriteProgress { done: 0, total });
 
-    let (tracks, playlists) = match scope {
+    let (mut tracks, playlists) = match scope {
         ExportScope::Library => (
             all_tracks(conn, None, total, &mut on_progress)?,
             all_playlists(conn)?,
@@ -207,6 +211,12 @@ pub fn build(
             )
         }
     };
+
+    let loved: std::collections::HashSet<i64> =
+        crate::db::loved::tracks(conn)?.into_iter().collect();
+    for track in &mut tracks {
+        track.loved = loved.contains(&track.id);
+    }
 
     // The playlists and settings above report nothing, and serializing the
     // document is still ahead - so the readout lands on its total here rather
@@ -580,9 +590,35 @@ mod tests {
             "\"albumArtist\"",
             "\"durationMs\"",
             "\"playCount\"",
+            "\"loved\"",
         ] {
             assert!(json.contains(field), "missing {field} from the export");
         }
+    }
+
+    #[test]
+    fn a_track_says_whether_it_is_loved() {
+        let (_dir, db) = seeded();
+        let conn = db.conn().unwrap();
+        let key = crate::db::plays::match_key("Guitar", "Maki");
+        conn.execute(
+            "UPDATE tracks SET match_key = ?1 WHERE path = '/m/1.mp3'",
+            [&key],
+        )
+        .unwrap();
+        crate::db::loved::remember(&conn, &[key]).unwrap();
+
+        let export = build(&conn, &ExportScope::Library, 0, |_| {}).unwrap();
+
+        let loved: Vec<(&str, bool)> = export
+            .tracks
+            .iter()
+            .map(|track| (track.path.as_str(), track.loved))
+            .collect();
+        assert_eq!(
+            loved,
+            [("/m/1.mp3", true), ("/m/2.mp3", false), ("/m/3.mp3", false)]
+        );
     }
 
     #[test]

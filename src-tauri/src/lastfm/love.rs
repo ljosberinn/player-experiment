@@ -1,81 +1,81 @@
-//! Loving a track from in here.
+//! Loving a track, and keeping the loved set in step with last.fm.
 //!
-//! `track.love` and `track.unlove` are signed session-key calls with no batch
-//! form, so a selection is one request per song. They are the only calls in
-//! this module the user pressed a control to make, which is what shapes the
-//! two decisions below.
+//! **The love is kept here first.** [`crate::db::loved`] is the set, on every
+//! build and with no account; a love never waits on the network and is never
+//! taken back because a call failed.
 //!
-//! **The local set is written first and put back on a failure.** A love is
-//! answered in [`crate::db::loved`] before last.fm has confirmed it, so a
-//! smart playlist recomputed while the request is in flight already agrees
-//! with the menu the user just used.
+//! **A connected account mirrors it through `love_queue`.** `track.love` and
+//! `track.unlove` are signed session-key calls with no batch form, so each
+//! song is one row holding the user's latest word on it, drained by
+//! [`super::Service::flush`] beside the scrobbles and with their backoff.
+//! Unlike a scrobble a love has no timestamp to expire, so nothing here ages
+//! out; a row that keeps failing is dropped after the same dozen attempts.
 //!
-//! **No queue.** `lastfm::queue` exists because a scrobble has a timestamp
-//! that expires and a play that already happened; a love is a present-tense
-//! preference, and sending one from three days ago is not obviously right.
-//! A failure is reported instead - the user asked for this, which is the line
-//! `docs/knowledge/conventions.md` draws.
+//! **last.fm's own set comes back through [`absorb`]**, which is three-way:
+//! see [`crate::db::loved::mirror`].
 
-use rusqlite::Connection;
+use std::collections::BTreeSet;
 
-use crate::db::{loved, playback, plays};
+use rusqlite::{params, Connection};
+
+use crate::db::{loved, playback, plays, settings};
 use crate::error::{AppError, AppResult};
 
-use super::transport::Transport;
-use super::{auth, signed, Credentials, Error};
+use super::{auth, queue, signed, Credentials};
 
 /// One song, as both last.fm and the local set need it.
-struct Song {
-    artist: String,
-    title: String,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Song {
+    pub artist: String,
+    pub title: String,
     /// [`plays::match_key`] over this song's own artist and title - the same
     /// function the import reduces last.fm's loved list with, so the two
     /// agree by construction.
-    key: String,
+    pub key: String,
 }
 
-/// Loves or unloves every track in `track_ids`.
+/// One queued love or unlove.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Queued {
+    pub song: Song,
+    pub loved: bool,
+}
+
+/// Loves or unloves every track in `track_ids`, answering whether anything
+/// was queued for last.fm.
 ///
-/// **Refused before any request** when a track carries no artist or no title:
-/// [`plays::match_key`] has no key for it, so the love could be sent but never
-/// remembered, and the set would disagree with last.fm from the moment it
-/// landed. The control is disabled for such a track; this is the guard behind
-/// it.
+/// Queued only with `connected`: with no account there is nobody to tell,
+/// and connecting one later pushes what it lacks once - see [`absorb`].
 ///
-/// Stops at the first failure rather than working through the rest: what
-/// refused one call - no network, a dead key, a rate limit - will refuse the
-/// next, and the songs already done stay done.
+/// **Refused whole** when a track carries no artist or no title:
+/// [`plays::match_key`] has no key for it, so the love could never be
+/// remembered. The control is disabled for such a track; this is the guard
+/// behind it.
 pub fn set(
-    transport: &dyn Transport,
-    credentials: &Credentials,
-    conn: &Connection,
+    conn: &mut Connection,
     track_ids: &[i64],
     loved: bool,
-) -> AppResult<()> {
-    let Some(session) = auth::stored_session(conn)? else {
-        return Err(AppError::Internal(
-            "No last.fm account is connected.".to_owned(),
-        ));
-    };
+    connected: bool,
+) -> AppResult<bool> {
     let songs = songs(conn, track_ids)?;
+    let keys: Vec<String> = songs.iter().map(|song| song.key.clone()).collect();
 
-    for song in &songs {
-        let held = !loved::held(conn, std::slice::from_ref(&song.key))?.is_empty();
-        write(conn, &song.key, loved)?;
-
-        if let Err(error) = call(transport, credentials, conn, &session.key, song, loved) {
-            write(conn, &song.key, held)?;
-            return Err(error.into());
+    let tx = conn.transaction()?;
+    if loved {
+        loved::remember(&tx, &keys)?;
+    } else {
+        loved::forget(&tx, &keys)?;
+    }
+    if connected {
+        for song in &songs {
+            enqueue(&tx, song, loved)?;
         }
     }
-
-    Ok(())
+    tx.commit()?;
+    Ok(connected && !songs.is_empty())
 }
 
 /// The songs behind the ids, or the reason none of them can be loved.
-///
-/// Every id resolved before the first request, so a selection with one
-/// unloveable track in it is refused whole rather than part-way through.
 fn songs(conn: &Connection, track_ids: &[i64]) -> AppResult<Vec<Song>> {
     let mut songs = Vec::with_capacity(track_ids.len());
     for &id in track_ids {
@@ -89,7 +89,7 @@ fn songs(conn: &Connection, track_ids: &[i64]) -> AppResult<Vec<Song>> {
         let key = plays::match_key(&artist, &title);
         if key.is_empty() {
             return Err(AppError::Internal(
-                "A song needs both an artist and a title before last.fm can love it.".to_owned(),
+                "A song needs both an artist and a title before it can be loved.".to_owned(),
             ));
         }
         songs.push(Song { artist, title, key });
@@ -97,91 +97,194 @@ fn songs(conn: &Connection, track_ids: &[i64]) -> AppResult<Vec<Song>> {
     Ok(songs)
 }
 
-/// The local set, moved to where the user has just asked it to be.
-fn write(conn: &Connection, key: &str, loved: bool) -> AppResult<()> {
-    let keys = [key.to_owned()];
-    if loved {
-        loved::remember(conn, &keys)
-    } else {
-        loved::forget(conn, &keys)
-    }
+/// Queues `song`, replacing whatever was queued for it.
+///
+/// The attempts start over: a love after a failed unlove is a new request,
+/// not a retry of the old one.
+fn enqueue(conn: &Connection, song: &Song, loved: bool) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO love_queue (match_key, artist, title, loved) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(match_key) DO UPDATE SET
+             artist = excluded.artist, title = excluded.title, loved = excluded.loved,
+             attempts = 0, next_try_at = 0",
+        params![song.key, song.artist, song.title, loved],
+    )?;
+    Ok(())
 }
 
-/// One `track.love` or `track.unlove`.
+/// What is due to be sent, oldest intent first.
+pub fn due(conn: &Connection, now: i64) -> AppResult<Vec<Queued>> {
+    let mut statement = conn.prepare(
+        "SELECT match_key, artist, title, loved FROM love_queue
+          WHERE next_try_at <= ?1 ORDER BY next_try_at, match_key",
+    )?;
+    let rows = statement
+        .query_map([now], |row| {
+            Ok(Queued {
+                song: Song {
+                    key: row.get(0)?,
+                    artist: row.get(1)?,
+                    title: row.get(2)?,
+                },
+                loved: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Forgets a row once it is delivered or refused for good.
 ///
-/// A dead session key is forgotten here rather than at the call site, the way
-/// [`super::Service::call`] does it: it is not a failed request to retry, it
-/// is an account that is no longer connected.
-fn call(
-    transport: &dyn Transport,
-    credentials: &Credentials,
-    conn: &Connection,
+/// Only if it still says what was sent: a toggle landing while the call was in
+/// flight is a newer intent, and it has not been delivered.
+pub fn delivered(conn: &Connection, sent: &Queued) -> AppResult<()> {
+    conn.execute(
+        "DELETE FROM love_queue WHERE match_key = ?1 AND loved = ?2",
+        params![sent.song.key, sent.loved],
+    )?;
+    Ok(())
+}
+
+/// Puts a row back for later, further out each time, or drops it after
+/// [`queue::MAX_ATTEMPTS`].
+pub fn defer(conn: &Connection, sent: &Queued, now: i64) -> AppResult<()> {
+    let attempts: i64 = conn.query_row(
+        "SELECT attempts FROM love_queue WHERE match_key = ?1",
+        [&sent.song.key],
+        |row| row.get(0),
+    )?;
+    conn.execute(
+        "UPDATE love_queue SET attempts = ?2, next_try_at = ?3 WHERE match_key = ?1",
+        params![sent.song.key, attempts + 1, now + queue::backoff(attempts)],
+    )?;
+    conn.execute(
+        "DELETE FROM love_queue WHERE attempts >= ?1",
+        [queue::MAX_ATTEMPTS],
+    )?;
+    Ok(())
+}
+
+/// How many loves and unloves are waiting for last.fm.
+pub fn depth(conn: &Connection) -> AppResult<u32> {
+    let count: i64 = conn.query_row("SELECT count(*) FROM love_queue", [], |row| row.get(0))?;
+    Ok(count as u32)
+}
+
+/// The signed parameters for one queued row.
+pub fn params<'a>(
+    credentials: &'a Credentials,
     session_key: &str,
-    song: &Song,
-    loved: bool,
-) -> Result<(), Error> {
-    let method = if loved { "track.love" } else { "track.unlove" };
-    let params = signed(
+    queued: &Queued,
+) -> Vec<(&'a str, String)> {
+    let method = if queued.loved {
+        "track.love"
+    } else {
+        "track.unlove"
+    };
+    signed(
         method,
         credentials,
         vec![
-            ("artist", song.artist.clone()),
-            ("track", song.title.clone()),
+            ("artist", queued.song.artist.clone()),
+            ("track", queued.song.title.clone()),
             ("sk", session_key.to_owned()),
         ],
-    );
+    )
+}
 
-    let outcome = transport
-        .post(&params)
-        .map_err(Error::from)
-        .and_then(|body| super::parse(&body))
-        .map(|_| ());
+/// Takes in `username`'s loved tracks, as last.fm reported them.
+///
+/// **The connected account mirrors** ([`loved::mirror`]). The first time the
+/// set meets an account, every key is treated as local and what that account
+/// lacks is queued for it - loves made before connecting, or under another
+/// account - and [`settings::LOVED_SYNCED_WITH`] remembers the meeting.
+///
+/// **Any other username only adds.** An import of someone else's history, or
+/// one made with no account, has no say over what the user unloved here.
+pub fn absorb(conn: &mut Connection, username: &str, reported: &BTreeSet<String>) -> AppResult<()> {
+    let tx = conn.transaction()?;
+    let connected = auth::stored_session(&tx)?
+        .is_some_and(|session| session.username.eq_ignore_ascii_case(username));
 
-    if outcome.as_ref().err().is_some_and(Error::needs_reconnect) {
-        // A failed write here would leave the app sending with a key it
-        // already knows is dead, so it is not worth failing over either.
-        let _ = auth::forget_session(conn);
+    if !connected {
+        loved::remember(&tx, &reported.iter().cloned().collect::<Vec<_>>())?;
+        tx.commit()?;
+        return Ok(());
     }
 
-    outcome
+    let synced = settings::get(&tx, settings::LOVED_SYNCED_WITH)?
+        .is_some_and(|synced| synced.eq_ignore_ascii_case(username));
+    if !synced {
+        loved::disown(&tx)?;
+        for key in loved::local(&tx)? {
+            if reported.contains(&key) {
+                continue;
+            }
+            // A key no library track carries has no artist and title to send;
+            // it stays loved here and goes out if the song arrives and is
+            // loved again.
+            if let Some((artist, title)) = loved::song(&tx, &key)? {
+                enqueue(&tx, &Song { artist, title, key }, true)?;
+            }
+        }
+        settings::set(&tx, settings::LOVED_SYNCED_WITH, username)?;
+    }
+
+    loved::mirror(&tx, reported, &pending(&tx)?)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn pending(conn: &Connection) -> AppResult<BTreeSet<String>> {
+    let mut statement = conn.prepare("SELECT match_key FROM love_queue")?;
+    let keys = statement
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<BTreeSet<String>>>()?;
+    Ok(keys)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::lastfm::transport::{FakeTransport, TransportError};
-    use crate::lastfm::{code, sign};
 
-    const CREDENTIALS: Credentials = Credentials {
-        api_key: "KEY",
-        api_secret: "SECRET",
-    };
-
-    /// A library of one song, with an account connected.
+    /// A library of one song.
     fn library(artist: &str, title: &str) -> (tempfile::TempDir, Connection) {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
         let conn = db.conn().unwrap();
+        track(&conn, 1, artist, title);
+        (dir, conn)
+    }
+
+    fn track(conn: &Connection, id: i64, artist: &str, title: &str) {
         conn.execute(
-            "INSERT INTO tracks (id, path, mtime, size, duration_ms, added_at, artist, title)
-             VALUES (1, '/a.mp3', 0, 0, 200000, 0, ?1, ?2)",
-            rusqlite::params![artist, title],
+            "INSERT INTO tracks (id, path, mtime, size, duration_ms, added_at, artist, title, match_key)
+             VALUES (?1, ?2, 0, 0, 200000, 0, ?3, ?4, ?5)",
+            rusqlite::params![
+                id,
+                format!("/{id}.mp3"),
+                artist,
+                title,
+                plays::track_key(Some(artist), Some(title))
+            ],
         )
         .unwrap();
+    }
+
+    fn connect(conn: &Connection, username: &str) {
         auth::store_session(
-            &conn,
+            conn,
             &auth::Session {
-                username: "listener".to_owned(),
+                username: username.to_owned(),
                 key: "sk-1".to_owned(),
             },
         )
         .unwrap();
-        (dir, conn)
     }
 
     fn keys(conn: &Connection) -> Vec<String> {
-        conn.prepare("SELECT match_key FROM lastfm_loved ORDER BY match_key")
+        conn.prepare("SELECT match_key FROM loved ORDER BY match_key")
             .unwrap()
             .query_map([], |row| row.get(0))
             .unwrap()
@@ -189,206 +292,226 @@ mod tests {
             .unwrap()
     }
 
-    #[test]
-    fn a_love_is_remembered_locally_and_sent_signed() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let transport = FakeTransport::always(r#"{"status":"ok"}"#);
+    fn queued(conn: &Connection) -> Vec<(String, bool)> {
+        due(conn, i64::MAX)
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.song.title, row.loved))
+            .collect()
+    }
 
-        set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap();
+    const NOW: i64 = 1_700_000_000;
+
+    #[test]
+    fn a_love_is_kept_with_no_account() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+
+        assert!(!set(&mut conn, &[1], true, false).unwrap());
 
         assert_eq!(
             keys(&conn),
             vec![plays::match_key("Nachtmystium", "Every Last Drop")]
         );
-        assert_eq!(transport.param(0, "method").as_deref(), Some("track.love"));
-        assert_eq!(
-            transport.param(0, "artist").as_deref(),
-            Some("Nachtmystium")
-        );
-        assert_eq!(
-            transport.param(0, "track").as_deref(),
-            Some("Every Last Drop")
-        );
-        assert_eq!(transport.param(0, "sk").as_deref(), Some("sk-1"));
-        assert_eq!(
-            transport.param(0, "api_sig"),
-            Some(sign::api_sig(
-                &[
-                    ("method", "track.love".to_owned()),
-                    ("api_key", "KEY".to_owned()),
-                    ("artist", "Nachtmystium".to_owned()),
-                    ("track", "Every Last Drop".to_owned()),
-                    ("sk", "sk-1".to_owned()),
-                ],
-                "SECRET"
-            ))
-        );
+        assert_eq!(loved::tracks(&conn).unwrap(), vec![1]);
+        assert!(queued(&conn).is_empty(), "nobody to tell");
     }
 
     #[test]
-    fn an_unlove_forgets_the_key_and_calls_the_other_method() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let transport = FakeTransport::always(r#"{"status":"ok"}"#);
-        set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap();
+    fn an_unlove_forgets_the_key() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        set(&mut conn, &[1], true, false).unwrap();
 
-        set(&transport, &CREDENTIALS, &conn, &[1], false).unwrap();
+        set(&mut conn, &[1], false, false).unwrap();
 
-        assert!(keys(&conn).is_empty());
-        assert_eq!(
-            transport.param(1, "method").as_deref(),
-            Some("track.unlove")
-        );
-    }
-
-    #[test]
-    fn loving_a_song_twice_leaves_one_row() {
-        // `PRIMARY KEY` is the only thing stopping a duplicate, and an
-        // optimistic write over a set an import already filled is exactly
-        // where one would come from.
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let transport = FakeTransport::always(r#"{"status":"ok"}"#);
-
-        set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap();
-        set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap();
-
-        assert_eq!(keys(&conn).len(), 1);
-    }
-
-    #[test]
-    fn a_call_that_never_lands_puts_the_row_back() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let transport =
-            FakeTransport::always_failing(TransportError::Unreachable("refused".to_owned()));
-
-        let error = set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap_err();
-
-        assert!(error.to_string().contains("refused"));
-        assert!(keys(&conn).is_empty(), "the optimistic write stayed");
-    }
-
-    #[test]
-    fn a_failed_unlove_puts_the_row_back_too() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let key = plays::match_key("Nachtmystium", "Every Last Drop");
-        loved::remember(&conn, std::slice::from_ref(&key)).unwrap();
-        let transport = FakeTransport::always_failing(TransportError::Server { status: 503 });
-
-        set(&transport, &CREDENTIALS, &conn, &[1], false).unwrap_err();
-
-        assert_eq!(keys(&conn), vec![key]);
-    }
-
-    #[test]
-    fn a_dead_session_key_is_forgotten() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let transport = FakeTransport::always(
-            r#"{"error":9,"message":"Invalid session key - Please re-authenticate"}"#,
-        );
-
-        let error = set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap_err();
-
-        assert!(error.to_string().contains("re-authenticate"));
-        assert_eq!(auth::stored_session(&conn).unwrap(), None);
         assert!(keys(&conn).is_empty());
     }
 
     #[test]
-    fn error_nine_is_what_reconnect_is_keyed_on() {
-        // Guards the branch above against the code being renumbered here and
-        // not in `Error::needs_reconnect`.
-        assert_eq!(code::INVALID_SESSION_KEY, 9);
+    fn a_connected_love_is_queued_as_the_latest_word_on_the_song() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+
+        assert!(set(&mut conn, &[1], true, true).unwrap());
+        set(&mut conn, &[1], false, true).unwrap();
+
+        assert_eq!(queued(&conn), vec![("Every Last Drop".to_owned(), false)]);
+        assert_eq!(depth(&conn).unwrap(), 1);
     }
 
     #[test]
-    fn a_song_with_no_artist_is_refused_before_any_call() {
-        let (_dir, conn) = library("", "Every Last Drop");
-        // Answers nothing, so reaching the transport at all fails the test.
-        let transport = FakeTransport::scripted(Vec::new());
+    fn a_song_with_no_artist_is_refused_whole() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        track(&conn, 2, "", "Holzwege");
 
-        set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap_err();
+        set(&mut conn, &[1, 2], true, true).unwrap_err();
 
-        assert_eq!(transport.call_count(), 0);
         assert!(keys(&conn).is_empty());
-    }
-
-    #[test]
-    fn one_unloveable_song_refuses_the_whole_selection() {
-        // Before any request, so a selection is never half sent: the menu
-        // disables the entry for exactly this case, and reaching here means
-        // the row changed underneath it.
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        conn.execute(
-            "INSERT INTO tracks (id, path, mtime, size, duration_ms, added_at, artist, title)
-             VALUES (2, '/b.mp3', 0, 0, 200000, 0, 'Nachtmystium', '')",
-            [],
-        )
-        .unwrap();
-        let transport = FakeTransport::scripted(Vec::new());
-
-        set(&transport, &CREDENTIALS, &conn, &[1, 2], true).unwrap_err();
-
-        assert_eq!(transport.call_count(), 0);
-    }
-
-    #[test]
-    fn a_selection_is_one_call_per_song() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        conn.execute(
-            "INSERT INTO tracks (id, path, mtime, size, duration_ms, added_at, artist, title)
-             VALUES (2, '/b.mp3', 0, 0, 200000, 0, 'Marathonmann', 'Holzwege')",
-            [],
-        )
-        .unwrap();
-        let transport = FakeTransport::always(r#"{"status":"ok"}"#);
-
-        set(&transport, &CREDENTIALS, &conn, &[1, 2], true).unwrap();
-
-        assert_eq!(transport.call_count(), 2);
-        assert_eq!(keys(&conn).len(), 2);
-    }
-
-    #[test]
-    fn a_failure_part_way_keeps_the_songs_already_loved() {
-        // One bad file does not cost the good ones: the first song is loved
-        // on last.fm and locally, and only the one that failed goes back.
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        conn.execute(
-            "INSERT INTO tracks (id, path, mtime, size, duration_ms, added_at, artist, title)
-             VALUES (2, '/b.mp3', 0, 0, 200000, 0, 'Marathonmann', 'Holzwege')",
-            [],
-        )
-        .unwrap();
-        let transport = FakeTransport::scripted(vec![
-            Ok(r#"{"status":"ok"}"#.to_owned()),
-            Err(TransportError::Unreachable("refused".to_owned())),
-        ]);
-
-        set(&transport, &CREDENTIALS, &conn, &[1, 2], true).unwrap_err();
-
-        assert_eq!(
-            keys(&conn),
-            vec![plays::match_key("Nachtmystium", "Every Last Drop")]
-        );
-    }
-
-    #[test]
-    fn nothing_is_sent_without_an_account() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        auth::forget_session(&conn).unwrap();
-        let transport = FakeTransport::scripted(Vec::new());
-
-        set(&transport, &CREDENTIALS, &conn, &[1], true).unwrap_err();
-
-        assert_eq!(transport.call_count(), 0);
+        assert!(queued(&conn).is_empty());
     }
 
     #[test]
     fn a_track_the_library_no_longer_has_is_skipped_rather_than_refused() {
-        let (_dir, conn) = library("Nachtmystium", "Every Last Drop");
-        let transport = FakeTransport::always(r#"{"status":"ok"}"#);
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
 
-        set(&transport, &CREDENTIALS, &conn, &[1, 404], true).unwrap();
+        set(&mut conn, &[1, 404], true, true).unwrap();
 
-        assert_eq!(transport.call_count(), 1);
+        assert_eq!(queued(&conn).len(), 1);
+    }
+
+    #[test]
+    fn a_love_goes_out_signed() {
+        let queued = Queued {
+            song: Song {
+                artist: "Nachtmystium".to_owned(),
+                title: "Every Last Drop".to_owned(),
+                key: String::new(),
+            },
+            loved: true,
+        };
+        let credentials = Credentials {
+            api_key: "KEY",
+            api_secret: "SECRET",
+        };
+
+        let sent = params(&credentials, "sk-1", &queued);
+
+        let value = |name: &str| {
+            sent.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(value("method").as_deref(), Some("track.love"));
+        assert_eq!(value("artist").as_deref(), Some("Nachtmystium"));
+        assert_eq!(value("track").as_deref(), Some("Every Last Drop"));
+        assert_eq!(value("sk").as_deref(), Some("sk-1"));
+        assert_eq!(
+            params(
+                &credentials,
+                "sk-1",
+                &Queued {
+                    loved: false,
+                    ..queued
+                }
+            )[0]
+            .1,
+            "track.unlove"
+        );
+    }
+
+    #[test]
+    fn a_delivered_row_goes_unless_a_newer_intent_replaced_it() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        set(&mut conn, &[1], true, true).unwrap();
+        let sent = due(&conn, NOW).unwrap().remove(0);
+        // Unloved while the love was in flight.
+        set(&mut conn, &[1], false, true).unwrap();
+
+        delivered(&conn, &sent).unwrap();
+
+        assert_eq!(queued(&conn), vec![("Every Last Drop".to_owned(), false)]);
+    }
+
+    #[test]
+    fn a_deferred_row_waits_the_scrobble_backoff_and_is_dropped_in_the_end() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        set(&mut conn, &[1], true, true).unwrap();
+        let sent = due(&conn, NOW).unwrap().remove(0);
+
+        defer(&conn, &sent, NOW).unwrap();
+
+        assert!(due(&conn, NOW + 59).unwrap().is_empty());
+        assert_eq!(due(&conn, NOW + 60).unwrap().len(), 1);
+
+        for _ in 1..queue::MAX_ATTEMPTS {
+            defer(&conn, &sent, NOW).unwrap();
+        }
+        assert_eq!(depth(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn an_import_of_another_account_only_adds() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        set(&mut conn, &[1], true, false).unwrap();
+
+        absorb(&mut conn, "someone", &BTreeSet::from(["other".to_owned()])).unwrap();
+
+        assert_eq!(
+            keys(&conn),
+            vec![
+                plays::match_key("Nachtmystium", "Every Last Drop"),
+                "other".to_owned()
+            ]
+        );
+        assert!(queued(&conn).is_empty());
+    }
+
+    #[test]
+    fn the_first_sync_pushes_what_the_account_lacks_once() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        track(&conn, 2, "Marathonmann", "Holzwege");
+        set(&mut conn, &[1, 2], true, false).unwrap();
+        connect(&conn, "Listener");
+        let holzwege = plays::match_key("Marathonmann", "Holzwege");
+
+        absorb(&mut conn, "listener", &BTreeSet::from([holzwege.clone()])).unwrap();
+
+        assert_eq!(queued(&conn), vec![("Every Last Drop".to_owned(), true)]);
+        assert_eq!(
+            settings::get(&conn, settings::LOVED_SYNCED_WITH)
+                .unwrap()
+                .as_deref(),
+            Some("listener")
+        );
+
+        // Delivered, and last.fm keeps it under an autocorrected spelling.
+        conn.execute("DELETE FROM love_queue", []).unwrap();
+        absorb(
+            &mut conn,
+            "listener",
+            &BTreeSet::from([holzwege, "corrected".to_owned()]),
+        )
+        .unwrap();
+
+        assert!(queued(&conn).is_empty(), "not pushed a second time");
+        assert_eq!(keys(&conn).len(), 3, "and the love made here stays");
+    }
+
+    #[test]
+    fn a_sync_brings_in_an_unlove_made_elsewhere() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        connect(&conn, "listener");
+        let key = plays::match_key("Nachtmystium", "Every Last Drop");
+        absorb(&mut conn, "listener", &BTreeSet::from([key])).unwrap();
+        assert_eq!(loved::tracks(&conn).unwrap(), vec![1]);
+
+        absorb(&mut conn, "listener", &BTreeSet::new()).unwrap();
+
+        assert!(loved::tracks(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_change_last_fm_has_not_heard_about_outlasts_a_sync() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        connect(&conn, "listener");
+        let key = plays::match_key("Nachtmystium", "Every Last Drop");
+        absorb(&mut conn, "listener", &BTreeSet::from([key.clone()])).unwrap();
+
+        set(&mut conn, &[1], false, true).unwrap();
+        absorb(&mut conn, "listener", &BTreeSet::from([key])).unwrap();
+
+        assert!(loved::tracks(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_new_account_is_given_the_loves_the_last_one_reported() {
+        let (_dir, mut conn) = library("Nachtmystium", "Every Last Drop");
+        connect(&conn, "first");
+        let key = plays::match_key("Nachtmystium", "Every Last Drop");
+        absorb(&mut conn, "first", &BTreeSet::from([key])).unwrap();
+
+        connect(&conn, "second");
+        absorb(&mut conn, "second", &BTreeSet::new()).unwrap();
+
+        assert_eq!(loved::tracks(&conn).unwrap(), vec![1], "not an unlove");
+        assert_eq!(queued(&conn), vec![("Every Last Drop".to_owned(), true)]);
     }
 }
