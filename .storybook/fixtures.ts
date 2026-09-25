@@ -1,7 +1,16 @@
 import type { MenuItem } from "../src/components/ui/ContextMenu";
 import { rowMenuItems } from "../src/features/library/rowMenu";
 import { exportSelectionLabel, type Menu, menus } from "../src/features/shell/menus";
-import type { BrowseGroup, CrashReport, Playlist, ReleaseGroup, Track } from "../src/ipc";
+import type {
+  BrowseGroup,
+  CrashReport,
+  Playlist,
+  ReleaseCandidate,
+  ReleaseDetail,
+  ReleaseGroup,
+  ReviewEntry,
+  Track,
+} from "../src/ipc";
 
 /** A square cover as an inline SVG, so the fixtures carry no binary assets. */
 function cover(hue: number, mark: string): string {
@@ -311,3 +320,146 @@ export const MENUS: Menu[] = menus({
   onLastfmDisconnect: noop,
   onOpenRepository: noop,
 });
+
+/** A MusicBrainz result, as the search lists it before its tracklist is fetched. */
+export function candidate(overrides: Partial<ReleaseCandidate> = {}): ReleaseCandidate {
+  return {
+    mbid: "00000000-0000-0000-0000-000000000000",
+    releaseGroupMbid: null,
+    title: "Album",
+    artist: "Artist",
+    date: null,
+    country: null,
+    format: null,
+    trackCount: 1,
+    discCount: 1,
+    score: 1,
+    ...overrides,
+  };
+}
+
+/** Harbour Lights' files, in track order. */
+export const HARBOUR_LIGHTS: Track[] = LIBRARY.filter((entry) => entry.album === "Harbour Lights");
+
+/**
+ * Three pressings of Harbour Lights. The first has a bonus track the files
+ * lack, so its track count disagrees with them.
+ */
+export const CANDIDATES: ReleaseCandidate[] = [
+  candidate({
+    mbid: "5b0e7c1a-3f6d-4c2e-9a41-1d2c3e4f5a01",
+    title: "Harbour Lights",
+    artist: "The Lanterns",
+    date: "2019-05-17",
+    country: "GB",
+    format: "CD",
+    trackCount: 8,
+    score: 0.94,
+  }),
+  candidate({
+    mbid: "5b0e7c1a-3f6d-4c2e-9a41-1d2c3e4f5a02",
+    title: "Harbour Lights",
+    artist: "The Lanterns",
+    date: "2019",
+    country: "XW",
+    format: "Digital Media",
+    trackCount: 7,
+    score: 0.88,
+  }),
+  candidate({
+    mbid: "5b0e7c1a-3f6d-4c2e-9a41-1d2c3e4f5a03",
+    title: "Harbour Lights (Deluxe Edition)",
+    artist: "The Lanterns",
+    date: "2020-11-06",
+    country: "US",
+    format: "CD",
+    trackCount: 7,
+    discCount: 2,
+    score: 0.71,
+  }),
+];
+
+/**
+ * The first pressing's tracklist. Against `HARBOUR_LIGHTS` it retitles one
+ * track, credits a guest on another and renumbers the three after its bonus
+ * track, so the mapping has rows that change and three that fold away.
+ */
+export const HARBOUR_LIGHTS_DETAIL: ReleaseDetail = {
+  candidate: CANDIDATES[0] as ReleaseCandidate,
+  albumArtist: "The Lanterns",
+  year: 2019,
+  genre: "Indie Rock",
+  releaseType: "Album",
+  tracks: [
+    "Low Tide",
+    "Signal Fires",
+    "Breakwater (Live at the Pier)",
+    "Saltwater Heart",
+    "Harbour Lights",
+    "Moorings",
+    "Undertow",
+    "Lighthouse Keeper",
+  ].map((title, at) => ({
+    title,
+    artist: title === "Undertow" ? "The Lanterns feat. Mira Kohl" : "The Lanterns",
+    trackNo: at + 1,
+    discNo: 1,
+    durationMs:
+      HARBOUR_LIGHTS.find((file) => title.startsWith(file.title ?? ""))?.duration_ms ?? 201_000,
+  })),
+  coverPath: "C:\\Users\\me\\AppData\\Local\\dev.ljosberinn.apex\\staged-cover.jpg",
+};
+
+/** Each album of `LIBRARY` as the release a lookup would open on. */
+function release(album: string, score: number | null, candidates: ReleaseCandidate[] | null) {
+  const files = LIBRARY.filter((entry) => entry.album === album);
+  return {
+    album,
+    artist: files[0]?.album_artist ?? null,
+    trackIds: files.map((file) => file.id),
+    score,
+    candidates,
+  } satisfies ReviewEntry;
+}
+
+/** Two releases picked out of the library, which arrive unsearched. */
+export const SELECTION: ReviewEntry[] = [
+  release("Harbour Lights", null, null),
+  release("Demos 2008", null, null),
+];
+
+/**
+ * What the unattended pass left for review, best score first. Harbour Lights'
+ * score was measured on the pressing with the bonus track, so it reads as
+ * disagreeing.
+ */
+export const REVIEW_QUEUE: ReviewEntry[] = [
+  release("Harbour Lights", 0.97, CANDIDATES),
+  release("Night Transit", 0.86, [
+    candidate({ title: "Night Transit", artist: "Mira Kohl", trackCount: 6, score: 0.86 }),
+  ]),
+  release("Glass Garden", 0.74, [
+    candidate({ title: "Glass Garden", artist: "Sol & The Weather", trackCount: 7, score: 0.74 }),
+  ]),
+  release("Field Recordings, Vol. 2", 0.52, []),
+  release("Demos 2008", null, null),
+];
+
+/** Labels from the genre tree, which `GenreCombobox` offers. */
+export const GENRES: string[] = [
+  "Ambient",
+  "Art Pop",
+  "Chamber Folk",
+  "Dream Pop",
+  "Electronic",
+  "Folk",
+  "Folk Rock",
+  "Indie Folk",
+  "Indie Pop",
+  "Indie Rock",
+  "Jazz",
+  "Jazz Fusion",
+  "Post-Punk",
+  "Punk",
+  "Shoegaze",
+];

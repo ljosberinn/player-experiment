@@ -1,7 +1,24 @@
 import { useLovedStore } from "../src/features/love/store";
 import { usePlayerStore } from "../src/features/player/store";
-import type { LastfmConnection, LastfmImported, LibraryFolder, ReviewCounts } from "../src/ipc";
-import { BUILT_INS, CRASH, LIBRARY, PLAYLISTS, playlist } from "./fixtures";
+import type {
+  LastfmConnection,
+  LastfmImported,
+  LibraryFolder,
+  ReviewCounts,
+  TagValueField,
+  TagWriteSummary,
+  Track,
+} from "../src/ipc";
+import {
+  BUILT_INS,
+  CANDIDATES,
+  CRASH,
+  GENRES,
+  HARBOUR_LIGHTS_DETAIL,
+  LIBRARY,
+  PLAYLISTS,
+  playlist,
+} from "./fixtures";
 import { allTrackIds, browseGroups, libraryStats, queryTracks, releaseGroups } from "./library";
 import type { IpcHandlers } from "./tauri";
 
@@ -102,4 +119,52 @@ export const reviewHandlers: IpcHandlers = {
   // Nothing left by the time the row is clicked, so no dialog is asked for.
   tagsource_review_queue: () => [],
   tagsource_restore_review: () => REVIEW_COUNTS.aside,
+};
+
+/** Up to eight of `values` containing `query`, as the backend's suggestion lists cap. */
+function suggest(values: Iterable<string>, query: unknown): string[] {
+  const needle = String(query ?? "").toLowerCase();
+  return [...new Set(values)]
+    .filter((value) => value.toLowerCase().includes(needle))
+    .sort()
+    .slice(0, 8);
+}
+
+const TAG_VALUES: Record<TagValueField, (entry: Track) => string | number | null> = {
+  artist: (entry) => entry.artist,
+  albumArtist: (entry) => entry.album_artist,
+  album: (entry) => entry.album,
+  genre: (entry) => entry.genre,
+  year: (entry) => entry.year,
+};
+
+/**
+ * The tag editor, the smart playlist editor and the release lookup. Their
+ * fields suggest from `LIBRARY` and the genre tree, and every write answers
+ * as though it landed, so clicking around a dialog does not throw.
+ */
+export const editingHandlers: IpcHandlers = {
+  suggest_tag_values: ({ field, query }) =>
+    suggest(
+      LIBRARY.map(TAG_VALUES[field as TagValueField]).flatMap((value) =>
+        value === null ? [] : [String(value)],
+      ),
+      query,
+    ),
+  genre_suggestions: ({ query }) => suggest(GENRES, query),
+  write_tags: ({ trackIds }): TagWriteSummary => ({
+    written: (trackIds as number[]).length,
+    failed: 0,
+    errors: [],
+  }),
+  tracks_by_ids: ({ trackIds }) =>
+    LIBRARY.filter((entry) => (trackIds as number[]).includes(entry.id)),
+  tagsource_search: () => CANDIDATES,
+  tagsource_fetch: () => HARBOUR_LIGHTS_DETAIL,
+  tagsource_apply: ({ edits }): TagWriteSummary => ({
+    written: (edits as unknown[]).length,
+    failed: 0,
+    errors: [],
+  }),
+  tagsource_set_aside: () => null,
 };
