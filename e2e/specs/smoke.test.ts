@@ -73,6 +73,23 @@ describe("application shell", () => {
     await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Releases");
     await expect(browser.$(".empty-state")).toBeExisting();
 
+    // `.empty-state` centres through `margin: auto`, which only works as a
+    // flex child of `.content`; wrapped in a block it sat at the top left.
+    // The text rather than the element, which as a block spans the pane anyway.
+    const offset = await browser.execute(() => {
+      const pane = document.querySelector(".content");
+      const empty = document.querySelector(".empty-state");
+      if (pane === null || empty === null) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const text = document.createRange();
+      text.selectNodeContents(empty);
+      const line = text.getBoundingClientRect();
+      const box = pane.getBoundingClientRect();
+      return line.left + line.width / 2 - (box.left + box.width / 2);
+    });
+    expect(Math.abs(offset)).toBeLessThan(2);
+
     await browser.$("//button[.='Songs']").click();
     await expect(browser.$(".sidebar-item[aria-current='page']")).toHaveText("Songs");
   });

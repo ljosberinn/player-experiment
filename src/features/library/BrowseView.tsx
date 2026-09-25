@@ -175,12 +175,11 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   }, [kind]);
 
   if (!loading && groups.length === 0) {
+    // Unwrapped, so it is a flex child of `.content` and `margin: auto` centres it.
     return (
-      <div className="song-body">
-        <p className="empty-state">
-          {search.trim() === "" ? "No songs yet" : `No results for “${search}”`}
-        </p>
-      </div>
+      <p className="empty-state">
+        {search.trim() === "" ? "No songs yet" : `No results for “${search}”`}
+      </p>
     );
   }
 
