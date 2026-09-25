@@ -1,0 +1,87 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useRef } from "react";
+import { LIBRARY } from "../../../.storybook/fixtures";
+import { playerHandlers } from "../../../.storybook/handlers";
+import type { Track } from "../../ipc";
+import { useLovedStore } from "../love/store";
+import { NowPlayingStatus } from "./NowPlayingStatus";
+import { PlayerLove } from "./PlayerLove";
+import { PlayerRepeat } from "./PlayerRepeat";
+import { PlayerScrubber } from "./PlayerScrubber";
+import { PlayerTransport } from "./PlayerTransport";
+import { PlayerVolume } from "./PlayerVolume";
+import { usePlayerStore } from "./store";
+
+function byId(id: number): Track {
+  return LIBRARY.find((entry) => entry.id === id) as Track;
+}
+
+/** The player bar as `App` lays it out, pinned to the foot of the window. */
+function Bar() {
+  const statusRef = useRef<HTMLDivElement>(null);
+  return (
+    <div className="app">
+      <div style={{ flex: 1 }} />
+      <div className="player-bar">
+        <div className="player-bar-left">
+          <NowPlayingStatus ref={statusRef} />
+          <PlayerLove />
+        </div>
+        <div className="player-bar-centre">
+          <div className="player-controls">
+            <span className="player-controls-slot" aria-hidden="true" />
+            <PlayerTransport />
+            <PlayerRepeat />
+          </div>
+          <PlayerScrubber />
+        </div>
+        <div className="player-bar-right">
+          <PlayerVolume />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function playing(track: Track, status: "playing" | "paused", positionMs: number) {
+  usePlayerStore.setState({
+    status,
+    track,
+    positionMs,
+    durationMs: track.duration_ms ?? 0,
+  });
+}
+
+const meta = {
+  title: "Features/Player/PlayerBar",
+  component: Bar,
+  parameters: { ipc: playerHandlers },
+} satisfies Meta<typeof Bar>;
+
+export default meta;
+
+/** Before the first song: the box holds its place, the rail is empty. */
+export const NothingLoaded: StoryObj<typeof meta> = {};
+
+/** A loved song, a third of the way in. */
+export const Playing: StoryObj<typeof meta> = {
+  beforeEach: () => {
+    const track = byId(1);
+    playing(track, "playing", Math.round((track.duration_ms ?? 0) / 3));
+    useLovedStore.setState({ loved: new Set([track.id]) });
+  },
+};
+
+/** No artwork, and a title the column has to cut. */
+export const PausedWithoutCover: StoryObj<typeof meta> = {
+  beforeEach: () => {
+    playing({ ...byId(201), cover_hash: null }, "paused", 42_000);
+  },
+};
+
+export const MutedOnRepeat: StoryObj<typeof meta> = {
+  beforeEach: () => {
+    playing(byId(102), "playing", 12_000);
+    usePlayerStore.setState({ muted: true, repeatOne: true });
+  },
+};
