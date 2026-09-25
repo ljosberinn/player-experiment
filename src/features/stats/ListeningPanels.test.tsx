@@ -6,6 +6,7 @@ import {
   saveTextFile,
   statsFirsts,
   statsListenTotals,
+  statsNewArtists,
   statsPlaysOverTime,
   statsTop,
   statsWeekClock,
@@ -52,6 +53,7 @@ vi.mock("../../ipc", () => ({
   statsRecentPlays: vi.fn(async () => []),
   statsPlaysOverTime: vi.fn(async () => [{ start: "2020-06-01", count: 40 }]),
   statsFirsts: vi.fn(async () => [{ start: "2020-06-01", count: 3 }]),
+  statsNewArtists: vi.fn(async () => []),
   // Nothing but Monday 20:00 and Sunday 20:00, so the hour bars' sum is the
   // only way 20:00 reads 5.
   statsWeekClock: vi.fn(async () =>
@@ -76,6 +78,7 @@ vi.mock("../../ipc", () => ({
 }));
 
 const topMock = vi.mocked(statsTop);
+const newArtistsMock = vi.mocked(statsNewArtists);
 const totalsMock = vi.mocked(statsListenTotals);
 const overTimeMock = vi.mocked(statsPlaysOverTime);
 const firstsMock = vi.mocked(statsFirsts);
@@ -275,6 +278,29 @@ describe("ListeningPanels", () => {
 
     expect(await screen.findByRole("heading", { name: "Plays over time" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "New artists" })).not.toBeInTheDocument();
+  });
+
+  it("lists the new artists under their chart and its caption", async () => {
+    totalsMock.mockResolvedValueOnce({ ...TOTALS, dated: 800 });
+    newArtistsMock.mockResolvedValueOnce([
+      { artist: "Boards of Canada", firstAt: 1_600_000_000, plays: 412 },
+    ]);
+    render(<ListeningPanels />);
+
+    const caption = await within(panel("New artists")).findByText(/First play dated for/);
+    const head = await within(panel("New artists")).findByText("Plays since");
+    expect(caption.compareDocumentPosition(head)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("drops new artists inside an album too, where the answer is its artist", async () => {
+    useLibraryStore.setState({
+      statsPath: { tab: "listening", crumbs: [{ kind: "album", key: "Geogaddi" }] },
+    });
+    render(<ListeningPanels />);
+
+    expect(await screen.findByRole("heading", { name: "Plays over time" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New artists" })).not.toBeInTheDocument();
+    expect(newArtistsMock).not.toHaveBeenCalled();
   });
 
   it("sums the week clock's columns into the hour bars", async () => {

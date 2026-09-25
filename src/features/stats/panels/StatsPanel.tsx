@@ -7,6 +7,8 @@ export interface StatsPanelProps {
   /** What the figure covers, where that is less than everything. */
   readonly caption?: string | null;
   readonly children: ReactNode;
+  /** Under the caption, so the caption stays beside the figure it qualifies. */
+  readonly footer?: ReactNode;
 }
 
 /**
@@ -21,7 +23,7 @@ export interface StatsPanelProps {
  * The caption is the panel's rather than a chart's: When you listen draws two
  * charts over one coverage, and drops one of them once it is empty.
  */
-export function StatsPanel({ title, action, caption, children }: StatsPanelProps) {
+export function StatsPanel({ title, action, caption, children, footer }: StatsPanelProps) {
   return (
     <section className="stats-panel">
       <header>
@@ -32,6 +34,7 @@ export function StatsPanel({ title, action, caption, children }: StatsPanelProps
       {caption !== undefined && caption !== null && (
         <p className="stats-panel-caption">{caption}</p>
       )}
+      {footer}
     </section>
   );
 }

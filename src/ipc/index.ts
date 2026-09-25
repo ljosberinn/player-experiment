@@ -38,6 +38,7 @@ import type { LibraryTotals } from "./bindings/LibraryTotals";
 import type { ListenDimension } from "./bindings/ListenDimension";
 import type { ListenQuery } from "./bindings/ListenQuery";
 import type { ListenTotals } from "./bindings/ListenTotals";
+import type { NewArtist } from "./bindings/NewArtist";
 import type { Play } from "./bindings/Play";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
@@ -110,6 +111,7 @@ export type {
   ListenDimension,
   ListenQuery,
   ListenTotals,
+  NewArtist,
   Play,
   PlaybackStatus,
   PlayerPosition,
@@ -410,6 +412,18 @@ export function statsWeekClock(query: ListenQuery): Promise<number[]> {
  */
 export function statsFirsts(query: ListenQuery, bucket: TimeBucket): Promise<TimeCount[]> {
   return invoke<TimeCount[]>("stats_firsts", { query, bucket });
+}
+
+/**
+ * A page of the artists `statsFirsts` counts, newest first. `plays` is every
+ * play since the first, not only those in the range.
+ */
+export function statsNewArtists(
+  query: ListenQuery,
+  offset: number,
+  limit: number,
+): Promise<NewArtist[]> {
+  return invoke<NewArtist[]>("stats_new_artists", { query, offset, limit });
 }
 
 /** Runs of consecutive days with a play. `now` is the backend's, not ours. */

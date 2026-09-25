@@ -656,6 +656,12 @@ fn every_listening_aggregate_is_one_pass_over_the_log() {
     assert_under("new artists in a year", BUDGET, || {
         stats::firsts(&conn, &a_year, TimeBucket::Month).unwrap();
     });
+    // All time, because `seed_plays` hears every artist first in its opening
+    // week and a year's page would be empty.
+    assert_under("new artists, a page", BUDGET, || {
+        let page = stats::new_artists(&conn, &everything, 300, 100).unwrap();
+        assert_eq!(page.len(), 100);
+    });
     assert_under("streaks", BUDGET, || {
         assert!(stats::streaks(&conn, &everything, 0).unwrap().longest > 0);
     });

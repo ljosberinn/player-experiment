@@ -33,8 +33,8 @@ use crate::db::query::{self, GROUP_ALBUM, GROUP_ARTIST, MAX_LIMIT};
 use crate::error::AppResult;
 use crate::model::{
     AlbumBitrate, AlbumGroup, AlbumNeighbour, AlbumSpelling, GenreBreakdown, GenreSlice,
-    HistogramBin, HistogramField, LibraryTotals, ListenDimension, ListenQuery, ListenTotals, Play,
-    Streaks, TagHealth, TimeBucket, TimeCount, TopEntry, TrackQuery,
+    HistogramBin, HistogramField, LibraryTotals, ListenDimension, ListenQuery, ListenTotals,
+    NewArtist, Play, Streaks, TagHealth, TimeBucket, TimeCount, TopEntry, TrackQuery,
 };
 
 /// The modifiers that turn a unix-seconds column into local time.
@@ -390,7 +390,9 @@ pub fn week_clock(conn: &Connection, query: &ListenQuery) -> AppResult<Vec<u32>>
     Ok(clock)
 }
 
-/// How many artists were heard for the first time in each bucket.
+/// Every artist first heard in `query`'s range: one row per artist, with
+/// `artist`, `first` and `heard` columns, bound by `from` and `to` after the
+/// plays' own parameters.
 ///
 /// **The range narrows the result, not the plays.** Every other filter picks
 /// the plays; each artist's first one is then found over all time, or "new
@@ -399,32 +401,94 @@ pub fn week_clock(conn: &Connection, query: &ListenQuery) -> AppResult<Vec<u32>>
 /// An artist first heard undated is left out rather than placed at its first
 /// dated play: the undated plays predate every dated one, so that artist was
 /// not new then.
+struct FirstHeard {
+    plays: Plays,
+    sql: String,
+    from: i64,
+    to: i64,
+}
+
+impl FirstHeard {
+    fn new(conn: &Connection, query: &ListenQuery) -> AppResult<Self> {
+        let plays = Plays::new(
+            conn,
+            &ListenQuery {
+                range: None,
+                ..query.clone()
+            },
+        )?;
+        let sql = format!(
+            "SELECT * FROM (
+                 SELECT min(plays.artist) AS artist, min(plays.started_at) AS first,
+                        count(*) AS heard
+                 {} GROUP BY plays.artist COLLATE NOCASE
+             ) WHERE first >= ? AND first < ?",
+            plays.clause(&["plays.artist <> ''"])
+        );
+        let (from, to) = query.range.map_or((DATED_FROM, i64::MAX), |range| {
+            (range.from.max(DATED_FROM), range.to)
+        });
+        Ok(Self {
+            plays,
+            sql,
+            from,
+            to,
+        })
+    }
+
+    fn params<'a>(&'a self, extra: &[&'a dyn ToSql]) -> Vec<&'a dyn ToSql> {
+        let mut params = self.plays.params(&[&self.from, &self.to]);
+        params.extend_from_slice(extra);
+        params
+    }
+}
+
+/// How many artists were heard for the first time in each bucket. See
+/// [`FirstHeard`] for who counts.
 pub fn firsts(
     conn: &Connection,
     query: &ListenQuery,
     bucket: TimeBucket,
 ) -> AppResult<Vec<TimeCount>> {
-    let plays = Plays::new(
-        conn,
-        &ListenQuery {
-            range: None,
-            ..query.clone()
-        },
-    )?;
-    let inner = format!(
-        "SELECT min(plays.started_at) AS first {} GROUP BY plays.artist COLLATE NOCASE",
-        plays.clause(&["plays.artist <> ''"])
-    );
-
-    let (from, to) = query.range.map_or((DATED_FROM, i64::MAX), |range| {
-        (range.from.max(DATED_FROM), range.to)
-    });
+    let first_heard = FirstHeard::new(conn, query)?;
     let sql = format!(
-        "SELECT {} AS start, count(*) FROM ({inner}) WHERE first >= ? AND first < ?
-         GROUP BY start ORDER BY start",
-        bucket_sql("first", bucket)
+        "SELECT {} AS start, count(*) FROM ({}) GROUP BY start ORDER BY start",
+        bucket_sql("first", bucket),
+        first_heard.sql
     );
-    time_series(conn, &sql, &plays.params(&[&from, &to]))
+    time_series(conn, &sql, &first_heard.params(&[]))
+}
+
+/// The artists `firsts` counts, newest first, a page at a time.
+///
+/// `plays` is every play since the first under `query` less its range, so an
+/// artist new last March still shows what they became.
+pub fn new_artists(
+    conn: &Connection,
+    query: &ListenQuery,
+    offset: u32,
+    limit: u32,
+) -> AppResult<Vec<NewArtist>> {
+    let first_heard = FirstHeard::new(conn, query)?;
+    // The name breaks a tie, as a scrobbled batch shares a second, so a page
+    // boundary between two falls in the same place on every call.
+    let sql = format!(
+        "{} ORDER BY first DESC, artist COLLATE NOCASE LIMIT ? OFFSET ?",
+        first_heard.sql
+    );
+    let limit = limit.min(MAX_LIMIT);
+
+    let mut statement = conn.prepare(&sql)?;
+    let rows = statement
+        .query_map(first_heard.params(&[&limit, &offset]).as_slice(), |row| {
+            Ok(NewArtist {
+                artist: row.get(0)?,
+                first_at: row.get(1)?,
+                plays: row.get::<_, i64>(2)? as u32,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 /// The current and the longest run of consecutive local days with a play.
@@ -964,6 +1028,13 @@ mod tests {
             .collect()
     }
 
+    fn named(artists: &[NewArtist]) -> Vec<(&str, u32)> {
+        artists
+            .iter()
+            .map(|new| (new.artist.as_str(), new.plays))
+            .collect()
+    }
+
     fn series(counts: &[TimeCount]) -> Vec<(&str, u32)> {
         counts
             .iter()
@@ -983,6 +1054,7 @@ mod tests {
             ListenTotals::default()
         );
         assert!(recent_plays(&conn, &all(), 0, 50).unwrap().is_empty());
+        assert!(new_artists(&conn, &all(), 0, 50).unwrap().is_empty());
         for dimension in [
             ListenDimension::Artist,
             ListenDimension::Album,
@@ -1526,6 +1598,7 @@ mod tests {
             .unwrap()
             .is_empty());
         assert!(firsts(&conn, &all(), TimeBucket::Year).unwrap().is_empty());
+        assert!(new_artists(&conn, &all(), 0, 10).unwrap().is_empty());
         assert_eq!(week_clock(&conn, &all()).unwrap(), vec![0; 168]);
         assert_eq!(streaks(&conn, &all(), 0).unwrap(), Streaks::default());
     }
@@ -1543,6 +1616,10 @@ mod tests {
         assert_eq!(
             series(&firsts(&conn, &all(), TimeBucket::Year).unwrap()),
             [("2024-01-01", 1)]
+        );
+        assert_eq!(
+            named(&new_artists(&conn, &all(), 0, 10).unwrap()),
+            [("Nobody", 1)]
         );
         let totals = listen_totals(&conn, &all()).unwrap();
         assert_eq!(
@@ -1790,6 +1867,74 @@ mod tests {
             series(&firsts(&conn, &all(), TimeBucket::Year).unwrap()),
             [("2023-01-01", 1), ("2024-01-01", 1)]
         );
+    }
+
+    /// The list the *New artists* chart counts: the same artists, named.
+    #[test]
+    fn new_artists_are_the_firsts_in_the_range_newest_first() {
+        let (_dir, conn) = open();
+        let at = |wall_clock: &str| local(&conn, wall_clock);
+        for (day, artist) in [
+            ("2023-06-01", "Blue Room"),
+            ("2024-06-01", "BLUE ROOM"),
+            ("2024-03-01", "Nobody"),
+            ("2025-02-01", "nobody"),
+            ("2024-09-01", "Harbour"),
+            ("2025-03-01", "Later"),
+        ] {
+            let started_at = at(&format!("{day} 12:00:00"));
+            add_play(&conn, started_at, (artist, "Song", None), None);
+        }
+
+        let this_year = ListenQuery {
+            range: Some(TimeRange {
+                from: at("2024-01-01 00:00:00"),
+                to: at("2025-01-01 00:00:00"),
+            }),
+            ..all()
+        };
+        let new = new_artists(&conn, &this_year, 0, 10).unwrap();
+        assert_eq!(
+            named(&new),
+            [("Harbour", 1), ("Nobody", 2)],
+            "plays since the first, past the range's end too"
+        );
+        assert_eq!(new[1].first_at, at("2024-03-01 12:00:00"));
+
+        let counted: u32 = firsts(&conn, &this_year, TimeBucket::Month)
+            .unwrap()
+            .iter()
+            .map(|bucket| bucket.count)
+            .sum();
+        assert_eq!(counted as usize, new.len(), "the chart counts the list");
+
+        assert_eq!(
+            named(&new_artists(&conn, &all(), 0, 10).unwrap()),
+            [
+                ("Later", 1),
+                ("Harbour", 1),
+                ("Nobody", 2),
+                ("BLUE ROOM", 2)
+            ]
+        );
+    }
+
+    /// First plays share a second often enough, a scrobble batch being
+    /// stamped at once, that a page boundary has to fall between them.
+    #[test]
+    fn new_artists_page_through_a_tie_without_a_gap_or_a_repeat() {
+        let (_dir, conn) = open();
+        let day = local(&conn, "2024-03-05 12:00:00");
+        for artist in ["Delta", "alpha", "Charlie", "Bravo"] {
+            add_play(&conn, day, (artist, "Song", None), None);
+        }
+        add_play(&conn, day + 60, ("Echo", "Song", None), None);
+
+        let pages: Vec<String> = (0..3)
+            .flat_map(|page| new_artists(&conn, &all(), page * 2, 2).unwrap())
+            .map(|new| new.artist)
+            .collect();
+        assert_eq!(pages, ["Echo", "alpha", "Bravo", "Charlie", "Delta"]);
     }
 
     #[test]

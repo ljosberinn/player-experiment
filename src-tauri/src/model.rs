@@ -1313,6 +1313,18 @@ pub struct Play {
     pub track_id: Option<i64>,
 }
 
+/// An artist heard for the first time, as `db::stats::new_artists` lists them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NewArtist {
+    pub artist: String,
+    #[ts(type = "number")]
+    pub first_at: i64,
+    /// Every play since the first, whatever range the list was asked for.
+    pub plays: u32,
+}
+
 /// One spelling of an album, and how often it was heard under it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

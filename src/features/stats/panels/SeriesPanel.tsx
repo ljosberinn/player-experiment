@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Bar } from "../../../components/charts/Bar";
 import type { ListenQuery, ListenTotals, TimeBucket, TimeCount, TimeRange } from "../../../ipc";
 import { useLibraryStore } from "../../library/store";
@@ -16,6 +17,8 @@ export interface SeriesPanelProps {
   readonly noun: string;
   /** The total the bars are a part of, for the coverage caption. */
   readonly whole: "plays" | "artists";
+  /** What the bars count, listed under the chart. */
+  readonly children?: ReactNode;
 }
 
 interface Series {
@@ -44,7 +47,7 @@ const COVERAGE: Record<SeriesPanelProps["whole"], (share: number) => string> = {
  * a year into weeks, a month or a week into days. A series of one bar is the
  * span it would drill into, so a day stops there.
  */
-export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps) {
+export function SeriesPanel({ title, aggregate, noun, whole, children }: SeriesPanelProps) {
   const path = useLibraryStore((s) => s.statsPath);
   const showStatsPath = useLibraryStore((s) => s.showStatsPath);
   const { query, deps } = useListenQuery();
@@ -74,7 +77,7 @@ export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps)
   const counts = data?.series?.counts ?? [];
 
   return (
-    <StatsPanel title={title} caption={data?.caption ?? null}>
+    <StatsPanel title={title} caption={data?.caption ?? null} footer={children}>
       <Bar
         label={`${noun} per ${bucket}`}
         data={counts.map((entry) => ({
