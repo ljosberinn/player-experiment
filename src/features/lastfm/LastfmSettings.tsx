@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "../../components/primitives/Button";
+import { TaskLine } from "../../components/primitives/TaskLine";
 import type { LastfmImport, WriteProgress } from "../../ipc";
 import { useLastfmStore } from "./store";
 
@@ -104,9 +105,14 @@ export function LastfmSettings() {
         </span>
       </div>
 
-      <p className="settings-lastfm-note" aria-live="polite">
-        {importLine({ importing, progress: importProgress, imported })}
-      </p>
+      {/* One live region for both, so the switch into a run is announced. */}
+      <div aria-live="polite">
+        {importing ? (
+          <ImportRun progress={importProgress} />
+        ) : (
+          <p className="settings-lastfm-note">{importLine(imported)}</p>
+        )}
+      </div>
       {imported === null || importing ? null : (
         <div className="settings-row">
           <span className="settings-lastfm-note">Replaces every imported play.</span>
@@ -132,21 +138,20 @@ function sameAccount(imported: LastfmImport, name: string): boolean {
   return imported.username.toLowerCase() === name.toLowerCase();
 }
 
-/** What the line under the import row says. */
-function importLine({
-  importing,
-  progress,
-  imported,
-}: {
-  importing: boolean;
-  progress: WriteProgress | null;
-  imported: LastfmImport | null;
-}): string {
-  if (importing) {
-    return progress === null || progress.total === 0
+/** A total of zero is the run before its first page, which knows only that it is running. */
+function ImportRun({ progress }: { progress: WriteProgress | null }) {
+  const done = progress?.done ?? 0;
+  const total = progress?.total ?? 0;
+  const headline =
+    total === 0
       ? "Importing…"
-      : `Importing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} scrobbles…`;
-  }
+      : `Importing ${done.toLocaleString()} of ${total.toLocaleString()} scrobbles…`;
+
+  return <TaskLine headline={headline} estimate={null} ratio={total === 0 ? 0 : done / total} />;
+}
+
+/** What the line under the import row says between runs. */
+function importLine(imported: LastfmImport | null): string {
   if (imported === null) {
     return "Imports any user’s scrobbles. No connection needed.";
   }
