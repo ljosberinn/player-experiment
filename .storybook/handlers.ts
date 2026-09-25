@@ -30,6 +30,7 @@ import {
 import { allTrackIds, browseGroups, libraryStats, queryTracks, releaseGroups } from "./library";
 import {
   albumGroup,
+  earlierPlays,
   firsts,
   listenTotals,
   playsOverTime,
@@ -262,7 +263,13 @@ export const statsHandlers: IpcHandlers = {
   save_text_file: () => null,
 };
 
-/** Both tabs over a library with nothing in it and nothing played. */
+/** `statsHandlers`, with plays on today's date in years before the log opens. */
+export const onThisDayHandlers: IpcHandlers = {
+  ...statsHandlers,
+  stats_recent_plays: (args) => earlierPlays(args as Parameters<typeof earlierPlays>[0]),
+};
+
+/** Every tab over a library with nothing in it and nothing played. */
 export const emptyStatsHandlers: IpcHandlers = {
   ...statsHandlers,
   browse_groups: () => [],

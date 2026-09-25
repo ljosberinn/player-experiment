@@ -5,7 +5,7 @@
  * would be the one navigation Back does not walk, and a drill-down would not
  * carry the tab it belongs to.
  */
-export type StatsTab = "listening" | "library";
+export type StatsTab = "listening" | "library" | "onThisDay";
 
 /** One step of a drill-down: the slice, bar or row that was clicked. */
 export interface StatsCrumb {
@@ -21,6 +21,7 @@ export interface StatsPath {
 export const STATS_TAB_TITLES: Record<StatsTab, string> = {
   listening: "Listening",
   library: "Library",
+  onThisDay: "On this day",
 };
 
 /** A tab with nothing drilled into - what clicking Statistics lands on. */

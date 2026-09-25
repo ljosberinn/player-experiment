@@ -3,8 +3,8 @@ import { invoke } from "../invoke";
 import { capture } from "../screenshot";
 
 /**
- * The Statistics view: the sidebar destination, its two tabs, and the panels
- * under each tile row.
+ * The Statistics view: the sidebar destination, its Listening and Library tabs,
+ * and the panels under each tile row.
  *
  * Screenshots because this is a view the design has no mockup for, so what a
  * tab strip, a filter bar, a row of tiles and a column of panels look like

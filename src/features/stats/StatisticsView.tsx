@@ -3,21 +3,24 @@ import { useEffect } from "react";
 import { useLibraryStore } from "../library/store";
 import { LibraryPanels } from "./LibraryPanels";
 import { ListeningPanels } from "./ListeningPanels";
+import { OnThisDay } from "./OnThisDay";
 import { STATS_TAB_TITLES, type StatsTab, statsRoot, walkBack } from "./path";
 import { StatsFilterBar } from "./StatsFilterBar";
 import { StatsFilterTokens } from "./StatsFilterTokens";
 import { useStatsStore } from "./store";
 
 /**
- * The Statistics view: two tabs, a filter bar that follows them, and the
+ * The Statistics view: three tabs, a filter bar that follows them, and the
  * panels underneath.
  *
  * Takes no props. `App` branches on the tab it already subscribes to and
  * renders this; everything it draws subscribes on its own behalf, so a range
  * change wakes a panel and nothing above it.
  *
- * Two tabs because the two questions have nothing in common but a chart
- * library: Listening is what you have heard, Library is what you own.
+ * Listening and Library are apart because the two questions have nothing in
+ * common but a chart library: Listening is what you have heard, Library is
+ * what you own. On this day is its own tab because the day is its range, which
+ * no other panel is counted over.
  */
 export function StatisticsView() {
   const path = useLibraryStore((s) => s.statsPath);
@@ -82,6 +85,9 @@ export function StatisticsView() {
       </Tabs.Panel>
       <Tabs.Panel className="stats-panels" value="library">
         <LibraryPanels />
+      </Tabs.Panel>
+      <Tabs.Panel className="stats-panels" value="onThisDay">
+        <OnThisDay />
       </Tabs.Panel>
     </Tabs.Root>
   );
