@@ -33,6 +33,7 @@ import {
   removeMissingTracks,
   removeTracks,
   scanLibrary,
+  setLoved,
   tracksByIds,
   writeTags,
 } from "./ipc";
@@ -131,6 +132,7 @@ vi.mock("./ipc", () => ({
   onLastfmQueued: vi.fn(async () => () => {}),
   onLastfmLovesQueued: vi.fn(async () => () => {}),
   lovedTracks: vi.fn(async () => []),
+  setLoved: vi.fn(async (ids: number[]) => ids),
   onLovedChanged: vi.fn(async () => () => {}),
   onLastfmImport: vi.fn(async () => () => {}),
 }));
@@ -905,7 +907,7 @@ describe("App playback", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Export failed: access denied");
   });
 
-  it("shows the current track on the transport strip once the backend reports one", async () => {
+  it("shows the current track in the player bar once the backend reports one", async () => {
     vi.mocked(playerSnapshot).mockResolvedValue({
       status: "playing",
       track: track(1),
@@ -941,7 +943,7 @@ describe("App playback", () => {
     await waitFor(() => expect(setTitle).toHaveBeenLastCalledWith("Apex"));
   });
 
-  it("opens what is playing in the library when its box is double-clicked", async () => {
+  it("opens what is playing in the library when its title is clicked", async () => {
     const user = userEvent.setup();
     playing(track(1));
     await renderWithLibrary({ waitForRows: false });
@@ -949,12 +951,25 @@ describe("App playback", () => {
     const display = await screen.findByTestId("now-playing");
     await waitFor(() => expect(display).toHaveTextContent("Track 1"));
 
-    await user.dblClick(display);
+    await user.click(within(display).getByRole("button", { name: "Track 1" }));
 
     // The fixture's tracks carry an artist and no album, so the artist is the
     // group they belong to.
     await waitFor(() => expect(useLibraryStore.getState().tab).toBe("artists"));
     expect(useLibraryStore.getState().browse).toEqual({ kind: "artists", id: "Artist" });
+  });
+
+  it("loves what is playing from the heart beside it", async () => {
+    const user = userEvent.setup();
+    playing(track(1));
+    await renderWithLibrary({ waitForRows: false });
+
+    const heart = await screen.findByRole("button", { name: "Love" });
+    await waitFor(() => expect(heart).toBeEnabled());
+    await user.click(heart);
+
+    expect(setLoved).toHaveBeenCalledWith([11], true);
+    await waitFor(() => expect(heart).toHaveAttribute("aria-pressed", "true"));
   });
 });
 

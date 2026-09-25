@@ -276,7 +276,7 @@ and every colour on screen is ours, which is what the design and
 and `selection` (per click, shift-range and Ctrl+A) each re-rendered the whole
 tree while read at the top of `App`. Each moved into a component that subscribes
 on its own behalf — `NowPlayingStatus`, `PlayerTransport`, `SearchBox`,
-`AppMenus`. `App.renders.test.tsx` counts renders, because a count is exact
+`AppMenus`, and `PlayerLove` for the loved set. `App.renders.test.tsx` counts renders, because a count is exact
 where a wall-clock budget on a CI runner is noise.
 
 `resolveColumns` runs inside `SongTable` rather than in `App`. The shell had no
@@ -624,11 +624,13 @@ absences are what nobody notices coming back — hence the guards in
   to `Apex` when nothing is playing. It shows in the frame, in Alt+Tab and in
   the taskbar — the frame since phase 119 gave the decorations back to the OS.
   `tauri.conf.json` still sets the idle title for the first frame.
-- `NowPlaying` is **hidden, not absent**, when nothing is playing: it is the
-  widest thing on a fixed strip, and a box arriving with the first song would
-  shove the volume and the search field sideways. Double-clicking it opens the
-  track's album, or its artist, through one store action that writes `tab` and
-  `browse` together and refreshes once.
+- `NowPlaying` and the heart beside it are **hidden, not absent**, when nothing
+  is playing, so the player bar keeps its shape. Clicking the cover or the title
+  opens the track's album, or its artist, through one store action that writes
+  `tab` and `browse` together and refreshes once; the artist line opens the
+  artist the track is filed under (`album_artist ?? artist`). The heart is
+  `PlayerLove`, which reads the loved set through `useLoveEntry` so a love
+  re-renders it rather than `App`.
 - The volume rail takes the **wheel** through a non-passive `addEventListener`.
   React attaches `wheel` passively, so `preventDefault` in an `onWheel` prop
   does nothing but log a warning while the page scrolls anyway.

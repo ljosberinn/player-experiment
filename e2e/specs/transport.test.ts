@@ -35,7 +35,7 @@ async function waitForTheApp(): Promise<void> {
     timeout: 30_000,
     interval: 250,
   });
-  await browser.$(".transport-strip").waitForExist({ timeout: 30_000 });
+  await browser.$(".player-bar").waitForExist({ timeout: 30_000 });
 }
 
 /** What the player itself says, which is the thing the buttons are drawing. */

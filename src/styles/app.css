@@ -10,10 +10,9 @@
 
 /* ---------- app bar ---------- */
 
-/* 40px, and carrying only the product identity since phase 35: the mark, the
-   menus and the version. Everything that used to ride here - the transport,
-   the now-playing display, the search field - is in the strip below, which is
-   what gives the menus the left edge the design draws them on.
+/* 40px: the mark, the menus, the search field and the version. The transport
+   and the now-playing display rode here until phase 35, and the search field
+   came back in 142 when the player moved to the bottom of the window.
 
    It was the window's title bar until phase 119. `decorations: false` went, the
    OS draws the frame above it, and the drag region and caption buttons went
@@ -134,30 +133,58 @@
   cursor: default;
 }
 
-/* ---------- transport strip ---------- */
+/* ---------- player bar ---------- */
 
-/* The 86px band under the app bar, new in phase 35: the transport pill, the
-   playhead, what is playing, the volume and the search field. Everything on it
-   used to be crammed into the bar above, which was the window's drag surface
-   until phase 119 gave that job back to the OS frame. */
-.transport-strip {
-  display: flex;
+/* The band along the bottom of the window, laid out like Spotify's since 142:
+   what is playing, the controls over the playhead, the volume. It was a strip
+   under the app bar from phase 35.
+
+   100px because the centre stacks the 64px transport pill over the 15px
+   playhead with room either side. Three columns at Spotify's 30 / 40 / 30, the
+   outer two equal so the centre stays centred in the window whatever the left
+   one holds. `minmax(0, ...)` so a long title ellipsizes instead of widening
+   its column. */
+.player-bar {
+  display: grid;
   flex: none;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) minmax(0, 3fr);
   align-items: center;
-  gap: 29px;
-  height: 86px;
+  column-gap: 24px;
+  height: 100px;
   padding: 0 24px;
   background: var(--strip-veil);
   backdrop-filter: blur(18px);
-  border-bottom: 1px solid var(--chrome-border);
+  border-top: 1px solid var(--chrome-border);
 }
 
-/* Two of them, one either side of the now-playing box. Equal flexible gaps
-   rather than `justify-content: space-between`: the box between them is the
-   widest thing on the strip and it has to stay centred in the window as the
-   controls around it change width, which space-between does not do. */
-.strip-gap {
-  flex: 1;
+.player-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+
+.player-bar-centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Repeat's width, on the other side of the pill. */
+.player-controls-slot {
+  width: 31px;
+}
+
+.player-bar-right {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* ---------- transport ---------- */
@@ -215,14 +242,13 @@
 
 /* ---------- playhead and volume ---------- */
 
+/* The width of the centre column, which is a fixed share of the window: a
+   playhead that grew and shrank as songs changed would move the controls. */
 .scrubber {
   display: flex;
   align-items: center;
   gap: 11px;
-  /* Fixed rather than flexible: the strip's flexible space belongs to the two
-     gaps around the now-playing box, and a playhead that grew and shrank as
-     songs changed would drag everything to its right with it. */
-  width: 374px;
+  width: 100%;
 }
 
 .scrubber-time {
@@ -275,7 +301,7 @@
 
 /* ---------- repeat one ---------- */
 
-/* Off, it is the same weight as the other quiet chrome on the strip. On, it
+/* Off, it is the same weight as the other quiet chrome on the bar. On, it
    takes the accent and a wash behind it - the only lit toggle in the window,
    and it has to be legible as "still on" hours after it was pressed. */
 .repeat-button {
@@ -382,19 +408,27 @@
 
 /* ---------- now playing ---------- */
 
-/* Cover art and two lines, in the middle of the strip. No fixed height: the
+/* Cover art and two lines, at the left of the player bar. No fixed height: the
    contents are the same shape whether or not a song is playing, which is what
-   lets the idle state be hidden rather than absent - `visibility` on the box
-   keeps its 44px instead of letting the volume and the search field slide
-   sideways the moment a song starts. */
+   lets the idle state be hidden rather than absent. Shrinks, so the heart after
+   it stays in the column and the text ellipsizes. */
 .now-playing {
   display: flex;
   align-items: center;
   gap: 13px;
+  min-width: 0;
+}
+
+.now-playing-cover-button {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
 }
 
 .now-playing-cover {
-  flex: none;
+  display: block;
   width: 48px;
   height: 48px;
   object-fit: cover;
@@ -410,20 +444,35 @@
 .now-playing-text {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
-  min-width: 187px;
+  min-width: 0;
   overflow: hidden;
 }
 
 .now-playing-title,
 .now-playing-subtitle {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   line-height: 1.2;
+  text-align: left;
+  cursor: default;
+}
+
+/* Links, as Spotify draws them: plain text that underlines under the pointer. */
+button.now-playing-title:hover,
+button.now-playing-subtitle:hover {
+  text-decoration: underline;
 }
 
 .now-playing-title {
+  color: var(--text);
   font-size: 13.5px;
   font-weight: 800;
 }
@@ -433,10 +482,44 @@
   font-size: 12px;
 }
 
+/* The repeat button's shape. Loved, the accent without the wash: it is a fact
+   about the song rather than a mode left on. */
+.love-button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.love-button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.love-button:disabled {
+  opacity: 0.4;
+}
+
 .search-box {
   position: relative;
   display: flex;
   align-items: center;
+}
+
+/* The search field takes the free space instead, so the version follows it
+   rather than splitting the gap with it. */
+.appbar > .search-box {
+  margin-left: auto;
+}
+
+.appbar > .search-box + .appbar-version {
+  margin-left: 0;
 }
 
 .search {

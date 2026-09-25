@@ -237,4 +237,26 @@ describe("a queue that is playing", () => {
       timeoutMsg: "the scrubber did not move the playhead back",
     });
   });
+
+  it("loves what is playing from the heart beside it", async () => {
+    await playRow(0);
+    await pause();
+
+    const heart = browser.$(".love-button");
+    // Whatever an earlier spec left: the photographs are of unloved, then loved.
+    if ((await heart.getAttribute("aria-pressed")) === "true") {
+      await heart.click();
+      await expect(heart).toHaveAttribute("aria-pressed", "false");
+    }
+    await capture("player-bar-unloved");
+
+    await heart.click();
+
+    await expect(heart).toHaveAttribute("aria-pressed", "true");
+    await capture("player-bar-loved");
+
+    // Unloved again, so Favorites is as the specs after this one expect it.
+    await heart.click();
+    await expect(heart).toHaveAttribute("aria-pressed", "false");
+  });
 });

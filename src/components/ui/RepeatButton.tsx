@@ -1,7 +1,7 @@
 import { Icon } from "../icons/Icon";
 
 /**
- * Repeat one, at the right of the transport strip.
+ * Repeat one, to the right of the transport pill.
  *
  * One toggle with one meaning: off, or this song forever. There is no
  * repeat-all and no shuffle here, and none is coming - a queue that reorders

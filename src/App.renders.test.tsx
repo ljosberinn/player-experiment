@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useLastfmStore } from "./features/lastfm/store";
 import { useLibraryStore } from "./features/library/store";
+import { useLovedStore } from "./features/love/store";
 import { usePlayerStore } from "./features/player/store";
 import { useBackgroundTaskStore } from "./features/shell/backgroundTaskStore";
 import { useTagsourceStore } from "./features/tagsource/store";
@@ -265,6 +266,7 @@ beforeEach(() => {
   renders.menuBar = 0;
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0 });
+  useLovedStore.setState({ loved: new Set() });
 });
 
 describe("what the unattended pass re-renders", () => {
@@ -341,6 +343,27 @@ describe("what the last.fm status re-renders", () => {
 
     expectTableMounted();
     expect(renders.menuBar).toBe(1);
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+});
+
+describe("what a love re-renders", () => {
+  it("leaves the song table and the sidebar alone", async () => {
+    await mounted();
+    act(() => {
+      usePlayerStore.setState({ track: { ...track(1), artist: "Artist", title: "Title" } });
+    });
+    renders.songTable = 0;
+    renders.playlistSidebar = 0;
+
+    // What the player bar's heart does, and what last.fm's loves arriving do.
+    act(() => {
+      useLovedStore.setState({ loved: new Set([1]) });
+    });
+
+    expectTableMounted();
+    expect(document.querySelector(".love-button")).toHaveAttribute("aria-pressed", "true");
     expect(renders.songTable).toBe(0);
     expect(renders.playlistSidebar).toBe(0);
   });

@@ -50,6 +50,8 @@ export type IconName =
   | "pause"
   | "next"
   | "repeat-one"
+  | "love"
+  | "loved"
   | "volume"
   | "volume-muted"
   | "playlist"
@@ -84,6 +86,8 @@ export const ICONS: Record<IconName, Glyph> = {
   // Regular, not filled: it is a loop of strokes, and the numeral inside it
   // closes up at heavier weights.
   "repeat-one": (props) => <RepeatOnceIcon {...props} />,
+  love: (props) => <HeartIcon {...props} />,
+  loved: (props) => <HeartIcon weight="fill" {...props} />,
   volume: (props) => <SpeakerSimpleHighIcon weight="fill" {...props} />,
   // Carries the slash itself, which the drawn version needed a pseudo-element
   // for. The grey is still the button's, so both signals survive the swap.

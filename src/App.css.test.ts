@@ -308,7 +308,7 @@ describe("the stylesheet", () => {
     // Every panel that makes up the window is a veil since phase 35. A fill on
     // any of them is an opaque sheet over the whole window, so the rule is
     // checked rather than remembered.
-    const PANES = [".body", ".content", ".song-body", ".sidebar", ".appbar", ".transport-strip"];
+    const PANES = [".body", ".content", ".song-body", ".sidebar", ".appbar", ".player-bar"];
 
     for (const pane of PANES) {
       const rule = all.find((entry) => entry.selector.trim().endsWith(pane));
@@ -878,17 +878,17 @@ describe("the stylesheet", () => {
     }
   });
 
-  it("gives the transport strip a fixed height, not a growing one", () => {
+  it("gives the player bar a fixed height, not a growing one", () => {
     // The layout shift this pins shut used to be inside the now-playing box:
     // idle showed one line, playing showed three plus a scrubber, and the box
     // grew the moment a song started. Phase 35 fixed that by construction -
-    // the playhead is its own control on the strip and the box always shows
-    // the same shape - so what has to hold now is the strip itself, which is
-    // the row every one of those controls is measured against.
+    // the playhead is its own control and the box always shows the same shape
+    // - so what has to hold now is the bar itself, which every one of those
+    // controls is measured against.
     //
     // `selector` carries any comment that preceded the rule, so these match
     // the tail rather than the whole string.
-    const strip = all.find((one) => /(^|\s)\.transport-strip$/.test(one.selector));
+    const strip = all.find((one) => /(^|\s)\.player-bar$/.test(one.selector));
 
     expect(strip).toBeDefined();
     expect(strip?.body).toMatch(/[^-]height:\s*\d/);
@@ -1097,7 +1097,7 @@ describe("the stylesheet", () => {
 
   it("keeps the app bar and the footer the heights the design draws", () => {
     // Both are stated rather than left to their contents, and both are what
-    // the transport strip and the content pane are measured against. A bar
+    // the player bar and the content pane are measured against. A bar
     // that sized itself would move every time a version string got a digit
     // longer or a menu label changed.
     for (const [selector, height] of [

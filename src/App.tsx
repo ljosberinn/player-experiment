@@ -24,6 +24,7 @@ import { useLibraryStore, VIEW_TITLES } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { useLovedStore } from "./features/love/store";
 import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
+import { PlayerLove } from "./features/player/PlayerLove";
 import { PlayerRepeat } from "./features/player/PlayerRepeat";
 import { PlayerScrubber } from "./features/player/PlayerScrubber";
 import { PlayerTransport } from "./features/player/PlayerTransport";
@@ -294,10 +295,8 @@ export function App() {
           no artwork playing or the preference is off. */}
       <DynamicBackground />
 
-      {/* The product identity and nothing else: the mark, the menus and the
-          version. Everything that used to ride here is in the strip below,
-          which is what the design draws and what gives the menus the left edge
-          to themselves. The OS frame above it is the window's own. */}
+      {/* The mark, the menus, the search field and the version. The OS frame
+          above it is the window's own. */}
       <AppBar version={appInfo?.version ?? null}>
         {/* Its own component because the Edit menu serves the selection:
             built here, a click re-rendered the whole app for a menu nobody
@@ -307,26 +306,10 @@ export function App() {
           onSettings={(category = "appearance") => setSettings(category)}
           onExport={(choice) => void runExport(choice)}
         />
-      </AppBar>
-
-      {/* Each of these subscribes to its own store values rather than taking
-          them as props. They are the things that change on a schedule of their
-          own - the playhead four times a second, the volume rail at the
-          pointer's sampling rate, the search field on every keystroke - and
-          read from here they re-rendered the whole app, song table included. */}
-      <div className="transport-strip">
-        <PlayerTransport />
-        <PlayerScrubber />
-        <div className="strip-gap" />
-        <NowPlayingStatus ref={statusRef} />
-        <div className="strip-gap" />
-        {/* Repeat sits with the volume rather than in the transport pill: the
-            pill is prev/play/next and nothing else, and repeat is a setting
-            about what happens next rather than a thing to press now. */}
-        <PlayerRepeat />
-        <PlayerVolume />
+        {/* Subscribes to its own input: read from here, every keystroke
+            re-rendered the whole app. */}
         <SearchBox />
-      </div>
+      </AppBar>
 
       <div className="body">
         <Sidebar>
@@ -540,6 +523,34 @@ export function App() {
           </button>
         ) : null}
       </footer>
+
+      {/* Last, under the status bar, which stays against the content it
+          summarises. Laid out like Spotify's: what is playing, the controls
+          over the playhead, the volume.
+
+          Each of these subscribes to its own store values rather than taking
+          them as props. They are the things that change on a schedule of their
+          own - the playhead four times a second, the volume rail at the
+          pointer's sampling rate, the loved set - and read from here they
+          re-rendered the whole app, song table included. */}
+      <div className="player-bar">
+        <div className="player-bar-left">
+          <NowPlayingStatus ref={statusRef} />
+          <PlayerLove />
+        </div>
+        <div className="player-bar-centre">
+          <div className="player-controls">
+            {/* Repeat's width, so Play sits over the middle of the rail. */}
+            <span className="player-controls-slot" aria-hidden="true" />
+            <PlayerTransport />
+            <PlayerRepeat />
+          </div>
+          <PlayerScrubber />
+        </div>
+        <div className="player-bar-right">
+          <PlayerVolume />
+        </div>
+      </div>
 
       {editorTracks ? (
         <TagEditor

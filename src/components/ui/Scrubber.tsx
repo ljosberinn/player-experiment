@@ -9,9 +9,9 @@ import { formatDuration } from "../../lib/format";
  * column in the table is a duration, and two readings of the same song that
  * disagree is a worse thing to have on screen than a countdown is a good one.
  *
- * Renders in the idle state too, disabled and reading 0:00 - the strip is a
- * fixed row of controls, and one that appears when a song starts would move
- * everything to its right at the moment of pressing play.
+ * Renders in the idle state too, disabled and reading 0:00 - one that appeared
+ * when a song starts would move the controls above it at the moment of
+ * pressing play.
  */
 export function Scrubber({
   positionMs = 0,

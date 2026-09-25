@@ -4,10 +4,10 @@ import { VOLUME_STEP } from "../../features/player/shortcuts";
 import { Icon } from "../icons/Icon";
 
 /**
- * The speaker glyph and the volume rail, at the right of the transport strip.
+ * The speaker glyph and the volume rail, at the right of the player bar.
  *
  * Split out of `Transport` in phase 35 because the design puts the two at
- * opposite ends of the strip - and because the rail reports on every pointer
+ * opposite ends of the bar - and because the rail reports on every pointer
  * move, so anything sharing a component with it re-renders at that rate.
  *
  * The glyph is the speaker from the icon set. It was three ascending bars drawn

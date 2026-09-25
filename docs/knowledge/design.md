@@ -211,9 +211,7 @@ action reads as a target rather than a line of text".
 
 - The OS draws the frame. Phase 119 dropped `decorations: false`, so the title,
   the caption buttons, the system menu and snap layouts are the window's own.
-- A 36px app bar under it: the mark, the menus, the version, and nothing else.
-- A 78px transport strip: prev/play/next as one segmented block, playhead with
-  elapsed and total, cover art and track text, mute and volume, repeat, search.
+- A 40px app bar under it: the mark, the menus, the search field, the version.
 - The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and
   a dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
   sections with counts. There is no tab bar and no library toolbar.
@@ -226,8 +224,13 @@ action reads as a target rather than a line of text".
 - **The Songs view has no title header.** Releases, Artists and Genres keep the
   heading and its accent underline; the view with 150k rows cannot spend a third
   of the fold on the word "Songs".
-- A 27px translucent status bar: zoom stepper left, view summary centred, version
-  right.
+- A 30px translucent status bar: zoom stepper left, view summary centred, an
+  update when one is ready right.
+- **A 100px player bar at the very bottom**, under the status bar, laid out like
+  Spotify's in three columns at 30 / 40 / 30: cover, title over artist and a
+  heart on the left; prev/play/next with repeat, over the playhead, centred;
+  mute and volume on the right. The cover and title open the track's album, the
+  artist the artist it is filed under, and the heart loves it.
 - **Settings is a rail and a pane**, at one size whichever category is open:
   Appearance (Interface Zoom, Theme, Colour From Album Art), Library (Library Folder,
   Music Folders), Online (Look Up Releases Online, last.fm) and About (Activity
