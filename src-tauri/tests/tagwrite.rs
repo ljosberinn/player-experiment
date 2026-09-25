@@ -841,6 +841,69 @@ fn a_comment_language_that_can_be_written_back_is_left_alone() {
     assert_eq!(&fixture::comment_language(&path), b"deu");
 }
 
+/// JPEG-shaped bytes with the `FF 00` escapes a real entropy stream is full
+/// of, which are what an unsynchronising reader strips.
+const ESCAPED_JPEG: &[u8] = b"\xFF\xD8\xFF\xE0scan\xFF\x00rows\xFF\x00more\xFF\xD9";
+
+#[test]
+fn a_cover_written_to_an_unsynchronised_file_reads_back_intact() {
+    let h = harness();
+    let path = h.music.join("loose/unsynchronised.mp3");
+    fixture::write_unsynchronised_mp3(&path, 10, "Unsynchronised", None);
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Unsynchronised");
+    assert!(fixture::claims_unsynchronisation(&path));
+
+    let replacement = h.music.join("escaped.jpg");
+    std::fs::write(&replacement, ESCAPED_JPEG).unwrap();
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            cover: Some(CoverEdit::Replace {
+                path: replacement.to_string_lossy().into_owned(),
+            }),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+    assert_eq!(fixture::front_cover(&path).as_deref(), Some(ESCAPED_JPEG));
+    assert!(!fixture::claims_unsynchronisation(&path));
+}
+
+#[test]
+fn an_edit_that_leaves_the_cover_alone_keeps_it_intact_on_an_unsynchronised_file() {
+    let h = harness();
+    let path = h.music.join("loose/unsynchronised.mp3");
+    fixture::write_unsynchronised_mp3(&path, 10, "Unsynchronised", Some(ESCAPED_JPEG));
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Unsynchronised");
+    // The fixture has to be read the way the file claims, or the test below
+    // proves nothing.
+    assert!(fixture::claims_unsynchronisation(&path));
+    assert_eq!(fixture::front_cover(&path).as_deref(), Some(ESCAPED_JPEG));
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Shoegaze"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+    assert_eq!(fixture::front_cover(&path).as_deref(), Some(ESCAPED_JPEG));
+    assert!(!fixture::claims_unsynchronisation(&path));
+}
+
 #[test]
 fn a_write_leaves_no_temporary_files_behind() {
     let h = harness();
