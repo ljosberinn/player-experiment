@@ -440,6 +440,12 @@ leaves for the next one's `from=`. It is not exportable.
   free, and a row is skipped when its second already holds a `local` play.
 - **Re-import from scratch deletes the `lastfm` rows** in the same transaction
   that resets the state. That is how a scrobble deleted on last.fm leaves.
+- **A run ends by raising `tracks.play_count` and `last_played_at`** to the
+  count and newest `started_at` of each track's linked plays, after `resolve`
+  and in its transaction. `max`, never add: a play from before migration 13
+  that was scrobbled is in the count and comes back as a row. So nothing is
+  ever lowered, a deleted scrobble included, and only the copy `resolve` links
+  a key to is raised — by the plays of every copy, local ones included.
 - **The loved tracks come last**, fetched in full only after the history
   finishes, and taken in by `lastfm::love::absorb` in one transaction, so a
   failed fetch leaves the set as it was.

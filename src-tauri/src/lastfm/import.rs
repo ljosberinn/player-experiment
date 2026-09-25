@@ -120,10 +120,10 @@ impl Import<'_> {
     /// from the top, which is how scrobbles deleted on last.fm leave; local
     /// plays stay.
     ///
-    /// `plays::resolve` and `plays::regroup` run when the run ends, finished
-    /// or not: the pages already committed are plays like any other, and
-    /// until both have run they are unlinked and ungrouped. The loved tracks are
-    /// fetched only once the history is complete.
+    /// `plays::resolve`, `plays::regroup` and `count` run when the run ends,
+    /// finished or not: the pages already committed are plays like any other,
+    /// and until those have run they are unlinked, ungrouped and uncounted.
+    /// The loved tracks are fetched only once the history is complete.
     pub fn run(
         &self,
         conn: &mut Connection,
@@ -155,6 +155,7 @@ impl Import<'_> {
         let tx = conn.transaction()?;
         plays::resolve(&tx)?;
         plays::regroup(&tx)?;
+        count(&tx)?;
         tx.commit()?;
 
         let imported = history?;
@@ -294,6 +295,33 @@ impl Import<'_> {
         }
         unreachable!("the last attempt returns either way")
     }
+}
+
+/// Raises each linked track's `play_count` and `last_played_at` to what its
+/// plays say, never lowering either.
+///
+/// **`max`, because adding would count twice** every play from before
+/// migration 13 that was also scrobbled: those are in `play_count` and come
+/// back as `lastfm` rows. A local play since is one on each side, and
+/// `insert` keeps its scrobble out.
+///
+/// The guard is what keeps a second run from writing anything: every update
+/// of `tracks` reindexes the row in `tracks_fts`.
+fn count(conn: &Connection) -> AppResult<()> {
+    conn.execute(
+        "UPDATE tracks
+            SET play_count = max(play_count, n.plays),
+                last_played_at = max(coalesce(last_played_at, 0), n.last)
+           FROM (SELECT track_id, count(*) AS plays, max(started_at) AS last
+                   FROM plays
+                  WHERE track_id IS NOT NULL
+                  GROUP BY track_id) n
+          WHERE n.track_id = tracks.id
+            AND (n.plays > tracks.play_count
+                 OR n.last > coalesce(tracks.last_played_at, 0))",
+        [],
+    )?;
+    Ok(())
 }
 
 fn retryable(error: &Error) -> bool {
@@ -776,6 +804,106 @@ mod tests {
             (artist_mbid.as_deref(), track_mbid.as_deref()),
             (Some("a-1"), Some("r-1"))
         );
+    }
+
+    fn harbour(conn: &Connection, id: i64, play_count: i64, last_played_at: Option<i64>) {
+        conn.execute(
+            "INSERT INTO tracks
+                (id, path, mtime, size, duration_ms, artist, title, added_at,
+                 play_count, last_played_at)
+             VALUES (?1, 'C:\\music\\' || ?1 || '.mp3', 0, 0, 240000, 'Blue Room', 'Harbour', 0,
+                     ?2, ?3)",
+            rusqlite::params![id, play_count, last_played_at],
+        )
+        .unwrap();
+    }
+
+    fn counted(conn: &Connection, id: i64) -> (i64, Option<i64>) {
+        conn.query_row(
+            "SELECT play_count, last_played_at FROM tracks WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    fn harbour_history() -> String {
+        page(
+            3,
+            1,
+            &array(&[
+                entry(300, "Blue Room", "Harbour"),
+                entry(200, "Blue Room", "Harbour"),
+                entry(100, "Blue Room", "Harbour"),
+            ]),
+        )
+    }
+
+    #[test]
+    fn an_import_raises_the_play_count_of_a_song_it_linked() {
+        let (_dir, mut conn) = open();
+        harbour(&conn, 1, 0, None);
+        let transport =
+            FakeTransport::scripted(vec![Ok(harbour_history()), Ok(NO_LOVED.to_owned())]);
+
+        import(&mut conn, &transport, false).0.unwrap();
+
+        assert_eq!(counted(&conn, 1), (3, Some(300)));
+    }
+
+    #[test]
+    fn a_higher_local_count_is_kept() {
+        let (_dir, mut conn) = open();
+        harbour(&conn, 1, 50, Some(1_000));
+        let transport =
+            FakeTransport::scripted(vec![Ok(harbour_history()), Ok(NO_LOVED.to_owned())]);
+
+        import(&mut conn, &transport, false).0.unwrap();
+
+        assert_eq!(counted(&conn, 1), (50, Some(1_000)));
+    }
+
+    /// Written as "the row is not touched" rather than "the value is the same",
+    /// because every update of `tracks` reindexes it for search.
+    #[test]
+    fn importing_again_from_scratch_touches_no_track() {
+        let (_dir, mut conn) = open();
+        harbour(&conn, 1, 0, None);
+        let transport = FakeTransport::scripted(vec![
+            Ok(harbour_history()),
+            Ok(NO_LOVED.to_owned()),
+            Ok(harbour_history()),
+            Ok(NO_LOVED.to_owned()),
+        ]);
+        import(&mut conn, &transport, false).0.unwrap();
+        conn.execute_batch(
+            "CREATE TEMP TABLE touched (id INTEGER);
+             CREATE TEMP TRIGGER touch AFTER UPDATE ON main.tracks
+             BEGIN INSERT INTO touched VALUES (new.id); END;",
+        )
+        .unwrap();
+
+        import(&mut conn, &transport, true).0.unwrap();
+
+        let touched: i64 = conn
+            .query_row("SELECT count(*) FROM touched", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(touched, 0);
+        assert_eq!(counted(&conn, 1), (3, Some(300)));
+    }
+
+    #[test]
+    fn only_the_copy_a_play_links_to_is_raised() {
+        let (_dir, mut conn) = open();
+        harbour(&conn, 1, 0, None);
+        harbour(&conn, 2, 0, None);
+        let transport =
+            FakeTransport::scripted(vec![Ok(harbour_history()), Ok(NO_LOVED.to_owned())]);
+
+        import(&mut conn, &transport, false).0.unwrap();
+
+        assert_eq!(counted(&conn, 1), (3, Some(300)));
+        assert_eq!(counted(&conn, 2), (0, None));
     }
 
     /// Beside the link rebuild, and for its reason: the run changed the log
