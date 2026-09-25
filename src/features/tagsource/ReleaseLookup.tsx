@@ -558,8 +558,8 @@ function Source({
  * sheet's `1fr 62px 1fr` without giving up the row and the column a reader
  * gets told about.
  *
- * Rows the apply would leave as they are go in a second group under the
- * first, so the rows worth reading are the ones on top. The groups are drawn
+ * Rows the apply would leave as they are fold away under the rest, so the
+ * rows worth reading are the only ones open. The groups are drawn
  * from the live assignment and fields, so a swap or a tick can move a row
  * between them, and each group's arrows swap within it: a file that already
  * reads as its track is not the other half of anybody's fix.
@@ -640,34 +640,50 @@ function Mapping({
     });
 
   return (
-    <table className="lookup-map">
-      <thead>
-        <tr>
-          {/* Both counts in the heads, so a release with a file too many or a
-              track too few reads off them before a row is compared. */}
-          <th scope="col" className="lookup-eyebrow">
-            {`File · ${tracks.length}`}
-          </th>
-          <th scope="col">
-            <span className="visually-hidden">Reorder</span>
-          </th>
-          <th scope="col" className="lookup-eyebrow">
-            {`MusicBrainz · ${detail.tracks.length}`}
-          </th>
-        </tr>
-      </thead>
-      <tbody>{rowsOf(changed)}</tbody>
-      {unchanged.length === 0 ? null : (
-        <tbody>
+    <>
+      <table className="lookup-map">
+        <Columns />
+        <thead>
           <tr>
-            <th scope="rowgroup" colSpan={3} className="lookup-eyebrow">
-              {`Unchanged · ${unchanged.length}`}
+            {/* Both counts in the heads, so a release with a file too many or a
+                track too few reads off them before a row is compared. */}
+            <th scope="col" className="lookup-eyebrow">
+              {`File · ${tracks.length}`}
+            </th>
+            <th scope="col">
+              <span className="visually-hidden">Reorder</span>
+            </th>
+            <th scope="col" className="lookup-eyebrow">
+              {`MusicBrainz · ${detail.tracks.length}`}
             </th>
           </tr>
-          {rowsOf(unchanged)}
-        </tbody>
+        </thead>
+        <tbody>{rowsOf(changed)}</tbody>
+      </table>
+      {/* A table of its own, because a disclosure cannot wrap a `<tbody>`.
+          Closed on every release, since the mapping remounts with each
+          tracklist. */}
+      {unchanged.length === 0 ? null : (
+        <details className="lookup-unchanged">
+          <summary className="lookup-eyebrow">{`Unchanged · ${unchanged.length}`}</summary>
+          <table className="lookup-map" aria-label="Unchanged">
+            <Columns />
+            <tbody>{rowsOf(unchanged)}</tbody>
+          </table>
+        </details>
       )}
-    </table>
+    </>
+  );
+}
+
+/** The column widths, stated on both tables so their rows line up. */
+function Columns() {
+  return (
+    <colgroup>
+      <col />
+      <col className="lookup-map-move-col" />
+      <col />
+    </colgroup>
   );
 }
 

@@ -246,25 +246,28 @@ describe("the confirm step", () => {
     expect(within(rows[1] as HTMLElement).getByText("1. Only Shallow")).toBeInTheDocument();
   });
 
-  /** The rows worth reading on top; a file already tagged as its track below. */
-  it("groups the files an apply would leave as they are", async () => {
+  /** The rows worth reading open; a file already tagged as its track folded away. */
+  it("folds away the files an apply would leave as they are", async () => {
     vi.mocked(tracksByIds).mockResolvedValue([
       track(1, { title: "Only Shallow", artist: "My Bloody Valentine" }),
       track(2),
     ]);
     const user = await open();
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
-    await screen.findByRole("table");
-
-    const [, changed, unchanged] = screen.getAllByRole("rowgroup");
-    expect(within(changed as HTMLElement).getAllByRole("row")).toHaveLength(1);
+    const [changed] = await screen.findAllByRole("table");
+    expect(within(changed as HTMLElement).getAllByRole("row")).toHaveLength(2);
     expect(within(changed as HTMLElement).getByText("2. File 2")).toBeInTheDocument();
-    expect(
-      within(unchanged as HTMLElement).getByRole("rowheader", { name: "Unchanged · 1" }),
-    ).toBeInTheDocument();
-    expect(within(unchanged as HTMLElement).getAllByText("1. Only Shallow")).toHaveLength(2);
     // Nothing above or below it within its own group.
     expect(screen.getByRole("button", { name: "Move down: File 2" })).toBeDisabled();
+
+    const fold = screen.getByText("Unchanged · 1").closest("details");
+    expect(fold).not.toHaveAttribute("open");
+
+    await user.click(screen.getByText("Unchanged · 1"));
+
+    expect(fold).toHaveAttribute("open");
+    const unchanged = screen.getByRole("table", { name: "Unchanged" });
+    expect(within(unchanged).getAllByText("1. Only Shallow")).toHaveLength(2);
   });
 
   it("regroups a row once its only difference is not being written", async () => {
@@ -275,11 +278,11 @@ describe("the confirm step", () => {
     const user = await open();
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
     await screen.findByText("1. Only Shallow");
-    expect(screen.queryByRole("rowheader", { name: /Unchanged/ })).toBeNull();
+    expect(screen.queryByText(/Unchanged/)).toBeNull();
 
     await user.click(screen.getByRole("checkbox", { name: "Title" }));
 
-    expect(screen.getByRole("rowheader", { name: "Unchanged · 1" })).toBeInTheDocument();
+    expect(screen.getByText("Unchanged · 1")).toBeInTheDocument();
   });
 
   it("writes only the ticked fields", async () => {

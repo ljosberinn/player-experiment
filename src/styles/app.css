@@ -1664,8 +1664,9 @@ th.status {
 }
 
 /* The sheet's `1fr 62px 1fr`, stated the way a fixed table takes it: the two
-   outer columns split what the middle one leaves. */
-.lookup-map th:nth-child(2) {
+   outer columns split what the middle one leaves. On a `<col>` rather than
+   the head, because the unchanged table has none. */
+.lookup-map-move-col {
   width: 68px;
 }
 
@@ -1724,6 +1725,36 @@ th.status {
 .lookup-map-move .icon-button {
   display: inline-flex;
   margin: 0 1.5px;
+}
+
+/* Drawn like the mapping's head, with the sidebar's disclosure triangle:
+   pointing down when open, right when folded. */
+.lookup-unchanged > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--chrome-border);
+  list-style: none;
+  cursor: default;
+}
+
+.lookup-unchanged > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lookup-unchanged > summary::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4.5px solid currentcolor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+
+.lookup-unchanged:not([open]) > summary::before {
+  transform: rotate(-90deg);
 }
 
 /* What the pane says under the table: what an apply would do, how far a write

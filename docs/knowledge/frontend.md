@@ -681,8 +681,10 @@ absences are what nobody notices coming back — hence the guards in
   report. A file row leads with its own track number the way a MusicBrainz row
   does — `disc-` once any file is past disc 1 — and the two heads count their
   sides, so a mismatch reads off them.
-- **Rows with nothing to write sit in a second `<tbody>`** under an
-  `Unchanged · N` row head (146). `agrees` compares the ticked per-track
+- **Rows with nothing to write fold away** in a closed `<details>`,
+  `Unchanged · N`, under the mapping (146). A table of its own, since a
+  disclosure cannot wrap a `<tbody>`; both tables state their widths on a
+  `<colgroup>` so the rows line up. `agrees` compares the ticked per-track
   fields only — title, artist, track and disc number, a missing disc reading
   as 1; album, album artist, year and artwork are the release's and tell no
   row apart. Grouping is live, so a swap or a tick moves rows between groups,
