@@ -553,6 +553,14 @@ absences are what nobody notices coming back — hence the guards in
   all-time span and every coverage caption want the same `listen_totals`, which
   is the dearest aggregate in the set; the promise is held rather than its
   result, so each later panel joins the first's scan.
+- **On this day asks once per earlier year.** Each is a `statsRecentPlays`
+  over one local day, a range on `idx_plays_started`; matching the month and
+  day across years in SQL would read every play. The years run from 2002 -
+  the backend's `DATED_FROM` - rather than from the history's first play,
+  because `listenTotalsOnce` answers from its one entry only for the exact
+  query last asked, and would otherwise be the dearest aggregate spent to save
+  a few indexed lookups. The tab subscribes to Owned and Loved alone: the day
+  is its range, so Range is neither drawn nor tokened there.
 - **A coverage caption says what a panel leaves out.** Genre is known for a
   matched play alone, and a play last.fm holds undated is placed in no series
   and no clock; the panel names the share it covers rather than drawing a

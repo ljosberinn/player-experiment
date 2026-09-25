@@ -240,8 +240,10 @@ Vitest never runs and coverage never counts:
   aggregate over nothing. A genre is a branch of `GENRE_PARENTS`. The
   Listening tab counts over a seeded play log in `.storybook/listening.ts`
   that ends today, because ranges and the current streak are cut from the
-  clock. `listenTotalsOnce`'s held answer is dropped before every story, as
-  the stores are reset.
+  clock. On this day's plays in the years before the log opens answer through
+  `onThisDayHandlers` alone, so they stretch no all-time series.
+  `listenTotalsOnce`'s held answer is dropped before every story, as the
+  stores are reset.
 - **The whole window** is `src/App.stories.tsx`, over every area map plus
   `appHandlers` — the launch reads, the window and the plugins.
   `mockWindows` only names the window: every call on it is still a command

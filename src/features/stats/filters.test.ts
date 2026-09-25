@@ -7,6 +7,8 @@ import {
   DEFAULT_FILTERS,
   dateInputSeconds,
   dateInputValue,
+  dayRange,
+  earlierYears,
   libraryQuery,
   listenQuery,
   parseFilters,
@@ -83,6 +85,49 @@ describe("rangeFor", () => {
       to: 2,
     });
     expect(rangeFor(filters({ range: "custom" }), NOW)).toBeNull();
+  });
+});
+
+describe("dayRange", () => {
+  it("runs from local midnight to the next", () => {
+    expect(dayRange(2023, 8, 25)).toEqual({
+      from: Math.floor(new Date(2023, 8, 25).getTime() / 1000),
+      to: Math.floor(new Date(2023, 8, 26).getTime() / 1000),
+    });
+  });
+
+  it("steps by the calendar, so a daylight-saving day is its own length", () => {
+    // Late March and late October hold the change in most zones that have
+    // one. It only bites in such a zone, which a UTC runner is not.
+    for (const [month, day] of [
+      [2, 26],
+      [9, 29],
+    ] as const) {
+      const { from, to } = dayRange(2023, month, day);
+      const start = new Date(from * 1000);
+      const end = new Date(to * 1000);
+
+      expect([start.getMonth(), start.getDate(), start.getHours()]).toEqual([month, day, 0]);
+      expect([end.getMonth(), end.getDate(), end.getHours()]).toEqual([month, day + 1, 0]);
+    }
+  });
+});
+
+describe("earlierYears", () => {
+  it("runs from last year back to the first year a play can be dated, newest first", () => {
+    const years = earlierYears(new Date(2026, 8, 25, 14, 0));
+
+    expect(years[0]).toBe(2025);
+    expect(years.at(-1)).toBe(2002);
+    expect(years).toHaveLength(24);
+  });
+
+  it("gives 29 February the leap years only", () => {
+    expect(earlierYears(new Date(2024, 1, 29))).toEqual([2020, 2016, 2012, 2008, 2004]);
+  });
+
+  it("gives 28 February every year, rather than a leap day rolled back", () => {
+    expect(earlierYears(new Date(2025, 1, 28))).toHaveLength(2024 - 2002 + 1);
   });
 });
 
@@ -314,6 +359,23 @@ describe("activeFilters", () => {
 
     expect(activeFilters(both, "listening", []).map((filter) => filter.facet)).toEqual(["owned"]);
     expect(activeFilters(both, "library", []).map((filter) => filter.facet)).toEqual(["genre"]);
+  });
+
+  it("draws owned and loved on On this day, and no range, however one is set", () => {
+    const set = filters({
+      range: "custom",
+      custom: { from: 100, to: 200 },
+      owned: false,
+      loved: true,
+      scope: { kind: "view" },
+      genre: "black metal",
+    });
+
+    expect(activeFilters(set, "onThisDay", []).map((filter) => filter.facet)).toEqual([
+      "owned",
+      "loved",
+    ]);
+    expect(activeFilters(filters({ range: "days7" }), "onThisDay", [])).toEqual([]);
   });
 
   it("clears a facet back to its default", () => {

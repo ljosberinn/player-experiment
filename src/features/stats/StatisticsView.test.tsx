@@ -133,6 +133,19 @@ describe("StatisticsView", () => {
     expect(useLibraryStore.getState().statsPath).toEqual({ tab: "listening", crumbs: [] });
   });
 
+  it("filters On this day by Owned and Loved alone, since the day is its range", async () => {
+    const user = userEvent.setup();
+    useStatsStore.setState({ filters: { ...DEFAULT_FILTERS, range: "days7" } });
+    render(<StatisticsView />);
+
+    await user.click(screen.getByRole("tab", { name: "On this day" }));
+
+    expect(await screen.findByRole("combobox", { name: "Owned" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Loved" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Range" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Clear / })).not.toBeInTheDocument();
+  });
+
   it("re-asks for the tiles when the range changes, and stores the range", async () => {
     render(<StatisticsView />);
     await screen.findByText(shown(7863));

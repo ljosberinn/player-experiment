@@ -3016,16 +3016,20 @@ body:not(:focus-within) .sidebar-row.current {
   width: 100%;
 }
 
-.plays-row {
-  position: absolute;
-  top: 0;
-  left: 0;
+.plays-row,
+.on-this-day-row {
   display: flex;
   align-items: center;
   gap: 13px;
   width: 100%;
   padding: 0 11px;
   box-sizing: border-box;
+}
+
+.plays-row {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .plays-when {
@@ -3057,6 +3061,33 @@ body:not(:focus-within) .sidebar-row.current {
   flex: none;
   color: var(--muted);
   font-size: 12px;
+}
+
+/* On this day's plays: a day of them, which a panel holds in flow without a
+   window over it. Capped at the plays table's height for the rare day that
+   runs to hundreds. */
+.on-this-day-plays {
+  max-height: 352px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--chrome-border);
+  list-style: none;
+}
+
+.on-this-day-row {
+  height: 31px;
+}
+
+/* The heading carries the date, so the column holds a time alone. */
+.on-this-day-row .plays-when {
+  width: 70px;
+}
+
+.on-this-day-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- the Library tab's tables ---------- */

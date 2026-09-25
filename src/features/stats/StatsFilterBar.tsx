@@ -56,36 +56,11 @@ export function StatsFilterBar({ tab }: { tab: StatsTab }) {
 
           {filters.range === "custom" ? <CustomRange /> : null}
 
-          {/* Tri-state, and a checkbox has two: "either" is the default and the
-              most common answer, so it has to be reachable. */}
-          <span className="stats-filter">
-            Owned
-            <Select
-              label="Owned"
-              value={triValue(filters.owned)}
-              options={[
-                { value: "either", label: "Either" },
-                { value: "yes", label: "In the library" },
-                { value: "no", label: "Not in the library" },
-              ]}
-              onChange={(value) => setFilters({ owned: triState(value) })}
-            />
-          </span>
-
-          <span className="stats-filter">
-            Loved
-            <Select
-              label="Loved"
-              value={triValue(filters.loved)}
-              options={[
-                { value: "either", label: "Either" },
-                { value: "yes", label: "Loved" },
-                { value: "no", label: "Not loved" },
-              ]}
-              onChange={(value) => setFilters({ loved: triState(value) })}
-            />
-          </span>
+          <PlayFilters />
         </>
+      ) : tab === "onThisDay" ? (
+        // The day is this tab's range, so Range is not drawn here.
+        <PlayFilters />
       ) : (
         <>
           <ScopeFilter />
@@ -93,6 +68,47 @@ export function StatsFilterBar({ tab }: { tab: StatsTab }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Owned and Loved, which narrow plays on both tabs that draw them. */
+function PlayFilters() {
+  const owned = useStatsStore((s) => s.filters.owned);
+  const loved = useStatsStore((s) => s.filters.loved);
+  const setFilters = useStatsStore((s) => s.setFilters);
+
+  return (
+    <>
+      {/* Tri-state, and a checkbox has two: "either" is the default and the
+          most common answer, so it has to be reachable. */}
+      <span className="stats-filter">
+        Owned
+        <Select
+          label="Owned"
+          value={triValue(owned)}
+          options={[
+            { value: "either", label: "Either" },
+            { value: "yes", label: "In the library" },
+            { value: "no", label: "Not in the library" },
+          ]}
+          onChange={(value) => setFilters({ owned: triState(value) })}
+        />
+      </span>
+
+      <span className="stats-filter">
+        Loved
+        <Select
+          label="Loved"
+          value={triValue(loved)}
+          options={[
+            { value: "either", label: "Either" },
+            { value: "yes", label: "Loved" },
+            { value: "no", label: "Not loved" },
+          ]}
+          onChange={(value) => setFilters({ loved: triState(value) })}
+        />
+      </span>
+    </>
   );
 }
 

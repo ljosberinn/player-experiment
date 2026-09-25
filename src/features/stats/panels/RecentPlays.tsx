@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { type Play, statsRecentPlays } from "../../../ipc";
 import { report } from "../../shell/statusStore";
 import { useListenQuery } from "../useListenQuery";
+import { PlayRowContent, playTime } from "./PlayRowContent";
 import { StatsPanel } from "./StatsPanel";
 
 /** How many plays one fetch brings back. */
@@ -126,12 +127,7 @@ export function RecentPlays() {
                   className="plays-row"
                   style={{ height: `${item.size}px`, transform: `translateY(${item.start}px)` }}
                 >
-                  <span className="plays-when">{when(play.startedAt)}</span>
-                  <span className="plays-title">{play.title}</span>
-                  <span className="plays-artist">{play.artist}</span>
-                  {/* Said rather than implied: a play with no file behind it
-                      is what the shopping list is made of. */}
-                  {play.trackId === null && <span className="plays-unowned">not owned</span>}
+                  <PlayRowContent play={play} when={when(play.startedAt)} />
                 </div>
               );
             })}
@@ -147,8 +143,5 @@ function when(unixSeconds: number | null): string {
     return "Undated";
   }
   const at = new Date(unixSeconds * 1000);
-  return `${at.toLocaleDateString()} ${at.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
+  return `${at.toLocaleDateString()} ${playTime(at)}`;
 }
