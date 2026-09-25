@@ -38,3 +38,12 @@ export const EmptyLibrary: Story = {
   parameters: { ipc: emptyStatsHandlers },
   beforeEach: () => openOn("library"),
 };
+
+export const Listening: Story = {
+  beforeEach: () => openOn("listening"),
+};
+
+export const NoPlays: Story = {
+  parameters: { ipc: emptyStatsHandlers },
+  beforeEach: () => openOn("listening"),
+};

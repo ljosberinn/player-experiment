@@ -9,6 +9,7 @@ import "../src/App.css";
 // After `App.css`, which is the only reason its one rule wins.
 import "./preview.css";
 import type { Preview } from "@storybook/react-vite";
+import { forgetListenTotals } from "../src/features/stats/listenTotals";
 import { resetStores } from "./stores";
 import { type IpcHandlers, installTauri } from "./tauri";
 
@@ -20,6 +21,8 @@ const preview: Preview = {
    */
   beforeEach: ({ parameters }) => {
     resetStores();
+    // Module state like a store: kept, the next story would draw this one's totals.
+    forgetListenTotals();
     return installTauri((parameters.ipc ?? {}) as IpcHandlers);
   },
 
