@@ -168,7 +168,7 @@ describe("the menu bar", () => {
     // The app is still standing and still answering afterwards. A scan that
     // threw would leave the error popover up, which is the failure worth
     // catching here.
-    await expect(browser.$(".statusbar-summary")).toBeExisting();
+    await expect(browser.$(".appbar")).toBeExisting();
     expect(await browser.$("[role='alert']").isExisting()).toBe(false);
   });
 });

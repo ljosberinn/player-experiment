@@ -108,7 +108,7 @@ interface LibraryState {
   /** Total rows matching the current query; drives the scrollbar. */
   total: number;
   /**
-   * Totals for the current view, for the footer.
+   * Totals for the current view, for its summary.
    *
    * Fetched with the count rather than beside it: the two always change
    * together, and `total` is just `stats.tracks` under another name kept for

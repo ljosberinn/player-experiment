@@ -18,10 +18,14 @@ export function AppBar({
   // and lasts a frame or two. Optional rather than required so that is spelled
   // as one thing rather than as `version={null}` at every call site.
   version = null,
+  // After the version, which it offers to replace. A slot so the bar stays
+  // presentational; what decides whether there is an update is the updater's.
+  update,
 }: {
   children?: ReactNode;
   search?: ReactNode;
   version?: string | null;
+  update?: ReactNode;
 }) {
   return (
     <header className="appbar">
@@ -39,6 +43,8 @@ export function AppBar({
       {/* Read from the Rust crate rather than baked in at build time: that
           version is the one the installer and every export report. */}
       {version === null ? null : <span className="appbar-version">v{version}</span>}
+
+      {update}
 
       {search}
     </header>

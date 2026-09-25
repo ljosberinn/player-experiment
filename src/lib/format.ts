@@ -59,7 +59,7 @@ export function spanParts(totalMs: number): readonly [string, string] {
  * "237 songs, 19.2 hours, 2.27 GB" - the footer line from iTunes.
  *
  * `bytes` is optional because the toolbar display has room for two facts and
- * the status bar has room for three, not because a caller may omit what it
+ * the view summary has room for three, not because a caller may omit what it
  * knows.
  */
 export function formatLibrarySummary(count: number, totalMs: number, bytes?: number): string {

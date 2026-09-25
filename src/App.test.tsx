@@ -164,8 +164,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) }));
 
 const statsMock = vi.mocked(libraryStats);
-/** A `LibraryStats` with the count set; the footer's other totals are not what
-    these tests are about. */
+/** A `LibraryStats` with the count set; the summary's other totals are not
+    what these tests are about. */
 function stats(tracks: number) {
   return {
     tracks,
@@ -203,7 +203,7 @@ beforeEach(async () => {
   vi.mocked(listPlaylists).mockResolvedValue([]);
   // Restated rather than left to the factory: `clearAllMocks` clears calls but
   // keeps implementations, so the one test that makes this reject was leaking
-  // a versionless footer into every test declared after it.
+  // a versionless app bar into every test declared after it.
   vi.mocked(getAppInfo).mockResolvedValue({ name: "apex", version: "0.4.2" });
   statsMock.mockResolvedValue(stats(0));
   queryTracksMock.mockResolvedValue([]);
@@ -258,7 +258,7 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the chrome: sidebar, library views, search and status bar", async () => {
+  it("shows the chrome: sidebar, library views and search", async () => {
     render(<App />);
 
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
@@ -267,10 +267,10 @@ describe("App", () => {
     // A sidebar entry since phase 35, not a tab above the table.
     expect(within(sidebar).getByRole("button", { name: "Songs" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search Library" })).toBeInTheDocument();
-    expect(screen.getAllByText("No songs").length).toBeGreaterThan(0);
+    expect(document.querySelector(".statusbar")).toBeNull();
   });
 
-  it("puts real totals in the footer, not a zero", async () => {
+  it("puts real totals over the table, not a zero", async () => {
     statsMock.mockResolvedValue({
       tracks: 5,
       durationMs: 3_000_000,
@@ -281,15 +281,55 @@ describe("App", () => {
 
     render(<App />);
 
-    // The footer promised "N songs, H hours" from phase 3 and always said zero
-    // for the time, because no query produced the sum.
-    expect(await screen.findByText("5 songs, 50 minutes, 214 MB")).toBeInTheDocument();
+    // The summary promised "N songs, H hours" from phase 3 and always said
+    // zero for the time, because no query produced the sum.
+    expect(await screen.findByText("5 songs, 50 minutes, 214 MB")).toHaveClass("view-summary-line");
+  });
+
+  it("says nothing over an empty library, whose empty state already does", async () => {
+    render(<App />);
+
+    await screen.findByText(/No songs yet/);
+    expect(document.querySelector(".view-summary")).toBeNull();
+  });
+
+  it("puts a browse view's count beside its heading", async () => {
+    const release = (key: string, artist: string) => ({
+      id: albumIdentity(key, artist),
+      key,
+      secondary: artist,
+      artistCount: 1,
+      trackCount: 10,
+      durationMs: 0,
+      coverHash: null,
+      year: 1991,
+    });
+    vi.mocked(browseGroups).mockResolvedValue([
+      release("Loveless", "My Bloody Valentine"),
+      release("Souvlaki", "Slowdive"),
+    ]);
+    useLibraryStore.setState({ tab: "albums" });
+
+    render(<App />);
+
+    const heading = await screen.findByRole("heading", { name: "Releases" });
+    expect(heading.parentElement).toHaveTextContent("Releases2 releases");
+  });
+
+  it("puts a drill-in's totals on the breadcrumb's row", async () => {
+    statsMock.mockResolvedValue(stats(3));
+    useLibraryStore.setState({ tab: "genres", browse: { kind: "genres", id: "Shoegaze" } });
+
+    render(<App />);
+
+    const crumb = await screen.findByRole("button", { name: "‹ All Genres" });
+    await waitFor(() => expect(crumb.parentElement).toHaveTextContent(/3 songs/));
   });
 
   it("says what is playing where the totals used to be", async () => {
     // The transport strip used to show the library summary when nothing was
     // playing - two places saying the same thing, one of them where the song
-    // title goes. Phase 35 left the totals to the footer alone.
+    // title goes. Phase 35 left the totals to the view summary alone.
     statsMock.mockResolvedValue({
       tracks: 5,
       durationMs: 3_000_000,
@@ -327,7 +367,7 @@ describe("App", () => {
     });
     await user.type(screen.getByRole("searchbox", { name: "Search Library" }), "maki");
 
-    // A search showing two songs while the footer claims the library's total
+    // A search showing two songs while the summary claims the library's total
     // would be worse than showing nothing.
     expect(await screen.findByText("2 songs, 10 minutes, 9 MB")).toBeInTheDocument();
   });
@@ -347,7 +387,7 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "‹ All Genres" })).toBeInTheDocument();
   });
 
-  it("shows the app version in the footer", async () => {
+  it("shows the app version on the app bar", async () => {
     render(<App />);
 
     // Read from the backend rather than baked in at build time: the Rust
@@ -973,36 +1013,6 @@ describe("App playback", () => {
   });
 });
 
-describe("the zoom stepper", () => {
-  it("steps out and in from the status bar", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await waitFor(() => expect(statsMock).toHaveBeenCalled());
-
-    await user.click(screen.getByRole("button", { name: "Zoom out" }));
-    expect(await screen.findByText("90%")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Zoom in" }));
-    expect(await screen.findByText("100%")).toBeInTheDocument();
-  });
-
-  it("stops at the ends rather than letting the value run past them", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await waitFor(() => expect(statsMock).toHaveBeenCalled());
-
-    const out = screen.getByRole("button", { name: "Zoom out" });
-    for (let i = 0; i < 3; i++) {
-      await user.click(out);
-    }
-
-    // 1.0 down to the 0.8 floor is two steps; a third must not move it, and
-    // the button says so rather than silently doing nothing.
-    expect(await screen.findByText("80%")).toBeInTheDocument();
-    expect(out).toBeDisabled();
-  });
-});
-
 describe("removing missing songs", () => {
   it("offers nothing while every file is where it should be", async () => {
     render(<App />);
@@ -1322,7 +1332,7 @@ describe("the update notice", () => {
     useUpdaterStore.setState({ status: "downloading", version: "0.5.0" });
 
     // A download the user did not ask for and cannot act on is not news; the
-    // footer keeps showing the version it is running.
+    // app bar keeps showing the version it is running.
     expect(await screen.findByText("v0.4.2")).toBeInTheDocument();
     expect(screen.queryByText(/0\.5\.0/)).not.toBeInTheDocument();
   });

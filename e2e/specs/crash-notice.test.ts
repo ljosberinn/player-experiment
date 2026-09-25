@@ -33,7 +33,7 @@ async function waitForTheApp(): Promise<void> {
     timeout: 30_000,
     interval: 250,
   });
-  await browser.$(".statusbar-summary").waitForExist({ timeout: 30_000 });
+  await browser.$(".appbar").waitForExist({ timeout: 30_000 });
 }
 
 describe("the notice that reports a crash", () => {

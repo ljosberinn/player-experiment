@@ -152,9 +152,7 @@ which `toBeDisabled` does not read.
   and forgotten in `SHEETS` leaves every absence guard at once, which is why
   the component library is one file rather than one per component. Since phase 108 it also
   iterates both grounds: every contrast pair is asserted twice, and the two
-  token blocks must declare identical name sets. Rules that are meaningless
-  apart carry a paired assertion — a `.statusbar-*` rule setting a column must
-  also set a row.
+  token blocks must declare identical name sets.
   - **It composites, and that is the point.** Comparing one token to another
     misses every surface that is not a token, and the chrome is a veil: what
     sits behind the transport's rails is `--strip-veil` over `--surface`. Three

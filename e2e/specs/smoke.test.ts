@@ -54,12 +54,18 @@ describe("application shell", () => {
     // This text only renders after count_tracks resolves, so it asserts the
     // whole round trip: SQLite opened, migrations ran, IPC replied. A failure
     // in any of those would leave the app on its loading state instead.
-    // The summary specifically, not the whole bar: the status bar also carries
-    // the app version, and asserting on the bar made this fail the moment that
-    // arrived - "No songsv0.1.0" - for a reason that had nothing to do with
-    // whether the database answered.
-    const status = await browser.$(".statusbar-summary");
-    await expect(status).toHaveText(/songs?$|^No songs$/);
+    // An empty library draws the empty state and no summary; one with songs
+    // draws the summary. Either is an answer from the database.
+    const answered = async (selector: string, text: RegExp) => {
+      const element = browser.$(selector);
+      return (await element.isExisting()) && text.test(await element.getText());
+    };
+    await browser.waitUntil(
+      async () =>
+        (await answered(".empty-state", /^No songs yet/)) ||
+        (await answered(".view-summary", /songs?(,|$)/)),
+      { timeout: 30_000, timeoutMsg: "neither the empty state nor a summary arrived" },
+    );
   });
 
   it("switches to a browse view, which was dead chrome until phase 19", async () => {

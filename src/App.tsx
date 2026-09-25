@@ -49,14 +49,12 @@ import { useNoticeExpiry } from "./features/shell/useNoticeExpiry";
 import { useWindowGeometry } from "./features/shell/useWindowGeometry";
 import { useWindowTitle } from "./features/shell/useWindowTitle";
 import { useZoomShortcuts } from "./features/shell/useZoomShortcuts";
-import { viewSummary } from "./features/shell/viewSummary";
-import { formatZoom, MAX_ZOOM, MIN_ZOOM } from "./features/shell/zoom";
-import { useZoomStore } from "./features/shell/zoomStore";
+import { ViewSummaryText } from "./features/shell/ViewSummaryText";
 import { SmartPlaylistEditor } from "./features/smart/SmartPlaylistEditor";
 import { StatisticsView } from "./features/stats/StatisticsView";
 import { ReleaseLookup } from "./features/tagsource/ReleaseLookup";
 import { ReviewQueue } from "./features/tagsource/ReviewQueue";
-import { useUpdaterStore } from "./features/updater/store";
+import { UpdateButton } from "./features/updater/UpdateButton";
 import { useUpdater } from "./features/updater/useUpdater";
 import { type AppInfo, getAppInfo, stagePickedCover } from "./ipc";
 
@@ -67,8 +65,6 @@ export function App() {
   /** What the error popover points at: the box that says what is playing. */
   const statusRef = useRef<HTMLDivElement>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
-  const zoomFactor = useZoomStore((s) => s.factor);
-  const stepZoom = useZoomStore((s) => s.step);
   const loadDynamicBg = useDynamicBackgroundStore((s) => s.load);
   // Launch lifecycle, and nothing else: who is connected is `AppMenus`'
   // business. Both are actions, so they cost no renders where they are.
@@ -76,9 +72,6 @@ export function App() {
   const watchLastfm = useLastfmStore((s) => s.watch);
   const loadLoved = useLovedStore((s) => s.load);
   const watchLoved = useLovedStore((s) => s.watch);
-  const updateStatus = useUpdaterStore((s) => s.status);
-  const updateVersion = useUpdaterStore((s) => s.version);
-  const installUpdate = useUpdaterStore((s) => s.install);
 
   const total = useLibraryStore((s) => s.total);
   const stats = useLibraryStore((s) => s.stats);
@@ -86,9 +79,6 @@ export function App() {
   const tab = useLibraryStore((s) => s.tab);
   const showTab = useLibraryStore((s) => s.showTab);
   const browse = useLibraryStore((s) => s.browse);
-  // Only for the footer's count of how many albums, artists or genres a browse
-  // view is listing; the view itself reads them for rendering.
-  const groups = useLibraryStore((s) => s.groups);
   const loadColumns = useLibraryStore((s) => s.loadColumns);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
@@ -236,7 +226,7 @@ export function App() {
   useEffect(() => {
     // Read once from the backend rather than baked in at build time: the Rust
     // crate's version is the one the installer and every export report, so
-    // asking it is what keeps the footer honest if they ever disagree.
+    // asking it is what keeps the app bar honest if they ever disagree.
     void getAppInfo()
       .then(setAppInfo)
       .catch(() => {
@@ -298,7 +288,7 @@ export function App() {
       {/* The mark, the menus, the version and the search field. The OS frame
           above it is the window's own. `SearchBox` subscribes to its own
           input: read from here, every keystroke re-rendered the whole app. */}
-      <AppBar version={appInfo?.version ?? null} search={<SearchBox />}>
+      <AppBar version={appInfo?.version ?? null} update={<UpdateButton />} search={<SearchBox />}>
         {/* Its own component because the Edit menu serves the selection:
             built here, a click re-rendered the whole app for a menu nobody
             had open. */}
@@ -346,11 +336,14 @@ export function App() {
 
           {/* Songs has no heading, deliberately: it is the view with 150k rows
               in it, and it is the one that can least afford to spend a third of
-              the fold on the word "Songs". What the heading carried is in the
-              footer instead, for every view. */}
+              the fold on the word "Songs". Its summary gets a line of its own
+              instead, below. */}
           {tab !== "songs" && browse === null ? (
             <div className="view-heading">
-              <h1>{VIEW_TITLES[tab]}</h1>
+              <div className="view-heading-title">
+                <h1>{VIEW_TITLES[tab]}</h1>
+                <ViewSummaryText />
+              </div>
               <span className="view-heading-rule" aria-hidden="true" />
             </div>
           ) : null}
@@ -362,12 +355,19 @@ export function App() {
           ) : null}
 
           {browse !== null ? (
-            // The way back out of a drill-in. A breadcrumb rather than the tab
-            // itself: clicking Releases again while inside a release should be a
-            // no-op, not a hidden back button.
-            <button type="button" className="browse-back" onClick={() => void closeGroup()}>
-              ‹ All {VIEW_TITLES[tab]}
-            </button>
+            // The summary shares the breadcrumb's row, so a drill-in spends no
+            // height on it.
+            <div className="browse-back-row">
+              {/* The way back out of a drill-in. A breadcrumb rather than the
+                  tab itself: clicking Releases again while inside a release
+                  should be a no-op, not a hidden back button. */}
+              <button type="button" className="browse-back" onClick={() => void closeGroup()}>
+                ‹ All {VIEW_TITLES[tab]}
+              </button>
+              <ViewSummaryText />
+            </div>
+          ) : tab === "songs" ? (
+            <ViewSummaryText className="view-summary-line" />
           ) : null}
 
           {tab === "stats" ? (
@@ -447,84 +447,8 @@ export function App() {
           about where it belongs in the reading order, not on screen. */}
       <CrashNotice />
 
-      <footer className="statusbar">
-        {/* First in the DOM as well as leftmost on screen. Grid auto-placement
-            only moves forward, so an item explicitly assigned to column 1
-            after one sitting in column 2 cannot go back and starts a new row -
-            which put the version and this control on a second line. */}
-        {/* Bottom-left, in the strip's quietest corner: a control touched once
-            and then left alone. Two buttons rather than a slider - the steps
-            are 0.1 apart over a narrow range, which is a worse fit for dragging
-            than for clicking, and the two buttons are the same gesture as the
-            Ctrl+plus / Ctrl+minus that already work. */}
-        <span className="statusbar-zoom">
-          <button
-            type="button"
-            aria-label="Zoom out"
-            disabled={zoomFactor <= MIN_ZOOM}
-            onClick={() => void stepZoom(-1)}
-          >
-            −
-          </button>
-          {/* aria-live so a screen reader hears the new value; the buttons
-              themselves keep their own labels rather than announcing it. */}
-          <span className="statusbar-zoom-value" aria-live="polite">
-            {formatZoom(zoomFactor)}
-          </span>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            disabled={zoomFactor >= MAX_ZOOM}
-            onClick={() => void stepZoom(1)}
-          >
-            +
-          </button>
-        </span>
-
-        {/* What the Songs heading used to carry, for every view. Scoped to
-            what is on screen rather than to the whole library: inside a
-            playlist, a search or an album, a line under the table that counted
-            something else would be answering a question nobody asked. */}
-        <span className="statusbar-summary">
-          {viewSummary({
-            tab,
-            drilledIn: browse !== null,
-            groupCount: groups.length,
-            trackCount: stats.tracks,
-            durationMs: stats.durationMs,
-            bytes: stats.bytes,
-          })}
-        </span>
-
-        {/* Only `ready` says anything. Checking and downloading happen quietly,
-            and a failed check usually means the machine is offline, which is
-            not news.
-
-            It is also the only way an update is ever applied: installing ends
-            the process and starts the installer, so a player that did it on a
-            timer would stop mid-song. Pressing this is the consent.
-
-            The version itself moved to the app bar in phase 34 and stayed
-            there through 119, so this no longer replaces it - the corner is
-            empty until there is an update, which is the state it is in on all
-            but a handful of launches. */}
-        {updateStatus === "ready" || updateStatus === "installing" ? (
-          <button
-            type="button"
-            className="statusbar-update"
-            disabled={updateStatus === "installing"}
-            onClick={() => void installUpdate()}
-          >
-            {updateStatus === "installing"
-              ? "Installing…"
-              : `${updateVersion} ready — restart to install`}
-          </button>
-        ) : null}
-      </footer>
-
-      {/* Last, under the status bar, which stays against the content it
-          summarises. Laid out like Spotify's: what is playing, the controls
-          over the playhead, the volume.
+      {/* Last, under the content. Laid out like Spotify's: what is playing,
+          the controls over the playhead, the volume.
 
           Each of these subscribes to its own store values rather than taking
           them as props. They are the things that change on a schedule of their

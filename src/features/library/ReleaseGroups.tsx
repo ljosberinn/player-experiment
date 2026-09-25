@@ -282,8 +282,8 @@ export function ReleaseGroups({
                 </tbody>
                 <tfoot>
                   {/* Per group, which is what keeps it from restating the
-                      status bar: at one group the two coincide by arithmetic
-                      rather than by saying the same thing. */}
+                      view summary: at one group the two coincide by
+                      arithmetic rather than by saying the same thing. */}
                   <ReleaseTotal
                     columns={columns}
                     trackCount={group.trackCount}

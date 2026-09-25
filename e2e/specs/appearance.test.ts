@@ -465,7 +465,7 @@ describe("appearance, in the engine that actually lays it out", () => {
               };
             }),
           [
-            ".statusbar-summary",
+            ".view-summary",
             ".now-playing-title",
             ".now-playing-subtitle",
             ".scrubber-time",
@@ -586,13 +586,14 @@ describe("appearance, in the engine that actually lays it out", () => {
   });
 
   it("stacks the bands of chrome in order, at the heights the stylesheet states", async () => {
-    // A 3px accent strip, a 40px app bar, the body, a 30px footer, and the
-    // 100px player bar at the very bottom since 142. Every one of these is
+    // A 3px accent strip, a 40px app bar, the body, and the 100px player bar
+    // at the very bottom since 142. The status bar between the last two went
+    // in 152. Every one of these is
     // stated in the stylesheet, so a value that drifted would be a silent
     // visual regression - the kind only the screenshot catches, and only if
     // somebody looks at it.
     const measured = await browser.execute(() => ({
-      bands: [".appbar", ".body", ".statusbar", ".player-bar"].map((selector) => {
+      bands: [".appbar", ".body", ".player-bar"].map((selector) => {
         const box = document.querySelector(selector)?.getBoundingClientRect();
         return {
           selector,
@@ -606,7 +607,7 @@ describe("appearance, in the engine that actually lays it out", () => {
     const heights = Object.fromEntries(
       measured.bands.map((band) => [band.selector, band.bottom - band.top]),
     );
-    expect(heights).toMatchObject({ ".appbar": 40, ".statusbar": 30, ".player-bar": 100 });
+    expect(heights).toMatchObject({ ".appbar": 40, ".player-bar": 100 });
 
     // Each band starts where the one above it ends, and nothing is below the
     // player bar.
@@ -744,13 +745,13 @@ describe("appearance, in the engine that actually lays it out", () => {
     // family says Archivo whether or not the woff2 arrived, so the useful
     // question is what actually loaded: a missing file falls back to the
     // system sans silently, which looks fine and is wrong.
-    const family = await computed(".statusbar-zoom-value", "font-family");
+    const family = await computed(".appbar-version", "font-family");
 
     expect(family).toContain("Archivo");
 
     // Registered faces rather than loaded ones: a weight the visible screen
     // never sets stays unloaded, so `check()` would only ever prove the one
-    // the status bar happens to draw. The sheet asks for three.
+    // the app bar happens to draw. The sheet asks for three.
     const faces = await browser.execute(() => ({
       weights: [...document.fonts]
         .filter((face) => face.family === "Archivo")
