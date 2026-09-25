@@ -295,9 +295,10 @@ export function App() {
           no artwork playing or the preference is off. */}
       <DynamicBackground />
 
-      {/* The mark, the menus, the search field and the version. The OS frame
-          above it is the window's own. */}
-      <AppBar version={appInfo?.version ?? null}>
+      {/* The mark, the menus, the version and the search field. The OS frame
+          above it is the window's own. `SearchBox` subscribes to its own
+          input: read from here, every keystroke re-rendered the whole app. */}
+      <AppBar version={appInfo?.version ?? null} search={<SearchBox />}>
         {/* Its own component because the Edit menu serves the selection:
             built here, a click re-rendered the whole app for a menu nobody
             had open. */}
@@ -306,9 +307,6 @@ export function App() {
           onSettings={(category = "appearance") => setSettings(category)}
           onExport={(choice) => void runExport(choice)}
         />
-        {/* Subscribes to its own input: read from here, every keystroke
-            re-rendered the whole app. */}
-        <SearchBox />
       </AppBar>
 
       <div className="body">

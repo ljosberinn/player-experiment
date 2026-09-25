@@ -56,6 +56,18 @@ describe("AppBar", () => {
     expect(screen.getByText("v1.2.3")).toBeInTheDocument();
   });
 
+  it("puts the version after the menus and before the search field", () => {
+    const { container } = render(
+      <AppBar version="1.2.3" search={<span>search</span>}>
+        <span>menus</span>
+      </AppBar>,
+    );
+
+    expect(
+      Array.from(container.querySelector(".appbar")?.children ?? [], (child) => child.textContent),
+    ).toEqual(["APEX", "menus", "v1.2.3", "search"]);
+  });
+
   it("says nothing about a version it has not been given", () => {
     // `get_app_info` has not answered yet, which is a real state on every
     // launch. A bare "v" in the corner would be worse than an empty one.

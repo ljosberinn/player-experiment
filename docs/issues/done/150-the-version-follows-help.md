@@ -1,7 +1,8 @@
 # 150 — The version follows Help
 
 `appbar-version` sits right of the search field. Move it to directly right of
-the Help menu; the search field keeps the free space after it.
+the Help menu; the search field keeps the free space after it. `AppBar` takes
+the field as a `search` slot so the version can sit between it and the menus.
 
 ## Verification
 

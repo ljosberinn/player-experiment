@@ -10,7 +10,7 @@
 
 /* ---------- app bar ---------- */
 
-/* 40px: the mark, the menus, the search field and the version. The transport
+/* 40px: the mark, the menus, the version and the search field. The transport
    and the now-playing display rode here until phase 35, and the search field
    came back in 142 when the player moved to the bottom of the window.
 
@@ -37,7 +37,7 @@
   height: 40px;
   /* Symmetric since phase 119. The right edge used to be the close button,
      which ran flush into the corner of the window as a caption button must;
-     the version behind it needs the same inset the mark has. */
+     the search field there now needs the same inset the mark has. */
   padding: 0 15px;
   background: var(--chrome-veil);
   backdrop-filter: blur(18px);
@@ -87,11 +87,7 @@
   letter-spacing: 0.08em;
 }
 
-/* Alone at the far end since phase 119 took the caption buttons, so the auto
-   margin is on it rather than on a wrapper: two items sharing the free space
-   was the only reason the wrapper existed. */
 .appbar-version {
-  margin-left: auto;
   color: var(--faint);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
@@ -512,14 +508,10 @@ button.now-playing-subtitle:hover {
   align-items: center;
 }
 
-/* The search field takes the free space instead, so the version follows it
-   rather than splitting the gap with it. */
+/* The free space goes before the field, so the version beside Help arriving
+   late moves neither it nor the menus. */
 .appbar > .search-box {
   margin-left: auto;
-}
-
-.appbar > .search-box + .appbar-version {
-  margin-left: 0;
 }
 
 .search {
