@@ -40,7 +40,8 @@ export function ErrorPopover({
         <Popover.Positioner
           className="error-positioner"
           anchor={anchor}
-          side="bottom"
+          // The status display is in the bottom bar.
+          side="top"
           align="center"
           sideOffset={8}
         >

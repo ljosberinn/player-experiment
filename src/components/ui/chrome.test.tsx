@@ -8,6 +8,7 @@ import type { BuiltIn, Playlist, Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { AppBar } from "./AppBar";
 import { LibraryNav } from "./LibraryNav";
+import { LoveButton } from "./LoveButton";
 import { NowPlaying } from "./NowPlaying";
 import { RepeatButton } from "./RepeatButton";
 import { Scrubber } from "./Scrubber";
@@ -213,6 +214,37 @@ describe("RepeatButton", () => {
   });
 });
 
+describe("LoveButton", () => {
+  it("says whether the song is loved, rather than changing its name", async () => {
+    const onToggle = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(<LoveButton onToggle={onToggle} />);
+
+    const button = screen.getByRole("button", { name: "Love" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(button);
+    expect(onToggle).toHaveBeenCalledOnce();
+
+    rerender(<LoveButton loved onToggle={onToggle} />);
+    expect(screen.getByRole("button", { name: "Love" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("is greyed with its reason when the song cannot be loved", () => {
+    render(<LoveButton hint="No artist and title" onToggle={() => {}} />);
+
+    const button = screen.getByRole("button", { name: "Love" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "No artist and title");
+  });
+
+  it("is hidden rather than absent with nothing playing", () => {
+    const { container } = render(<LoveButton hidden />);
+
+    expect(container.querySelector(".love-button")).not.toBeVisible();
+  });
+});
+
 describe("Scrubber", () => {
   it("reads elapsed on the left and the track's length on the right", () => {
     // The right-hand figure is the total, not the time remaining. The design
@@ -252,34 +284,53 @@ describe("Scrubber", () => {
 
 describe("NowPlaying", () => {
   it("is hidden rather than absent when nothing is playing", () => {
-    // Hidden, not removed. It is the widest thing on the strip, and a box that
-    // arrived with the first song would shove the volume and the search field
-    // sideways at the moment of pressing play.
+    // Hidden, not removed, so the bar is the same shape before and after the
+    // first song.
     render(<NowPlaying track={null} />);
 
     expect(screen.getByText("Nothing playing")).not.toBeVisible();
     expect(screen.getByTestId("now-playing")).toBeInTheDocument();
   });
 
-  it("reveals what is playing on a double-click, and only when there is one", async () => {
+  it("reveals what is playing from the cover or the title, and only when there is one", async () => {
     const onReveal = vi.fn();
     const user = userEvent.setup();
-    const { rerender } = render(<NowPlaying track={null} onReveal={onReveal} />);
+    const { container, rerender } = render(<NowPlaying track={null} onReveal={onReveal} />);
 
-    await user.dblClick(screen.getByTestId("now-playing"));
+    await user.click(screen.getByText("Nothing playing"));
     expect(onReveal).not.toHaveBeenCalled();
 
     rerender(<NowPlaying track={track()} onReveal={onReveal} />);
-    await user.dblClick(screen.getByTestId("now-playing"));
+    await user.click(screen.getByRole("button", { name: "Maki" }));
+    await user.click(container.querySelector(".now-playing-cover-button") as HTMLElement);
 
-    expect(onReveal).toHaveBeenCalledOnce();
+    expect(onReveal).toHaveBeenCalledTimes(2);
   });
 
-  it("shows title, artist and album for the current track", () => {
+  it("opens the artist from the artist line", async () => {
+    const onReveal = vi.fn();
+    const onShowArtist = vi.fn();
+    const user = userEvent.setup();
+    render(<NowPlaying track={track()} onReveal={onReveal} onShowArtist={onShowArtist} />);
+
+    await user.click(screen.getByRole("button", { name: "Guitar" }));
+
+    expect(onShowArtist).toHaveBeenCalledOnce();
+    expect(onReveal).not.toHaveBeenCalled();
+  });
+
+  it("shows the title and the artist, not the album", () => {
     render(<NowPlaying track={track()} />);
 
     expect(screen.getByText("Maki")).toBeInTheDocument();
-    expect(screen.getByText("Guitar — Tokyo")).toBeInTheDocument();
+    expect(screen.getByText("Guitar")).toBeInTheDocument();
+    expect(screen.queryByText(/Tokyo/)).toBeNull();
+  });
+
+  it("links no artist for a track that has none", () => {
+    render(<NowPlaying track={track({ artist: null })} />);
+
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Maki"]);
   });
 
   it("falls back to the file name when a track has no title", () => {

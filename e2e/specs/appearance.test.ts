@@ -585,67 +585,86 @@ describe("appearance, in the engine that actually lays it out", () => {
     expect(contrast(glyph, fill)).toBeGreaterThan(4.5);
   });
 
-  it("stacks the three bands of chrome at the heights the design draws", async () => {
-    // The shell phase 35 built, measured rather than assumed: a 3px accent
-    // strip, a 40px app bar, an 86px transport strip, and a 30px footer at
-    // the other end. Every one of these is stated in the stylesheet, so a
-    // value that drifted would be a silent visual regression - the kind only
-    // the screenshot catches, and only if somebody looks at it.
-    const bands = await browser.execute(() =>
-      [".appbar", ".transport-strip", ".statusbar"].map((selector) => {
-        const element = document.querySelector(selector);
+  it("stacks the bands of chrome in order, at the heights the stylesheet states", async () => {
+    // A 3px accent strip, a 40px app bar, the body, a 30px footer, and the
+    // 100px player bar at the very bottom since 142. Every one of these is
+    // stated in the stylesheet, so a value that drifted would be a silent
+    // visual regression - the kind only the screenshot catches, and only if
+    // somebody looks at it.
+    const measured = await browser.execute(() => ({
+      bands: [".appbar", ".body", ".statusbar", ".player-bar"].map((selector) => {
+        const box = document.querySelector(selector)?.getBoundingClientRect();
         return {
           selector,
-          height: element === null ? -1 : Math.round(element.getBoundingClientRect().height),
+          top: box === undefined ? -1 : Math.round(box.top),
+          bottom: box === undefined ? -1 : Math.round(box.bottom),
         };
       }),
-    );
+      height: window.innerHeight,
+    }));
 
-    expect(bands).toEqual([
-      { selector: ".appbar", height: 40 },
-      { selector: ".transport-strip", height: 86 },
-      { selector: ".statusbar", height: 30 },
-    ]);
+    const heights = Object.fromEntries(
+      measured.bands.map((band) => [band.selector, band.bottom - band.top]),
+    );
+    expect(heights).toMatchObject({ ".appbar": 40, ".statusbar": 30, ".player-bar": 100 });
+
+    // Each band starts where the one above it ends, and nothing is below the
+    // player bar.
+    const gaps = measured.bands
+      .slice(1)
+      .map((band, index) => ({ band, above: measured.bands[index] }))
+      .filter(({ band, above }) => above !== undefined && Math.abs(band.top - above.bottom) > 1)
+      .map(({ band, above }) => `${band.selector} starts at ${band.top}, not ${above?.bottom}`);
+    expect(gaps).toEqual([]);
+    expect(Math.abs((measured.bands.at(-1)?.bottom ?? 0) - measured.height)).toBeLessThanOrEqual(1);
   });
 
-  it("keeps the whole transport strip on one row, inside the window", async () => {
-    // The same fault the app bar had, in the row that inherited its
-    // passengers: the strip carries six controls including a 374px playhead
-    // and a 220px search field, and a window narrow enough would wrap them.
+  it("keeps the player bar's columns on one row, with Play over the middle", async () => {
+    // Three columns, the outer two equal, so the centre column - and the play
+    // button over the rail in it - stays centred in the window whatever the
+    // title on the left runs to.
     const layout = await browser.execute(() => {
-      const strip = document.querySelector(".transport-strip");
-      if (strip === null) {
+      const bar = document.querySelector(".player-bar");
+      const play = document.querySelector(".transport-play")?.getBoundingClientRect();
+      const rail = document.querySelector(".scrubber-rail")?.getBoundingClientRect();
+      if (bar === null || play === undefined || rail === undefined) {
         return null;
       }
-      const children = Array.from(strip.children).map((child) => {
+      const columns = Array.from(bar.children).map((child) => {
         const box = child.getBoundingClientRect();
         return {
-          what: child.className.toString() || child.tagName,
-          // Centres, for the same reason the app bar above measures them:
-          // this row holds a 64px pill beside a 15px playhead, so their tops
-          // differ by twenty-four pixels while they sit in the same row.
+          what: child.className.toString(),
+          // Centres rather than tops: the centre column is two rows tall and
+          // the other two are one.
           middle: Math.round(box.top + box.height / 2),
           right: Math.round(box.right),
         };
       });
-      return { children, width: window.innerWidth };
+      return {
+        columns,
+        width: window.innerWidth,
+        play: play.left + play.width / 2,
+        rail: rail.left + rail.width / 2,
+      };
     });
 
     expect(layout).not.toBe(null);
-    const { children, width } = layout as NonNullable<typeof layout>;
-    expect(children.length).toBeGreaterThan(4);
+    const { columns, width, play, rail } = layout as NonNullable<typeof layout>;
+    expect(columns.length).toBe(3);
 
-    const middle = Math.min(...children.map((child) => child.middle));
+    const middle = Math.min(...columns.map((column) => column.middle));
     const offenders = [
-      ...children
-        .filter((child) => child.middle > middle + 12)
-        .map((child) => `${child.what} sits ${child.middle - middle}px below the row`),
-      ...children
-        .filter((child) => child.right > width + 1)
-        .map((child) => `${child.what} runs ${child.right - width}px past the window`),
+      ...columns
+        .filter((column) => column.middle > middle + 12)
+        .map((column) => `${column.what} sits ${column.middle - middle}px below the row`),
+      ...columns
+        .filter((column) => column.right > width + 1)
+        .map((column) => `${column.what} runs ${column.right - width}px past the window`),
     ];
 
     expect(offenders).toEqual([]);
+    expect(Math.abs(play - width / 2)).toBeLessThanOrEqual(2);
+    expect(Math.abs(play - rail)).toBeLessThanOrEqual(2);
   });
 
   it("draws the accent strip along the top of the window", async () => {

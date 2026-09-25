@@ -5,7 +5,7 @@ import { Icon } from "../icons/Icon";
  *
  * A rounded capsule holding three round buttons, the middle one filled with the
  * accent and larger than its neighbours - the design's most prominent control,
- * and since phase 35 the leftmost thing on the transport strip.
+ * and since 142 the centre of the player bar.
  *
  * The glyphs come from the icon set, filled. They were drawn in CSS - three
  * rectangles and three triangles - which was right against the alternative at

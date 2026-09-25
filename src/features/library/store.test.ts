@@ -962,6 +962,33 @@ describe("revealing the playing track in the library", () => {
       browse: { kind: "artists", id: "Dio" },
     });
   });
+
+  it("opens the artist a track is filed under, album or not", async () => {
+    await useLibraryStore
+      .getState()
+      .showTrackArtist(tagged({ album_artist: "Various Artists", artist: "Alice" }));
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      tab: "artists",
+      browse: { kind: "artists", id: "Various Artists" },
+      browseLabel: "Various Artists",
+    });
+  });
+
+  it("falls back to the track's artist when there is no album artist", async () => {
+    await useLibraryStore.getState().showTrackArtist(tagged({ album_artist: "", artist: "Alice" }));
+
+    expect(useLibraryStore.getState().browse).toEqual({ kind: "artists", id: "Alice" });
+  });
+
+  it("stays put for a track that names no artist", async () => {
+    await useLibraryStore.getState().showTrackGroup(tagged());
+    const before = useLibraryStore.getState().browse;
+
+    await useLibraryStore.getState().showTrackArtist(tagged({ album_artist: null, artist: null }));
+
+    expect(useLibraryStore.getState().browse).toEqual(before);
+  });
 });
 
 describe("leaving a drill-in that has emptied", () => {

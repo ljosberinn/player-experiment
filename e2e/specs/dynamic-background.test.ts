@@ -297,7 +297,7 @@ describe("the background that follows the music", () => {
       timeout: 30_000,
       interval: 500,
     });
-    await browser.$(".transport-strip").waitForExist({ timeout: 30_000 });
+    await browser.$(".player-bar").waitForExist({ timeout: 30_000 });
 
     // The preference is read at startup, so a reload is where a default of
     // "on" would quietly win over a stored "off".

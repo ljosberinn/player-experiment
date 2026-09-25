@@ -335,6 +335,11 @@ interface LibraryState {
    * the order that avoids the no-op is the order that queries twice.
    */
   showTrackGroup: (track: Track) => Promise<void>;
+  /**
+   * Opens the artist a track is filed under - its album artist, else its
+   * artist - even where it has an album. Does nothing if it names neither.
+   */
+  showTrackArtist: (track: Track) => Promise<void>;
   /** Returns from a drill-in to the group list. */
   closeGroup: () => Promise<void>;
   /** Moves the view to `entry` and stores `history` with it. Internal. */
@@ -855,6 +860,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   showTrackGroup: async (track) => {
     await pushEntry(entryForTrack(track));
+  },
+
+  showTrackArtist: async (track) => {
+    const artist = tagged(track.album_artist) ?? tagged(track.artist);
+    if (artist === null) {
+      return;
+    }
+    await pushEntry({
+      tab: "artists",
+      browse: { kind: "artists", id: artist },
+      browseLabel: artist,
+      playlistId: null,
+      stats: null,
+    });
   },
 
   closeGroup: async () => {
