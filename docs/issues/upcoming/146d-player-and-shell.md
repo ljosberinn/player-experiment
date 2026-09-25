@@ -1,6 +1,6 @@
 # 146d — Stories for the player bar and the shell
 
-Needs [146a](146a-story-harness.md). Titles go under `Features/Player` and
+Needs [146a](../done/146a-story-harness.md). Titles go under `Features/Player` and
 `Features/Shell`.
 
 State is seeded through the stores and IPC is answered by `parameters.ipc`, as

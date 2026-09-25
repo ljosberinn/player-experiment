@@ -205,6 +205,29 @@ it rather than sitting broken until someone opens it.
 see [106](../issues/done/106-storybook.md) for why `vite.config.ts` needs no
 `viteFinal` and what `preview.css` has to take back from Storybook's own styles.
 
+### Stories of components that talk to Tauri
+
+The preview `beforeEach` stands in for the runtime, from `.storybook/`, which
+Vitest never runs and coverage never counts:
+
+- **`parameters.ipc`** answers `invoke`: a map keyed on the command string
+  (`"last_crash"`, `"plugin:dialog|open"`), not the `src/ipc` function name.
+  Storybook merges it with defaults in `preview.ts`, so a story names only
+  what it adds. An unanswered command rejects with `no story handler for
+  <cmd>` and warns the same, so a missing entry shows as the component's error
+  path rather than a spinner. Area maps live in `.storybook/handlers.ts`.
+- **Covers** resolve to inline SVGs from `.storybook/fixtures.ts`, keyed on
+  `cover_hash`; `stagedCoverUrl` gets one that matches none of them.
+- **Stores** are reset to their initial state before every story, from the
+  list in `.storybook/stores.ts` — a new store goes there. A story seeds state
+  in its own `beforeEach` with `useXStore.setState`.
+- **Fixtures** — `track()`, `playlist()`, `LIBRARY` and friends — are in
+  `.storybook/fixtures.ts`. The per-file `track()` helpers in tests stay put.
+- **Events** go out from `play` through `emitEvent` in `.storybook/tauri.ts`,
+  not `emit`: Storybook starts `play` before the story's effects run, so a
+  bare `emit` reaches no listener. `emitEvent` waits for one and fails the
+  story if none subscribes.
+
 ## The e2e harness
 
 `@wdio/tauri-service` on its default **embedded** provider: the WebDriver server

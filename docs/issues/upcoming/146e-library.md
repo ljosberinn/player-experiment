@@ -1,6 +1,6 @@
 # 146e — Stories for the library views and sidebar
 
-Needs [146a](146a-story-harness.md). Titles go under `Features/Library` and
+Needs [146a](../done/146a-story-harness.md). Titles go under `Features/Library` and
 `Features/Playlists`.
 
 `SongRow`, `ColumnHeader` and `RowStatusCell` get no stories of their own

@@ -39,11 +39,13 @@ down with `clearMocks()` in the function it returns:
 - Assign `window.__TAURI_INTERNALS__.convertFileSrc` directly after `mockIPC`:
   - `(hash, "cover")` returns a fixture cover.
   - `("staged", "cover")` returns a cover that is visibly different.
+  - Each ends in `#`, so the `?v=` that `stagedCoverUrl` appends lands in the
+    fragment rather than the SVG.
   - `mockConvertFileSrc` does not work here, because its `asset.localhost` URLs
     404 in a browser.
-- A story emits events with `emit` from `@tauri-apps/api/event` in its `play`
-  function. Listeners subscribe in effects, so they are ready before `play`
-  runs.
+- A story emits events from `play` with `emitEvent` from `.storybook/tauri.ts`.
+  `play` starts before the story's effects run, so it waits until the event
+  has a listener, and fails the story if none subscribes.
 
 ## Stores
 

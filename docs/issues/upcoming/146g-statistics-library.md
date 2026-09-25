@@ -1,6 +1,6 @@
 # 146g — Stories for the Library tab of Statistics
 
-Needs [146a](146a-story-harness.md). Titles go under `Features/Statistics`.
+Needs [146a](../done/146a-story-harness.md). Titles go under `Features/Statistics`.
 146h does the Listening tab.
 
 Each panel fetches its own data on mount through `useLibraryQuery` and
