@@ -26,13 +26,16 @@ moves.
    hit names **one** library artist.
 4. Link every play in an accepted group whose (album, title) hits. When a key
    has several tracks, `resolve`'s tiebreak picks one: present first, then the
-   older id.
+   older id. An (album, title) whose tracks name two library artists fails its
+   group.
 
 A play with no album gets nothing from this tier.
 
 Compute this tier into the same assignment as the other two, not as a second
 `UPDATE` after them. Otherwise the first `UPDATE` nulls the link on every run,
 the second writes it back, and the guard stops making `resolve` idempotent.
+The link is per play, not per key, so it goes in a second temporary table keyed
+by play id and the `UPDATE` coalesces the two.
 
 `MATCH_FOLD_VERSION` goes to 4 so that `refold_if_stale` runs `resolve` once on
 existing libraries. Play counts follow the links through `count` in
@@ -49,6 +52,10 @@ approximation of the folds:
 | (album, title) hits one library artist | 4,378 | Wrong on title tracks and compilations: `Iggy Pop — Lust for Life` → Lana Del Rey, `Death In Rome — Toxicity` → System of a Down, `Isabel LaRosa — help` → The Beatles |
 | Plus ≥2 distinct titles per group (**this**) | 4,063 | Every group at exactly 2 checked by hand, all correct |
 | Plus ≥3 distinct titles per group | 3,875 | No wrong link removed |
+
+Built, on a copy of the library (75,180 unlinked plays): 4,031 newly linked, 0
+existing links moved, and a second pass moves nothing. `resolve` goes from
+~0.6 s to ~0.9 s in release.
 
 Largest artist remaps under this rule: `Franz Josef Degenhardt` → `Disko
 Degenhardt` / `Degenhardt` / `Detlev Disko Degenhardt` (~510), `Audio88` →
@@ -80,11 +87,13 @@ In `plays.rs`:
 - A group whose titles hit two library artists: stays unlinked.
 - A play that the artist key links is not moved by this tier.
 - `resolve` run twice moves nothing the second time.
+- A library on `plays.matchFold` 3 links through the album once.
 
 ## Verification
 
-- `mods — Franz Josef Degenhardt` on *Harmonie Hurensohn 2* leaves *Heard, never
-  owned*, and `Mods` shows its last.fm plays in Plays after an import.
+- `mods — Franz Josef Degenhardt` drops to the 7 plays on *Harmonie Hurensohn
+  II* in *Heard, never owned*, and `Mods` shows its last.fm plays in Plays after
+  an import.
 - `Iggy Pop — Lust for Life` stays in *Heard, never owned*.
 - A library on `plays.matchFold` 3 resolves once at the next launch, and not
   again after that.

@@ -412,14 +412,26 @@ pub fn mbid(value: &str) -> Option<String> {
 /// length. The count is what the tests assert idempotence with; no caller
 /// needs it.
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
+    use std::collections::{HashMap, HashSet};
+
     conn.execute_batch(
         "DROP TABLE IF EXISTS temp.play_keys;
          CREATE TEMP TABLE play_keys (
              key      TEXT PRIMARY KEY,
              track_id INTEGER NOT NULL
-         ) WITHOUT ROWID;",
+         ) WITHOUT ROWID;
+         DROP TABLE IF EXISTS temp.album_links;
+         CREATE TEMP TABLE album_links (
+             play_id  INTEGER PRIMARY KEY,
+             track_id INTEGER NOT NULL
+         );",
     )?;
 
+    // (album, title) to the track `play_keys`' tiebreak picks, and every
+    // library artist a track under that pair names.
+    let mut albums: HashMap<(String, String), (i64, HashSet<String>)> = HashMap::new();
+    // Each album spelling is folded once: a log repeats them by the thousand.
+    let mut folds: HashMap<String, String> = HashMap::new();
     {
         // **Which track wins a key is fixed rather than incidental.** The same
         // song on its album and on a compilation is two rows and one key, and
@@ -429,7 +441,7 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
         // order, this function stops being idempotent, and the guarded UPDATE
         // below rewrites the whole table on every run.
         let mut tracks = conn.prepare(
-            "SELECT id, artist, title, album_artist FROM tracks
+            "SELECT id, artist, title, album_artist, album FROM tracks
               ORDER BY missing_since IS NOT NULL, id",
         )?;
         let mut insert =
@@ -448,18 +460,90 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
             let artist: Option<String> = row.get(1)?;
             let title: Option<String> = row.get(2)?;
             let album_artist: Option<String> = row.get(3)?;
+            let album: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
+            let artist = artist.as_deref().unwrap_or_default();
+            let album_artist = album_artist.as_deref().unwrap_or_default();
             let title = title.as_deref().unwrap_or_default();
-            let key = match_key(artist.as_deref().unwrap_or_default(), title);
+            let key = match_key(artist, title);
             if !key.is_empty() {
                 insert.execute(rusqlite::params![key, id])?;
             }
-            let fallback = match_key(album_artist.as_deref().unwrap_or_default(), title);
+            let fallback = match_key(album_artist, title);
             if !fallback.is_empty() && fallback != key {
                 fallbacks.push((fallback, id));
+            }
+
+            let owner = normalize(if album_artist.trim().is_empty() {
+                artist
+            } else {
+                album_artist
+            });
+            let pair = (
+                folds
+                    .entry(album)
+                    .or_insert_with_key(|album| fold_album(album))
+                    .clone(),
+                normalize(title),
+            );
+            if !owner.is_empty() && !pair.0.is_empty() && !pair.1.is_empty() {
+                albums
+                    .entry(pair)
+                    .or_insert_with(|| (id, HashSet::new()))
+                    .1
+                    .insert(owner);
             }
         }
         for (key, id) in &fallbacks {
             insert.execute(rusqlite::params![key, id])?;
+        }
+    }
+
+    // **The album on the play is the last resort, and it has to be
+    // corroborated.** last.fm merges some artists into others - `Disko
+    // Degenhardt` scrobbles as `Franz Josef Degenhardt` - so no key the play
+    // carries names the file. Two titles of one scrobbled album landing on one
+    // library artist's copy of it is the evidence; one title alone links a
+    // cover or a title track to a song that was never heard (issue 145).
+    {
+        type Hit<'a> = (i64, String, i64, &'a HashSet<String>);
+        let mut groups: HashMap<(String, String), Vec<Hit>> = HashMap::new();
+        let mut plays = conn.prepare(
+            "SELECT id, artist, title, album FROM plays
+              WHERE match_key <> '' AND album <> ''
+                AND match_key NOT IN (SELECT key FROM temp.play_keys)",
+        )?;
+        let mut rows = plays.query([])?;
+        while let Some(row) = rows.next()? {
+            let album = folds
+                .entry(row.get(3)?)
+                .or_insert_with_key(|album| fold_album(album))
+                .clone();
+            let title = normalize(&row.get::<_, String>(2)?);
+            if album.is_empty() || title.is_empty() {
+                continue;
+            }
+            let pair = (album, title);
+            let Some((track_id, owners)) = albums.get(&pair) else {
+                continue;
+            };
+            let (album, title) = pair;
+            groups
+                .entry((normalize(&row.get::<_, String>(1)?), album))
+                .or_default()
+                .push((row.get(0)?, title, *track_id, owners));
+        }
+
+        let mut link =
+            conn.prepare("INSERT INTO temp.album_links (play_id, track_id) VALUES (?1, ?2)")?;
+        for hits in groups.values() {
+            let titles: HashSet<&str> = hits.iter().map(|hit| hit.1.as_str()).collect();
+            let owners: HashSet<&String> = hits.iter().flat_map(|hit| hit.3.iter()).collect();
+            if titles.len() < 2 || owners.len() != 1 {
+                continue;
+            }
+            for (play_id, _, track_id, _) in hits {
+                link.execute([play_id, track_id])?;
+            }
         }
     }
 
@@ -470,16 +554,22 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
     //
     // `IS NOT` rather than `<>` because most of those values are NULL on both
     // sides, and `<>` is NULL there rather than false.
+    //
+    // One assignment for every tier: a second `UPDATE` for the album links
+    // would find each of them nulled by this one and write it back, every run.
     let moved = conn.execute(
         "UPDATE plays
-            SET track_id = (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key)
+            SET track_id = coalesce(
+                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))
           WHERE match_key <> ''
-            AND track_id IS NOT
-                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key)",
+            AND track_id IS NOT coalesce(
+                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))",
         [],
     )?;
 
-    conn.execute_batch("DROP TABLE temp.play_keys;")?;
+    conn.execute_batch("DROP TABLE temp.play_keys; DROP TABLE temp.album_links;")?;
     Ok(moved as u32)
 }
 
@@ -668,9 +758,9 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// reason [`FOLD_VERSION`] gives - and more sharply, because this key is
 /// stored rather than derived on read. A library whose keys predate the fold
 /// does not half-link; it does not link at all. Bump it too when `resolve`
-/// gives a track another key, as 3 did for the album artist: the stored keys
-/// stay put, but nothing else resolves at launch.
-const MATCH_FOLD_VERSION: &str = "3";
+/// gives a track another key, as 3 did for the album artist and 4 for the
+/// album: the stored keys stay put, but nothing else resolves at launch.
+const MATCH_FOLD_VERSION: &str = "4";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -1350,6 +1440,153 @@ mod tests {
 
         resolve(&conn).unwrap();
         assert_eq!(linked(&conn, 10), Some(2));
+    }
+
+    fn on_album(conn: &Connection, id: i64, artist: &str, album: &str, title: &str) {
+        add_track(conn, id, Some(artist), Some(title));
+        conn.execute(
+            "UPDATE tracks SET album = ?2 WHERE id = ?1",
+            rusqlite::params![id, album],
+        )
+        .unwrap();
+    }
+
+    fn played_on(conn: &Connection, started_at: i64, artist: &str, album: &str, title: &str) {
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, album, match_key)
+             VALUES (?1, 'lastfm', ?2, ?3, ?4, ?5)",
+            rusqlite::params![started_at, artist, title, album, match_key(artist, title)],
+        )
+        .unwrap();
+    }
+
+    /// last.fm merges the rapper into the folk singer, so no key a play
+    /// carries names the file.
+    fn harmonie(conn: &Connection) {
+        on_album(conn, 1, "Disko Degenhardt", "Harmonie Hurensohn 2", "Mods");
+        on_album(
+            conn,
+            2,
+            "Disko Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Kontrolle",
+        );
+    }
+
+    #[test]
+    fn two_titles_of_one_album_under_a_wrong_artist_link() {
+        let (_dir, conn) = open();
+        harmonie(&conn);
+        played_on(
+            &conn,
+            10,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "mods",
+        );
+        played_on(
+            &conn,
+            11,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Mods",
+        );
+        played_on(
+            &conn,
+            12,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Kontrolle",
+        );
+
+        resolve(&conn).unwrap();
+        assert_eq!(
+            [linked(&conn, 10), linked(&conn, 11), linked(&conn, 12)],
+            [Some(1), Some(1), Some(2)]
+        );
+        assert_eq!(resolve(&conn).unwrap(), 0, "a second pass moves nothing");
+    }
+
+    /// A title track or a cover: `Iggy Pop - Lust for Life` is on Lana Del
+    /// Rey's album of that name too.
+    #[test]
+    fn one_title_of_an_album_alone_stays_unlinked() {
+        let (_dir, conn) = open();
+        on_album(&conn, 1, "Lana Del Rey", "Lust for Life", "Lust for Life");
+        played_on(&conn, 10, "Iggy Pop", "Lust for Life", "Lust for Life");
+        played_on(&conn, 11, "Iggy Pop", "Lust for Life", "Lust for Life");
+
+        resolve(&conn).unwrap();
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [None, None]);
+    }
+
+    #[test]
+    fn an_album_whose_titles_name_two_library_artists_stays_unlinked() {
+        let (_dir, conn) = open();
+        on_album(&conn, 1, "Blue Room", "Greatest Hits", "Harbour");
+        on_album(&conn, 2, "Red Room", "Greatest Hits", "Tide");
+        played_on(&conn, 10, "Nobody", "Greatest Hits", "Harbour");
+        played_on(&conn, 11, "Nobody", "Greatest Hits", "Tide");
+
+        resolve(&conn).unwrap();
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [None, None]);
+    }
+
+    /// The album never outvotes a key, and a play a key links is no
+    /// corroboration for the rest of its album.
+    #[test]
+    fn a_play_a_key_links_is_not_moved_by_its_album() {
+        let (_dir, conn) = open();
+        harmonie(&conn);
+        on_album(
+            &conn,
+            3,
+            "Franz Josef Degenhardt",
+            "Väterchen Franz",
+            "Kontrolle",
+        );
+        played_on(
+            &conn,
+            10,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Mods",
+        );
+        played_on(
+            &conn,
+            11,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Kontrolle",
+        );
+
+        resolve(&conn).unwrap();
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [None, Some(3)]);
+    }
+
+    #[test]
+    fn a_library_on_the_previous_fold_links_through_the_album_once() {
+        let (_dir, mut conn) = open();
+        harmonie(&conn);
+        played_on(
+            &conn,
+            10,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Mods",
+        );
+        played_on(
+            &conn,
+            11,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Kontrolle",
+        );
+        crate::db::settings::set(&conn, crate::db::settings::MATCH_FOLD, "3").unwrap();
+
+        assert!(refold_if_stale(&mut conn).unwrap().is_some());
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [Some(1), Some(2)]);
+        assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once");
     }
 
     /// `heading` is a spelling out of the user's own history and never an

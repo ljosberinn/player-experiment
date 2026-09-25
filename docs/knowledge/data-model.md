@@ -362,6 +362,7 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   migration 18; the thread that runs it emits `loved://changed` when a track
   key moved, because the window read the set before it ran. Version 3 rewrites
   no key and exists for the `resolve` it runs: the album artist fallback below.
+  Version 4 is the same for the album link.
 - **`tracks.match_key` is written wherever artist or title is** - the scan's
   insert and update, and `tags::write::sync_row` - as `plays::track_key`,
   which is NULL rather than empty for an untagged file.
@@ -377,6 +378,14 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   every artist key, so an artist key wins any key both produce and no link
   moves. Only `resolve` sees them - `tracks.match_key` stays the artist's, so
   the loved set does not.
+- **A play no key links can link through its album** (145), because last.fm
+  merges some artists into others: `Disko Degenhardt` scrobbles as `Franz Josef
+  Degenhardt`. Unlinked plays group by scrobbled artist and folded album, and a
+  group links when at least two distinct titles land on one library artist's
+  (album artist, else artist) copy of that album. One title alone would link a
+  title track or a cover. The link is per play, not per key, so it lives in its
+  own temporary table and joins the key's in one `UPDATE` - a second one would
+  find it nulled and write it back every run.
 - **`idx_plays_identity` is the dedupe rule within one source, not across
   them.** last.fm autocorrects artist and title, so a play this app wrote comes
   back from the import under a spelling that computes a different key. That
@@ -388,8 +397,8 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   14% of the time, and not one play the key had failed to link was linked by an
   id. Most of last.fm's are pre-NGS ids MusicBrainz has since retired, and
   probing a sample of them returned 404 for every entity type. So the columns
-  stay as part of what a play was, and `resolve` is the key alone - the
-  artist's, then the album artist's.
+  stay as part of what a play was, and `resolve` is the key - the artist's,
+  then the album artist's - and then the album.
 
 ## Album groups
 
