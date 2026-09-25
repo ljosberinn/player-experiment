@@ -215,7 +215,10 @@ Vitest never runs and coverage never counts:
   Storybook merges it with defaults in `preview.ts`, so a story names only
   what it adds. An unanswered command rejects with `no story handler for
   <cmd>` and warns the same, so a missing entry shows as the component's error
-  path rather than a spinner. Area maps live in `.storybook/handlers.ts`.
+  path rather than a spinner. Area maps live in `.storybook/handlers.ts`. A
+  command the backend answers with an event rather than a return value, like
+  `player_toggle`, writes that event's state to the store from its handler, so
+  the control still answers a click.
 - **Covers** resolve to inline SVGs from `.storybook/fixtures.ts`, keyed on
   `cover_hash`; `stagedCoverUrl` gets one that matches none of them.
 - **Stores** are reset to their initial state before every story, from the
