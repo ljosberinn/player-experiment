@@ -6,7 +6,7 @@ import { SidebarSection } from "../../components/ui/SidebarSection";
 import type { Playlist } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { NEW_PLAYLIST_NAME, usePlaylistsStore } from "./store";
-import { isTrackDragging, onTrackDragEnd, trackDragIds } from "./trackDrag";
+import { isTrackDragging, onTrackDragEnd, onTrackDragStart, trackDragIds } from "./trackDrag";
 
 /**
  * Stands in for "the new playlist a drop would create" in `dropTargetId`.
@@ -51,6 +51,8 @@ export function PlaylistSidebar({
 
   /** Which playlist the pointer is currently over with a valid drag. */
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+  /** Whether a track drag is in progress; lays out the new-playlist zone. */
+  const [dragging, setDragging] = useState(false);
   /** The playlist awaiting a yes/no on deletion. */
   const [confirming, setConfirming] = useState<Playlist | null>(null);
   // Renaming lives in the store because creating a playlist starts one, and
@@ -71,7 +73,15 @@ export function PlaylistSidebar({
 
   // Escape and `pointercancel` end a drag without the pointer ever leaving the
   // row it was over, so the highlight has nothing else to take it off.
-  useEffect(() => onTrackDragEnd(() => setDropTargetId(null)), []);
+  useEffect(() => onTrackDragStart(() => setDragging(true)), []);
+  useEffect(
+    () =>
+      onTrackDragEnd(() => {
+        setDropTargetId(null);
+        setDragging(false);
+      }),
+    [],
+  );
 
   useEffect(() => {
     // The counts. A scan changes what half of these rows say and nothing else
@@ -264,7 +274,16 @@ export function PlaylistSidebar({
             Add to Playlist. Pointer handlers alone do not make it look like
             one. */}
         <div
-          className={`sidebar-dropzone${dropTargetId === NEW_PLAYLIST_TARGET ? " drop-target" : ""}`}
+          className={[
+            "sidebar-dropzone",
+            dropTargetId === NEW_PLAYLIST_TARGET ? "drop-target" : "",
+            // With nothing above it, the zone at rest would be a blank gap
+            // under the heading. Unmounting it instead would lose the only
+            // pointer route to a first playlist.
+            statics.length === 0 && !dragging ? "collapsed" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           data-testid="playlist-dropzone"
           onPointerMove={() => {
             if (!isTrackDragging()) {

@@ -6,6 +6,7 @@ import {
   edgeScrollSpeed,
   isTrackDragging,
   onTrackDragEnd,
+  onTrackDragStart,
   pressTrackRow,
   trackDragIds,
 } from "./trackDrag";
@@ -67,6 +68,28 @@ describe("recognising a drag", () => {
 
     expect(isTrackDragging()).toBe(false);
     expect(badge()).toBeNull();
+  });
+
+  it("tells the drop targets once the press becomes a drag", () => {
+    const started = vi.fn(() => expect(isTrackDragging()).toBe(true));
+    const off = onTrackDragStart(started);
+    pressTrackRow({ clientX: 0, clientY: 0 }, () => [1]);
+
+    expect(started).not.toHaveBeenCalled();
+
+    pointer("pointermove", 0, 40);
+    pointer("pointermove", 0, 80);
+    expect(started).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it("announces no start for a press with nothing to carry", () => {
+    const started = vi.fn();
+    const off = onTrackDragStart(started);
+    drag([]);
+
+    expect(started).not.toHaveBeenCalled();
+    off();
   });
 });
 
