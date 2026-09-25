@@ -507,6 +507,22 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
 ///   must not follow it out - they name themselves after their own biggest
 ///   instead.
 pub fn regroup(conn: &Connection) -> AppResult<u32> {
+    // A savepoint rather than a transaction because the import calls this
+    // inside its own, and startup and a pin call it bare.
+    conn.execute_batch("SAVEPOINT regroup")?;
+    match regroup_within(conn) {
+        Ok(moved) => {
+            conn.execute_batch("RELEASE regroup")?;
+            Ok(moved)
+        }
+        Err(error) => {
+            conn.execute_batch("ROLLBACK TO regroup; RELEASE regroup")?;
+            Err(error)
+        }
+    }
+}
+
+fn regroup_within(conn: &Connection) -> AppResult<u32> {
     use std::collections::HashMap;
 
     struct Member {
@@ -1353,6 +1369,27 @@ mod tests {
                 "{album:?}"
             );
         }
+    }
+
+    /// One transaction whoever calls it: startup and a pin call it bare, and a
+    /// commit per row is what made the pass sixty times dearer on CI than here.
+    #[test]
+    fn a_pass_that_fails_part_way_writes_nothing() {
+        let (_dir, conn) = open();
+        addicts(&conn);
+        conn.execute_batch(
+            "CREATE TEMP TRIGGER second_write_fails BEFORE INSERT ON album_groups
+               WHEN (SELECT count(*) FROM album_groups) >= 1
+               BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .unwrap();
+
+        assert!(regroup(&conn).is_err());
+        assert!(conn.is_autocommit(), "the pass left a transaction open");
+        let written: u32 = conn
+            .query_row("SELECT count(*) FROM album_groups", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(written, 0);
     }
 
     /// The correction survives the pass, and it claims the group - otherwise a
