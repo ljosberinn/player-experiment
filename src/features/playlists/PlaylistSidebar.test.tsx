@@ -465,6 +465,44 @@ describe("PlaylistSidebar", () => {
     // anything, and it must not leave an empty playlist behind.
     expect(createPlaylist).not.toHaveBeenCalled();
   });
+
+  it("folds the drop target away while there is no playlist and no drag", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([smart(1, "Recent", 7)]);
+    vi.mocked(createPlaylist).mockResolvedValue(playlist(9, "New Playlist"));
+    vi.mocked(addToPlaylist).mockResolvedValue(2);
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Recent" });
+    const zone = screen.getByTestId("playlist-dropzone");
+
+    expect(zone).toHaveClass("collapsed");
+
+    startDrag([10, 11]);
+    expect(zone).not.toHaveClass("collapsed");
+    // Blank even open: the outline on hover is what marks it.
+    expect(zone).toBeEmptyDOMElement();
+
+    fireEvent.pointerUp(zone);
+    await waitFor(() => expect(addToPlaylist).toHaveBeenCalledWith(9, [10, 11]));
+    expect(createPlaylist).toHaveBeenCalledWith("New Playlist");
+  });
+
+  it("folds the drop target away again when a drag is abandoned", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([]);
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "New playlist" });
+
+    startDrag([10]);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.getByTestId("playlist-dropzone")).toHaveClass("collapsed");
+  });
+
+  it("keeps the drop target open beside existing playlists", async () => {
+    render(<PlaylistSidebar />);
+    await screen.findByRole("button", { name: "Evening" });
+
+    expect(screen.getByTestId("playlist-dropzone")).not.toHaveClass("collapsed");
+  });
 });
 
 describe("folding the sidebar sections", () => {
