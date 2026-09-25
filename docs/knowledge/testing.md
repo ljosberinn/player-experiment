@@ -228,6 +228,13 @@ Vitest never runs and coverage never counts:
   `.storybook/fixtures.ts`. The per-file `track()` helpers in tests stay put.
   So are the menu models `rowItems()` and `MENUS`, built by the app's own
   `rowMenuItems` and `menus()` so a menu story cannot drift from the app's.
+- **The library** answers its queries over `LIBRARY`, from
+  `.storybook/library.ts` through `libraryHandlers`. A library story reaches
+  its view the way the app does — `refresh`, `showTab`, `showPlaylist`,
+  `showTrackGroup` — rather than seeding the counts, pages and groups those
+  fetch. The drill-in order has to match `RELEASE_GROUP_ORDER`, because
+  `ReleaseGroups` cuts rows into releases by a prefix sum.
+- **Context menus** open from `play` with `rightClick` in `.storybook/play.ts`.
 - **Events** go out from `play` through `emitEvent` in `.storybook/tauri.ts`,
   not `emit`: Storybook starts `play` before the story's effects run, so a
   bare `emit` reaches no listener. `emitEvent` waits for one and fails the

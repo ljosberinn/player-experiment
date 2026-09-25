@@ -10,7 +10,7 @@ without Tauri. This story does, by rendering `App` over every handler map in
 
 Beyond the area maps, `App` calls these on mount. Add them as `appHandlers`:
 
-- `getAppInfo`, `loadColumnConfig`, `loadDynamicBackground`, `lastfmStatus`,
+- `getAppInfo`, `loadDynamicBackground`, `lastfmStatus`,
   `lovedTracks` and `playerSnapshot`.
 - The updater's `plugin:updater|check`. Answer `null`.
 - `plugin:event|listen`, which `shouldMockEvents` already answers, for the

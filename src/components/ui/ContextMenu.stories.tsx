@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { screen, userEvent, within } from "storybook/test";
+import { within } from "storybook/test";
 import { rowItems } from "../../../.storybook/fixtures";
+import { rightClick } from "../../../.storybook/play";
 import { ContextMenu } from "./ContextMenu";
 
 const region = {
@@ -49,13 +50,6 @@ export default meta;
 
 export const Open: StoryObj<typeof meta> = {
   play: async ({ canvasElement }) => {
-    const target = within(canvasElement).getByText("Right-click: a tagged song");
-    const box = target.getBoundingClientRect();
-    await userEvent.pointer({
-      keys: "[MouseRight]",
-      target,
-      coords: { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 },
-    });
-    await screen.findByRole("menu");
+    await rightClick(within(canvasElement).getByText("Right-click: a tagged song"));
   },
 };

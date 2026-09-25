@@ -84,7 +84,7 @@ const ALBUMS: Album[] = [
   },
   {
     album: "Demos 2008",
-    artist: "Unfinished Business",
+    artist: "The Lanterns",
     year: 2008,
     genre: "Punk",
     cover: null,
@@ -154,7 +154,8 @@ export function track(overrides: Partial<Track> = {}): Track {
 
 /**
  * The library the stories draw from: 40 tracks over 6 albums, with one album
- * uncovered, one title long enough to truncate and one file gone missing.
+ * uncovered, one title long enough to truncate and one file gone missing. The
+ * Lanterns have two of the albums, so an artist opens on more than one release.
  */
 export const LIBRARY: Track[] = ALBUMS.flatMap((album, a) =>
   album.titles.map((title, t) => {
@@ -240,11 +241,26 @@ export const CRASH: CrashReport = {
   path: "C:\\Users\\me\\AppData\\Roaming\\dev.ljosberinn.apex\\crashes.log",
 };
 
+/** What Late Night holds, in its own order. */
+export const LATE_NIGHT: number[] = [103, 502, 305, 104, 501, 203, 106, 504, 306, 205];
+
 /** Two static playlists for the Add to Playlist submenu, and a smart one it leaves out. */
 export const PLAYLISTS: Playlist[] = [
-  playlist(1, "Late Night", 42),
+  playlist(1, "Late Night", LATE_NIGHT.length),
   playlist(2, "Road Trip", 118),
   smartPlaylist(3, "Unplayed Jazz", 12),
+];
+
+/** The smart playlists every library ships with, which `LibraryNav` draws. */
+export const BUILT_INS: Playlist[] = [
+  smartPlaylist(90, "Favorites", 0, "favorites"),
+  smartPlaylist(
+    91,
+    "Most Played",
+    LIBRARY.filter((entry) => entry.play_count > 0).length,
+    "mostPlayed",
+  ),
+  smartPlaylist(92, "Recently Added", LIBRARY.length, "recentlyAdded"),
 ];
 
 const noop = () => {};
