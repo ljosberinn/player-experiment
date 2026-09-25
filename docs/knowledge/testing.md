@@ -237,7 +237,11 @@ Vitest never runs and coverage never counts:
 - **Statistics** aggregates count over the same rows, from
   `.storybook/stats.ts` through `statsHandlers`, so a panel agrees with its
   neighbours and with the library. `emptyStatsHandlers` answers every
-  aggregate over nothing. A genre is a branch of `GENRE_PARENTS`.
+  aggregate over nothing. A genre is a branch of `GENRE_PARENTS`. The
+  Listening tab counts over a seeded play log in `.storybook/listening.ts`
+  that ends today, because ranges and the current streak are cut from the
+  clock. `listenTotalsOnce`'s held answer is dropped before every story, as
+  the stores are reset.
 - **Fields** are styled only by `.dialog input`, so a story of a field
   component draws it inside a `Dialog`, laid out as its host lays it out.
 - **Context menus** open from `play` with `rightClick` in `.storybook/play.ts`.
