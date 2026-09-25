@@ -157,8 +157,19 @@ describe("the last.fm settings pane", () => {
       expect(
         screen.getByText(`Importing 400 of ${(237_572).toLocaleString()} scrobbles…`),
       ).toBeInTheDocument();
+      expect(document.querySelector(".progress-fill")).toHaveStyle({
+        width: `${(400 / 237_572) * 100}%`,
+      });
       expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
       expect(screen.queryByRole("button", { name: "Re-import from Scratch" })).toBeNull();
+    });
+
+    it("draws an empty rail before the first page arrives", () => {
+      set({ importing: true, importProgress: null });
+      render(<LastfmSettings />);
+
+      expect(screen.getByText("Importing…")).toBeInTheDocument();
+      expect(document.querySelector(".progress-fill")).toHaveStyle({ width: "0%" });
     });
 
     it("cannot import in a build with no key", () => {
