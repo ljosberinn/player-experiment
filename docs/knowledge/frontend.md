@@ -811,6 +811,10 @@ absences are what nobody notices coming back — hence the guards in
 - Shortcuts live in `features/player/shortcuts.ts` and friends, and stand down
   when focus is in a text field. Media keys are additionally registered with the
   OS, one key at a time.
+- **Ctrl+F is `SearchBox`'s own**, bound there because it holds the field. It
+  works from inside a text field, and is always `preventDefault`ed — WebView2
+  opens its find bar on any Ctrl+F the page leaves alone — but moves no focus
+  while a `.dialog` is in the DOM.
 - **A greyed menu entry says what would un-grey it.** `MenuItem.hint` is a few
   words in the trailing column a menu elsewhere gives a shortcut, and the item
   carries an explicit `aria-label` because an accessible name is the plain

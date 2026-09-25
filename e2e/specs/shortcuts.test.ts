@@ -18,13 +18,14 @@ import { invoke } from "../invoke";
  * # Two per binding, except where the app means otherwise
  *
  * The second test of each pair is the one worth having: the same key, typed
- * into the search box, does not reach the app. Two bindings are deliberate
+ * into the search box, does not reach the app. Three bindings are deliberate
  * exceptions and are asserted as such rather than left out -
  * `useZoomShortcuts.ts` puts zoom outside the rule because "zoom is chrome,
- * not content", and `useHistoryShortcuts.ts` puts the side buttons outside it
+ * not content", `useHistoryShortcuts.ts` puts the side buttons outside it
  * because a thumb on a mouse button is unambiguous where a hand on the
- * keyboard is not. A spec written to the bare rule would fail against correct
- * code, which is most of why this one says the rule twice.
+ * keyboard is not, and Ctrl+F is the search box's own key. A spec written to
+ * the bare rule would fail against correct code, which is most of why this one
+ * says the rule twice.
  *
  * # Pressed where pressing works, dispatched where it does not
  *
@@ -490,6 +491,65 @@ describe("the keys bound at the window", () => {
       await dispatch(SEARCH, { key: "i", ctrlKey: true });
 
       expect(await browser.$("[role='dialog']").isExisting()).toBe(false);
+      await clearSearch();
+    });
+  });
+
+  /**
+   * The chord is taken from inside the search box too - it means nothing to a
+   * text field - so the second test is the same rule from the other side.
+   * `defaultPrevented` is what keeps WebView2's own find bar shut.
+   */
+  describe("ctrl+F, which is the search box", () => {
+    function selection(): Promise<{ focused: boolean; start: number | null; end: number | null }> {
+      return browser.execute((selector: string) => {
+        const field = document.querySelector<HTMLInputElement>(selector);
+        return {
+          focused: document.activeElement === field,
+          start: field?.selectionStart ?? null,
+          end: field?.selectionEnd ?? null,
+        };
+      }, SEARCH);
+    }
+
+    /** Dispatches Ctrl+F on `selector`, and answers whether the app took it. */
+    function dispatchCtrlF(selector: string): Promise<boolean> {
+      return browser.execute((target: string) => {
+        const event = new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "f",
+          ctrlKey: true,
+        });
+        document.querySelector(target)?.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, selector);
+    }
+
+    it("focuses the field with its text selected", async () => {
+      await focusSearch();
+      await browser.keys(["a", "b"]);
+      await row(0).click();
+      await browser.waitUntil(async () => !(await selection()).focused, {
+        timeout: 10_000,
+        timeoutMsg: "the search box kept the caret after a row was clicked",
+      });
+
+      const taken = await dispatchCtrlF("body");
+
+      expect(taken).toBe(true);
+      expect(await selection()).toEqual({ focused: true, start: 0, end: 2 });
+    });
+
+    it("selects the text again from inside the field", async () => {
+      await browser.execute((selector: string) => {
+        document.querySelector<HTMLInputElement>(selector)?.setSelectionRange(2, 2);
+      }, SEARCH);
+
+      const taken = await dispatchCtrlF(SEARCH);
+
+      expect(taken).toBe(true);
+      expect(await selection()).toEqual({ focused: true, start: 0, end: 2 });
       await clearSearch();
     });
   });
