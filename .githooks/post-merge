@@ -1,0 +1,16 @@
+#!/bin/sh
+# Rebuilds the graft index after a pull lands on main.
+#
+# graft/ is a gitignored per-clone index, so nothing a pull brings in updates
+# it. Skipped where graft is not installed, and never fails the merge: the
+# merge has already happened by the time this runs.
+#
+# Wired up by the `prepare` script in package.json (core.hooksPath=.githooks).
+
+[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || exit 0
+command -v graft >/dev/null 2>&1 || exit 0
+
+echo "post-merge: graft build"
+graft build >/dev/null 2>&1 || echo "post-merge: graft build failed. Run it by hand: graft build" >&2
+
+exit 0
