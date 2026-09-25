@@ -332,7 +332,7 @@ fn retryable(error: &Error) -> bool {
 fn describe(error: &Error, username: &str) -> AppError {
     AppError::Internal(match error.api_code() {
         Some(NO_SUCH_USER) => format!("last.fm has no user called {username}."),
-        Some(PRIVATE) => format!("{username} keeps their listening history private on last.fm."),
+        Some(PRIVATE) => format!("{username}’s last.fm history is private."),
         _ if retryable(error) => {
             format!("last.fm stopped answering ({error}). Import again to resume.")
         }

@@ -229,7 +229,7 @@ describe("the row menu", () => {
 
     const dialog = browser.$("[role='alertdialog']");
     await dialog.waitForExist({ timeout: 10_000, timeoutMsg: "the confirmation never opened" });
-    await expect(dialog).toHaveText(/rescan will not bring it back/);
+    await expect(dialog).toHaveText(/1 song\b/);
 
     await capture("remove-from-library");
 

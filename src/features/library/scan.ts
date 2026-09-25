@@ -43,8 +43,8 @@ export interface ScanState {
  */
 function refusal({ refused }: DropSummary): string {
   return refused === 1
-    ? "That file is not in a watched folder. Turn on Organise My Library in Settings, or drop the folder it is in."
-    : `Those ${refused} files are not in a watched folder. Turn on Organise My Library in Settings, or drop the folders they are in.`;
+    ? "That file is not in a watched folder. Drop its folder instead, or turn on Organise My Library."
+    : `Those ${refused} files are not in a watched folder. Drop their folders instead, or turn on Organise My Library.`;
 }
 
 export const useScanStore = create<ScanState>((set, get) => ({

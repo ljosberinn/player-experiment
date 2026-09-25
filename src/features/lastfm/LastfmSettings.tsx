@@ -71,14 +71,12 @@ export function LastfmSettings() {
           A line that says "0 waiting" is a line asking to be worried about. */}
       {queued === 0 ? null : (
         <p className="settings-lastfm-note" aria-live="polite">
-          {queued === 1 ? "1 play is" : `${queued} plays are`} recorded and waiting to be sent. They
-          go out with the next song, or the next time the app starts.
+          {queued === 1 ? "1 play" : `${queued} plays`} waiting to be sent.
         </p>
       )}
       {lovesQueued === 0 ? null : (
         <p className="settings-lastfm-note" aria-live="polite">
-          {lovesQueued === 1 ? "1 love is" : `${lovesQueued} loves are`} waiting to be sent. They
-          stay loved here, and go out the next time last.fm answers.
+          {lovesQueued === 1 ? "1 love" : `${lovesQueued} loves`} waiting to be sent.
         </p>
       )}
 
@@ -111,9 +109,7 @@ export function LastfmSettings() {
       </p>
       {imported === null || importing ? null : (
         <div className="settings-row">
-          <span className="settings-lastfm-note">
-            Drops every imported play and fetches the history again.
-          </span>
+          <span className="settings-lastfm-note">Replaces every imported play.</span>
           <Button disabled={!canImport} onClick={() => void importHistory(importName, true)}>
             Re-import from Scratch
           </Button>
@@ -121,14 +117,12 @@ export function LastfmSettings() {
       )}
 
       <p className="settings-lastfm-note">
-        Connecting sends nothing but an API key — you sign in on last.fm’s own page, in your
-        browser. After that, each song you play sends its artist, title, album, length and the time
-        the play started. Never the file path, the folder name, the size of your library, or
-        anything about this machine.
+        You sign in on last.fm, in your browser. A play sends its artist, title, album, length and
+        start time; a love, its artist and title. Nothing else.
       </p>
       <p className="settings-lastfm-note">
-        The key granting this access is stored unencrypted in your library database. Revoke it any
-        time from your last.fm account settings; disconnecting here only forgets it locally.
+        The access key is stored unencrypted. Disconnect only removes it here; revoke it in your
+        last.fm settings.
       </p>
     </section>
   );
@@ -154,18 +148,18 @@ function importLine({
       : `Importing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} scrobbles…`;
   }
   if (imported === null) {
-    return "Brings your scrobbles into the play log. Needs a username, not a connection.";
+    return "Imports any user’s scrobbles. No connection needed.";
   }
   if (imported.resumable) {
-    return "The last import stopped part-way. Resume picks up where it stopped.";
+    return "The last import did not finish.";
   }
   if (imported.through === null) {
-    return `${imported.username} has no scrobbles to import yet.`;
+    return `${imported.username} has no scrobbles yet.`;
   }
   const through = new Date(imported.through * 1000).toLocaleDateString(undefined, {
     dateStyle: "medium",
   });
-  return `Imported through ${through}. Import again to fetch what is newer.`;
+  return `Imported through ${through}.`;
 }
 
 /**
@@ -185,7 +179,7 @@ function statusLine({
   connecting: boolean;
 }): string {
   if (!configured) {
-    return "This build carries no last.fm key, so scrobbling is unavailable.";
+    return "last.fm is not available in this build.";
   }
   if (username !== null) {
     return `Connected as ${username}.`;

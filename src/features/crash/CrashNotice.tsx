@@ -72,8 +72,7 @@ export function CrashNotice() {
 
       <DialogBody>
         <DialogDescription>
-          It stopped last time with the error below. Nothing was sent anywhere - the report is on
-          this machine only.
+          The error is below. The report stays on this computer.
         </DialogDescription>
 
         <p className="crash-notice-summary">{report.summary}</p>

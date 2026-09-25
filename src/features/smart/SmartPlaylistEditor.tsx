@@ -131,7 +131,7 @@ export function SmartPlaylistEditor({
         lead={
           <DialogStatus>
             {countRules(draft) === 0
-              ? "No conditions yet — this playlist will hold your whole library."
+              ? "No conditions — includes your whole library."
               : `${countRules(draft)} condition${countRules(draft) === 1 ? "" : "s"}.`}
           </DialogStatus>
         }

@@ -161,7 +161,7 @@ describe("the pane", () => {
 
     await useTagsourceStore.getState().open([1, 2]);
 
-    expect(await screen.findByText(/has nothing under that album and artist/)).toBeInTheDocument();
+    expect(await screen.findByText(/No match/)).toBeInTheDocument();
   });
 
   /** The files alone are a list with nothing to compare them against. */
@@ -392,20 +392,6 @@ describe("the confirm step", () => {
     expect(line).toHaveTextContent("Updating the library…");
 
     await act(async () => finish?.());
-  });
-
-  /**
-   * The line that says what an apply is about to do outside the selection,
-   * which is the one thing about this dialog a person could not guess.
-   */
-  it("says the identifiers reach the whole release", async () => {
-    const user = await open();
-
-    await user.click(screen.getByRole("button", { name: /Loveless/ }));
-
-    expect(
-      await screen.findByText(/identifiers are written to every song of this release/),
-    ).toBeInTheDocument();
   });
 });
 

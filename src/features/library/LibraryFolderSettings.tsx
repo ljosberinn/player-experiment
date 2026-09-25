@@ -129,8 +129,7 @@ export function LibraryFolderSettings({
       {problem === null ? null : <p className="settings-library-error">{problem}</p>}
 
       <p className="settings-library-note">
-        Songs are moved into artist and album folders as the app works through them. Turning this
-        off stops it; nothing moves back.
+        Moves songs into artist and album folders. Turning this off does not move them back.
       </p>
 
       {pending === null ? null : (
@@ -138,7 +137,7 @@ export function LibraryFolderSettings({
           title="Move your library?"
           body={`${pending.songs.toLocaleString()} ${
             pending.songs === 1 ? "song" : "songs"
-          } will be moved into ${pending.path}, a few at a time in the background. Turning Organise My Library off stops it, but nothing moves back.`}
+          } will be moved into ${pending.path} in the background. Turning off Organise My Library stops it; nothing moves back.`}
           confirmLabel="Move Songs"
           onConfirm={() => void commit(pending.path)}
           onCancel={() => setPending(null)}

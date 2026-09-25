@@ -587,7 +587,7 @@ export function App() {
       {confirmRemoveMissing ? (
         <ConfirmDialog
           title="Remove missing songs?"
-          body={`${stats.missing} song${stats.missing === 1 ? "" : "s"} cannot be found on disk. Removing them takes them out of every playlist too. The files themselves are not touched - if a drive is simply unplugged, plug it back in and rescan instead.`}
+          body={`${stats.missing} song${stats.missing === 1 ? "" : "s"} cannot be found. Removing them also takes them out of every playlist. If a drive is unplugged, reconnect it and rescan instead.`}
           confirmLabel="Remove"
           onConfirm={() => {
             setConfirmRemoveMissing(false);
@@ -602,7 +602,7 @@ export function App() {
       {pendingRemoval ? (
         <ConfirmDialog
           title={pendingRemoval.length === 1 ? "Remove this song?" : "Remove these songs?"}
-          body={`${pendingRemoval.length} song${pendingRemoval.length === 1 ? "" : "s"} will be taken out of your library, and out of every playlist too. The file${pendingRemoval.length === 1 ? "" : "s"} on disk ${pendingRemoval.length === 1 ? "is" : "are"} not touched, but a rescan will not bring ${pendingRemoval.length === 1 ? "it" : "them"} back - use File ▸ Forget Removed Songs for that.`}
+          body={`${pendingRemoval.length} song${pendingRemoval.length === 1 ? "" : "s"} will be removed from your library and every playlist. The file${pendingRemoval.length === 1 ? " stays" : "s stay"} on disk; a rescan adds ${pendingRemoval.length === 1 ? "it" : "them"} back only after File ▸ Forget Removed Songs.`}
           confirmLabel="Remove"
           onConfirm={() => {
             const ids = pendingRemoval;

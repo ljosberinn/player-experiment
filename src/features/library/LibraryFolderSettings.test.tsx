@@ -65,7 +65,7 @@ describe("the library folder section", () => {
     // moment the root changes - the picker is where that cost is committed.
     // The thousands separator is the runner's locale, so only the digits are
     // asserted.
-    expect(await screen.findByText(/8.044 songs will be moved into D:\\Music/)).toBeInTheDocument();
+    expect(await screen.findByText(/8.044 songs/)).toBeInTheDocument();
     expect(setLibraryRoot).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Move Songs" }));

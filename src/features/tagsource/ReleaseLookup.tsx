@@ -175,7 +175,7 @@ export function ReleaseLookup() {
         {fromReview ? (
           <Button
             disabled={release === null || busy}
-            title="Take this release out of the review queue"
+            title="Remove from the review queue"
             onClick={() => void setAside()}
           >
             Set Aside
@@ -436,7 +436,7 @@ function Pane({
         <p className="lookup-note">
           {detail === null
             ? "Pick the release these files came from."
-            : `The release identifiers are written to every song of this release; the ticked fields to the ${willWrite} mapped above.`}
+            : `IDs are written to every song; ticked fields to the ${willWrite} mapped.`}
         </p>
       ) : (
         // A div, not the paragraph beside it: `ProgressBar` is a div, and a
@@ -506,8 +506,7 @@ function Source({
     if (stage === "results") {
       return (
         <p className="lookup-note">
-          MusicBrainz has nothing under that album and artist. Take another release out of the
-          queue, or edit the tags by hand and search again.
+          No match on MusicBrainz. Fix the album or artist and search again.
         </p>
       );
     }

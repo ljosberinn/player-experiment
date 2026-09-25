@@ -9,7 +9,8 @@ interpolations; keep the plurals they already have.
 
 | Where | Now | Proposed |
 | --- | --- | --- |
-| `LastfmSettings.tsx:76` | {n} plays are recorded and waiting to be sent. They go out with the next song, or the next time the app starts. | {n} plays waiting to be sent. |
+| `LastfmSettings.tsx:74` | {n} plays are recorded and waiting to be sent. They go out with the next song, or the next time the app starts. | {n} plays waiting to be sent. |
+| `LastfmSettings.tsx:80` | {n} loves are waiting to be sent. They stay loved here, and go out the next time last.fm answers. | {n} loves waiting to be sent. |
 | `LastfmSettings.tsx:115` | Drops every imported play and fetches the history again. | Replaces every imported play. |
 | `LastfmSettings.tsx:128` | Connecting sends nothing but an API key — you sign in on last.fm’s own page, in your browser. After that, each song you play sends its artist, title, album, length and the time the play started. Never the file path, the folder name, the size of your library, or anything about this machine. | You sign in on last.fm, in your browser. A play sends its artist, title, album, length and start time; a love, its artist and title. Nothing else. |
 | `LastfmSettings.tsx:134` | The key granting this access is stored unencrypted in your library database. Revoke it any time from your last.fm account settings; disconnecting here only forgets it locally. | The access key is stored unencrypted. Disconnect only removes it here; revoke it in your last.fm settings. |
@@ -31,7 +32,7 @@ Online.
 | Where | Now | Proposed |
 | --- | --- | --- |
 | `App.tsx:570` (Remove missing songs?) | {n} songs cannot be found on disk. Removing them takes them out of every playlist too. The files themselves are not touched - if a drive is simply unplugged, plug it back in and rescan instead. | {n} songs cannot be found. Removing them also takes them out of every playlist. If a drive is unplugged, reconnect it and rescan instead. |
-| `App.tsx:585` (Remove these songs?) | {n} songs will be taken out of your library, and out of every playlist too. The files on disk are not touched, but a rescan will not bring them back - use File ▸ Forget Removed Songs for that. | {n} songs will be removed from your library and every playlist. The files stay on disk; a rescan adds them back only after File ▸ Forget Removed Songs. |
+| `App.tsx:585` (Remove these songs?) | {n} songs will be taken out of your library, and out of every playlist too. The files on disk are not touched, but a rescan will not bring them back - use File ▸ Forget Removed Songs for that. | {n} songs will be removed from your library and every playlist. The files stay on disk; a rescan adds them back only after File ▸ Forget Removed Songs. (Singular for one song.) |
 | `LibraryFolderSettings.tsx:138` (Move your library?) | {n} songs will be moved into {path}, a few at a time in the background. Turning Organise My Library off stops it, but nothing moves back. | {n} songs will be moved into {path} in the background. Turning off Organise My Library stops it; nothing moves back. |
 
 ## Settings ▸ Library
@@ -75,17 +76,20 @@ Online.
 Tests do not pin wording. Where one asserts prose, query by role or label
 instead, or delete the assertion when the prose was all it checked — including
 the privacy-list assertion at `LastfmSettings.test.tsx:76` and its comment.
-Affected: `LastfmSettings.test.tsx`, `lastfm/store.test.ts`,
-`SmartPlaylistEditor.test.tsx`, `App.test.tsx`, `WatchFolderSettings.test.tsx`,
-`ReleaseLookup.test.tsx`, e2e `row-menu.test.ts`, Rust `lastfm/import.rs`.
+A count stays asserted where the count is the point. Affected:
+`LastfmSettings.test.tsx`, `lastfm/store.test.ts`, `App.test.tsx`,
+`WatchFolderSettings.test.tsx`, `LibraryFolderSettings.test.tsx`,
+`scan.test.ts`, `ReleaseLookup.test.tsx`, e2e `row-menu.test.ts` and
+`library-drop.test.ts`.
 
 Screenshots that change: `settings-lastfm-import`, `settings-library-folder`,
 `settings-library-folder-unset`, `remove-from-library`, `crash-notice`,
-`crash-notice-expanded`, `library-drop-refused`.
+`crash-notice-expanded`, `library-drop-refused`, `settings-library`,
+`settings-online`, `drawn-controls-settings-*`.
 
 ## Verification
 
 - Every string in the tables reads as proposed in the running app.
 - Settings ▸ Online still says what a play and a love send, and that the key
   is stored unencrypted.
-- No test asserts a sentence of prose.
+- No test asserts a sentence of the prose above.

@@ -138,11 +138,9 @@ export function WatchFolderSettings({ lockedRoot }: { lockedRoot: string | null 
       )}
 
       <p className="settings-watch-note">
-        Removing a folder only stops it being looked at. The songs already in your library stay
-        until a check finds their files gone, and are then marked missing.
-        {lockedRoot === null
-          ? null
-          : " Your Library folder stays on this list until you turn off Organise My Library."}
+        Removing a folder only stops watching it. Its songs are marked missing once their files are
+        gone.
+        {lockedRoot === null ? null : " The Library folder stays while Organise My Library is on."}
       </p>
     </section>
   );

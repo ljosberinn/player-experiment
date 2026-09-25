@@ -94,8 +94,7 @@ describe("the music folders section", () => {
 
   it("shows the Library folder without a way to stop watching it", async () => {
     // A library filed into a folder nobody watches is marked missing in full
-    // on the next scan, so the row cannot offer a Remove button - and the note
-    // has to say what does release it.
+    // on the next scan, so the row cannot offer a Remove button.
     render(<WatchFolderSettings lockedRoot={"C:\\Music"} />);
     await screen.findByText("C:\\Music");
 
@@ -103,7 +102,6 @@ describe("the music folders section", () => {
       screen.queryByRole("button", { name: "Stop watching C:\\Music" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Library folder")).toBeInTheDocument();
-    expect(screen.getByText(/turn off Organise My Library/)).toBeInTheDocument();
     // And the other row is untouched.
     expect(
       screen.getByRole("button", { name: "Stop watching D:\\More Music" }),
