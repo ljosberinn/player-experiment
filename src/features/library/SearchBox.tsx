@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { usePlaylistsStore } from "../playlists/store";
 import { useLibraryStore } from "./store";
 
@@ -17,6 +18,34 @@ export function SearchBox() {
   const clearSearch = useLibraryStore((s) => s.clearSearch);
   const playlistId = useLibraryStore((s) => s.playlistId);
   const playlists = usePlaylistsStore((s) => s.playlists);
+  const field = useRef<HTMLInputElement>(null);
+
+  // Ctrl+F. Claimed from inside a text field too, where it means nothing, and
+  // under a dialog, where it does nothing: WebView2 opens its own find bar on
+  // any Ctrl+F the page leaves alone.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "f"
+      ) {
+        return;
+      }
+      event.preventDefault();
+      // Every dialog is the `Dialog` primitive, which is only in the DOM while
+      // open. Focus pulled out from under a modal leaves it up and unreachable.
+      if (document.querySelector(".dialog") !== null) {
+        return;
+      }
+      field.current?.focus();
+      field.current?.select();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // The search is scoped to the current view, so it says which one.
   const currentPlaylistName =
@@ -26,6 +55,7 @@ export function SearchBox() {
   return (
     <div className="search-box">
       <input
+        ref={field}
         className="search"
         type="search"
         placeholder={scope}

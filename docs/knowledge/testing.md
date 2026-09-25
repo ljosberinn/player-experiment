@@ -368,8 +368,8 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 - Whether the OS delivers a media key to an unfocused window, or Shift+F10 and
   the Menu key to a focused one. The shortcut behind them is covered from a
   dispatched keydown down; the key press itself is not reachable from here.
-- Whether the OS delivers a *modifier chord* — Alt+←/→, Ctrl+A, Ctrl+I,
-  Ctrl+plus/minus/0 — or claims it first. `shortcuts.test.ts` presses the bare
+- Whether the OS delivers a *modifier chord* — Alt+←/→, Ctrl+A, Ctrl+F,
+  Ctrl+I, Ctrl+plus/minus/0 — or claims it first. `shortcuts.test.ts` presses the bare
   keys for real and dispatches the chords, which still proves the two halves
   worth proving: the listener is on `window`, and `isTypingTarget` decides
   correctly from the event's target. The physical chord is the same gap as the
