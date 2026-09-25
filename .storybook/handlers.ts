@@ -1,12 +1,15 @@
 import { useLovedStore } from "../src/features/love/store";
 import { usePlayerStore } from "../src/features/player/store";
 import type {
+  AppInfo,
   GenreBreakdown,
   LastfmConnection,
   LastfmImported,
+  LastfmStatus,
   LibraryFolder,
   LibraryTotals,
   ListenTotals,
+  PlayerSnapshot,
   ReviewCounts,
   Streaks,
   TagHealth,
@@ -95,6 +98,48 @@ export const shellHandlers: IpcHandlers = {
     state: { username: String(username), through: 1_772_366_400, resumable: false },
   }),
   loved_tracks: () => [],
+};
+
+/** Silence, as the backend reports it before anything has been played. */
+export const SILENT: PlayerSnapshot = {
+  status: "stopped",
+  track: null,
+  palette: null,
+  queueIndex: null,
+  queueLen: 0,
+  positionMs: 0,
+  durationMs: 0,
+  volume: 0.8,
+  muted: false,
+  repeatOne: false,
+};
+
+/**
+ * What `App` asks on mount beyond the area maps: the launch reads, the window
+ * and the plugins. `mockWindows` only names the window, so every call on it
+ * still arrives here.
+ */
+export const appHandlers: IpcHandlers = {
+  get_app_info: (): AppInfo => ({ name: "Apex", version: "0.20.0" }),
+  load_dynamic_background: () => true,
+  lastfm_status: (): LastfmStatus => ({
+    configured: true,
+    username: null,
+    queued: 0,
+    lovesQueued: 0,
+    import: null,
+  }),
+  player_snapshot: () => SILENT,
+  load_window_geometry: () => null,
+  load_zoom: () => null,
+  // The ground the toolbar has already written, so the app's own restore
+  // keeps it rather than resolving "system" against the reviewer's OS.
+  load_theme: () => document.documentElement.getAttribute("data-theme"),
+  "plugin:window|show": () => null,
+  "plugin:window|set_title": () => null,
+  "plugin:global-shortcut|register": () => null,
+  "plugin:global-shortcut|unregister": () => null,
+  "plugin:updater|check": () => null,
 };
 
 /**

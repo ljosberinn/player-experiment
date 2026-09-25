@@ -242,6 +242,12 @@ Vitest never runs and coverage never counts:
   that ends today, because ranges and the current streak are cut from the
   clock. `listenTotalsOnce`'s held answer is dropped before every story, as
   the stores are reset.
+- **The whole window** is `src/App.stories.tsx`, over every area map plus
+  `appHandlers` — the launch reads, the window and the plugins.
+  `mockWindows` only names the window: every call on it is still a command
+  to answer. `load_theme` answers the ground the toolbar wrote, or the app's
+  restore would resolve "system" against the reviewer's OS. `last_crash` is
+  answered with null there, since the crash alert makes the window inert.
 - **Fields** are styled only by `.dialog input`, so a story of a field
   component draws it inside a `Dialog`, laid out as its host lays it out.
 - **Context menus** open from `play` with `rightClick` in `.storybook/play.ts`.
