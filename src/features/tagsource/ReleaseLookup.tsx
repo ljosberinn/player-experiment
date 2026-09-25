@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { Button } from "../../components/primitives/Button";
 import { Checkbox } from "../../components/primitives/Checkbox";
 import {
@@ -14,13 +14,23 @@ import {
   coverUrl,
   type ReleaseCandidate,
   type ReleaseDetail,
+  type RemoteTrack,
   type ReviewEntry,
   stagedCoverUrl,
   type Track,
   type WriteProgress,
 } from "../../ipc";
 import { fileNameOf, formatDuration } from "../../lib/format";
-import { type Assignment, buildEdits, type Fields, LOOKUP_FIELDS, mappedCount } from "./mapping";
+import {
+  type Assignment,
+  agrees,
+  buildEdits,
+  changedRuns,
+  differences,
+  type Fields,
+  LOOKUP_FIELDS,
+  mappedCount,
+} from "./mapping";
 import { type Stage, useTagsourceStore } from "./store";
 
 /** The rail beside the status line, in pixels. Section 6f. */
@@ -337,19 +347,18 @@ function describe(candidate: ReleaseCandidate): string {
  * itself. The sheet draws the first of them at 25%.
  */
 const PENDING: Partial<Record<Stage, { ratio: number; said: string }>> = {
-  opening: { ratio: 0.25, said: "Reading your files" },
-  searching: { ratio: 0.5, said: "Your files are already here · matching candidates" },
-  fetching: { ratio: 0.75, said: "Your files are already here · reading the tracklist" },
+  opening: { ratio: 0.25, said: "Reading your files…" },
+  searching: { ratio: 0.5, said: "Searching MusicBrainz…" },
+  fetching: { ratio: 0.75, said: "Reading the tracklist…" },
 };
 
 /**
  * The selected release, in three regions: what it is, where the tags would
  * come from, and which file gets which track.
  *
- * The mapping's file column is drawn in every one of them. It is local and it
- * is known the moment `enter` resolves, so the pane never blanks out what the
- * app already has while it waits on MusicBrainz - section 6f, which is this
- * same pane rather than a second one.
+ * The mapping waits for a tracklist, unlike section 6f, which draws the file
+ * column in every state: the files alone are a list with nothing to compare
+ * them against.
  */
 function Pane({
   release,
@@ -404,14 +413,16 @@ function Pane({
         onFields={onFields}
       />
 
-      <Mapping
-        tracks={tracks}
-        detail={detail}
-        assignment={assignment}
-        pending={waiting !== null}
-        busy={busy}
-        onSwap={onSwap}
-      />
+      {detail === null ? null : (
+        <Mapping
+          tracks={tracks}
+          detail={detail}
+          assignment={assignment}
+          fields={fields}
+          busy={busy}
+          onSwap={onSwap}
+        />
+      )}
 
       {waiting === null ? (
         <p className="lookup-note">
@@ -547,132 +558,200 @@ function Source({
  * A table, although the sheet draws a three-column grid: file against
  * MusicBrainz is what a table is for, and `table-layout: fixed` states the
  * sheet's `1fr 62px 1fr` without giving up the row and the column a reader
- * gets told about. `pending` is the MusicBrainz column not knowing yet - a
- * search or a fetch in flight - which is the only half of a row that is ever
- * unknown, because the file half is local.
+ * gets told about.
+ *
+ * Rows the apply would leave as they are fold away under the rest, so the
+ * rows worth reading are the only ones open. The groups are drawn
+ * from the live assignment and fields, so a swap or a tick can move a row
+ * between them, and each group's arrows swap within it: a file that already
+ * reads as its track is not the other half of anybody's fix.
  */
 function Mapping({
   tracks,
   detail,
   assignment,
-  pending,
+  fields,
   busy,
   onSwap,
 }: {
   tracks: Track[];
-  detail: ReleaseDetail | null;
+  detail: ReleaseDetail;
   assignment: Assignment;
-  pending: boolean;
+  fields: Fields;
   busy: boolean;
   onSwap: (row: number, other: number) => void;
 }) {
   const discs = tracks.some((track) => (track.disc_no ?? 1) > 1);
+  const changed: MapRow[] = [];
+  const unchanged: MapRow[] = [];
+  tracks.forEach((track, row) => {
+    const at = assignment[row];
+    const remote = at === null || at === undefined ? null : (detail.tracks[at] ?? null);
+    (remote !== null && agrees(track, remote, fields) ? unchanged : changed).push({
+      track,
+      row,
+      remote,
+    });
+  });
+
+  const rowsOf = (group: MapRow[]) =>
+    group.map(({ track, row, remote }, at) => {
+      const above = group[at - 1]?.row;
+      const below = group[at + 1]?.row;
+      const name = track.title ?? fileNameOf(track.path);
+      return (
+        <tr key={track.id} className={remote === null ? "unmapped" : undefined}>
+          <td>
+            <span className="lookup-map-title">
+              {track.track_no === null
+                ? "— "
+                : `${discs ? `${track.disc_no ?? 1}-` : ""}${track.track_no}. `}
+              {name}
+            </span>
+            <span className="lookup-map-detail">{formatDuration(track.duration_ms)}</span>
+          </td>
+          <td className="lookup-map-move">
+            <IconButton
+              icon="move-up"
+              place="nudge"
+              label={`Move up: ${name}`}
+              disabled={above === undefined || busy}
+              onClick={() => {
+                if (above !== undefined) {
+                  onSwap(row, above);
+                }
+              }}
+            />
+            <IconButton
+              icon="move-down"
+              place="nudge"
+              label={`Move down: ${name}`}
+              disabled={below === undefined || busy}
+              onClick={() => {
+                if (below !== undefined) {
+                  onSwap(row, below);
+                }
+              }}
+            />
+          </td>
+          <td>
+            <RemoteCell detail={detail} file={track} remote={remote} fields={fields} />
+          </td>
+        </tr>
+      );
+    });
 
   return (
-    <table className="lookup-map">
-      <thead>
-        <tr>
-          {/* Both counts in the heads, so a release with a file too many or a
-              track too few reads off them before a row is compared. */}
-          <th scope="col" className="lookup-eyebrow">
-            {`File · ${tracks.length}`}
-          </th>
-          <th scope="col">
-            <span className="visually-hidden">Reorder</span>
-          </th>
-          <th scope="col" className="lookup-eyebrow">
-            {detail === null ? "MusicBrainz" : `MusicBrainz · ${detail.tracks.length}`}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {tracks.map((track, row) => {
-          const at = assignment[row];
-          const remote =
-            detail === null || at === null || at === undefined ? null : (detail.tracks[at] ?? null);
-          const name = track.title ?? fileNameOf(track.path);
-          return (
-            <tr
-              key={track.id}
-              className={detail !== null && remote === null ? "unmapped" : undefined}
-            >
-              <td>
-                <span className="lookup-map-title">
-                  {track.track_no === null
-                    ? "— "
-                    : `${discs ? `${track.disc_no ?? 1}-` : ""}${track.track_no}. `}
-                  {name}
-                </span>
-                <span className="lookup-map-detail">{formatDuration(track.duration_ms)}</span>
-              </td>
-              <td className="lookup-map-move">
-                {detail === null ? null : (
-                  <>
-                    <IconButton
-                      icon="move-up"
-                      place="nudge"
-                      label={`Move up: ${name}`}
-                      disabled={row === 0 || busy}
-                      onClick={() => onSwap(row, row - 1)}
-                    />
-                    <IconButton
-                      icon="move-down"
-                      place="nudge"
-                      label={`Move down: ${name}`}
-                      disabled={row === tracks.length - 1 || busy}
-                      onClick={() => onSwap(row, row + 1)}
-                    />
-                  </>
-                )}
-              </td>
-              <td>
-                <RemoteCell detail={detail} remote={remote} pending={pending} />
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <table className="lookup-map">
+        <Columns />
+        <thead>
+          <tr>
+            {/* Both counts in the heads, so a release with a file too many or a
+                track too few reads off them before a row is compared. */}
+            <th scope="col" className="lookup-eyebrow">
+              {`File · ${tracks.length}`}
+            </th>
+            <th scope="col">
+              <span className="visually-hidden">Reorder</span>
+            </th>
+            <th scope="col" className="lookup-eyebrow">
+              {`MusicBrainz · ${detail.tracks.length}`}
+            </th>
+          </tr>
+        </thead>
+        <tbody>{rowsOf(changed)}</tbody>
+      </table>
+      {/* A table of its own, because a disclosure cannot wrap a `<tbody>`.
+          Closed on every release, since the mapping remounts with each
+          tracklist. */}
+      {unchanged.length === 0 ? null : (
+        <details className="lookup-unchanged">
+          <summary className="lookup-eyebrow">{`Unchanged · ${unchanged.length}`}</summary>
+          <table className="lookup-map" aria-label="Unchanged">
+            <Columns />
+            <tbody>{rowsOf(unchanged)}</tbody>
+          </table>
+        </details>
+      )}
+    </>
   );
 }
 
+/** The column widths, stated on both tables so their rows line up. */
+function Columns() {
+  return (
+    <colgroup>
+      <col />
+      <col className="lookup-map-move-col" />
+      <col />
+    </colgroup>
+  );
+}
+
+/** `row` is the file's index in the selection, which is what `onSwap` takes. */
+type MapRow = { track: Track; row: number; remote: RemoteTrack | null };
+
 /**
- * The MusicBrainz half of a mapping row, which is the half that waits.
- *
- * `.skeleton` unanimated, like the three skeletons already in the app. The
- * sheet pulses this one, but a fourth skeleton that moves either makes two
- * kinds of skeleton or regrades the other three, and the rail and the status
- * line under the table already say that something is pending.
+ * The MusicBrainz half of a mapping row, with what an apply would change in
+ * the accent. Numbers are marked whole; text only where it differs. The file half beside it is the old value, so the colour only
+ * points at a difference the row already shows.
  */
 function RemoteCell({
   detail,
+  file,
   remote,
-  pending,
+  fields,
 }: {
-  detail: ReleaseDetail | null;
-  remote: ReleaseDetail["tracks"][number] | null;
-  pending: boolean;
+  detail: ReleaseDetail;
+  file: Track;
+  remote: RemoteTrack | null;
+  fields: Fields;
 }) {
-  if (remote === null || detail === null) {
-    if (pending) {
-      return <span className="skeleton" />;
-    }
-    // A file the release has nothing for, which is only a statement once a
-    // release has been picked.
-    return detail === null ? null : <span className="lookup-map-detail">Nothing to write</span>;
+  if (remote === null) {
+    return <span className="lookup-map-detail">Nothing to write</span>;
   }
+
+  const changed = differences(file, remote, fields);
+  // A disc a single-disc release would write is still a change, so it is
+  // drawn whenever it is one.
+  const disc = detail.candidate.discCount > 1 || changed.discNo;
+  const artist = remote.artist !== detail.albumArtist || changed.artist;
 
   return (
     <>
       <span className="lookup-map-title">
-        {detail.candidate.discCount > 1 ? `${remote.discNo}-` : ""}
-        {remote.trackNo}. {remote.title}
+        {disc ? <Mark on={changed.discNo}>{`${remote.discNo}-`}</Mark> : null}
+        <Mark on={changed.trackNo}>{String(remote.trackNo)}</Mark>
+        {". "}
+        <Diff from={file.title ?? ""} to={remote.title} on={changed.title} />
       </span>
       <span className="lookup-map-detail">
         {remote.durationMs === null ? "—" : formatDuration(remote.durationMs)}
-        {remote.artist === detail.albumArtist ? "" : ` · ${remote.artist}`}
+        {artist ? " · " : null}
+        {artist ? <Diff from={file.artist ?? ""} to={remote.artist} on={changed.artist} /> : null}
       </span>
     </>
+  );
+}
+
+function Mark({ on, children }: { on: boolean; children: string }) {
+  return on ? <span className="lookup-map-changed">{children}</span> : children;
+}
+
+/** A changed value with only the stretches the old one lacked marked. */
+function Diff({ from, to, on }: { from: string; to: string; on: boolean }) {
+  if (!on) {
+    return to;
+  }
+  return changedRuns(from, to).map((run) =>
+    run.changed ? (
+      <span key={run.start} className="lookup-map-changed">
+        {run.text}
+      </span>
+    ) : (
+      <Fragment key={run.start}>{run.text}</Fragment>
+    ),
   );
 }
 

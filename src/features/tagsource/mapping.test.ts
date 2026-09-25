@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ReleaseDetail, RemoteTrack, Track } from "../../ipc";
 import {
+  agrees,
   allFields,
   buildEdits,
+  changedRuns,
   defaultAssignment,
+  differences,
   identityOf,
   mappedCount,
   swapAssignment,
@@ -62,6 +65,80 @@ function detail(tracks: RemoteTrack[], over: Partial<ReleaseDetail> = {}): Relea
     ...over,
   };
 }
+
+describe("agrees", () => {
+  const only = remote(1, "Only Shallow");
+  const tagged = track(1, { title: "Only Shallow", artist: "My Bloody Valentine", track_no: 1 });
+
+  it("holds for a file already tagged as its track", () => {
+    // No disc tag reads as disc 1, the way the pairing reads it.
+    expect(agrees(tagged, only, allFields())).toBe(true);
+  });
+
+  it("fails on any ticked per-track field", () => {
+    expect(agrees({ ...tagged, title: "only shallow" }, only, allFields())).toBe(false);
+    expect(agrees({ ...tagged, track_no: 2 }, only, allFields())).toBe(false);
+  });
+
+  it("ignores what an apply would not write", () => {
+    const fields = { ...allFields(), title: false };
+
+    expect(agrees({ ...tagged, title: "only shallow" }, only, fields)).toBe(true);
+  });
+
+  /** The release's fields are the same on every row, so they tell none apart. */
+  it("ignores the release-wide fields", () => {
+    expect(agrees({ ...tagged, album: "loveless", year: 2021 }, only, allFields())).toBe(true);
+  });
+});
+
+describe("differences", () => {
+  it("names each ticked field the track would change", () => {
+    const file = track(1, { title: "Only Shallow", track_no: 2, disc_no: 2 });
+
+    expect(differences(file, remote(1, "Only Shallow"), allFields())).toEqual({
+      title: false,
+      artist: true,
+      trackNo: true,
+      discNo: true,
+    });
+  });
+});
+
+describe("changedRuns", () => {
+  const marked = (from: string, to: string) =>
+    changedRuns(from, to)
+      .filter((run) => run.changed)
+      .map((run) => run.text);
+
+  it("marks only what the old value lacks", () => {
+    expect(marked("Remember Me", "Remember Me (Forever)")).toEqual([" (Forever)"]);
+    expect(marked("only shallow", "Only Shallow")).toEqual(["O", "S"]);
+    expect(marked("Touched", "Touching")).toEqual(["ing"]);
+  });
+
+  it("keeps the whole value, in order", () => {
+    const runs = changedRuns("Remember Me", "Remember Me (Forever)");
+
+    expect(runs.map((run) => run.text).join("")).toBe("Remember Me (Forever)");
+    expect(runs.map((run) => run.start)).toEqual([0, 11]);
+  });
+
+  /** Two unrelated titles share letters by chance, which is not a match. */
+  it("changes an unrelated value whole", () => {
+    expect(marked("File 2", "Loomer")).toEqual(["Loomer"]);
+    expect(marked("", "Loomer")).toEqual(["Loomer"]);
+  });
+
+  it("folds a short kept stretch into the changes around it", () => {
+    // The "e" of "Me" survives in "Xe", but alone it is no part worth keeping.
+    expect(marked("Remember Me", "Remember Xe Now")).toEqual(["Xe Now"]);
+  });
+
+  it("marks nothing in an equal value", () => {
+    expect(marked("Loomer", "Loomer")).toEqual([]);
+  });
+});
 
 describe("defaultAssignment", () => {
   /** The case the whole rule exists for: three files out of twelve. */

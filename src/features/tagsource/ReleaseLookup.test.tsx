@@ -115,6 +115,12 @@ async function open() {
   return userEvent.setup();
 }
 
+/** A mapping cell's title, whole: a changed value is its own span inside it. */
+function title(text: string) {
+  return (_: string, element: Element | null) =>
+    element?.classList.contains("lookup-map-title") === true && element.textContent === text;
+}
+
 /** The mapping table's rows, without its header row. */
 function mapRows(): HTMLElement[] {
   return screen.getAllByRole("row").slice(1);
@@ -157,18 +163,11 @@ describe("the pane", () => {
     expect(await screen.findByText(/has nothing under that album and artist/)).toBeInTheDocument();
   });
 
-  /**
-   * Section 6f. The file column is local, so it is drawn before a release has
-   * been picked and while one is being fetched - the pane never blanks out
-   * what the app already knows.
-   */
-  it("draws the files before there is anything to map them to", async () => {
+  /** The files alone are a list with nothing to compare them against. */
+  it("draws no mapping before a tracklist", async () => {
     await open();
 
-    const rows = mapRows();
-    expect(rows).toHaveLength(2);
-    expect(within(rows[0] as HTMLElement).getByText("1. File 1")).toBeInTheDocument();
-    expect(within(rows[0] as HTMLElement).queryByText(/Only Shallow/)).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("numbers the files the way it numbers the tracks", async () => {
@@ -177,9 +176,11 @@ describe("the pane", () => {
       track(2, { disc_no: 2, track_no: 1 }),
       track(3, { disc_no: null, track_no: null }),
     ]);
+    const user = await open();
 
-    await open();
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
 
+    await screen.findByRole("table");
     const rows = mapRows();
     expect(within(rows[0] as HTMLElement).getByText("1-3. File 1")).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText("2-1. File 2")).toBeInTheDocument();
@@ -190,18 +191,16 @@ describe("the pane", () => {
     vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2), track(3)]);
     const user = await open();
 
-    expect(screen.getByRole("columnheader", { name: "File · 3" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "MusicBrainz" })).toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
 
     expect(
       await screen.findByRole("columnheader", { name: "MusicBrainz · 2" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "File · 3" })).toBeInTheDocument();
   });
 
   /** No spinner: the rail and the line say which step is outstanding. */
-  it("says what it is waiting for rather than blanking the pane", async () => {
+  it("says what it is waiting for", async () => {
     let settle: (found: ReleaseCandidate[]) => void = () => {};
     vi.mocked(tagsourceSearch).mockReturnValue(
       new Promise<ReleaseCandidate[]>((resolve) => {
@@ -211,10 +210,7 @@ describe("the pane", () => {
     render(<ReleaseLookup />);
     void useTagsourceStore.getState().open([1, 2]);
 
-    expect(await screen.findByText(/matching candidates/)).toBeInTheDocument();
-    expect(mapRows()).toHaveLength(2);
-    // Unanimated, like the app's three other skeletons.
-    expect(document.querySelectorAll(".skeleton")).toHaveLength(2);
+    expect(await screen.findByText("Searching MusicBrainz…")).toBeInTheDocument();
 
     settle([candidate()]);
     await screen.findByRole("button", { name: /Loveless/ });
@@ -227,12 +223,12 @@ describe("the confirm step", () => {
 
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
 
-    await screen.findByText("1. Only Shallow");
+    await screen.findByText(title("1. Only Shallow"));
     const rows = mapRows();
     expect(rows).toHaveLength(2);
     expect(within(rows[0] as HTMLElement).getByText("1. File 1")).toBeInTheDocument();
-    expect(within(rows[0] as HTMLElement).getByText("1. Only Shallow")).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText("2. Loomer")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText(title("1. Only Shallow"))).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText(title("2. Loomer"))).toBeInTheDocument();
   });
 
   it("counts what a release would map before it is applied", async () => {
@@ -247,19 +243,79 @@ describe("the confirm step", () => {
   it("swaps two files' tracks when a row is moved", async () => {
     const user = await open();
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
-    await screen.findByText("1. Only Shallow");
+    await screen.findByText(title("1. Only Shallow"));
 
     await user.click(screen.getByRole("button", { name: "Move down: File 1" }));
 
     const rows = mapRows();
-    expect(within(rows[0] as HTMLElement).getByText("2. Loomer")).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText("1. Only Shallow")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText(title("2. Loomer"))).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText(title("1. Only Shallow"))).toBeInTheDocument();
+  });
+
+  /** The rows worth reading open; a file already tagged as its track folded away. */
+  it("folds away the files an apply would leave as they are", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([
+      track(1, { title: "Only Shallow", artist: "My Bloody Valentine" }),
+      track(2),
+    ]);
+    const user = await open();
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
+    const [changed] = await screen.findAllByRole("table");
+    expect(within(changed as HTMLElement).getAllByRole("row")).toHaveLength(2);
+    expect(within(changed as HTMLElement).getByText("2. File 2")).toBeInTheDocument();
+    // Nothing above or below it within its own group.
+    expect(screen.getByRole("button", { name: "Move down: File 2" })).toBeDisabled();
+
+    const fold = screen.getByText("Unchanged · 1").closest("details");
+    expect(fold).not.toHaveAttribute("open");
+
+    await user.click(screen.getByText("Unchanged · 1"));
+
+    expect(fold).toHaveAttribute("open");
+    const unchanged = screen.getByRole("table", { name: "Unchanged" });
+    expect(within(unchanged).getAllByText(title("1. Only Shallow"))).toHaveLength(2);
+  });
+
+  /** Only what an apply would change, and only while it would write it. */
+  it("colours what the track would change", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([
+      track(1, { title: "only shallow", artist: "My Bloody Valentine" }),
+      track(2),
+    ]);
+    const user = await open();
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
+    await screen.findAllByRole("table");
+
+    const marked = () =>
+      [...document.querySelectorAll(".lookup-map-changed")].map((mark) => mark.textContent);
+    // File 2 has no artist tag, so the album artist is drawn to say it changes.
+    // Only the letters the file's title lacks; a missing tag is new whole.
+    expect(marked()).toEqual(["O", "S", "Loomer", "My Bloody Valentine"]);
+
+    await user.click(screen.getByRole("checkbox", { name: "Artist" }));
+
+    expect(marked()).toEqual(["O", "S", "Loomer"]);
+  });
+
+  it("regroups a row once its only difference is not being written", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([
+      track(1, { title: "only shallow", artist: "My Bloody Valentine" }),
+      track(2),
+    ]);
+    const user = await open();
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
+    await screen.findByText(title("1. Only Shallow"));
+    expect(screen.queryByText(/Unchanged/)).toBeNull();
+
+    await user.click(screen.getByRole("checkbox", { name: "Title" }));
+
+    expect(screen.getByText("Unchanged · 1")).toBeInTheDocument();
   });
 
   it("writes only the ticked fields", async () => {
     const user = await open();
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
-    await screen.findByText("1. Only Shallow");
+    await screen.findByText(title("1. Only Shallow"));
 
     await user.click(screen.getByRole("checkbox", { name: "Year" }));
     await user.click(screen.getByRole("button", { name: "Apply" }));
@@ -294,7 +350,7 @@ describe("the confirm step", () => {
   it("returns to the results without searching again", async () => {
     const user = await open();
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
-    await screen.findByText("1. Only Shallow");
+    await screen.findByText(title("1. Only Shallow"));
     expect(screen.queryByRole("button", { name: "Search again" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Back to Results" }));
@@ -458,7 +514,7 @@ describe("the fixed box", () => {
   it("keeps the header and every action out of both columns", async () => {
     const user = await open();
     await user.click(screen.getByRole("button", { name: /Loveless/ }));
-    await screen.findByText("1. Only Shallow");
+    await screen.findByText(title("1. Only Shallow"));
 
     expect(column(".lookup-pane")).toContainElement(screen.getByRole("table"));
     for (const name of ["Apply", "Cancel", "Back to Results"]) {
