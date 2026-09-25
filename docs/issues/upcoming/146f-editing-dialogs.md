@@ -1,6 +1,6 @@
 # 146f — Stories for the editing dialogs
 
-Needs [146a](146a-story-harness.md). Titles go under `Features/Editing`. The two
+Needs [146a](../done/146a-story-harness.md). Titles go under `Features/Editing`. The two
 statistics dialogs are in 146g and 146h.
 
 | Story file | Draws | Seed | States |

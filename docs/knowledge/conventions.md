@@ -40,7 +40,8 @@
   styles itself inline. Story scaffolding is not app chrome and has no business
   in the sheet; the tokens it reaches for through `var()` are the point of the
   exercise. Storybook's Ground toolbar writes the same `data-theme` the app
-  does, so a specimen is drawn through the mechanism it documents.
+  does, so a specimen is drawn through the mechanism it documents. A story
+  seeds stores and `parameters.ipc`; it never mocks a module.
 - **CSS Modules were considered and declined.** They address collisions this
   project does not have, and they would weaken the cross-cutting `App.css.test.ts`
   guards that assert *absences* — jsdom applies no stylesheet under CSS Modules

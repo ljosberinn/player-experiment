@@ -9,8 +9,20 @@ import "../src/App.css";
 // After `App.css`, which is the only reason its one rule wins.
 import "./preview.css";
 import type { Preview } from "@storybook/react-vite";
+import { resetStores } from "./stores";
+import { type IpcHandlers, installTauri } from "./tauri";
 
 const preview: Preview = {
+  /**
+   * Every story starts from the stores' initial state and answers only the
+   * commands its `parameters.ipc` names. Storybook merges that object with
+   * any defaults set here, so a story lists only what it adds.
+   */
+  beforeEach: ({ parameters }) => {
+    resetStores();
+    return installTauri((parameters.ipc ?? {}) as IpcHandlers);
+  },
+
   parameters: {
     // The window fill is on `html` and the frame inherits it, so a story needs
     // no ground of its own - but the default `padded` layout would inset every
