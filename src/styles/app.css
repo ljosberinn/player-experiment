@@ -3120,6 +3120,12 @@ body:not(:focus-within) .sidebar-row.current {
   fill: var(--accent-soft);
 }
 
+/* Transparent rather than `none`, which would take the pointer events with
+   the paint. */
+.chart-bar-hit {
+  fill: transparent;
+}
+
 /* Two figures over one query, as the week clock's grid and its hour bars. */
 .chart + .chart {
   margin-top: 13px;

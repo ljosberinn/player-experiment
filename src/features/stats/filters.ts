@@ -1,5 +1,6 @@
 import type { ListenQuery, Playlist, TimeRange, TrackQuery } from "../../ipc";
 import type { StatsCrumb, StatsPath, StatsTab } from "./path";
+import { periodSpan } from "./series";
 
 /**
  * What the filter bar can be set to, for both tabs at once.
@@ -271,10 +272,27 @@ function localDay(unixSeconds: number): string {
  * each kind is all `ListenQuery` can express - drilling into an artist and then
  * one of their albums is two crumbs and two fields, and a second artist crumb
  * replaces the first rather than contradicting it.
+ *
+ * A period is the exception, and intersects the range and every period above
+ * it instead. A week opens on its Monday, so the first bar under 2023 is keyed
+ * in 2022 but counted from January; replacing the range with its span would
+ * drill into days the bar never counted. Intersections that miss each other -
+ * a range changed after drilling - come out empty, and so does the answer.
  */
 export function listenQuery(filters: StatsFilters, path: StatsPath | null, now: Date): ListenQuery {
+  let range = rangeFor(filters, now);
+  for (const crumb of path?.crumbs ?? []) {
+    if (crumb.kind === "period") {
+      const span = periodSpan(crumb.key);
+      range =
+        range === null
+          ? span
+          : { from: Math.max(range.from, span.from), to: Math.min(range.to, span.to) };
+    }
+  }
+
   return {
-    range: rangeFor(filters, now),
+    range,
     artist: deepestCrumb(path, "artist"),
     genre: deepestCrumb(path, "genre"),
     album: deepestCrumb(path, "album"),

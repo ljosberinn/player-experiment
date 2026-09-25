@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { type AxisTick, ChartFrame, type PlotRect } from "./ChartFrame";
 import { linearScale, ticks } from "./scales";
 
@@ -19,6 +20,11 @@ export interface BarProps {
   readonly columns: readonly [string, string];
   readonly empty: string;
   readonly loading?: boolean;
+  /**
+   * What clicking a bar does, by its index. Only a bar with a count drills:
+   * an empty one opens onto nothing.
+   */
+  readonly onSelect?: (index: number) => void;
 }
 
 /**
@@ -35,9 +41,12 @@ export interface BarProps {
  *
  * The table reading is built here rather than taken as a prop. A bar chart's
  * table is always the same two columns, and a panel that had to supply one
- * could supply a wrong one.
+ * could supply a wrong one. It is also where a drill's real control goes, for
+ * the reason `Donut` gives.
  */
-export function Bar({ label, data, format, columns, empty, loading = false }: BarProps) {
+export function Bar({ label, data, format, columns, empty, loading = false, onSelect }: BarProps) {
+  const drills = (datum: BarDatum) => onSelect !== undefined && datum.value > 0;
+
   // Never zero: a chart of nothing but zeroes would divide every bar by it.
   const largest = Math.max(...data.map((datum) => datum.value), 1);
   const scaleFor = (plot: PlotRect) => linearScale([0, largest], [plot.height, 0]);
@@ -51,9 +60,21 @@ export function Bar({ label, data, format, columns, empty, loading = false }: Ba
         </tr>
       </thead>
       <tbody>
-        {data.map((datum) => (
+        {data.map((datum, index) => (
           <tr key={datum.label}>
-            <th scope="row">{datum.label}</th>
+            <th scope="row">
+              {drills(datum) ? (
+                <button
+                  type="button"
+                  className="chart-table-drill"
+                  onClick={() => onSelect?.(index)}
+                >
+                  {datum.label}
+                </button>
+              ) : (
+                datum.label
+              )}
+            </th>
             <td>{format(datum.value)}</td>
           </tr>
         ))}
@@ -81,18 +102,39 @@ export function Bar({ label, data, format, columns, empty, loading = false }: Ba
         // and a gap there would take a third of the ink.
         const width = Math.max(1, band - (band > 4 ? 1 : 0));
 
-        return data.map((datum, index) => (
-          <rect
-            key={datum.label}
-            className="chart-bar"
-            x={index * band}
-            y={y(datum.value)}
-            width={width}
-            height={Math.max(0, plot.height - y(datum.value))}
-          >
-            <title>{`${datum.label}: ${format(datum.value)}`}</title>
-          </rect>
-        ));
+        return data.map((datum, index) => {
+          const readout = `${datum.label}: ${format(datum.value)}`;
+          return (
+            <Fragment key={datum.label}>
+              <rect
+                className="chart-bar"
+                x={index * band}
+                y={y(datum.value)}
+                width={width}
+                height={Math.max(0, plot.height - y(datum.value))}
+              >
+                <title>{readout}</title>
+              </rect>
+              {drills(datum) && (
+                // The whole band rather than the bar, so a short bar is as
+                // easy to hit as a tall one. A pointer shortcut for the
+                // table's button, on `Donut`'s terms.
+                // biome-ignore lint/a11y/noStaticElementInteractions: the drill has a button in the table
+                <rect
+                  className="chart-bar-hit"
+                  data-drills=""
+                  x={index * band}
+                  y={0}
+                  width={band}
+                  height={plot.height}
+                  onClick={() => onSelect?.(index)}
+                >
+                  <title>{readout}</title>
+                </rect>
+              )}
+            </Fragment>
+          );
+        });
       }}
     </ChartFrame>
   );

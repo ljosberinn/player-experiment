@@ -141,6 +141,54 @@ describe("listenQuery", () => {
 
     expect(query.artist).toBe("Panopticon");
   });
+
+  /** Unix seconds at a local midnight. */
+  const at = (year: number, month: number, day: number) =>
+    Math.floor(new Date(year, month - 1, day).getTime() / 1000);
+
+  it.each(["all", "thisYear", "months12", "thisMonth", "days7", "custom"] as const)(
+    "narrows %s to a period crumb",
+    (range) => {
+      const query = listenQuery(
+        filters({ range, custom: { from: at(2025, 1, 1), to: at(2027, 1, 1) } }),
+        { tab: "listening", crumbs: [{ kind: "period", key: "2026-05-11/week" }] },
+        NOW,
+      );
+
+      // This week, cut off at the end of today by every range that ends there.
+      const to = range === "all" || range === "custom" ? at(2026, 5, 18) : at(2026, 5, 14);
+      expect(query.range).toEqual({ from: at(2026, 5, 11), to });
+    },
+  );
+
+  it("intersects nested periods, so a week that straddles the year starts with it", () => {
+    // Weeks open on a Monday, and the first under 2023 is keyed in 2022.
+    const query = listenQuery(
+      filters(),
+      {
+        tab: "listening",
+        crumbs: [
+          { kind: "period", key: "2023-01-01/year" },
+          { kind: "period", key: "2022-12-26/week" },
+        ],
+      },
+      NOW,
+    );
+
+    expect(query.range).toEqual({ from: at(2023, 1, 1), to: at(2023, 1, 2) });
+  });
+
+  it("leaves a period outside the range empty rather than widening the range", () => {
+    const query = listenQuery(
+      filters({ range: "thisYear" }),
+      { tab: "listening", crumbs: [{ kind: "period", key: "2023-01-01/year" }] },
+      NOW,
+    );
+    const range = query.range;
+
+    expect(range).not.toBeNull();
+    expect((range?.from ?? 0) >= (range?.to ?? 0)).toBe(true);
+  });
 });
 
 describe("libraryQuery", () => {

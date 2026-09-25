@@ -426,7 +426,7 @@ attributed away from their biggest spelling.
   fifth spelling none of the 1,112 plays carry — and its ids reach only 9% of
   plays, because an imported scrobble with no file never has one. That is also
   why `heading` doubles as the group's identity: `ListenQuery::album` stays a
-  title string and `StatsCrumb` does not change.
+  title string and the album `StatsCrumb` does not change.
 - **`plays::regroup` recomputes the whole table**, in `resolve`'s shape and
   for its reason. It runs at the end of an import and once after
   `FOLD_VERSION` moves, which `settings.plays.albumFold` records; a local play

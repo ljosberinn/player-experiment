@@ -6,6 +6,7 @@ import { ListeningPanels } from "./ListeningPanels";
 import { STATS_TAB_TITLES, type StatsTab, statsRoot, walkBack } from "./path";
 import { StatsFilterBar } from "./StatsFilterBar";
 import { StatsFilterTokens } from "./StatsFilterTokens";
+import { periodLabel } from "./series";
 import { useStatsStore } from "./store";
 
 /**
@@ -69,7 +70,7 @@ export function StatisticsView() {
               disabled={depth === crumbs.length - 1}
               onClick={() => void showStatsPath(walkBack(path, depth + 1))}
             >
-              {crumb.key}
+              {crumb.kind === "period" ? periodLabel(crumb.key) : crumb.key}
             </button>
           ))}
         </nav>

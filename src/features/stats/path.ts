@@ -7,9 +7,13 @@
  */
 export type StatsTab = "listening" | "library";
 
-/** One step of a drill-down: the slice, bar or row that was clicked. */
+/**
+ * One step of a drill-down: the slice, bar or row that was clicked.
+ *
+ * A period's key is `<YYYY-MM-DD>/<bucket>` - see `periodSpan`.
+ */
 export interface StatsCrumb {
-  readonly kind: "artist" | "genre" | "album";
+  readonly kind: "artist" | "genre" | "album" | "period";
   readonly key: string;
 }
 

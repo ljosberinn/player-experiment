@@ -257,6 +257,9 @@ and every colour on screen is ours, which is what the design and
   an svg is reachable by anything but a pointer. A drill therefore has a button
   in the table, and the path carries `data-drills` and no `role` — claiming one
   that no assistive technology can reach would be worse than claiming none.
+  `Bar` drills the same way, through a transparent `.chart-bar-hit` rect the
+  height of the plot over each non-zero bar, so a short bar is as easy to hit
+  as a tall one; an empty bar and its table row stay inert.
 - **A time series is cut by its span, not by the range filter.** `bucketFor`
   in `features/stats/series.ts` picks days, weeks, months or years from how
   long the span is; under all time the span is `listen_totals`' first and last
@@ -556,6 +559,14 @@ absences are what nobody notices coming back — hence the guards in
   subset as the whole. It is `StatsPanel`'s `caption`, not a chart's, because
   When you listen draws two charts over one coverage. One entry and not a cache: every panel
   moves to the new filters together, so the entry before last has no reader.
+- **A time-series bar drills into a `period` crumb**, keyed
+  `<YYYY-MM-DD>/<bucket>` and named by `periodLabel` in the breadcrumb. Unlike
+  the other kinds it intersects the range and every period above it rather
+  than replacing them: a week opens on its Monday, so the first bar under
+  2023 is keyed in 2022 but counts from 1 January, and the drill has to count
+  what the bar did. A range changed after drilling can leave the intersection
+  empty, which asks for nothing and draws the empty states. `SeriesPanel`
+  drills only a series of more than one bar, so a day stops.
 - **Drilling into an artist narrows the Listening tab rather than opening a
   page.** The crumb already reaches `ListenQuery` through `listenQuery`, so
   every panel re-queries narrowed without knowing a drill-down happened;

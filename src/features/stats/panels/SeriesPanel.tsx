@@ -1,6 +1,8 @@
 import { Bar } from "../../../components/charts/Bar";
 import type { ListenQuery, ListenTotals, TimeBucket, TimeCount, TimeRange } from "../../../ipc";
+import { useLibraryStore } from "../../library/store";
 import { listenTotalsOnce } from "../listenTotals";
+import { drill } from "../path";
 import { BUCKET_TITLES, bucketFor, bucketLabel, fillSeries } from "../series";
 import { useListenQuery } from "../useListenQuery";
 import { usePanelQuery } from "../usePanelQuery";
@@ -37,8 +39,14 @@ const COVERAGE: Record<SeriesPanelProps["whole"], (share: number) => string> = {
  * One component with a caller per aggregate, the way `HistogramPanel` is: the
  * two series are cut, filled and drawn the same way and differ only in what a
  * bar counts.
+ *
+ * A bar drills into its own stretch of time, which the tab then cuts finer:
+ * a year into weeks, a month or a week into days. A series of one bar is the
+ * span it would drill into, so a day stops there.
  */
 export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps) {
+  const path = useLibraryStore((s) => s.statsPath);
+  const showStatsPath = useLibraryStore((s) => s.showStatsPath);
   const { query, deps } = useListenQuery();
 
   const { data, loading } = usePanelQuery(async (): Promise<Answer> => {
@@ -63,12 +71,13 @@ export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps)
   }, deps);
 
   const bucket = data?.series?.bucket ?? "month";
+  const counts = data?.series?.counts ?? [];
 
   return (
     <StatsPanel title={title} caption={data?.caption ?? null}>
       <Bar
         label={`${noun} per ${bucket}`}
-        data={(data?.series?.counts ?? []).map((entry) => ({
+        data={counts.map((entry) => ({
           label: bucketLabel(entry.start, bucket),
           value: entry.count,
         }))}
@@ -76,6 +85,18 @@ export function SeriesPanel({ title, aggregate, noun, whole }: SeriesPanelProps)
         columns={[BUCKET_TITLES[bucket], noun]}
         empty="Nothing in this range."
         loading={loading}
+        {...(counts.length > 1 && path !== null
+          ? {
+              onSelect: (index: number) => {
+                const entry = counts[index];
+                if (entry !== undefined) {
+                  void showStatsPath(
+                    drill(path, { kind: "period", key: `${entry.start}/${bucket}` }),
+                  );
+                }
+              },
+            }
+          : {})}
       />
     </StatsPanel>
   );

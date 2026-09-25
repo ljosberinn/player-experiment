@@ -14,6 +14,7 @@ import { DEFAULT_FILTERS } from "./filters";
 import { forgetListenTotals } from "./listenTotals";
 import { statsRoot } from "./path";
 import { StatisticsView } from "./StatisticsView";
+import { periodLabel } from "./series";
 import { useStatsStore } from "./store";
 
 vi.mock("../../ipc", () => ({
@@ -172,6 +173,43 @@ describe("StatisticsView", () => {
     render(<StatisticsView />);
 
     expect(await screen.findByText(/Nothing has been played yet/)).toBeInTheDocument();
+  });
+
+  it("blames the drill path rather than the import when a period holds no plays", async () => {
+    listenMock.mockResolvedValue({
+      plays: 0,
+      artists: 0,
+      albums: 0,
+      tracks: 0,
+      days: 0,
+      durationMs: 0,
+      owned: 0,
+      withGenre: 0,
+      timed: 0,
+      dated: 0,
+      firstAt: null,
+      lastAt: null,
+    });
+    useLibraryStore.setState({
+      statsPath: { tab: "listening", crumbs: [{ kind: "period", key: "2023-01-01/year" }] },
+    });
+
+    render(<StatisticsView />);
+
+    expect(await screen.findByText("No plays in this range.")).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing has been played yet/)).not.toBeInTheDocument();
+  });
+
+  it("names a period crumb by its stretch of time, not its key", async () => {
+    useLibraryStore.setState({
+      statsPath: { tab: "listening", crumbs: [{ kind: "period", key: "2023-03-01/month" }] },
+    });
+
+    render(<StatisticsView />);
+
+    const breadcrumb = await screen.findByRole("navigation", { name: "Drill-down" });
+    expect(breadcrumb).toHaveTextContent(periodLabel("2023-03-01/month"));
+    expect(breadcrumb).not.toHaveTextContent("2023-03-01/month");
   });
 
   // Asserted through the tokens themselves rather than the "Showing" that
