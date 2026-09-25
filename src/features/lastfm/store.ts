@@ -125,7 +125,7 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
       set({
         username: null,
         connecting: false,
-        error: "last.fm rejected the stored key. Connect again to keep scrobbling.",
+        error: "last.fm rejected the key. Connect again.",
       });
     });
     const stopQueued = await onLastfmQueued((queued) => set({ queued }));
@@ -168,7 +168,7 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
 
       set({
         connecting: false,
-        error: "last.fm was not authorised in time. Press Connect to try again.",
+        error: "Connecting timed out. Try again.",
       });
     } catch (error) {
       if (attempt !== generation) {

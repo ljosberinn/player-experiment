@@ -29,7 +29,7 @@ export function ListeningTiles() {
             range cannot appear under a line saying nothing is filtered. No
             playlists: a scope token is the Library tab's. */}
         {activeFilters(filters, "listening", []).length === 0
-          ? "Nothing has been played yet. Import your last.fm history from Settings ▸ last.fm to bring in what came before."
+          ? "Nothing has been played yet. Import your last.fm history in Settings ▸ Online."
           : "No plays in this range."}
       </p>
     );

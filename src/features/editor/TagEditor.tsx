@@ -234,9 +234,7 @@ export function TagEditor({
           saving ? (
             <WriteLine progress={progress} />
           ) : tracks.length > 1 ? (
-            <DialogStatus>
-              Only the fields you change are written; the rest are left as they are.
-            </DialogStatus>
+            <DialogStatus>Only changed fields are written.</DialogStatus>
           ) : undefined
         }
       >

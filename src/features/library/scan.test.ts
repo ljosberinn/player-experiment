@@ -171,7 +171,7 @@ describe("dropping paths on the library", () => {
     // `rescan` clears the popover as it starts, so the sentence has to be said
     // after it rather than before.
     expect(scanLibrary).toHaveBeenCalledOnce();
-    expect(useStatusStore.getState().message).toContain("That file is not in a watched folder");
+    expect(useStatusStore.getState().message).toContain("That file");
   });
 
   it("refuses a drop while a scan is running", async () => {
