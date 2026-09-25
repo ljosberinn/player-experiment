@@ -4,6 +4,7 @@ import { exportSelectionLabel, type Menu, menus } from "../src/features/shell/me
 import type {
   BrowseGroup,
   CrashReport,
+  GenreSlice,
   Playlist,
   ReleaseCandidate,
   ReleaseDetail,
@@ -39,6 +40,9 @@ interface Album {
   year: number;
   genre: string;
   cover: string | null;
+  /** kbps; Glass Garden's is a VBR mean, so it falls between the usual rates. */
+  bitrate: number;
+  sampleRate: number;
   titles: string[];
 }
 
@@ -49,6 +53,8 @@ const ALBUMS: Album[] = [
     year: 2019,
     genre: "Indie Rock",
     cover: "a1",
+    bitrate: 320,
+    sampleRate: 44_100,
     titles: [
       "Low Tide",
       "Signal Fires",
@@ -65,6 +71,8 @@ const ALBUMS: Album[] = [
     year: 2021,
     genre: "Electronic",
     cover: "b2",
+    bitrate: 256,
+    sampleRate: 48_000,
     titles: ["Departures", "Sodium", "Last Train Home", "Overpass", "Neon Static", "Terminus"],
   },
   {
@@ -73,6 +81,8 @@ const ALBUMS: Album[] = [
     year: 2015,
     genre: "Folk",
     cover: "c3",
+    bitrate: 192,
+    sampleRate: 44_100,
     titles: [
       "Morning in the Orchard, Before Anyone Else Had Woken and the Frost Was Still on the Grass",
       "Pollen",
@@ -89,6 +99,8 @@ const ALBUMS: Album[] = [
     year: 2023,
     genre: "Jazz",
     cover: "d4",
+    bitrate: 320,
+    sampleRate: 48_000,
     titles: ["Patina", "Blue Verdigris", "Conductor", "Alloy", "Wire", "Solder"],
   },
   {
@@ -97,6 +109,8 @@ const ALBUMS: Album[] = [
     year: 2008,
     genre: "Punk",
     cover: null,
+    bitrate: 128,
+    sampleRate: 32_000,
     titles: [
       "Untitled 1",
       "Garage",
@@ -113,6 +127,8 @@ const ALBUMS: Album[] = [
     year: 2017,
     genre: "Dream Pop",
     cover: "f6",
+    bitrate: 245,
+    sampleRate: 44_100,
     titles: [
       "Greenhouse",
       "Condensation",
@@ -181,6 +197,8 @@ export const LIBRARY: Track[] = ALBUMS.flatMap((album, a) =>
       year: album.year,
       track_no: t + 1,
       disc_no: 1,
+      bitrate: album.bitrate,
+      sample_rate: album.sampleRate,
       cover_hash: album.cover,
       added_at: EPOCH - a * 86_400 * 30,
       play_count: (id * 7) % 23,
@@ -463,3 +481,14 @@ export const GENRES: string[] = [
   "Punk",
   "Shoegaze",
 ];
+
+/**
+ * Where each of `LIBRARY`'s genres sits in the tree, by its parent. Dream Pop's
+ * parent is the suffix guess, so the donut has a slice to label as one.
+ */
+export const GENRE_PARENTS: Record<string, { parent: string; source: GenreSlice["parentSource"] }> =
+  {
+    "Indie Rock": { parent: "Rock", source: "wikidata" },
+    Punk: { parent: "Rock", source: "wikidata" },
+    "Dream Pop": { parent: "Pop", source: "derived" },
+  };
