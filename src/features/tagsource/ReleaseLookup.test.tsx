@@ -167,8 +167,37 @@ describe("the pane", () => {
 
     const rows = mapRows();
     expect(rows).toHaveLength(2);
-    expect(within(rows[0] as HTMLElement).getByText("File 1")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText("1. File 1")).toBeInTheDocument();
     expect(within(rows[0] as HTMLElement).queryByText(/Only Shallow/)).toBeNull();
+  });
+
+  it("numbers the files the way it numbers the tracks", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([
+      track(1, { disc_no: 1, track_no: 3 }),
+      track(2, { disc_no: 2, track_no: 1 }),
+      track(3, { disc_no: null, track_no: null }),
+    ]);
+
+    await open();
+
+    const rows = mapRows();
+    expect(within(rows[0] as HTMLElement).getByText("1-3. File 1")).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText("2-1. File 2")).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText("— File 3")).toBeInTheDocument();
+  });
+
+  it("counts both sides of the mapping in its heads", async () => {
+    vi.mocked(tracksByIds).mockResolvedValue([track(1), track(2), track(3)]);
+    const user = await open();
+
+    expect(screen.getByRole("columnheader", { name: "File · 3" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "MusicBrainz" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
+
+    expect(
+      await screen.findByRole("columnheader", { name: "MusicBrainz · 2" }),
+    ).toBeInTheDocument();
   });
 
   /** No spinner: the rail and the line say which step is outstanding. */
@@ -201,7 +230,7 @@ describe("the confirm step", () => {
     await screen.findByText("1. Only Shallow");
     const rows = mapRows();
     expect(rows).toHaveLength(2);
-    expect(within(rows[0] as HTMLElement).getByText("File 1")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText("1. File 1")).toBeInTheDocument();
     expect(within(rows[0] as HTMLElement).getByText("1. Only Shallow")).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText("2. Loomer")).toBeInTheDocument();
   });

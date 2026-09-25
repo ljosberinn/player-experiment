@@ -937,7 +937,7 @@ describe("the stylesheet", () => {
 
     const lookup = all.find((one) => /(^|\s)\.dialog\.lookup$/.test(one.selector));
 
-    expect(lookup?.body, ".dialog.lookup should state a height").toMatch(/[^-]height:\s*min\(/);
+    expect(lookup?.body, ".dialog.lookup should state a height").toMatch(/[^-]height:\s*max\(/);
 
     // 118 put the queue in a column beside the pane, so the body hands the
     // scroll to its two children rather than keeping it. Deliberate, and
@@ -959,13 +959,14 @@ describe("the stylesheet", () => {
     expect(inside.length).toBeGreaterThan(8);
     const scrollers = inside.filter((one) => /overflow(-y)?:\s*(auto|scroll)/.test(one.body));
 
-    // The queue's list and the pane, and nothing else: the two columns the
-    // body gave the scroll to.
+    // The queue's list and the pane - the two columns the body gave the
+    // scroll to - and the candidates, which the pane caps at five.
     // `uncommented`, because `rules()` sweeps whatever precedes the brace -
     // comments included - into the selector.
     expect(scrollers.map((one) => uncommented(one.selector).trim())).toEqual([
       ".lookup-queue-list",
       ".lookup-pane",
+      ".lookup-results",
     ]);
     for (const rule of scrollers) {
       expect(rule.body, `${rule.selector} scrolls without a floor`).toMatch(/min-height:\s*0/);

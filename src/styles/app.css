@@ -1380,10 +1380,14 @@ th.status {
 /* The dialog passed through six heights - 154px while it read the files, 695px
    confirming eleven - and `advance` resets to "opening" between releases, so a
    Skip moved Cancel and Skip Release 270px and back under the pointer holding
-   them. 720px is the tallest of the six, so the box that holds all of them
-   costs the largest state nothing. */
+   them. 792px is the tallest of the six, so the box that holds all of them
+   costs the largest state nothing; a tall window gives it 80% on top.
+
+   1200px is what puts the eight WRITE boxes on one line, which takes 852px of
+   pane: the default window has it, the minimum one wraps them. */
 .dialog.lookup {
-  height: min(792px, 86vh);
+  width: min(1200px, 92vw);
+  height: max(min(792px, 86vh), 80vh);
 }
 
 /* Section 6e: the queue on the left, the pane following the selection. Full
@@ -1527,42 +1531,56 @@ th.status {
   font-weight: 400;
 }
 
-/* No cap and no scroller of its own: the pane is the scroll area this sits in.
-   The candidates are what the source region holds until one is picked, and
-   picking swaps them for the covers and the fields in the same place. */
+/* Five results, and the rest scroll here rather than pushing the mapping below
+   out of the pane. A result is three lines that do not wrap, so the cap is the
+   arithmetic of `.lookup-result` below rather than a measurement. Search
+   returns up to fifteen. */
 .lookup-results {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: calc(5 * (3 * 13.5px * 1.3 + 2 * 8px + 2 * 1px) + 4 * 4px);
+  min-height: 0;
   margin: 0 20px 15px;
   padding: 0;
+  overflow-y: auto;
   list-style: none;
 }
 
-/* A result is four facts on two lines, so it is a grid rather than the
-   one-line control `primitives.css` gives a bare `<button>`. */
+/* A result is four facts on three lines, so it is a grid rather than a
+   `.button`. It states the face and the edge itself: a bare `<button>` takes
+   the engine's, which drew these in Arial inside an outset bevel. */
 .lookup .lookup-result {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0 13px;
   width: 100%;
   height: auto;
   padding: 8px 11px;
+  border: 1px solid var(--menu-border);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.3;
   text-align: left;
   background: var(--surface);
+  cursor: default;
+}
+
+.lookup-result-title,
+.lookup-result-artist,
+.lookup-result-detail {
+  grid-column: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .lookup-result-title {
-  grid-column: 1;
   font-weight: 600;
 }
 
-.lookup-result-artist {
-  grid-column: 1;
-}
-
 .lookup-result-detail {
-  grid-column: 1;
   color: var(--muted);
 }
 
@@ -1595,7 +1613,7 @@ th.status {
 }
 
 /* 90px, against the tag editor's 132px: two of them sit beside each other in a
-   769px pane that also holds the fields and the mapping, rather than alone at
+   967px pane that also holds the fields and the mapping, rather than alone at
    the top of a dialog. The edge is the empty box's own - the sheet draws a
    border on the placeholder and none on the art, which is what tells an
    unknown cover from a blank one. */
