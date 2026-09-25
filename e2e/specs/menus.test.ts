@@ -93,7 +93,13 @@ describe("the menu bar", () => {
       ["About", /Activity Log/],
     ] as const) {
       await browser.$(`//*[@role='tab'][normalize-space()='${category}']`).click();
-      await expect(browser.$(".dialog-body")).toHaveText(text);
+      // Queried afresh on every poll: each category is its own panel, so a
+      // lookup that lands before the switch holds the outgoing one, whose text
+      // the driver reads as null once it unmounts rather than failing stale.
+      await browser.waitUntil(async () => text.test(await browser.$(".dialog-body").getText()), {
+        timeout: 10_000,
+        timeoutMsg: `${category} never showed ${text}`,
+      });
       await capture(`settings-${category.toLowerCase()}`);
     }
 
