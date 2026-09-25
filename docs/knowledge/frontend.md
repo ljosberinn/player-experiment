@@ -689,6 +689,10 @@ absences are what nobody notices coming back — hence the guards in
   as 1; album, album artist, year and artwork are the release's and tell no
   row apart. Grouping is live, so a swap or a tick moves rows between groups,
   and the arrows swap within a group. Unmapped files stay in the first group.
+  The same comparison (`differences`) colours each value the MusicBrainz cell
+  would change in `--accent`, not `--danger`: a change is the dialog's point,
+  not a fault. The artist is drawn whenever it would change, even when it is
+  the album artist.
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.

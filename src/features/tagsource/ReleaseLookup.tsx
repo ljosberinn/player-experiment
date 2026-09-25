@@ -25,6 +25,7 @@ import {
   type Assignment,
   agrees,
   buildEdits,
+  differences,
   type Fields,
   LOOKUP_FIELDS,
   mappedCount,
@@ -633,7 +634,7 @@ function Mapping({
             />
           </td>
           <td>
-            <RemoteCell detail={detail} remote={remote} />
+            <RemoteCell detail={detail} file={track} remote={remote} fields={fields} />
           </td>
         </tr>
       );
@@ -690,23 +691,51 @@ function Columns() {
 /** `row` is the file's index in the selection, which is what `onSwap` takes. */
 type MapRow = { track: Track; row: number; remote: RemoteTrack | null };
 
-function RemoteCell({ detail, remote }: { detail: ReleaseDetail; remote: RemoteTrack | null }) {
+/**
+ * The MusicBrainz half of a mapping row, with what an apply would change in
+ * the accent. The file half beside it is the old value, so the colour only
+ * points at a difference the row already shows.
+ */
+function RemoteCell({
+  detail,
+  file,
+  remote,
+  fields,
+}: {
+  detail: ReleaseDetail;
+  file: Track;
+  remote: RemoteTrack | null;
+  fields: Fields;
+}) {
   if (remote === null) {
     return <span className="lookup-map-detail">Nothing to write</span>;
   }
 
+  const changed = differences(file, remote, fields);
+  // A disc a single-disc release would write is still a change, so it is
+  // drawn whenever it is one.
+  const disc = detail.candidate.discCount > 1 || changed.discNo;
+  const artist = remote.artist !== detail.albumArtist || changed.artist;
+
   return (
     <>
       <span className="lookup-map-title">
-        {detail.candidate.discCount > 1 ? `${remote.discNo}-` : ""}
-        {remote.trackNo}. {remote.title}
+        {disc ? <Mark on={changed.discNo}>{`${remote.discNo}-`}</Mark> : null}
+        <Mark on={changed.trackNo}>{String(remote.trackNo)}</Mark>
+        {". "}
+        <Mark on={changed.title}>{remote.title}</Mark>
       </span>
       <span className="lookup-map-detail">
         {remote.durationMs === null ? "—" : formatDuration(remote.durationMs)}
-        {remote.artist === detail.albumArtist ? "" : ` · ${remote.artist}`}
+        {artist ? " · " : null}
+        {artist ? <Mark on={changed.artist}>{remote.artist}</Mark> : null}
       </span>
     </>
   );
+}
+
+function Mark({ on, children }: { on: boolean; children: string }) {
+  return on ? <span className="lookup-map-changed">{children}</span> : children;
 }
 
 function Art({ label, src, note }: { label: string; src: string | null; note: string | null }) {

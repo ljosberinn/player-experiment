@@ -1702,6 +1702,12 @@ th.status {
   font-variant-numeric: tabular-nums;
 }
 
+/* A value an apply would change. The accent rather than `--danger`, which is
+   the queue's disagreement: a change is the point of the dialog, not a fault. */
+.lookup-map-changed {
+  color: var(--accent);
+}
+
 /* A file the release has nothing for. Dimmed rather than hidden: it is still
    selected, it still gets the release identifiers, and the reason it is here
    is so the mismatch can be fixed with the arrows. */

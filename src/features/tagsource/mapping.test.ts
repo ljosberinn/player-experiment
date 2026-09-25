@@ -5,6 +5,7 @@ import {
   allFields,
   buildEdits,
   defaultAssignment,
+  differences,
   identityOf,
   mappedCount,
   swapAssignment,
@@ -87,6 +88,19 @@ describe("agrees", () => {
   /** The release's fields are the same on every row, so they tell none apart. */
   it("ignores the release-wide fields", () => {
     expect(agrees({ ...tagged, album: "loveless", year: 2021 }, only, allFields())).toBe(true);
+  });
+});
+
+describe("differences", () => {
+  it("names each ticked field the track would change", () => {
+    const file = track(1, { title: "Only Shallow", track_no: 2, disc_no: 2 });
+
+    expect(differences(file, remote(1, "Only Shallow"), allFields())).toEqual({
+      title: false,
+      artist: true,
+      trackNo: true,
+      discNo: true,
+    });
   });
 });
 

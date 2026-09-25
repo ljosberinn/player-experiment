@@ -6,6 +6,8 @@ MusicBrainz lookup ([ReleaseLookup.tsx](../../../src/features/tagsource/ReleaseL
 - Files an apply would leave as they are (`agrees`: ticked title, artist,
   track and disc number) move to a closed `<details>`, `Unchanged · N`, below
   the rest. Arrows swap within a group.
+- The MusicBrainz cell colours each value an apply would change (`--accent`).
+  The artist shows whenever it changes.
 - Waiting lines: `Reading your files…`, `Searching MusicBrainz…`,
   `Reading the tracklist…`.
 
@@ -17,3 +19,5 @@ MusicBrainz lookup ([ReleaseLookup.tsx](../../../src/features/tagsource/ReleaseL
   its columns line up with the table above.
 - Unticking Title moves a row whose only difference is its title into
   Unchanged.
+- A changed title, number or artist is accent-coloured on the MusicBrainz side;
+  unticking its field removes the colour.
