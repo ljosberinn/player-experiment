@@ -1,7 +1,8 @@
 import { useLovedStore } from "../src/features/love/store";
 import { usePlayerStore } from "../src/features/player/store";
-import type { LastfmConnection, LastfmImported, LibraryFolder } from "../src/ipc";
-import { CRASH, LIBRARY } from "./fixtures";
+import type { LastfmConnection, LastfmImported, LibraryFolder, ReviewCounts } from "../src/ipc";
+import { BUILT_INS, CRASH, LIBRARY, PLAYLISTS, playlist } from "./fixtures";
+import { allTrackIds, browseGroups, libraryStats, queryTracks, releaseGroups } from "./library";
 import type { IpcHandlers } from "./tauri";
 
 export const crashHandlers: IpcHandlers = {
@@ -61,4 +62,44 @@ export const shellHandlers: IpcHandlers = {
     state: { username: String(username), through: 1_772_366_400, resumable: false },
   }),
   loved_tracks: () => [],
+};
+
+/**
+ * The library's queries, over `LIBRARY`. A story reaches a view through the
+ * store's own navigation, which asks these, rather than by seeding the counts
+ * and groups a navigation would have fetched.
+ */
+export const libraryHandlers: IpcHandlers = {
+  query_tracks: (args) => queryTracks(args as Parameters<typeof queryTracks>[0]),
+  all_track_ids: (args) => allTrackIds(args as Parameters<typeof allTrackIds>[0]),
+  library_stats: (args) => libraryStats(args as Parameters<typeof libraryStats>[0]),
+  browse_groups: (args) => browseGroups(args as Parameters<typeof browseGroups>[0]),
+  release_groups: (args) => releaseGroups(args as Parameters<typeof releaseGroups>[0]),
+  load_column_config: () => null,
+  save_column_config: () => null,
+  reset_all_column_configs: () => null,
+  reveal_track: () => null,
+  set_loved: () => [...useLovedStore.getState().loved],
+};
+
+/** The sidebar's playlists: the fixtures' own and the built-ins `LibraryNav` draws. */
+export const playlistHandlers: IpcHandlers = {
+  list_playlists: () => [...BUILT_INS, ...PLAYLISTS],
+  load_sidebar_sections: () => null,
+  save_sidebar_sections: () => null,
+  create_playlist: ({ name }) => playlist(100, String(name), 0),
+  rename_playlist: () => null,
+  delete_playlist: () => null,
+  add_to_playlist: ({ trackIds }) => (trackIds as number[]).length,
+  playlist_filter: () => null,
+  playlist_order: () => ({ sort: null, limit: null }),
+};
+
+export const REVIEW_COUNTS: ReviewCounts = { review: 14, aside: 3 };
+
+export const reviewHandlers: IpcHandlers = {
+  tagsource_review_counts: () => REVIEW_COUNTS,
+  // Nothing left by the time the row is clicked, so no dialog is asked for.
+  tagsource_review_queue: () => [],
+  tagsource_restore_review: () => REVIEW_COUNTS.aside,
 };
