@@ -1,3 +1,6 @@
+import type { MenuItem } from "../src/components/ui/ContextMenu";
+import { rowMenuItems } from "../src/features/library/rowMenu";
+import { exportSelectionLabel, type Menu, menus } from "../src/features/shell/menus";
 import type { BrowseGroup, CrashReport, Playlist, ReleaseGroup, Track } from "../src/ipc";
 
 /** A square cover as an inline SVG, so the fixtures carry no binary assets. */
@@ -236,3 +239,59 @@ export const CRASH: CrashReport = {
   ].join("\n"),
   path: "C:\\Users\\me\\AppData\\Roaming\\dev.ljosberinn.apex\\crashes.log",
 };
+
+/** Two static playlists for the Add to Playlist submenu, and a smart one it leaves out. */
+export const PLAYLISTS: Playlist[] = [
+  playlist(1, "Late Night", 42),
+  playlist(2, "Road Trip", 118),
+  smartPlaylist(3, "Unplayed Jazz", 12),
+];
+
+const noop = () => {};
+
+/** The right-click menu on one row of `LIBRARY`, as `SongTable` builds it. */
+export function rowItems(overrides: Partial<Parameters<typeof rowMenuItems>[0]> = {}): MenuItem[] {
+  return rowMenuItems({
+    count: 1,
+    playlists: PLAYLISTS,
+    openPlaylist: null,
+    track: LIBRARY[0] ?? null,
+    onPlay: noop,
+    onEdit: noop,
+    onLookup: noop,
+    onAddTo: noop,
+    onRemove: noop,
+    onRemoveFromLibrary: noop,
+    loving: { loved: false, keyed: true, onToggle: noop },
+    onExport: noop,
+    onReveal: noop,
+    onOpenUrl: noop,
+    ...overrides,
+  });
+}
+
+/**
+ * The menu bar with two songs selected, three files missing and last.fm
+ * connected, so every menu has something in it.
+ */
+export const MENUS: Menu[] = menus({
+  selectionCount: 2,
+  missingCount: 3,
+  removedCount: 1,
+  hasExportTarget: true,
+  exportSelectionLabel: exportSelectionLabel(2, null),
+  lastfmConfigured: true,
+  lastfmUsername: "orchard_ears",
+  // `AppMenus` leaves removal to File's own entry.
+  rowItems: rowItems({ count: 2, track: null, onRemoveFromLibrary: undefined }),
+  onAddFolder: noop,
+  onRescan: noop,
+  onRemoveFromLibrary: noop,
+  onRemoveMissing: noop,
+  onForgetRemoved: noop,
+  onSettings: noop,
+  onExportAll: noop,
+  onExportSelection: noop,
+  onLastfmDisconnect: noop,
+  onOpenRepository: noop,
+});
