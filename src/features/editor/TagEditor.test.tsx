@@ -588,9 +588,18 @@ describe("the suggestion list phase 18 brought with it", () => {
 
       // The dialog stays up across the write now, and a dialog that says
       // nothing while it does is indistinguishable from a hung window.
-      expect(
-        screen.getByText(`Writing ${(120).toLocaleString()} of ${(500).toLocaleString()}…`),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        `Writing ${(120).toLocaleString()} of ${(500).toLocaleString()}…`,
+      );
+      expect(screen.getByRole("status").closest(".dialog-footer")).not.toBeNull();
+    });
+
+    it("says the library is updating once the last file is written", () => {
+      open([track()], null, { done: 500, total: 500 });
+
+      // The files are done and the transaction behind them is not, which over
+      // a whole library is the longest part of the write.
+      expect(screen.getByRole("status")).toHaveTextContent("Updating the library…");
     });
 
     it("stops offering Save and Cancel", () => {

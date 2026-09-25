@@ -997,9 +997,10 @@ fn progress_starts_at_zero_and_lands_on_the_count_it_was_asked_for() {
     .summary;
 
     assert_eq!(summary.written, 1);
-    assert_eq!(seen.first().unwrap().done, 0);
     assert!(seen.iter().all(|p| p.total == 2));
-    assert_eq!(seen.last().unwrap().done, 2);
+    // Every file, once: a release is a dozen files, and a readout that moves
+    // in steps of a dozen jumps from nothing to done.
+    assert_eq!(seen.iter().map(|p| p.done).collect::<Vec<_>>(), [0, 1, 2]);
 }
 
 /// The scanner has to keep seeing the file as unchanged, which only holds if
@@ -1026,8 +1027,8 @@ fn the_file_keeps_its_name_and_place() {
     assert_eq!(path_of(&h.db, track), path);
 }
 
-/// The batch the manual check used to be: large enough that the progress
-/// interval fires several times, small enough to stay a test.
+/// The batch the manual check used to be: past the hundred reports a batch is
+/// held to, small enough to stay a test.
 const BULK: usize = 120;
 
 /// Standing in for "edit a few hundred files and watch the readout", which
@@ -1054,6 +1055,11 @@ fn a_batch_too_long_to_sit_through_reports_all_the_way_along() {
 
     assert_eq!((summary.written, summary.failed), (BULK as u32, 0));
     assert_reports_as_it_goes(&seen, BULK as u32);
+    assert!(
+        seen.len() <= 101,
+        "{} reports for {BULK} files - per file does not scale to a whole library",
+        seen.len()
+    );
     // The files, not just the count: a readout that reaches its total over a
     // batch that did not land is the failure this is here to catch.
     for id in [ids[0], ids[BULK / 2], ids[BULK - 1]] {

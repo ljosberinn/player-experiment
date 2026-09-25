@@ -18,9 +18,9 @@ import {
   type ReviewEntry,
   stagedCoverUrl,
   type Track,
-  type WriteProgress,
 } from "../../ipc";
 import { fileNameOf, formatDuration } from "../../lib/format";
+import { WriteLine } from "../editor/WriteLine";
 import {
   type Assignment,
   agrees,
@@ -66,7 +66,6 @@ export function ReleaseLookup() {
   const assignment = useTagsourceStore((s) => s.assignment);
   const fields = useTagsourceStore((s) => s.fields);
   const setFields = useTagsourceStore((s) => s.setFields);
-  const progress = useTagsourceStore((s) => s.progress);
   const error = useTagsourceStore((s) => s.error);
   const close = useTagsourceStore((s) => s.close);
   const choose = useTagsourceStore((s) => s.choose);
@@ -133,7 +132,6 @@ export function ReleaseLookup() {
             detail={detail}
             assignment={assignment}
             fields={fields}
-            progress={progress}
             busy={busy}
             willWrite={willWrite}
             onPick={(mbid) => void pick(mbid)}
@@ -153,15 +151,18 @@ export function ReleaseLookup() {
           left, back to it is clicking another row. The slot holds the step
           back that is still a step - out of a picked candidate, or out of a
           candidate list the review queue cached weeks ago. One at a time,
-          because they are the same move at two depths. */}
+          because they are the same move at two depths. A write has no step
+          back, so it takes the slot for its progress. */}
       <DialogFooter
         lead={
-          detail === null ? (
-            <Button kind="ghost" disabled={release === null || busy} onClick={() => void search()}>
+          busy ? (
+            <Writing />
+          ) : detail === null ? (
+            <Button kind="ghost" disabled={release === null} onClick={() => void search()}>
               Search again
             </Button>
           ) : (
-            <Button kind="ghost" disabled={busy} onClick={back}>
+            <Button kind="ghost" onClick={back}>
               Back to Results
             </Button>
           )
@@ -194,6 +195,15 @@ export function ReleaseLookup() {
       </DialogFooter>
     </Dialog>
   );
+}
+
+/**
+ * The apply's progress, subscribed here so a file landing re-renders the line
+ * rather than the dialog.
+ */
+function Writing() {
+  const progress = useTagsourceStore((s) => s.progress);
+  return <WriteLine progress={progress} />;
 }
 
 /**
@@ -368,7 +378,6 @@ function Pane({
   detail,
   assignment,
   fields,
-  progress,
   busy,
   willWrite,
   onPick,
@@ -382,7 +391,6 @@ function Pane({
   detail: ReleaseDetail | null;
   assignment: Assignment;
   fields: Fields;
-  progress: WriteProgress | null;
   busy: boolean;
   willWrite: number;
   onPick: (mbid: string) => void;
@@ -426,13 +434,9 @@ function Pane({
 
       {waiting === null ? (
         <p className="lookup-note">
-          {busy
-            ? progress === null || progress.total === 0
-              ? "Writing…"
-              : `Writing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
-            : detail === null
-              ? "Pick the release these files came from."
-              : `The release identifiers are written to every song of this release; the ticked fields to the ${willWrite} mapped above.`}
+          {detail === null
+            ? "Pick the release these files came from."
+            : `The release identifiers are written to every song of this release; the ticked fields to the ${willWrite} mapped above.`}
         </p>
       ) : (
         // A div, not the paragraph beside it: `ProgressBar` is a div, and a

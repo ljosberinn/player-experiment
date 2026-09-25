@@ -20,6 +20,7 @@ import {
 } from "../../ipc";
 import { registerDropTarget } from "../shell/fileDrop";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
+import { WriteLine } from "./WriteLine";
 
 /**
  * The tag editor, for one track or five hundred.
@@ -230,11 +231,11 @@ export function TagEditor({
 
       <DialogFooter
         lead={
-          saving || tracks.length > 1 ? (
+          saving ? (
+            <WriteLine progress={progress} />
+          ) : tracks.length > 1 ? (
             <DialogStatus>
-              {saving
-                ? `Writing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}…`
-                : "Only the fields you change are written; the rest are left as they are."}
+              Only the fields you change are written; the rest are left as they are.
             </DialogStatus>
           ) : undefined
         }

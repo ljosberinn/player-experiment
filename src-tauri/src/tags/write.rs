@@ -46,14 +46,12 @@ const MUSICBRAINZ_TXXX: [(ItemKey, &str); 2] = [
     ),
 ];
 
-/// How many files are written between progress emissions.
+/// The most progress events a batch sends after its first.
 ///
-/// Coarser than it looks like it should be. A tag write is a copy-and-replace
-/// of a whole mp3, so one file is milliseconds rather than microseconds -
-/// emitting per file would put hundreds of events a second on the IPC channel
-/// to move a readout by a pixel. `scan` chunks at 200 for the same reason and
-/// is doing much cheaper work per item.
-const PROGRESS_INTERVAL: usize = 25;
+/// Per file for a release, which is under this, and a hundredth of the batch
+/// for a bulk edit: per file over 65k tracks would be thousands of events on
+/// the IPC channel to move the bar by less than a pixel each.
+const PROGRESS_STEPS: usize = 100;
 
 /// The frames lofty stores as a timestamp rather than as text.
 ///
@@ -716,6 +714,7 @@ pub fn apply(
         .map(|(track_id, edit)| Ok((*track_id, resolve(edit, &mut covers)?)))
         .collect::<AppResult<Vec<(i64, Resolved)>>>()?;
     let total = resolved.len() as u32;
+    let step = resolved.len().div_ceil(PROGRESS_STEPS).max(1);
     // Before the first file, so a dialog showing this has a fraction to draw
     // rather than a blank while the first write is in flight.
     on_progress(WriteProgress { done: 0, total });
@@ -750,13 +749,13 @@ pub fn apply(
         // out to have a row - otherwise a selection naming rows a rescan has
         // since removed would leave the readout short of its own total.
         let done = index as u32 + 1;
-        if (done as usize).is_multiple_of(PROGRESS_INTERVAL) {
+        // The last file always reports: the database work below is one
+        // transaction and says nothing, and the dialog reads `done == total`
+        // as that transaction running.
+        if (done as usize).is_multiple_of(step) || done == total {
             on_progress(WriteProgress { done, total });
         }
     }
-    // The database work below is one transaction and reports nothing, so the
-    // readout would otherwise stop short of its total and stay there.
-    on_progress(WriteProgress { done: total, total });
 
     let tx = conn.transaction()?;
     for (track_id, path) in &written {

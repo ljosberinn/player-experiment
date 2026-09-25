@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseCandidate, ReleaseDetail, ReleaseSelection, Track } from "../../ipc";
 import {
+  onTagWriteProgress,
   tagsourceApply,
   tagsourceFetch,
   tagsourceGroups,
@@ -357,6 +358,40 @@ describe("the confirm step", () => {
 
     expect(await screen.findByText("98%")).toBeInTheDocument();
     expect(tagsourceSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts the write in the footer, against the backend's total", async () => {
+    let emit: ((progress: { done: number; total: number }) => void) | undefined;
+    vi.mocked(onTagWriteProgress).mockImplementation(async (handler) => {
+      emit = handler;
+      return () => {};
+    });
+    let finish: (() => void) | undefined;
+    vi.mocked(tagsourceApply).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ written: 2, failed: 0, errors: [] });
+        }),
+    );
+    const user = await open();
+    await user.click(screen.getByRole("button", { name: /Loveless/ }));
+    await screen.findByText(title("1. Only Shallow"));
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    // Nothing counted before the backend says what it is counting: its total
+    // takes in the release's files that only get the identifiers.
+    const line = await screen.findByRole("status");
+    expect(line.closest(".dialog-footer")).not.toBeNull();
+    expect(line).toHaveTextContent("Writing…");
+    expect(screen.queryByRole("button", { name: "Back to Results" })).not.toBeInTheDocument();
+
+    act(() => emit?.({ done: 1, total: 3 }));
+    expect(line).toHaveTextContent("Writing 1 of 3…");
+    act(() => emit?.({ done: 3, total: 3 }));
+    expect(line).toHaveTextContent("Updating the library…");
+
+    await act(async () => finish?.());
   });
 
   /**

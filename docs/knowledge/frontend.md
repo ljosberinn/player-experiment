@@ -392,7 +392,10 @@ absences are what nobody notices coming back — hence the guards in
     the action that leaves rather than completes (the lookup's Back to Results
     and Search again, ghost), or the count the dialog has to state ("2
     conditions · 116 songs match"). Never both — a dialog either has somewhere
-    to go back to or something to tally.
+    to go back to or something to tally. A tag write in flight takes the slot
+    in both dialogs that write, as `WriteLine`: a `TaskLine` counting files,
+    reading "Updating the library…" at `done === total` while the transaction
+    behind the files runs.
   - **The smart playlist editor's rule box is one grid**, `143px 143px 1fr
     33px`, so the field and operator selects line up down the column instead of
     each row packing its own flex. A rule is `display: contents` and its four
@@ -760,7 +763,11 @@ absences are what nobody notices coming back — hence the guards in
   subscription that fills the editor store and draws nothing from it:
   something mounted for the whole session has to subscribe, and doing it in
   the dialog would mean subscribing as the write it reports on is already
-  starting.
+  starting. `apply` reports per file up to 100 files and every hundredth of
+  the batch past that, always including `0` and `total`. The lookup seeds no
+  progress: the backend's total also counts the release's unselected files,
+  which get only the identifiers, so a seeded count would change its
+  denominator on the first event.
 - OS file drops arrive as one window-wide event and are routed by
   `shell/fileDrop.ts`: targets register an element while they are mounted, the
   position is divided by `devicePixelRatio` to reach CSS pixels, and the hit is
