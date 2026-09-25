@@ -1,6 +1,6 @@
 [package]
 name = "apex"
-version = "0.18.0"
+version = "0.19.0"
 description = "Local music player"
 authors = ["Gerrit Alex"]
 edition = "2021"

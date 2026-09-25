@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.19.0](https://github.com/ljosberinn/player-experiment/compare/v0.18.0...v0.19.0) (2026-09-25)
+
+
+### Features
+
+* build Favorites, Most Played and Recently Added into the library ([#277](https://github.com/ljosberinn/player-experiment/issues/277)) ([727578a](https://github.com/ljosberinn/player-experiment/commit/727578a99ad355b2f3db9601d606216e1b3fae4c))
+* default to #, Title, Duration, Artist, Album, Genre, Year, Bit Rate ([#268](https://github.com/ljosberinn/player-experiment/issues/268)) ([ae1798f](https://github.com/ljosberinn/player-experiment/commit/ae1798f478cbc5f734d51a8a7073f6acc805d8dd))
+* draw everything a size larger ([#267](https://github.com/ljosberinn/player-experiment/issues/267)) ([05e2ce7](https://github.com/ljosberinn/player-experiment/commit/05e2ce72f74031c58fd5da99d2e1cb4affc6e5d3))
+* fold the empty new-playlist drop target away until a drag ([#278](https://github.com/ljosberinn/player-experiment/issues/278)) ([fa56ac7](https://github.com/ljosberinn/player-experiment/commit/fa56ac732f80db0a0ac69854f253592c8ba96fdd))
+* give stories a stand-in for the Tauri runtime ([#290](https://github.com/ljosberinn/player-experiment/issues/290)) ([bae807d](https://github.com/ljosberinn/player-experiment/commit/bae807dc076f41c7c941e722a2d50bda41641e54))
+* give the review dialog room ([#279](https://github.com/ljosberinn/player-experiment/issues/279)) ([4230a01](https://github.com/ljosberinn/player-experiment/commit/4230a01a6df66e25c9ce3ed1a91320cee442bf86))
+* keep love in the library, with or without last.fm ([#273](https://github.com/ljosberinn/player-experiment/issues/273)) ([3b23f6e](https://github.com/ljosberinn/player-experiment/commit/3b23f6e6c30ca383595f3d7480ba8af8cb9389ad))
+* link a play through its album when last.fm has the wrong artist ([#289](https://github.com/ljosberinn/player-experiment/issues/289)) ([f1e036e](https://github.com/ljosberinn/player-experiment/commit/f1e036e580086e91cd1f5d143bc2b76b4d987cfc))
+* link a play through the album artist ([#274](https://github.com/ljosberinn/player-experiment/issues/274)) ([556dc42](https://github.com/ljosberinn/player-experiment/commit/556dc42e4d567f1639fc27f7191e738f7b03e1f4))
+* move the player bar to the bottom of the window ([#285](https://github.com/ljosberinn/player-experiment/issues/285)) ([179e89d](https://github.com/ljosberinn/player-experiment/commit/179e89d4d7e5644a25023939cd59817ce23fac4e))
+* open a release in track order ([#271](https://github.com/ljosberinn/player-experiment/issues/271)) ([2f7a254](https://github.com/ljosberinn/player-experiment/commit/2f7a25435736fadfc5e1e53df956733fff27402b))
+* pin # first inside a release ([#270](https://github.com/ljosberinn/player-experiment/issues/270)) ([d7ff8e7](https://github.com/ljosberinn/player-experiment/commit/d7ff8e7dee48add0b75eb7e78df177410eaa8d10))
+* put a release's total under the Duration column ([#272](https://github.com/ljosberinn/player-experiment/issues/272)) ([f67e5eb](https://github.com/ljosberinn/player-experiment/commit/f67e5eb9cca761a1ea519fab4781e74f3e7e30d3))
+* report tag writes file by file in the dialog footer ([#282](https://github.com/ljosberinn/player-experiment/issues/282)) ([e56ebe4](https://github.com/ljosberinn/player-experiment/commit/e56ebe4bde8d457ef14a2991725e35bbebd409e2))
+* reset every view's columns from the header menu ([#269](https://github.com/ljosberinn/player-experiment/issues/269)) ([32120d7](https://github.com/ljosberinn/player-experiment/commit/32120d7aaa868fd559003be1cb38838756eb459b))
+* say dialog and Settings prose in fewer words ([#287](https://github.com/ljosberinn/player-experiment/issues/287)) ([6207429](https://github.com/ljosberinn/player-experiment/commit/6207429bf6de0056801730612b59ec9a93b887ff))
+* set play counts from a last.fm import ([#276](https://github.com/ljosberinn/player-experiment/issues/276)) ([88520d8](https://github.com/ljosberinn/player-experiment/commit/88520d8709fc81e5b92cbb9bd6979b40b996e241))
+* show the review what changes ([#281](https://github.com/ljosberinn/player-experiment/issues/281)) ([e8e683b](https://github.com/ljosberinn/player-experiment/commit/e8e683b0e4096a8240aa17c62278b13a6e4fbb3a))
+* write a perfect search match without review ([#284](https://github.com/ljosberinn/player-experiment/issues/284)) ([1063d46](https://github.com/ljosberinn/player-experiment/commit/1063d46ec409ed3f0b3f4e368a7bcaa4106e9707))
+
+
+### Bug Fixes
+
+* draw the Settings panes' buttons with the sheet's Button ([#266](https://github.com/ljosberinn/player-experiment/issues/266)) ([83ddc98](https://github.com/ljosberinn/player-experiment/commit/83ddc98ad6ee078a4a5896880f2b9baac0e81a4c))
+* fit a drill-in column to its rows on divider double-click ([#261](https://github.com/ljosberinn/player-experiment/issues/261)) ([96306b6](https://github.com/ljosberinn/player-experiment/commit/96306b691ac7466f7ea531c791c7a53d64fcf146))
+* open a select above the dialog it sits in ([#265](https://github.com/ljosberinn/player-experiment/issues/265)) ([6fd50cc](https://github.com/ljosberinn/player-experiment/commit/6fd50ccfebe529e5858c3c15d63a21a07a049615))
+* rank a search inside a drill-in ([#260](https://github.com/ljosberinn/player-experiment/issues/260)) ([ebe022a](https://github.com/ljosberinn/player-experiment/commit/ebe022ae4de8a004ac70ca5dc2543f5ff515b34e))
+* regroup the album spellings in one savepoint ([#280](https://github.com/ljosberinn/player-experiment/issues/280)) ([c85dd4a](https://github.com/ljosberinn/player-experiment/commit/c85dd4a6561244774489a4a370bf74b51543283f))
+* stop a tag write from corrupting unsynchronised artwork ([#288](https://github.com/ljosberinn/player-experiment/issues/288)) ([a93c197](https://github.com/ljosberinn/player-experiment/commit/a93c197aca32bbcb6817153ae4a69fbb2dd5ba3b))
+* stop the drill-in header scrolling the pane sideways ([#263](https://github.com/ljosberinn/player-experiment/issues/263)) ([b5e415d](https://github.com/ljosberinn/player-experiment/commit/b5e415d7a7d0bd53cc958c3660b1c5297b901d35))
+
+
+### Documentation
+
+* draft issues 127–143 in build order ([#264](https://github.com/ljosberinn/player-experiment/issues/264)) ([2e1e44c](https://github.com/ljosberinn/player-experiment/commit/2e1e44c900ded29d74e401142b82e65c8e7fd2bf))
+* file issues for stories of every component in use ([#286](https://github.com/ljosberinn/player-experiment/issues/286)) ([90cc19e](https://github.com/ljosberinn/player-experiment/commit/90cc19e98934fc3c53be6d1733a853756ef5f469))
+
 ## [0.18.0](https://github.com/ljosberinn/player-experiment/compare/v0.17.1...v0.18.0) (2026-09-22)
 
 
