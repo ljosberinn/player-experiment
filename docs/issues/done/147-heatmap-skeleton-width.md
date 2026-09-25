@@ -6,8 +6,8 @@ the panel's width.
 
 `.chart-loading .chart-plot` centres its child with flex (`app.css`), which is
 right for `.chart-skeleton` (`width: 100%`) but shrinks `.heatmap`, which sets
-no width. Visible in Storybook: Charts/Heatmap, Loading.
+no width. Visible in Storybook: Charts/Heatmap, the Loading panel.
 
 ## Verification
 
-- Charts/Heatmap: the Loading grid is as wide as the loaded one beside it.
+- Charts/Heatmap: the Loading grid is as wide as the loaded ones.

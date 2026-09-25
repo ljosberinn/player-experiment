@@ -1074,6 +1074,14 @@ describe("the stylesheet", () => {
     expect(declaredTokens).not.toContain(`--chart-ramp-${RAMP_STEPS + 1}`);
   });
 
+  it("draws the heatmap's loading grid as wide as the loaded one", () => {
+    // The loading plot centres its child with flex, and a grid of
+    // `minmax(0, 1fr)` cells with no width of its own shrinks to its labels.
+    const heatmap = all.find((one) => uncommented(one.selector).trim() === ".heatmap");
+
+    expect(heatmap?.body, ".heatmap should fill the plot").toMatch(/(^|;|\s)width:\s*100%/);
+  });
+
   it("gives Settings one size and one scroller too", () => {
     // A category with eight watch folders is taller than one with two rows,
     // and the rail and Done should not move between them. `overflow: hidden`

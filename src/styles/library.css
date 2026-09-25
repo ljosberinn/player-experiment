@@ -968,6 +968,13 @@
    chart around it is `.chart-intrinsic`: seven 14px rows come to about 129px
    whatever room the view had, and an svg scaled into a 198px box would draw
    them at nearly twice that. */
+
+/* Stated because the loading plot centres its child with flex, and a grid of
+   `minmax(0, 1fr)` cells would shrink to its labels there. */
+.heatmap {
+  width: 100%;
+}
+
 .heatmap-row {
   display: grid;
   grid-template-columns: 24px 1fr;
