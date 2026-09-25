@@ -197,6 +197,46 @@ function generate(): Heard[] {
 
 const LOG: Heard[] = generate();
 
+/** Years before the log opens that hold a play on today's date; the gaps are years with none. */
+const ANNIVERSARIES = [2, 3, 5, 9];
+
+/**
+ * Plays on today's date in years before the log opens, for *On this day*.
+ *
+ * Kept out of `LOG`: its span is what the all-time series draw, and a handful
+ * of plays years before it would flatten every one of them.
+ */
+function anniversaries(): Heard[] {
+  const random = seeded(147);
+  const today = new Date();
+  const sources = [...OWNED_SOURCES, ...UNOWNED_SOURCES];
+  const heard: Omit<Heard, "id">[] = [];
+  for (const back of ANNIVERSARIES) {
+    const day = new Date(today.getFullYear() - back, today.getMonth(), today.getDate());
+    // 29 February rolls into March outside a leap year, which is not today's date.
+    if (day.getMonth() !== today.getMonth()) {
+      continue;
+    }
+    const count = 2 + Math.floor(random() * 6);
+    for (let n = 0; n < count; n += 1) {
+      const source = sources[Math.floor(random() * sources.length)] as Source;
+      const at = new Date(day);
+      at.setHours(pickHour(random), Math.floor(random() * 60));
+      heard.push({
+        startedAt: Math.floor(at.getTime() / 1000),
+        artist: source.artist,
+        title: source.title,
+        album: source.album,
+        trackId: source.track?.id ?? null,
+        track: source.track,
+      });
+    }
+  }
+  return heard.map((play, index) => ({ ...play, id: LOG.length + index + 1 }));
+}
+
+const LOG_AND_ANNIVERSARIES: Heard[] = [...LOG, ...anniversaries()];
+
 function heading(play: Heard): string | null {
   return play.album === null ? null : (FOLDED[play.album] ?? play.album);
 }
@@ -206,10 +246,10 @@ function same(a: string | null, b: string): boolean {
 }
 
 /** The plays `query` reads. An undated play is outside every range. */
-function plays(query: ListenQuery): Heard[] {
+function plays(query: ListenQuery, log: readonly Heard[] = LOG): Heard[] {
   const loved = useLovedStore.getState().loved;
   const { range, artist, album, genre, owned } = query;
-  return LOG.filter(
+  return log.filter(
     (play) =>
       (range === null ||
         (play.startedAt !== null && play.startedAt >= range.from && play.startedAt < range.to)) &&
@@ -342,19 +382,22 @@ export function top({
     .slice(0, limit);
 }
 
-export function recentPlays({
-  query,
-  offset,
-  limit,
-}: {
-  query: ListenQuery;
-  offset: number;
-  limit: number;
-}): Play[] {
-  return plays(query)
+/** A type rather than an interface, so a handler's argument record casts to it. */
+type PlaysPage = { query: ListenQuery; offset: number; limit: number };
+
+export function recentPlays(
+  { query, offset, limit }: PlaysPage,
+  log: readonly Heard[] = LOG,
+): Play[] {
+  return plays(query, log)
     .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0) || b.id - a.id)
     .slice(offset, offset + limit)
     .map(({ track: _, ...play }) => play);
+}
+
+/** `recentPlays` over the log and the anniversaries before it. */
+export function earlierPlays(page: PlaysPage): Play[] {
+  return recentPlays(page, LOG_AND_ANNIVERSARIES);
 }
 
 export function playsOverTime({

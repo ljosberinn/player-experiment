@@ -150,6 +150,40 @@ function seconds(date: Date): number {
   return Math.floor(date.getTime() / 1000);
 }
 
+/**
+ * One local day, midnight to the next midnight, in unix seconds.
+ *
+ * Stepped by the calendar rather than by `DAY`, so a daylight-saving day is
+ * its 23 or 25 hours rather than a span that ends at one in the morning.
+ */
+export function dayRange(year: number, month: number, day: number): TimeRange {
+  return {
+    from: seconds(new Date(year, month, day)),
+    to: seconds(new Date(year, month, day + 1)),
+  };
+}
+
+/** The backend's `DATED_FROM` (stats.rs): nothing dated is earlier. */
+const FIRST_DATED_YEAR = 2002;
+
+/**
+ * The years before `today`'s that hold its month and day, newest first.
+ *
+ * A 29 February outside a leap year is skipped rather than built, because
+ * `new Date` rolls it into 1 March and that is another day's plays.
+ */
+export function earlierYears(today: Date): number[] {
+  const month = today.getMonth();
+  const day = today.getDate();
+  const years: number[] = [];
+  for (let year = today.getFullYear() - 1; year >= FIRST_DATED_YEAR; year -= 1) {
+    if (new Date(year, month, day).getMonth() === month) {
+      years.push(year);
+    }
+  }
+  return years;
+}
+
 /** A day in seconds. `custom.to` is exclusive, so reading it back is one of these. */
 export const DAY = 86_400;
 
@@ -200,10 +234,17 @@ export function activeFilters(
 ): readonly ActiveFilter[] {
   const active: ActiveFilter[] = [];
 
-  if (tab === "listening") {
+  if (tab !== "library") {
+    // On this day's range is the day itself, so a range set on Listening
+    // narrows nothing there.
+    //
     // `custom` before both dates are picked narrows nothing - `rangeFor`
     // returns null for it - so there is no filter to draw.
-    if (filters.range !== "all" && (filters.range !== "custom" || filters.custom !== null)) {
+    if (
+      tab === "listening" &&
+      filters.range !== "all" &&
+      (filters.range !== "custom" || filters.custom !== null)
+    ) {
       active.push({
         facet: "range",
         phrase: rangePhrase(filters),

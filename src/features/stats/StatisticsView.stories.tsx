@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { PLAYLISTS } from "../../../.storybook/fixtures";
-import { emptyStatsHandlers, statsHandlers } from "../../../.storybook/handlers";
+import { emptyStatsHandlers, onThisDayHandlers, statsHandlers } from "../../../.storybook/handlers";
 import { useLibraryStore } from "../library/store";
 import { usePlaylistsStore } from "../playlists/store";
 import { type StatsTab, statsRoot } from "./path";
@@ -46,4 +46,9 @@ export const Listening: Story = {
 export const NoPlays: Story = {
   parameters: { ipc: emptyStatsHandlers },
   beforeEach: () => openOn("listening"),
+};
+
+export const OnThisDay: Story = {
+  parameters: { ipc: onThisDayHandlers },
+  beforeEach: () => openOn("onThisDay"),
 };
