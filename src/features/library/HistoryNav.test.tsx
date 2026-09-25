@@ -96,7 +96,9 @@ describe("HistoryNav", () => {
 
   it("names a playlist by its name", () => {
     usePlaylistsStore.setState({
-      playlists: [{ id: 5, name: "Late Night", kind: "static", trackCount: 3, createdAt: 0 }],
+      playlists: [
+        { id: 5, name: "Late Night", kind: "static", trackCount: 3, createdAt: 0, builtIn: null },
+      ],
     });
     visited([entry({ playlistId: 5 }), entry()]);
 

@@ -9,6 +9,9 @@ export interface ColumnDef {
   render: (track: Track) => string;
 }
 
+/** One formatter for every cell: building one per call is most of the cost. */
+const ADDED = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
 /**
  * Column ids are `SortField`s, so every displayed column is sortable by
  * construction - a column can't exist that the backend cannot order by.
@@ -47,6 +50,13 @@ export const ALL_COLUMNS: ColumnDef[] = [
     width: 79,
     align: "right",
     render: (t) => t.play_count.toString(),
+  },
+  {
+    id: "addedAt",
+    label: "Date Added",
+    width: 132,
+    align: "right",
+    render: (t) => ADDED.format(t.added_at * 1000),
   },
   { id: "path", label: "Location", width: 422, render: (t) => t.path },
 ];

@@ -77,6 +77,7 @@ and meant to be scripted against.
 | `trackIds` | array of integer | **Static playlists only**, in playlist order. |
 | `filter` | object | **Smart playlists only** — the filter tree, not a snapshot of its members. |
 | `order` | object | **Smart playlists only, and only when it has one** — the sort and cutoff. |
+| `builtIn` | string | **Built-ins only** — `"favorites"`, `"mostPlayed"` or `"recentlyAdded"`. Every library has all three, so a reader restoring one should match on this key rather than create a second. |
 
 Exactly one of `trackIds` and `filter` is present, which tells a reader which
 kind it is holding without having to trust `kind`.

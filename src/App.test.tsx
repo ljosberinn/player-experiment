@@ -183,7 +183,7 @@ const initialPlaylists = usePlaylistsStore.getState();
 const initialEditor = useEditorStore.getState();
 
 function playlist(id: number, name: string, trackCount = 0): Playlist {
-  return { id, name, kind: "static", trackCount, createdAt: 0 };
+  return { id, name, kind: "static", trackCount, createdAt: 0, builtIn: null };
 }
 
 beforeEach(async () => {
@@ -630,6 +630,19 @@ describe("App playback", () => {
     expect(screen.queryByText(/No songs yet/)).not.toBeInTheDocument();
   });
 
+  it("says how to fill an empty Favorites", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      { ...playlist(1, "Favorites"), kind: "smart", builtIn: "favorites" },
+    ]);
+    statsMock.mockResolvedValue(stats(0));
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Favorites" }));
+
+    expect(await screen.findByText(/Love a song to add it here/)).toBeInTheDocument();
+  });
+
   it("removes the selected rows from the open playlist on Delete", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([playlist(1, "Evening", 3)]);
     vi.mocked(removeFromPlaylist).mockResolvedValue(1);
@@ -743,6 +756,7 @@ describe("App playback", () => {
       kind: "smart",
       trackCount: 2,
       createdAt: 0,
+      builtIn: null,
     });
     render(<App />);
     const user = userEvent.setup();
@@ -780,7 +794,7 @@ describe("App playback", () => {
 
   it("offers no reordering or removal inside a smart playlist", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([
-      { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0 },
+      { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0, builtIn: null },
     ]);
     vi.mocked(browseGroups).mockResolvedValue([
       {
@@ -1168,7 +1182,7 @@ describe("the browse tabs", () => {
   it("opens a smart playlist on a grid scoped to it", async () => {
     const user = userEvent.setup();
     vi.mocked(listPlaylists).mockResolvedValue([
-      { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0 },
+      { id: 9, name: "Grizzly", kind: "smart", trackCount: 3, createdAt: 0, builtIn: null },
     ]);
     vi.mocked(browseGroups).mockResolvedValue([
       {

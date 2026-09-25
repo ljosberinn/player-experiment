@@ -17,7 +17,7 @@ vi.mock("../../ipc", () => ({
 }));
 
 function playlist(id: number, kind: Playlist["kind"]): Playlist {
-  return { id, name: `List ${id}`, kind, trackCount: 3, createdAt: 0 };
+  return { id, name: `List ${id}`, kind, trackCount: 3, createdAt: 0, builtIn: null };
 }
 
 function Harness() {

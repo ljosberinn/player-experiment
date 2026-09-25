@@ -50,11 +50,11 @@ vi.mock("../../ipc", () => ({
 }));
 
 function playlist(id: number, name: string, trackCount = 0): Playlist {
-  return { id, name, kind: "static", trackCount, createdAt: 0 };
+  return { id, name, kind: "static", trackCount, createdAt: 0, builtIn: null };
 }
 
 function smartPlaylist(id: number, name: string, trackCount = 0): Playlist {
-  return { id, name, kind: "smart", trackCount, createdAt: 0 };
+  return { id, name, kind: "smart", trackCount, createdAt: 0, builtIn: null };
 }
 
 const yearIs2012: FilterGroup = {

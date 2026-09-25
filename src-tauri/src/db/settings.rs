@@ -65,13 +65,9 @@ pub const ORGANIZE: &str = "library.organize";
 /// path that exists on this machine, which is why neither this nor
 /// [`ORGANIZE`] joins [`EXPORTABLE`].
 pub const LIBRARY_ROOT: &str = "library.root";
-/// Set once the built-in smart playlists have been created. A flag rather than
-/// a check for the playlists themselves, so deleting Most Played deletes it
-/// instead of asking for it back on the next launch.
-pub const PLAYLISTS_SEEDED: &str = "playlists.seeded";
 /// Set once every stored cover has been through `db::covers::normalize`.
 ///
-/// A flag in the shape of [`PLAYLISTS_SEEDED`] rather than a migration:
+/// A flag rather than a migration:
 /// re-encoding a library's worth of artwork is half a minute of CPU, and
 /// migration 5 already settled that this must not happen in the transaction
 /// that runs before the window is shown.

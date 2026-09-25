@@ -205,6 +205,7 @@ describe("activeFilters", () => {
     kind: "static",
     trackCount: 4,
     createdAt: 0,
+    builtIn: null,
   };
 
   it("draws nothing while every facet is at its default", () => {

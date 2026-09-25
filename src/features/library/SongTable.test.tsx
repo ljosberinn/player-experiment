@@ -644,7 +644,9 @@ describe("SongTable", () => {
 
     it("adds to the playlist picked from the submenu", async () => {
       usePlaylistsStore.setState({
-        playlists: [{ id: 5, name: "Evening", kind: "static", trackCount: 0, createdAt: 0 }],
+        playlists: [
+          { id: 5, name: "Evening", kind: "static", trackCount: 0, createdAt: 0, builtIn: null },
+        ],
       });
       const user = await openRowMenu();
 

@@ -161,6 +161,9 @@ pub struct ExportPlaylist {
     /// the hundred it actually holds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<SmartOrder>,
+    /// Which built-in this is, where it is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub built_in: Option<crate::model::BuiltIn>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -361,6 +364,7 @@ fn export_playlist(
             Some(playlists::order(conn, playlist.id)?)
                 .filter(|order| *order != SmartOrder::default())
         },
+        built_in: playlist.built_in,
     })
 }
 

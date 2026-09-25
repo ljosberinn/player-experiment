@@ -224,6 +224,9 @@ pub(crate) struct Scope {
     pub(crate) params: Vec<Box<dyn rusqlite::ToSql>>,
     searching: bool,
     in_playlist: bool,
+    /// A built-in's stored sort, which the view is shown in whatever the query
+    /// asks for.
+    locked: Option<crate::model::SmartSort>,
 }
 
 /// Builds the shared FROM/WHERE.
@@ -241,6 +244,7 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     let mut conditions: Vec<String> = Vec::new();
     let mut in_playlist = false;
+    let mut locked = None;
 
     if let Some(playlist_id) = query.playlist_id {
         match crate::db::playlists::get(conn, playlist_id)? {
@@ -257,9 +261,12 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
                 params.push(Box::new(playlist_id));
                 in_playlist = true;
             }
-            Some(_) => {
+            Some(playlist) => {
                 let filter = crate::db::playlists::filter(conn, playlist_id)?.unwrap_or_default();
                 let order = crate::db::playlists::order(conn, playlist_id)?;
+                if playlist.built_in.is_some() {
+                    locked = order.sort;
+                }
                 let compiled = crate::smart::compile(&filter, crate::now_seconds())?;
 
                 match order.limit {
@@ -344,6 +351,7 @@ pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
         params,
         searching,
         in_playlist,
+        locked,
     })
 }
 
@@ -384,6 +392,12 @@ fn order_by(scope: &Scope, query: &TrackQuery) -> String {
 /// The user's sort, which is the whole order outside a drill-in and the order
 /// inside one release within it.
 fn sort_order_by(scope: &Scope, query: &TrackQuery) -> String {
+    // Ahead of relevance too: a search inside a built-in narrows it, and
+    // "Most Played" matching «bear» is still most played first.
+    if let Some(sort) = scope.locked {
+        return smart_order_by(Some(sort));
+    }
+
     // Relevance only exists while a search is running: bm25 needs the FTS
     // table in the query, and without one there is nothing to rank. Falling
     // back to the field's column keeps a stored "sort by relevance" harmless
@@ -424,8 +438,9 @@ fn sort_order_by(scope: &Scope, query: &TrackQuery) -> String {
 /// The `ORDER BY` that decides which rows a smart playlist's cutoff keeps.
 ///
 /// Not the display order - that is [`order_by`], driven by whatever the user
-/// clicked. This one runs inside the membership subquery, where the only thing
-/// it settles is which N songs are in the playlist at all.
+/// clicked, except in a built-in, which it locks to this. Here it runs inside
+/// the membership subquery, where the only thing it settles is which N songs
+/// are in the playlist at all.
 ///
 /// With no sort stored there is nothing to rank by, and a bare `LIMIT` over an
 /// unordered query returns whatever SQLite finds first - which is stable in
@@ -1828,6 +1843,43 @@ mod tests {
         assert_eq!(count_tracks(&conn, &query).unwrap(), 2);
         assert_eq!(library_stats(&conn, &query).unwrap().tracks, 2);
         assert_eq!(all_track_ids(&conn, &query).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_built_in_is_shown_in_its_own_order_whatever_the_query_asks() {
+        let (_dir, db) = played();
+        let conn = db.conn().unwrap();
+        crate::db::playlists::ensure_built_ins(&conn, 0).unwrap();
+        let most_played = crate::db::playlists::list(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.built_in == Some(crate::model::BuiltIn::MostPlayed))
+            .unwrap();
+        let view = |sort_by, search: Option<&str>| {
+            paths(
+                query_tracks(
+                    &conn,
+                    &TrackQuery {
+                        playlist_id: Some(most_played.id),
+                        sort_by,
+                        direction: SortDirection::Asc,
+                        search: search.map(str::to_owned),
+                        limit: 100,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            )
+        };
+
+        assert_eq!(
+            view(SortField::Title, None),
+            ["/m/4.mp3", "/m/3.mp3", "/m/2.mp3", "/m/1.mp3"]
+        );
+        assert_eq!(
+            view(SortField::Relevance, Some("grizzly")),
+            ["/m/4.mp3", "/m/3.mp3"]
+        );
     }
 
     #[test]

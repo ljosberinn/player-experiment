@@ -24,6 +24,7 @@ edit a shipped one.
 | 16 | `album_groups` — which album spellings are one album |
 | 17 | a fifth `release_lookup.status`, `unwritable` — matched with certainty, and the files would not take it. Another whole-table rebuild for 10's reason, plus a **repair**: every `resolved` row whose `release_mbid` is on no track is deleted, because it records a write that never happened |
 | 18 | `lastfm_loved` renamed `loved`, with `remote` (last.fm reported the key; every existing row is set); `tracks.match_key`, indexed, filled by `plays::refold`; `love_queue`; and `loved.syncedWith` seeded from the import's username |
+| 19 | `playlists.built_in`, under a partial unique index. Claims each old seed whose name, filter and order are still the seed's, and deletes `playlists.seeded` |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -116,6 +117,13 @@ is why paging, sorting, search-within, "select all", the play queue, export and
 - Per-playlist columns live in `playlists.columns_json`; the library view keeps
   its own row in `settings`. `None` stays distinguishable from "configured to
   show nothing" — a playlist with no layout inherits the library's.
+- **Favorites, Most Played and Recently Added are built in**: smart playlists
+  whose row carries a `built_in` key. `ensure_built_ins` inserts a missing one
+  and rewrites each one's name, filter and order to `definition` on every
+  launch, so a later build can change a definition without a migration.
+  `rename`, `set_smart` and `delete` refuse one. They are rows rather than
+  virtual sources so that everything keyed on a playlist id - counts, paging,
+  history, the queue, export - works on them unchanged.
 
 ## Cover art
 
@@ -125,8 +133,8 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   55,781 decodes on a first scan rather than 5,799, inside the serial write
   transactions.
 - **Normalizing an existing library is a thread, not a migration** — the
-  reasoning migration 5 already settled. `covers.normalized` marks it done in
-  the shape of `playlists.seeded`, and `covers.normalizedThrough` holds the
+  reasoning migration 5 already settled. `covers.normalized` is a settings
+  flag that marks it done, and `covers.normalizedThrough` holds the
   last hash finished, so a quit part-way through resumes. No schema change, so
   the migration table above is unchanged.
 - **`tracks.cover_hash` carries no `ON DELETE`, so a sweep collects instead.**
@@ -551,6 +559,9 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
   `tracks.id IN (SELECT id … ORDER BY … LIMIT ?)`. Appended to the page query
   instead, sorting the open playlist would change which songs it holds and a
   search inside it would search the whole library.
+- **A built-in is shown in its stored sort, whatever the query asks.** `scope()`
+  carries it and `sort_order_by` uses it ahead of relevance too, so a search
+  inside Most Played is still most played first. The frontend only draws it.
 - **Not every field is a column.** A `FilterFieldKind::Boolean` field is a
   fact about the row that `compile_rule` answers with a subquery, above
   everything that assumes a column - `Loved` reaches `loved` through

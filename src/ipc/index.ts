@@ -10,6 +10,7 @@ import type { BackgroundTask } from "./bindings/BackgroundTask";
 import type { BrowseFilter } from "./bindings/BrowseFilter";
 import type { BrowseGroup } from "./bindings/BrowseGroup";
 import type { BrowseKind } from "./bindings/BrowseKind";
+import type { BuiltIn } from "./bindings/BuiltIn";
 import type { Colour } from "./bindings/Colour";
 import type { Combinator } from "./bindings/Combinator";
 import type { CoverEdit } from "./bindings/CoverEdit";
@@ -81,6 +82,7 @@ export type {
   BrowseFilter,
   BrowseGroup,
   BrowseKind,
+  BuiltIn,
   Colour,
   Combinator,
   CoverEdit,

@@ -127,6 +127,10 @@ export const config: WebdriverIO.Config = {
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.
     "./specs/smart-playlists.test.ts",
+    // After `library` too: there is nothing to love in an empty table. It
+    // unloves what it loved, so the loved set it hands on is the one it was
+    // given.
+    "./specs/favorites.test.ts",
     // After `library` too: it asks for a rescan and reads what the app wrote
     // down about it, and a scan over an empty library would leave a line with
     // nothing in it.
