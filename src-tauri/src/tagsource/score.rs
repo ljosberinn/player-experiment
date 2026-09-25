@@ -116,11 +116,7 @@ fn count_agreement(remote: u32, local: u32) -> f32 {
 /// `None` when there is no pair to compare, which is different from a
 /// comparison that came out at zero.
 fn duration_agreement(remote: &[Option<i64>], local: &[i64]) -> Option<f32> {
-    let pairs: Vec<(i64, i64)> = remote
-        .iter()
-        .zip(local)
-        .filter_map(|(remote, local)| remote.map(|remote| (remote, *local)))
-        .collect();
+    let pairs: Vec<(i64, i64)> = known_pairs(remote, local).collect();
     if pairs.is_empty() {
         return None;
     }
@@ -143,6 +139,28 @@ fn duration_agreement(remote: &[Option<i64>], local: &[i64]) -> Option<f32> {
     // matches three of twelve tracks perfectly is not a perfect match.
     let considered = remote.len().max(local.len()).max(1);
     Some(total / considered as f32)
+}
+
+/// Whether some track is long enough on one side and short enough on the
+/// other to be a different recording.
+///
+/// Over the same positional pairs [`duration_agreement`] averages, but asking
+/// about the worst one: the write maps by position, so a single contradicting
+/// pair means that track and every later title lands on the wrong file, however
+/// well the rest agree. A length MusicBrainz lacks is no evidence either way.
+pub fn lengths_contradict(remote: &[Option<i64>], local: &[i64]) -> bool {
+    known_pairs(remote, local).any(|(remote, local)| remote.abs_diff(local) as i64 >= TOLERANCE_MS)
+}
+
+/// Remote and local lengths position by position, where MusicBrainz has one.
+fn known_pairs<'a>(
+    remote: &'a [Option<i64>],
+    local: &'a [i64],
+) -> impl Iterator<Item = (i64, i64)> + 'a {
+    remote
+        .iter()
+        .zip(local)
+        .filter_map(|(remote, local)| remote.map(|remote| (remote, *local)))
 }
 
 #[cfg(test)]
@@ -214,6 +232,18 @@ mod tests {
         assert_eq!(duration_agreement(&[], &[268_000]), None);
         assert_eq!(duration_agreement(&[Some(268_000)], &[]), None);
         assert_eq!(duration_agreement(&[None], &[268_000]), None);
+    }
+
+    #[test]
+    fn drift_short_of_the_tolerance_does_not_contradict() {
+        let remote = [Some(268_000), Some(200_000), None];
+        assert!(!lengths_contradict(&remote, &[271_000, 220_000, 600_000]));
+    }
+
+    #[test]
+    fn one_track_off_by_the_tolerance_contradicts_the_rest() {
+        let remote = [Some(268_000), Some(200_000)];
+        assert!(lengths_contradict(&remote, &[268_000, 230_000]));
     }
 
     #[test]
