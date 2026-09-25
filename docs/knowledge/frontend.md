@@ -527,6 +527,12 @@ absences are what nobody notices coming back — hence the guards in
   a skeleton on each range change makes the whole view flash. Nine panels would
   otherwise repeat the effect, and the one that forgot the cancel would draw
   the range the filter bar is not showing.
+- **A list a panel scrolls through pages in through `usePagedRows`** - the
+  plays table and the new artists under their chart. A page at a time as the
+  end nears rather than counted first, and a page landing after the filters
+  moved is not appended to the new list. The new artists sit in `SeriesPanel`'s
+  `children`, drawn under the caption so the caption stays beside the chart; a
+  row drills to the artist and keeps the range.
 - **A genre override refetches through a version, not through
   `library://changed`.** It changes what every genre-filtered aggregate counts
   and moves no track row, so announcing a library change would rebuild the song

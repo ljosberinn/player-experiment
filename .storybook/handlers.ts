@@ -32,6 +32,7 @@ import {
   albumGroup,
   firsts,
   listenTotals,
+  newArtists,
   playsOverTime,
   recentPlays,
   streaks,
@@ -254,6 +255,7 @@ export const statsHandlers: IpcHandlers = {
   stats_plays_over_time: (args) => playsOverTime(args as Parameters<typeof playsOverTime>[0]),
   stats_week_clock: (args) => weekClock(args as Parameters<typeof weekClock>[0]),
   stats_firsts: (args) => firsts(args as Parameters<typeof firsts>[0]),
+  stats_new_artists: (args) => newArtists(args as Parameters<typeof newArtists>[0]),
   stats_streaks: (args) => streaks(args as Parameters<typeof streaks>[0]),
   stats_album_group: (args) => albumGroup(args as Parameters<typeof albumGroup>[0]),
   stats_pin_album: () => null,
@@ -306,6 +308,7 @@ export const emptyStatsHandlers: IpcHandlers = {
   stats_recent_plays: () => [],
   stats_plays_over_time: () => [],
   stats_firsts: () => [],
+  stats_new_artists: () => [],
   stats_week_clock: () => Array.from({ length: 7 * 24 }, () => 0),
   stats_streaks: (): Streaks => ({
     current: 0,

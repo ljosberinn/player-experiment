@@ -9,6 +9,7 @@ import type {
   ListenDimension,
   ListenQuery,
   ListenTotals,
+  NewArtist,
   Play,
   Streaks,
   TimeBucket,
@@ -381,29 +382,58 @@ export function weekClock({ query }: { query: ListenQuery }): number[] {
 }
 
 /**
- * Each artist's first play over all time, counted where it falls in the range.
- * An artist first heard undated was not new at their first dated play, so is
- * left out.
+ * The artists whose first play over all time falls in the range, with every
+ * play since. An artist first heard undated was not new at their first dated
+ * play, so is left out.
  */
-export function firsts({ query, bucket }: { query: ListenQuery; bucket: TimeBucket }): TimeCount[] {
-  const first = new Map<string, number | null>();
+function firstHeard(query: ListenQuery): NewArtist[] {
+  const first = new Map<string, { artist: string; firstAt: number | null; plays: number }>();
   for (const play of plays({ ...query, range: null })) {
-    const artist = play.artist.toLowerCase();
-    const seen = first.get(artist);
-    if (
-      seen === undefined ||
-      (seen !== null && (play.startedAt === null || play.startedAt < seen))
-    ) {
-      first.set(artist, play.startedAt);
+    const key = play.artist.toLowerCase();
+    const seen = first.get(key);
+    if (seen === undefined) {
+      first.set(key, { artist: play.artist, firstAt: play.startedAt, plays: 1 });
+      continue;
+    }
+    seen.plays += 1;
+    // The backend's `min()` over the spellings.
+    if (play.artist < seen.artist) {
+      seen.artist = play.artist;
+    }
+    if (seen.firstAt !== null && (play.startedAt === null || play.startedAt < seen.firstAt)) {
+      seen.firstAt = play.startedAt;
     }
   }
   const { range } = query;
+  return [...first.values()].filter(
+    (entry): entry is NewArtist =>
+      entry.firstAt !== null &&
+      (range === null || (entry.firstAt >= range.from && entry.firstAt < range.to)),
+  );
+}
+
+export function firsts({ query, bucket }: { query: ListenQuery; bucket: TimeBucket }): TimeCount[] {
   return series(
-    [...first.values()].filter(
-      (at): at is number => at !== null && (range === null || (at >= range.from && at < range.to)),
-    ),
+    firstHeard(query).map((entry) => entry.firstAt),
     bucket,
   );
+}
+
+export function newArtists({
+  query,
+  offset,
+  limit,
+}: {
+  query: ListenQuery;
+  offset: number;
+  limit: number;
+}): NewArtist[] {
+  return firstHeard(query)
+    .sort(
+      (a, b) =>
+        b.firstAt - a.firstAt || a.artist.toLowerCase().localeCompare(b.artist.toLowerCase()),
+    )
+    .slice(offset, offset + limit);
 }
 
 const DAY_MS = 86_400_000;

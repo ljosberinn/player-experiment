@@ -2,6 +2,7 @@ import { statsFirsts, statsPlaysOverTime } from "../../ipc";
 import { useLibraryStore } from "../library/store";
 import { ListeningTiles } from "./ListeningTiles";
 import { HeardNeverOwned } from "./panels/HeardNeverOwned";
+import { NewArtistList } from "./panels/NewArtistList";
 import { RecentPlays } from "./panels/RecentPlays";
 import { SeriesPanel } from "./panels/SeriesPanel";
 import { StreakPanel } from "./panels/StreakPanel";
@@ -40,7 +41,9 @@ export function ListeningPanels() {
         whole="plays"
       />
       {!inArtist && !inAlbum && (
-        <SeriesPanel title="New artists" aggregate={statsFirsts} noun="Artists" whole="artists" />
+        <SeriesPanel title="New artists" aggregate={statsFirsts} noun="Artists" whole="artists">
+          <NewArtistList />
+        </SeriesPanel>
       )}
       <WeekClock />
       {!inArtist && <TopPanel dimension="artist" />}

@@ -50,6 +50,7 @@ vi.mock("../../ipc", () => ({
   statsTop: vi.fn(async () => []),
   statsPlaysOverTime: vi.fn(async () => []),
   statsFirsts: vi.fn(async () => []),
+  statsNewArtists: vi.fn(async () => []),
   statsWeekClock: vi.fn(async () => Array.from({ length: 168 }, () => 0)),
   statsRecentPlays: vi.fn(async () => []),
   statsStreaks: vi.fn(async () => ({

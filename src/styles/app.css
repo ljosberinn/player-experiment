@@ -3059,6 +3059,59 @@ body:not(:focus-within) .sidebar-row.current {
   font-size: 12px;
 }
 
+/* The artists under the *New artists* chart: the plays table's window, sized
+   to the list where it is shorter, and headed the way a stats table is. */
+.new-artists {
+  margin-top: 13px;
+}
+
+.new-artists-head {
+  display: flex;
+  gap: 13px;
+  padding: 3px 11px;
+  color: var(--label);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.new-artists-scroll {
+  height: auto;
+  max-height: 352px;
+}
+
+.new-artists-row {
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.new-artists-artist {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.new-artists-first,
+.new-artists-plays {
+  flex: none;
+  width: 96px;
+}
+
+.new-artists-plays {
+  text-align: right;
+}
+
+.new-artists-row :is(.new-artists-first, .new-artists-plays) {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- the Library tab's tables ---------- */
 
 /* The re-download list and every chart's show-as-table reading. Both are

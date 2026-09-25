@@ -12,8 +12,8 @@ use crate::db::{genres, stats, Db};
 use crate::error::AppResult;
 use crate::model::{
     AlbumBitrate, AlbumGroup, GenreBreakdown, HistogramBin, HistogramField, LibraryTotals,
-    ListenDimension, ListenQuery, ListenTotals, Play, Streaks, TagHealth, TimeBucket, TimeCount,
-    TopEntry, TrackQuery,
+    ListenDimension, ListenQuery, ListenTotals, NewArtist, Play, Streaks, TagHealth, TimeBucket,
+    TimeCount, TopEntry, TrackQuery,
 };
 
 async fn read<T: Send + 'static>(
@@ -107,6 +107,19 @@ pub async fn stats_firsts(
 ) -> AppResult<Vec<TimeCount>> {
     read(app, "stats.firsts", move |conn| {
         stats::firsts(conn, &query, bucket)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn stats_new_artists(
+    app: tauri::AppHandle,
+    query: ListenQuery,
+    offset: u32,
+    limit: u32,
+) -> AppResult<Vec<NewArtist>> {
+    read(app, "stats.new_artists", move |conn| {
+        stats::new_artists(conn, &query, offset, limit)
     })
     .await
 }

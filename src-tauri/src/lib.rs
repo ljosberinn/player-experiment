@@ -231,6 +231,7 @@ pub fn run() {
             commands::stats::stats_plays_over_time,
             commands::stats::stats_week_clock,
             commands::stats::stats_firsts,
+            commands::stats::stats_new_artists,
             commands::stats::stats_streaks,
             commands::stats::stats_library_totals,
             commands::stats::stats_histogram,

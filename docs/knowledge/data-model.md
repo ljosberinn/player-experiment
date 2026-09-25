@@ -516,6 +516,12 @@ every build, with no key and no account, and a library export carries it as
   out, the ones that count keep them, and `listen_totals.dated` is the share
   placed. `firsts` drops an artist first heard undated rather than dating it to
   its first dated play.
+- **`new_artists` is the list `firsts` counts**, over the same SQL
+  (`FirstHeard`), so the chart and the list cannot disagree: the range narrows
+  which first plays are kept, not which plays are searched for them. A row's
+  `plays` is every play under the query less its range, so it can exceed what
+  the range holds. Paged newest first, the name breaking a tie within a second
+  so a page boundary is stable.
 - **How the view was last filtered is one `settings` key**, `stats.filters`,
   opaque JSON like `sidebar.sections`: which filters exist is the frontend's
   business, and it is not exportable for that key's reason.
