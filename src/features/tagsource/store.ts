@@ -398,8 +398,10 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         return;
       }
       // Set here rather than on the first event, so the dialog goes to work the
-      // moment Apply is pressed instead of when the first file lands.
-      set({ stage: "applying", progress: { done: 0, total: edits.length }, error: null });
+      // moment Apply is pressed instead of when the first file lands. No
+      // progress until the backend's: its total also counts the release's
+      // unselected files, which get the identifiers and nothing else.
+      set({ stage: "applying", progress: null, error: null });
       try {
         const summary = await tagsourceApply(edits, identityOf(entry, detail));
         notify(
