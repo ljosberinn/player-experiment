@@ -1,6 +1,7 @@
 import { StatRow } from "../../components/primitives/StatRow";
 import { StatTiles } from "../../components/primitives/StatTiles";
 import { spanParts } from "../../lib/format";
+import { useLibraryStore } from "../library/store";
 import { activeFilters } from "./filters";
 import { listenTotalsOnce } from "./listenTotals";
 import { useStatsStore } from "./store";
@@ -19,16 +20,19 @@ import { usePanelQuery } from "./usePanelQuery";
  */
 export function ListeningTiles() {
   const filters = useStatsStore((s) => s.filters);
+  const drilled = useLibraryStore((s) => (s.statsPath?.crumbs.length ?? 0) > 0);
   const { query, deps } = useListenQuery();
   const { data: totals } = usePanelQuery(() => listenTotalsOnce(query), deps);
 
   if (totals !== null && totals.plays === 0) {
     return (
       <p className="empty-state">
-        {/* The same answer the token line gives, so an empty state blaming the
-            range cannot appear under a line saying nothing is filtered. No
-            playlists: a scope token is the Library tab's. */}
-        {activeFilters(filters, "listening", []).length === 0
+        {/* The same answer the token line and the breadcrumb give, so an empty
+            state blaming the range cannot appear under a line saying nothing
+            is filtered, and one sending you to import cannot appear under a
+            period that is only empty. No playlists: a scope token is the
+            Library tab's. */}
+        {activeFilters(filters, "listening", []).length === 0 && !drilled
           ? "Nothing has been played yet. Import your last.fm history in Settings ▸ Online."
           : "No plays in this range."}
       </p>

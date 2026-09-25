@@ -60,6 +60,22 @@ function States() {
           empty="Nothing in this range."
         />
       </StatsPanel>
+      <StatsPanel title="Drillable">
+        {/* Looks like "Three bars": the band is the target, and the table's
+            row headers are the buttons. */}
+        <Bar
+          label="Plays per month"
+          data={[
+            { label: "Jul", value: 412 },
+            { label: "Aug", value: 0 },
+            { label: "Sep", value: 1280 },
+          ]}
+          format={count}
+          columns={["Month", "Plays"]}
+          empty="Nothing in this range."
+          onSelect={() => {}}
+        />
+      </StatsPanel>
       <StatsPanel title="Empty">
         <Bar
           label="Plays per month"

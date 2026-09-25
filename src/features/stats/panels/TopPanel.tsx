@@ -23,9 +23,9 @@ const TITLES: Record<ListenDimension, string> = {
 /**
  * Which drill-down a row opens, where it opens one.
  *
- * A track has no entry because `ListenQuery` has no track field: the three
- * kinds here are exactly the three `StatsCrumb` kinds, and inventing a fourth
- * would be a crumb the query cannot honour.
+ * A track has no entry because `ListenQuery` has no track field: every
+ * `StatsCrumb` kind is a field the query honours, and a track crumb would be
+ * one it cannot.
  */
 const DRILLS: Partial<Record<ListenDimension, StatsCrumb["kind"]>> = {
   artist: "artist",

@@ -134,3 +134,45 @@ export const BUCKET_TITLES: Record<TimeBucket, string> = {
   month: "Month",
   year: "Year",
 };
+
+/**
+ * The stretch of time a period crumb covers: its bucket's first local midnight
+ * to the next bucket's, stepped by the calendar as `fillSeries` steps.
+ *
+ * The key is `<YYYY-MM-DD>/<bucket>`, the bar's own name and cut, so a crumb
+ * compares as a string and history needs nothing new.
+ */
+export function periodSpan(key: string): TimeRange {
+  const { start, bucket } = parsePeriod(key);
+  return {
+    from: Math.floor(start.getTime() / 1000),
+    to: Math.floor(nextBucket(start, bucket).getTime() / 1000),
+  };
+}
+
+const PERIOD_FORMATS: Record<TimeBucket, Intl.DateTimeFormatOptions> = {
+  day: { day: "numeric", month: "short", year: "numeric" },
+  week: { day: "numeric", month: "short", year: "numeric" },
+  month: { month: "long", year: "numeric" },
+  year: { year: "numeric" },
+};
+
+/**
+ * What the breadcrumb calls a period crumb.
+ *
+ * With the year, unlike `bucketLabel`: a crumb stands alone, without the
+ * neighbouring bars that let an axis leave it off.
+ */
+export function periodLabel(key: string): string {
+  const { start, bucket } = parsePeriod(key);
+  const date = start.toLocaleDateString(undefined, PERIOD_FORMATS[bucket]);
+  return bucket === "week" ? `${BUCKET_TITLES.week} ${date}` : date;
+}
+
+function parsePeriod(key: string): { start: Date; bucket: TimeBucket } {
+  const [day = "", bucket = ""] = key.split("/");
+  return {
+    start: localDay(day),
+    bucket: bucket in BUCKET_TITLES ? (bucket as TimeBucket) : "day",
+  };
+}

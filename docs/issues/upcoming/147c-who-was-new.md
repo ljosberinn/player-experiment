@@ -1,6 +1,6 @@
 # 147c — Who was new
 
-*New artists* names them. Stacks on [147a](147a-a-bar-is-a-stretch-of-time.md),
+*New artists* names them. Stacks on [147a](../done/147a-a-bar-is-a-stretch-of-time.md),
 which makes its bars drill to a period.
 
 - `stats::new_artists(query, offset, limit)` → `{ artist, firstAt, plays }`,

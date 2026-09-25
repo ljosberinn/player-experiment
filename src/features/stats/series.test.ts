@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bucketFor, bucketLabel, fillSeries } from "./series";
+import { bucketFor, bucketLabel, fillSeries, periodLabel, periodSpan } from "./series";
 
 const DAY = 86_400;
 
@@ -84,6 +84,11 @@ describe("fillSeries", () => {
     }
   });
 
+  it("draws nothing for a span that is empty", () => {
+    // A period crumb from before the range moved: the two no longer overlap.
+    expect(fillSeries([], "day", { from: at(2024, 3, 5), to: at(2024, 3, 1) })).toStrictEqual([]);
+  });
+
   it("leaves a span too long to fill as it came", () => {
     const series = [{ start: "0001-01-01", count: 1 }];
 
@@ -100,5 +105,59 @@ describe("bucketLabel", () => {
     );
     expect(bucketLabel("2024-03-04", "day")).not.toContain("2024");
     expect(bucketLabel("2024-01-01", "year")).toContain("2024");
+  });
+});
+
+describe("periodSpan", () => {
+  it("runs from the bucket's first local midnight to the next one's", () => {
+    expect(periodSpan("2023-03-06/week")).toStrictEqual({
+      from: at(2023, 3, 6),
+      to: at(2023, 3, 13),
+    });
+    expect(periodSpan("2023-03-01/month")).toStrictEqual({
+      from: at(2023, 3, 1),
+      to: at(2023, 4, 1),
+    });
+  });
+
+  it("crosses a year boundary by the calendar", () => {
+    expect(periodSpan("2022-12-26/week")).toStrictEqual({
+      from: at(2022, 12, 26),
+      to: at(2023, 1, 2),
+    });
+    expect(periodSpan("2023-12-01/month").to).toBe(at(2024, 1, 1));
+    expect(periodSpan("2023-01-01/year")).toStrictEqual({
+      from: at(2023, 1, 1),
+      to: at(2024, 1, 1),
+    });
+  });
+
+  it("ends a day across a daylight-saving change on the next midnight", () => {
+    // 31 March 2024 is the change in most European zones, a 23-hour day that
+    // 86,400 seconds added would overrun. It only bites in such a zone, which
+    // a UTC runner is not.
+    expect(periodSpan("2024-03-31/day")).toStrictEqual({
+      from: at(2024, 3, 31),
+      to: at(2024, 4, 1),
+    });
+  });
+});
+
+describe("periodLabel", () => {
+  const long = { day: "numeric", month: "short", year: "numeric" } as const;
+
+  it("names a period with its year, whatever its length", () => {
+    expect(periodLabel("2023-01-01/year")).toBe(
+      new Date(2023, 0, 1).toLocaleDateString(undefined, { year: "numeric" }),
+    );
+    expect(periodLabel("2023-03-01/month")).toBe(
+      new Date(2023, 2, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    );
+    expect(periodLabel("2023-03-06/week")).toBe(
+      `Week of ${new Date(2023, 2, 6).toLocaleDateString(undefined, long)}`,
+    );
+    expect(periodLabel("2023-03-06/day")).toBe(
+      new Date(2023, 2, 6).toLocaleDateString(undefined, long),
+    );
   });
 });

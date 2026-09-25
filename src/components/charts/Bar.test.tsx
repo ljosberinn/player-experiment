@@ -38,7 +38,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function draw(data: readonly BarDatum[]) {
+function draw(data: readonly BarDatum[], onSelect?: (index: number) => void) {
   render(
     <Bar
       label="Tracks per bitrate"
@@ -46,6 +46,7 @@ function draw(data: readonly BarDatum[]) {
       format={(value) => `${value}`}
       columns={["Bitrate", "Tracks"]}
       empty="Nothing reports a bitrate."
+      {...(onSelect === undefined ? {} : { onSelect })}
     />,
   );
   return Array.from(document.querySelectorAll<SVGRectElement>("rect.chart-bar"));
@@ -134,5 +135,80 @@ describe("Bar", () => {
       expect(screen.getAllByRole("row")).toHaveLength(41);
       expect(screen.getByRole("rowheader", { name: "1999" })).toBeInTheDocument();
     });
+  });
+
+  test("drills from a bar that counts something", async () => {
+    const drill = vi.fn();
+    draw(
+      [
+        { label: "Jul", value: 4 },
+        { label: "Aug", value: 0 },
+        { label: "Sep", value: 9 },
+      ],
+      drill,
+    );
+    const hits = Array.from(document.querySelectorAll<SVGRectElement>("rect[data-drills]"));
+
+    // The whole band's height, so a short bar is as easy to hit as a tall one;
+    // an empty bar has no stretch of time worth opening.
+    expect(hits).toHaveLength(2);
+    expect(hits.map((hit) => Number(hit.getAttribute("height")))).toStrictEqual([
+      PLOT.height,
+      PLOT.height,
+    ]);
+
+    await userEvent.click(hits[1] as unknown as Element);
+
+    expect(drill).toHaveBeenCalledExactlyOnceWith(2);
+  });
+
+  test("leaves every bar inert without a drill", () => {
+    draw([{ label: "Jul", value: 4 }]);
+
+    expect(document.querySelector("[data-drills]")).toBeNull();
+  });
+
+  test("puts the drill in the table, on the rows that have one", async () => {
+    const user = userEvent.setup();
+    draw(
+      [
+        { label: "Jul", value: 4 },
+        { label: "Aug", value: 0 },
+      ],
+      vi.fn(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Show as table" }));
+
+    expect(screen.getByRole("button", { name: "Jul" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aug" })).not.toBeInTheDocument();
+    expect(screen.getByRole("rowheader", { name: "Aug" })).toBeInTheDocument();
+  });
+
+  test("draws no table buttons without a drill", async () => {
+    const user = userEvent.setup();
+    draw([{ label: "Jul", value: 4 }]);
+
+    await user.click(screen.getByRole("button", { name: "Show as table" }));
+
+    expect(screen.queryByRole("button", { name: "Jul" })).not.toBeInTheDocument();
+  });
+
+  test("reports the same bar from the chart and from the table", async () => {
+    const user = userEvent.setup();
+    const drill = vi.fn();
+    draw(
+      [
+        { label: "Jul", value: 4 },
+        { label: "Aug", value: 7 },
+      ],
+      drill,
+    );
+
+    await user.click(document.querySelectorAll("rect[data-drills]")[1] as Element);
+    await user.click(screen.getByRole("button", { name: "Show as table" }));
+    await user.click(screen.getByRole("button", { name: "Aug" }));
+
+    expect(drill.mock.calls).toStrictEqual([[1], [1]]);
   });
 });

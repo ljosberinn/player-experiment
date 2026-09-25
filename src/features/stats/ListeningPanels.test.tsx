@@ -241,6 +241,32 @@ describe("ListeningPanels", () => {
     expect(panel("Plays over time").querySelectorAll("rect.chart-bar")).toHaveLength(7);
   });
 
+  it("drills into the stretch of time a bar covers", async () => {
+    const user = userEvent.setup();
+    render(<ListeningPanels />);
+    const plays = panel("Plays over time");
+    // All time is 2014 to 2023, so months, and only June 2020 has a play.
+    await waitFor(() => expect(plays.querySelectorAll("rect[data-drills]")).toHaveLength(1));
+
+    await user.click(plays.querySelector("rect[data-drills]") as Element);
+
+    expect(useLibraryStore.getState().statsPath).toEqual({
+      tab: "listening",
+      crumbs: [{ kind: "period", key: "2020-06-01/month" }],
+    });
+  });
+
+  it("stops drilling at a series of one bar", async () => {
+    useLibraryStore.setState({
+      statsPath: { tab: "listening", crumbs: [{ kind: "period", key: "2020-06-01/day" }] },
+    });
+    render(<ListeningPanels />);
+    const plays = panel("Plays over time");
+
+    await waitFor(() => expect(plays.querySelectorAll("rect.chart-bar")).toHaveLength(1));
+    expect(plays.querySelector("[data-drills]")).toBeNull();
+  });
+
   it("drops new artists inside an artist, where the answer is them, once", async () => {
     useLibraryStore.setState({
       statsPath: { tab: "listening", crumbs: [{ kind: "artist", key: "Aphex Twin" }] },
