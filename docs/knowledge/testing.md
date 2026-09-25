@@ -234,6 +234,8 @@ Vitest never runs and coverage never counts:
   `showTrackGroup` — rather than seeding the counts, pages and groups those
   fetch. The drill-in order has to match `RELEASE_GROUP_ORDER`, because
   `ReleaseGroups` cuts rows into releases by a prefix sum.
+- **Fields** are styled only by `.dialog input`, so a story of a field
+  component draws it inside a `Dialog`, laid out as its host lays it out.
 - **Context menus** open from `play` with `rightClick` in `.storybook/play.ts`.
 - **Events** go out from `play` through `emitEvent` in `.storybook/tauri.ts`,
   not `emit`: Storybook starts `play` before the story's effects run, so a

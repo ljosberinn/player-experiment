@@ -13,7 +13,7 @@ function States() {
 }
 
 const meta = {
-  title: "Features/Editor/WriteLine",
+  title: "Features/Editing/WriteLine",
   component: States,
 } satisfies Meta<typeof States>;
 
