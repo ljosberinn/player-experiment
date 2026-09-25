@@ -223,6 +223,8 @@ Vitest never runs and coverage never counts:
   in its own `beforeEach` with `useXStore.setState`.
 - **Fixtures** — `track()`, `playlist()`, `LIBRARY` and friends — are in
   `.storybook/fixtures.ts`. The per-file `track()` helpers in tests stay put.
+  So are the menu models `rowItems()` and `MENUS`, built by the app's own
+  `rowMenuItems` and `menus()` so a menu story cannot drift from the app's.
 - **Events** go out from `play` through `emitEvent` in `.storybook/tauri.ts`,
   not `emit`: Storybook starts `play` before the story's effects run, so a
   bare `emit` reaches no listener. `emitEvent` waits for one and fails the
