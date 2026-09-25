@@ -211,7 +211,7 @@ action reads as a target rather than a line of text".
 
 - The OS draws the frame. Phase 119 dropped `decorations: false`, so the title,
   the caption buttons, the system menu and snap layouts are the window's own.
-- A 40px app bar under it: the mark, the menus, the search field, the version.
+- A 40px app bar under it: the mark, the menus, the version, the search field.
 - The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and
   a dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
   sections with counts. There is no tab bar and no library toolbar.

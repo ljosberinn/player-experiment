@@ -9,11 +9,7 @@ import { useLibraryStore } from "./store";
 
 /** In the bar, which is what gives the field its width. */
 function Bar() {
-  return (
-    <AppBar>
-      <SearchBox />
-    </AppBar>
-  );
+  return <AppBar search={<SearchBox />} />;
 }
 
 const meta = {

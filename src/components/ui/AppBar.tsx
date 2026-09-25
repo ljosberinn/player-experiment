@@ -11,12 +11,16 @@ import type { ReactNode } from "react";
  */
 export function AppBar({
   children,
+  // A slot rather than more children because the version sits between the two:
+  // it follows the menus, and the search field takes the free space after it.
+  search,
   // Absent until `get_app_info` answers, which is a real state on every launch
   // and lasts a frame or two. Optional rather than required so that is spelled
   // as one thing rather than as `version={null}` at every call site.
   version = null,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
+  search?: ReactNode;
   version?: string | null;
 }) {
   return (
@@ -35,6 +39,8 @@ export function AppBar({
       {/* Read from the Rust crate rather than baked in at build time: that
           version is the one the installer and every export report. */}
       {version === null ? null : <span className="appbar-version">v{version}</span>}
+
+      {search}
     </header>
   );
 }
