@@ -9,14 +9,15 @@ import type {
   Track,
   TrackQuery,
 } from "../src/ipc";
-import { LATE_NIGHT, LIBRARY } from "./fixtures";
+import { GENRE_PARENTS, LATE_NIGHT, LIBRARY } from "./fixtures";
 
 /**
  * The library queries answered over `LIBRARY`, so a story can navigate through
  * the store's own actions instead of seeding the state they derive.
  *
  * Only as faithful as the views need: a search is a substring, relevance is
- * the natural order, and a playlist holds what `members` says. What must match
+ * the natural order, a playlist holds what `members` says, and a genre is a
+ * branch of `GENRE_PARENTS`. What must match
  * `db/query.rs` exactly is the drill-in order, because `ReleaseGroups` cuts the
  * rows into releases by a prefix sum over `release_groups`.
  */
@@ -37,7 +38,7 @@ function members(playlistId: number): Track[] | null {
   }
 }
 
-function groupArtist(track: Track): string | null {
+export function groupArtist(track: Track): string | null {
   return track.album_artist ?? track.artist;
 }
 
@@ -65,6 +66,15 @@ function label(track: Track, kind: BrowseKind): string | null {
     case "genres":
       return track.genre;
   }
+}
+
+/** `genre` and every label above it, leaf first. */
+export function lineage(genre: string): string[] {
+  const chain = [genre];
+  for (let link = GENRE_PARENTS[genre]; link !== undefined; link = GENRE_PARENTS[link.parent]) {
+    chain.push(link.parent);
+  }
+  return chain;
 }
 
 const FIELDS: Partial<Record<SortField, keyof Track>> = {
@@ -100,7 +110,7 @@ function compare(a: unknown, b: unknown): number {
 }
 
 /** Every row of `query`, filtered and in view order, before paging. */
-function rows(query: TrackQuery): Track[] {
+export function rows(query: TrackQuery): Track[] {
   const source = query.playlistId === null ? LIBRARY : (members(query.playlistId) ?? []);
   const term = query.search?.trim().toLowerCase() ?? "";
   const { browse } = query;
@@ -110,7 +120,9 @@ function rows(query: TrackQuery): Track[] {
         [track.title, track.artist, track.album, track.genre].some((value) =>
           value?.toLowerCase().includes(term),
         )) &&
-      (browse === null || identity(track, browse.kind) === browse.id),
+      (browse === null || identity(track, browse.kind) === browse.id) &&
+      (query.genre === null ||
+        (track.genre !== null && lineage(track.genre).includes(query.genre))),
   );
 
   // Position and relevance have no column: the source's own order is the sort.
@@ -148,7 +160,7 @@ function releaseOrder(tracks: Track[]): Map<string, number> {
   return new Map(sorted.map(([id], index) => [id, index]));
 }
 
-function groupsOf(tracks: Track[], key: (track: Track) => string | null): Track[][] {
+export function groupsOf(tracks: Track[], key: (track: Track) => string | null): Track[][] {
   const groups = new Map<string | null, Track[]>();
   for (const track of tracks) {
     const id = key(track);
@@ -164,7 +176,7 @@ function min<T>(values: T[]): T | null {
   );
 }
 
-function durationOf(tracks: Track[]): number {
+export function durationOf(tracks: Track[]): number {
   return tracks.reduce((sum, track) => sum + (track.duration_ms ?? 0), 0);
 }
 

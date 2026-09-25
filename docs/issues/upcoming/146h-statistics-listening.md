@@ -1,7 +1,9 @@
 # 146h — Stories for the Listening tab of Statistics
 
-Needs [146g](146g-statistics-library.md), and adds to its `statsHandlers`.
-Titles go under `Features/Statistics`.
+Needs [146g](../done/146g-statistics-library.md), and adds to its
+`statsHandlers` and `emptyStatsHandlers`. Titles go under
+`Features/Statistics`. 146g already draws the Listening half of
+`StatsFilterBar`.
 
 Each panel fetches through `useListenQuery`. Most of them also call
 `listenTotalsOnce` → `statsListenTotals`, so `statsHandlers` answers that

@@ -234,6 +234,10 @@ Vitest never runs and coverage never counts:
   `showTrackGroup` — rather than seeding the counts, pages and groups those
   fetch. The drill-in order has to match `RELEASE_GROUP_ORDER`, because
   `ReleaseGroups` cuts rows into releases by a prefix sum.
+- **Statistics** aggregates count over the same rows, from
+  `.storybook/stats.ts` through `statsHandlers`, so a panel agrees with its
+  neighbours and with the library. `emptyStatsHandlers` answers every
+  aggregate over nothing. A genre is a branch of `GENRE_PARENTS`.
 - **Fields** are styled only by `.dialog input`, so a story of a field
   component draws it inside a `Dialog`, laid out as its host lays it out.
 - **Context menus** open from `play` with `rightClick` in `.storybook/play.ts`.

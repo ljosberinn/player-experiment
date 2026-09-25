@@ -1,10 +1,13 @@
 import { useLovedStore } from "../src/features/love/store";
 import { usePlayerStore } from "../src/features/player/store";
 import type {
+  GenreBreakdown,
   LastfmConnection,
   LastfmImported,
   LibraryFolder,
+  LibraryTotals,
   ReviewCounts,
+  TagHealth,
   TagValueField,
   TagWriteSummary,
   Track,
@@ -20,6 +23,7 @@ import {
   playlist,
 } from "./fixtures";
 import { allTrackIds, browseGroups, libraryStats, queryTracks, releaseGroups } from "./library";
+import { genreBreakdown, histogram, libraryTotals, tagHealth, worstByBitrate } from "./stats";
 import type { IpcHandlers } from "./tauri";
 
 export const crashHandlers: IpcHandlers = {
@@ -167,4 +171,54 @@ export const editingHandlers: IpcHandlers = {
     errors: [],
   }),
   tagsource_set_aside: () => null,
+};
+
+/**
+ * The Statistics view's commands. The Library tab's aggregates count over
+ * `LIBRARY` through the same rows the library views are answered from, and
+ * browse the genres its filter bar lists through `browse_groups`.
+ */
+export const statsHandlers: IpcHandlers = {
+  load_stats_filters: () => null,
+  save_stats_filters: () => null,
+  browse_groups: (args) => browseGroups(args as Parameters<typeof browseGroups>[0]),
+  stats_library_totals: (args) => libraryTotals(args as Parameters<typeof libraryTotals>[0]),
+  stats_histogram: (args) => histogram(args as Parameters<typeof histogram>[0]),
+  stats_worst_by_bitrate: (args) => worstByBitrate(args as Parameters<typeof worstByBitrate>[0]),
+  stats_genre_breakdown: (args) => genreBreakdown(args as Parameters<typeof genreBreakdown>[0]),
+  stats_tag_health: (args) => tagHealth(args as Parameters<typeof tagHealth>[0]),
+  genre_suggestions: ({ query }) => suggest(GENRES, query),
+  set_genre_override: () => null,
+  clear_genre_override: () => null,
+  // Cancelled, which `saveCsv` takes as the user closing the box they opened.
+  "plugin:dialog|save": () => null,
+  save_text_file: () => null,
+};
+
+/** The Library tab over a library with nothing in it. */
+export const emptyStatsHandlers: IpcHandlers = {
+  ...statsHandlers,
+  browse_groups: () => [],
+  stats_library_totals: (): LibraryTotals => ({
+    tracks: 0,
+    artists: 0,
+    albums: 0,
+    durationMs: 0,
+    bytes: 0,
+    missing: 0,
+  }),
+  stats_histogram: () => [],
+  stats_worst_by_bitrate: () => [],
+  stats_genre_breakdown: (): GenreBreakdown => ({ slices: [], own: 0, untagged: 0 }),
+  stats_tag_health: (): TagHealth => ({
+    tracks: 0,
+    title: 0,
+    artist: 0,
+    album: 0,
+    albumArtist: 0,
+    genre: 0,
+    year: 0,
+    trackNo: 0,
+    cover: 0,
+  }),
 };
