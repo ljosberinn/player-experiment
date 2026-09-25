@@ -239,6 +239,79 @@ export function agrees(file: Track, track: RemoteTrack, fields: Fields): boolean
   return !Object.values(differences(file, track, fields)).some(Boolean);
 }
 
+/** A stretch of a new value, and whether the old value lacked it. */
+export type Run = { text: string; changed: boolean; start: number };
+
+// A kept stretch this short between two changes reads as noise, not as a
+// part of the old value that survived.
+const SHORT_RUN = 3;
+
+/**
+ * Splits `to` into the stretches `from` already has and the ones it lacks,
+ * by a character-level longest common subsequence, so "Remember Me" against
+ * "Remember Me (Forever)" marks only " (Forever)".
+ *
+ * A value that keeps less than half of itself is changed whole: past that,
+ * the letters two unrelated titles share are coincidence.
+ */
+export function changedRuns(from: string, to: string): Run[] {
+  const a = Array.from(from);
+  const b = Array.from(to);
+  const width = b.length + 1;
+  // The common subsequence of `a[i..]` and `b[j..]`, at `i * width + j`.
+  const common = new Uint16Array((a.length + 1) * width);
+  const at = (i: number, j: number) => common[i * width + j] ?? 0;
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      common[i * width + j] =
+        a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+    }
+  }
+
+  const kept = b.map(() => false);
+  for (let i = 0, j = 0; i < a.length && j < b.length; ) {
+    if (a[i] === b[j]) {
+      kept[j] = true;
+      i++;
+      j++;
+    } else if (at(i + 1, j) >= at(i, j + 1)) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  if (at(0, 0) * 2 < b.length) {
+    return to === "" ? [] : [{ text: to, changed: true, start: 0 }];
+  }
+
+  const runs: Run[] = [];
+  b.forEach((char, index) => {
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.changed === !kept[index]) {
+      last.text += char;
+    } else {
+      runs.push({ text: char, changed: !kept[index], start: index });
+    }
+  });
+
+  const merged: Run[] = [];
+  runs.forEach((run, index) => {
+    const absorbed =
+      !run.changed &&
+      Array.from(run.text).length < SHORT_RUN &&
+      runs[index - 1]?.changed === true &&
+      runs[index + 1]?.changed === true;
+    const changed = run.changed || absorbed;
+    const last = merged[merged.length - 1];
+    if (last !== undefined && last.changed === changed) {
+      last.text += run.text;
+    } else {
+      merged.push({ ...run, changed });
+    }
+  });
+  return merged;
+}
+
 /** How many of the selected files an apply would actually write. */
 export function mappedCount(assignment: Assignment): number {
   return assignment.filter((index) => index !== null).length;

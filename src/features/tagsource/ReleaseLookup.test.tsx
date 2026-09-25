@@ -289,11 +289,12 @@ describe("the confirm step", () => {
     const marked = () =>
       [...document.querySelectorAll(".lookup-map-changed")].map((mark) => mark.textContent);
     // File 2 has no artist tag, so the album artist is drawn to say it changes.
-    expect(marked()).toEqual(["Only Shallow", "Loomer", "My Bloody Valentine"]);
+    // Only the letters the file's title lacks; a missing tag is new whole.
+    expect(marked()).toEqual(["O", "S", "Loomer", "My Bloody Valentine"]);
 
     await user.click(screen.getByRole("checkbox", { name: "Artist" }));
 
-    expect(marked()).toEqual(["Only Shallow", "Loomer"]);
+    expect(marked()).toEqual(["O", "S", "Loomer"]);
   });
 
   it("regroups a row once its only difference is not being written", async () => {

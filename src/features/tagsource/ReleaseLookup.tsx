@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { Button } from "../../components/primitives/Button";
 import { Checkbox } from "../../components/primitives/Checkbox";
 import {
@@ -25,6 +25,7 @@ import {
   type Assignment,
   agrees,
   buildEdits,
+  changedRuns,
   differences,
   type Fields,
   LOOKUP_FIELDS,
@@ -693,7 +694,7 @@ type MapRow = { track: Track; row: number; remote: RemoteTrack | null };
 
 /**
  * The MusicBrainz half of a mapping row, with what an apply would change in
- * the accent. The file half beside it is the old value, so the colour only
+ * the accent. Numbers are marked whole; text only where it differs. The file half beside it is the old value, so the colour only
  * points at a difference the row already shows.
  */
 function RemoteCell({
@@ -723,12 +724,12 @@ function RemoteCell({
         {disc ? <Mark on={changed.discNo}>{`${remote.discNo}-`}</Mark> : null}
         <Mark on={changed.trackNo}>{String(remote.trackNo)}</Mark>
         {". "}
-        <Mark on={changed.title}>{remote.title}</Mark>
+        <Diff from={file.title ?? ""} to={remote.title} on={changed.title} />
       </span>
       <span className="lookup-map-detail">
         {remote.durationMs === null ? "—" : formatDuration(remote.durationMs)}
         {artist ? " · " : null}
-        {artist ? <Mark on={changed.artist}>{remote.artist}</Mark> : null}
+        {artist ? <Diff from={file.artist ?? ""} to={remote.artist} on={changed.artist} /> : null}
       </span>
     </>
   );
@@ -736,6 +737,22 @@ function RemoteCell({
 
 function Mark({ on, children }: { on: boolean; children: string }) {
   return on ? <span className="lookup-map-changed">{children}</span> : children;
+}
+
+/** A changed value with only the stretches the old one lacked marked. */
+function Diff({ from, to, on }: { from: string; to: string; on: boolean }) {
+  if (!on) {
+    return to;
+  }
+  return changedRuns(from, to).map((run) =>
+    run.changed ? (
+      <span key={run.start} className="lookup-map-changed">
+        {run.text}
+      </span>
+    ) : (
+      <Fragment key={run.start}>{run.text}</Fragment>
+    ),
+  );
 }
 
 function Art({ label, src, note }: { label: string; src: string | null; note: string | null }) {

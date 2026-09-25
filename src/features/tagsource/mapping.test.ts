@@ -4,6 +4,7 @@ import {
   agrees,
   allFields,
   buildEdits,
+  changedRuns,
   defaultAssignment,
   differences,
   identityOf,
@@ -101,6 +102,41 @@ describe("differences", () => {
       trackNo: true,
       discNo: true,
     });
+  });
+});
+
+describe("changedRuns", () => {
+  const marked = (from: string, to: string) =>
+    changedRuns(from, to)
+      .filter((run) => run.changed)
+      .map((run) => run.text);
+
+  it("marks only what the old value lacks", () => {
+    expect(marked("Remember Me", "Remember Me (Forever)")).toEqual([" (Forever)"]);
+    expect(marked("only shallow", "Only Shallow")).toEqual(["O", "S"]);
+    expect(marked("Touched", "Touching")).toEqual(["ing"]);
+  });
+
+  it("keeps the whole value, in order", () => {
+    const runs = changedRuns("Remember Me", "Remember Me (Forever)");
+
+    expect(runs.map((run) => run.text).join("")).toBe("Remember Me (Forever)");
+    expect(runs.map((run) => run.start)).toEqual([0, 11]);
+  });
+
+  /** Two unrelated titles share letters by chance, which is not a match. */
+  it("changes an unrelated value whole", () => {
+    expect(marked("File 2", "Loomer")).toEqual(["Loomer"]);
+    expect(marked("", "Loomer")).toEqual(["Loomer"]);
+  });
+
+  it("folds a short kept stretch into the changes around it", () => {
+    // The "e" of "Me" survives in "Xe", but alone it is no part worth keeping.
+    expect(marked("Remember Me", "Remember Xe Now")).toEqual(["Xe Now"]);
+  });
+
+  it("marks nothing in an equal value", () => {
+    expect(marked("Loomer", "Loomer")).toEqual([]);
   });
 });
 
