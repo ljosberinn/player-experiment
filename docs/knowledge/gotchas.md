@@ -201,6 +201,14 @@ companion, so it survives the split and merge and comes back unchanged even when
 the edit never mentioned the comment. `write::repair_languages` rewrites an
 unusable one to `XXX` before the save; the comment text itself is untouched.
 
+**lofty keeps the unsynchronisation flags it read but never unsynchronises on
+write.** A v2.4 header flag `0x80` (and a frame's `0x0002`) survives the split
+and merge in the companion, and every frame body goes out raw, so the next read
+strips each `00` after an `FF` — every escaped marker in a JPEG — and the cover
+decodes gray below its first rows. Any save does it, not just a cover change, as
+long as the tag has a frame the companion keeps. `write::drop_unsynchronisation`
+clears both flags before the save.
+
 ## Moving files
 
 **A tombstone is a hazard at the target, not at the source.** `scan::plan` skips

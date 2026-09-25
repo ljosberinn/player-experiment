@@ -48,10 +48,12 @@ The source image is a valid baseline JPEG: 500×500, SOF0, ends in EOI.
 
 ## Scope
 
-- **Any** save to a file with this flag damages whatever art it has, not only a
-  cover replacement. lofty reads the existing APIC correctly (it removes the
-  unsync bytes), then writes the bytes back raw under the same flag. This
-  follows from the mechanism above; it has not been seen on a file yet.
+- Any save to a file with this flag damages whatever art it has, not only a
+  cover replacement: lofty reads the existing APIC correctly, then writes it
+  back raw under the same flag.
+- Only when the tag also has a frame lofty keeps out of the generic `Tag`
+  (TXXX, PRIV, …). Without one there is no companion tag, and
+  `Id3v2Tag::from` starts from default flags (`lofty/src/id3/v2/tag.rs:986`).
 - It depends on the file, not the release. The flag comes from whatever tagged
   the file before the app did.
 - Tag types other than ID3v2 are not affected.
@@ -66,12 +68,8 @@ The source image is a valid baseline JPEG: 500×500, SOF0, ends in EOI.
 
 ## Fix
 
-In `save_tag`, after `Id3v2Tag::from(tag)` and before `save_to_path`:
-
-- `set_flags` with `unsynchronisation: false`.
-- In the `retain_mut` pass that `repair_languages` already makes, clear
-  `unsynchronisation` in every frame's `FrameFlags` (`frame.flags()` /
-  `frame.set_flags()`).
+`drop_unsynchronisation` in `save_tag`, after `Id3v2Tag::from(tag)`, clears
+`unsynchronisation` on the tag flags and on every frame's `FrameFlags`.
 
 Dropping the flags is always correct. lofty never unsynchronises on write, so
 no frame it writes is unsynchronised. Unsynchronisation exists for decoders
@@ -79,8 +77,8 @@ that predate ID3v2 and has no other use.
 
 The same family as the unwritable dates of [100](../done/100-why-a-tag-write-failed.md)
 and the languages of [105](../done/105-a-comment-lofty-will-not-write-back.md):
-lofty accepts a value on read that it cannot write back correctly. Check
-whether a newer lofty fixes it, and report it upstream if not.
+lofty accepts a value on read that it cannot write back correctly. Unfixed in
+0.25.4 and on upstream `main` as of 2026-09-25; not yet reported upstream.
 
 ## Repair
 
@@ -93,13 +91,14 @@ and nothing in the file can recover it. Writing a cover is the only way back.
 
 ## Tests
 
-In `tags/write.rs`:
+In `tests/tagwrite.rs`, on `fixture::write_unsynchronised_mp3` (v2.4, header
+flags `0x80`, a TXXX with frame flag `0x0002`):
 
-- A v2.4 fixture with header flags `0x80`: write a cover containing `FF 00`,
-  read it back, and the picture is byte-identical.
-- The same fixture carrying an APIC: an edit that leaves the cover alone reads
-  back the same picture.
-- After either write, neither the header nor any frame has its unsync bit set.
+- A cover containing `FF 00` is written and reads back byte-identical.
+- With an APIC already on the file, a genre edit leaves the picture
+  byte-identical.
+- After either write, neither the header nor any frame claims
+  unsynchronisation.
 
 ## Verification
 

@@ -542,6 +542,27 @@ fn repair_languages(id3: &mut Id3v2Tag) {
     });
 }
 
+/// Clears every unsynchronisation flag, on the tag and on each frame.
+///
+/// lofty keeps the flags it read but writes every frame body raw, so a file
+/// that arrived unsynchronised would go back out claiming to be: the next read
+/// then strips each `00` after an `FF`, which is every escaped marker in a
+/// JPEG, and the cover decodes as gray below its first few rows. Writing raw
+/// and saying so is always correct; the scheme only exists for pre-ID3v2
+/// decoders.
+fn drop_unsynchronisation(id3: &mut Id3v2Tag) {
+    let mut flags = *id3.flags();
+    flags.unsynchronisation = false;
+    id3.set_flags(flags);
+
+    id3.retain_mut(|frame| {
+        let mut flags = frame.flags();
+        flags.unsynchronisation = false;
+        frame.set_flags(flags);
+        true
+    });
+}
+
 /// Saves `tag`, carrying the MusicBrainz ids lofty would drop on the way.
 ///
 /// See [`MUSICBRAINZ_TXXX`]. The values are taken off the generic tag before
@@ -573,6 +594,7 @@ fn save_tag(path: &Path, tag: Tag) -> Result<(), Refused> {
 
     let mut id3 = Id3v2Tag::from(tag);
     repair_languages(&mut id3);
+    drop_unsynchronisation(&mut id3);
     for (_, description) in MUSICBRAINZ_TXXX {
         id3.remove_user_text(description);
     }

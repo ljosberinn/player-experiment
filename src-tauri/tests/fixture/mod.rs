@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use lofty::config::{ParseOptions, WriteOptions};
 use lofty::file::AudioFile;
-use lofty::id3::v2::Id3v2Tag;
+use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::mpeg::MpegFile;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
@@ -149,9 +149,14 @@ fn text_frame(id: &str, value: &str) -> Vec<u8> {
 
 /// An mp3 carrying `frames` of ID3v2.4 in front of `audio_frames` of silence.
 fn write_hand_built_mp3(path: &Path, audio_frames: usize, frames: &[Vec<u8>]) {
+    write_hand_built_mp3_flagged(path, audio_frames, 0, frames);
+}
+
+/// [`write_hand_built_mp3`] with the header's flags byte set to `flags`.
+fn write_hand_built_mp3_flagged(path: &Path, audio_frames: usize, flags: u8, frames: &[Vec<u8>]) {
     let body = frames.concat();
     let mut bytes = Vec::from(&b"ID3"[..]);
-    bytes.extend_from_slice(&[4, 0, 0]);
+    bytes.extend_from_slice(&[4, 0, flags]);
     bytes.extend_from_slice(&synchsafe(body.len() as u32));
     bytes.extend_from_slice(&body);
     bytes.extend_from_slice(&silent_mp3(audio_frames));
@@ -222,6 +227,100 @@ pub fn comment_language(path: &Path) -> [u8; 3] {
         .expect("a COMM frame")
         .language;
     language
+}
+
+/// ID3v2 unsynchronisation (4.2.2 of the v2.4 structure document): a `00`
+/// after every `FF` that a sync-hunting decoder could misread.
+fn unsynchronise(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len() * 2);
+    for (index, &byte) in bytes.iter().enumerate() {
+        out.push(byte);
+        if byte == 0xFF {
+            match bytes.get(index + 1) {
+                Some(&next) if next != 0x00 && next < 0xE0 => {}
+                _ => out.push(0x00),
+            }
+        }
+    }
+    out
+}
+
+/// An mp3 whose ID3v2.4 header has the unsynchronisation flag set, as some
+/// taggers write it, with every frame body unsynchronised to match.
+///
+/// Carries a TXXX frame, which lofty keeps out of the generic `Tag` and so
+/// carries the header flags through a save, and which has its own
+/// unsynchronisation bit set, as the one seen in the wild did. `cover`, when
+/// given, goes in as a JPEG front cover.
+pub fn write_unsynchronised_mp3(path: &Path, frames: usize, title: &str, cover: Option<&[u8]>) {
+    let frame = |id: &str, flags: u16, body: &[u8]| {
+        let body = unsynchronise(body);
+        let mut frame = Vec::from(id.as_bytes());
+        frame.extend_from_slice(&synchsafe(body.len() as u32));
+        frame.extend_from_slice(&flags.to_be_bytes());
+        frame.extend_from_slice(&body);
+        frame
+    };
+
+    let mut title_body = vec![3u8];
+    title_body.extend_from_slice(title.as_bytes());
+    let mut frames_out = vec![
+        frame("TIT2", 0, &title_body),
+        frame("TXXX", 0x0002, b"\x03Encoded By\x00a tagger"),
+    ];
+    if let Some(cover) = cover {
+        // Encoding, MIME type, picture type (front cover), empty description,
+        // then the image: the APIC layout of ID3v2.4 section 4.14.
+        let mut body = vec![0u8];
+        body.extend_from_slice(b"image/jpeg\x00");
+        body.push(3);
+        body.push(0);
+        body.extend_from_slice(cover);
+        frames_out.push(frame("APIC", 0, &body));
+    }
+
+    write_hand_built_mp3_flagged(path, frames, 0x80, &frames_out);
+}
+
+/// The front cover of the mp3 at `path`, as lofty decodes it.
+pub fn front_cover(path: &Path) -> Option<Vec<u8>> {
+    let mut file = std::fs::File::open(path).expect("open mp3");
+    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).expect("read mp3");
+    let cover = mpeg.id3v2()?.into_iter().find_map(|frame| match frame {
+        Frame::Picture(apic) if apic.picture.pic_type() == PictureType::CoverFront => {
+            Some(apic.picture.data().to_vec())
+        }
+        _ => None,
+    });
+    cover
+}
+
+/// Whether the ID3v2 tag of the mp3 at `path` claims unsynchronisation
+/// anywhere: in its header, or on any one frame.
+pub fn claims_unsynchronisation(path: &Path) -> bool {
+    let bytes = std::fs::read(path).expect("read mp3");
+    assert_eq!(&bytes[..3], b"ID3", "an ID3v2 tag at the start");
+    if bytes[5] & 0x80 != 0 {
+        return true;
+    }
+
+    // Read off the disk rather than through lofty, which marks every frame
+    // unsynchronised when the header says so and could not tell the two apart.
+    let size = bytes[6..10]
+        .iter()
+        .fold(0usize, |size, &byte| (size << 7) | usize::from(byte));
+    let tag = &bytes[10..10 + size];
+    let mut at = 0;
+    while at + 10 <= tag.len() && tag[at] != 0 {
+        let body = tag[at + 4..at + 8]
+            .iter()
+            .fold(0usize, |size, &byte| (size << 7) | usize::from(byte));
+        if tag[at + 9] & 0x02 != 0 {
+            return true;
+        }
+        at += 10 + body;
+    }
+    false
 }
 
 /// `count` interchangeable mp3s under `root/bulk`, for the tests whose subject
