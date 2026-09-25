@@ -22,7 +22,7 @@ use crate::db::{lookup, query};
 use crate::error::AppResult;
 use crate::model::{CoverEdit, ReleaseDetail, TagEdit};
 use crate::scan::ScanLock;
-use crate::tagsource::score::{LocalRelease, UNATTENDED_THRESHOLD};
+use crate::tagsource::score::{lengths_contradict, LocalRelease, UNATTENDED_THRESHOLD};
 use crate::tagsource::transport::Transport;
 use crate::{tags, tagsource};
 
@@ -84,14 +84,7 @@ pub enum Verdict {
         mbid: String,
         score: f32,
         tracks: u32,
-        /// Written because MusicBrainz had only one candidate, rather than
-        /// because the score cleared the bar.
-        ///
-        /// Carried so the log says why: `score` is the fetched score, which
-        /// on this path is below the threshold, and a tuning pass reading a
-        /// column of sub-threshold writes would conclude the threshold was
-        /// broken.
-        sole: bool,
+        reason: Reason,
     },
     /// Certain, and the files would not take it: a frame lofty will not
     /// encode, a lock, a full disk. Recorded as
@@ -118,6 +111,22 @@ pub enum Verdict {
     /// MusicBrainz has nothing for it. Recorded so it is not searched again,
     /// and not queued: there is nothing for the user to decide.
     NotFound,
+}
+
+/// Which way a written release got over the bar.
+///
+/// Carried so the log says why: on every path but [`Reason::Scored`], `score`
+/// is the fetched score and below the threshold, and a tuning pass reading a
+/// column of sub-threshold writes would conclude the threshold was broken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    /// The fetched score cleared the threshold.
+    Scored,
+    /// MusicBrainz had only one candidate, and its search score cleared the
+    /// threshold.
+    Sole,
+    /// The search score was perfect and no length contradicts the mapping.
+    Perfect,
 }
 
 /// Looks one release up and acts on the answer.
@@ -188,10 +197,27 @@ pub fn look_up(
     // the doubt the durations exist to settle - so a lone near-perfect title
     // match with the right number of tracks is written rather than queued for
     // a person to pick from a list of one.
-    let scored_well = score >= UNATTENDED_THRESHOLD;
-    let sole = !scored_well && candidates.len() == 1 && best.score >= UNATTENDED_THRESHOLD;
-    let confident = counts_agree && (scored_well || sole);
-    if !confident {
+    //
+    // A perfect search score is the same trust extended to a crowded search,
+    // with the lengths asked only whether they contradict the positional
+    // mapping rather than how closely they agree. `0.6 * text + 0.4 * count`
+    // reaches exactly 1.0 only for a text match of 100 and the files' own
+    // track count, which is why this is an equality and not a threshold.
+    let remote_durations: Vec<Option<i64>> = detail
+        .tracks
+        .iter()
+        .map(|track| track.duration_ms)
+        .collect();
+    let reason = if score >= UNATTENDED_THRESHOLD {
+        Some(Reason::Scored)
+    } else if candidates.len() == 1 && best.score >= UNATTENDED_THRESHOLD {
+        Some(Reason::Sole)
+    } else if best.score == 1.0 && !lengths_contradict(&remote_durations, &local.durations_ms) {
+        Some(Reason::Perfect)
+    } else {
+        None
+    };
+    let Some(reason) = reason.filter(|_| counts_agree) else {
         let candidates_json = serde_json::to_string(&candidates).ok();
         if !dry_run {
             lookup::record(
@@ -211,7 +237,7 @@ pub fn look_up(
             },
             retries,
         });
-    }
+    };
 
     let tracks = u32::try_from(detail.tracks.len()).unwrap_or(u32::MAX);
     if dry_run {
@@ -220,7 +246,7 @@ pub fn look_up(
                 mbid: detail.candidate.mbid,
                 score,
                 tracks,
-                sole,
+                reason,
             },
             retries,
         });
@@ -299,7 +325,7 @@ pub fn look_up(
             mbid: detail.candidate.mbid,
             score,
             tracks,
-            sole,
+            reason,
         },
         retries,
     })
@@ -438,8 +464,8 @@ pub(crate) mod tests {
             .missing("coverartarchive.org")
     }
 
-    /// The same, with a search that comes back holding exactly one release.
-    fn one_candidate(search: &str) -> FakeTransport {
+    /// The same, with the search answered by `search`.
+    fn searching(search: &str) -> FakeTransport {
         FakeTransport::new()
             .answering("/ws/2/release/", RELEASE_JSON)
             .answering("/ws/2/release", search)
@@ -818,7 +844,7 @@ pub(crate) mod tests {
 
         let outcome = look_up(
             &mut conn,
-            &one_candidate(SOLE_SEARCH_JSON),
+            &searching(SOLE_SEARCH_JSON),
             &ScanLock::default(),
             &loveless(),
             dir.path(),
@@ -828,7 +854,13 @@ pub(crate) mod tests {
         .unwrap();
 
         assert!(
-            matches!(outcome.verdict, Verdict::Written { sole: true, .. }),
+            matches!(
+                outcome.verdict,
+                Verdict::Written {
+                    reason: Reason::Sole,
+                    ..
+                }
+            ),
             "{:?}",
             outcome.verdict
         );
@@ -852,7 +884,7 @@ pub(crate) mod tests {
 
         let outcome = look_up(
             &mut conn,
-            &one_candidate(&barely),
+            &searching(&barely),
             &ScanLock::default(),
             &loveless(),
             dir.path(),
@@ -879,7 +911,7 @@ pub(crate) mod tests {
 
         let outcome = look_up(
             &mut conn,
-            &one_candidate(SOLE_SEARCH_JSON),
+            &searching(SOLE_SEARCH_JSON),
             &ScanLock::default(),
             &loveless(),
             dir.path(),
@@ -906,7 +938,7 @@ pub(crate) mod tests {
 
         let outcome = look_up(
             &mut conn,
-            &one_candidate(SOLE_SEARCH_JSON),
+            &searching(SOLE_SEARCH_JSON),
             &ScanLock::default(),
             &loveless(),
             dir.path(),
@@ -916,10 +948,112 @@ pub(crate) mod tests {
         .unwrap();
 
         assert!(
-            matches!(outcome.verdict, Verdict::Written { sole: false, .. }),
+            matches!(
+                outcome.verdict,
+                Verdict::Written {
+                    reason: Reason::Scored,
+                    ..
+                }
+            ),
             "{:?}",
             outcome.verdict
         );
+    }
+
+    /// Loveless's lengths, each drifted by `offsets_ms` - short of the
+    /// tolerance, far enough that the fetched score cannot clear the bar.
+    fn drifted(offsets_ms: [i64; 10]) -> Vec<i64> {
+        let mut durations = LOVELESS_DURATIONS.to_vec();
+        for (duration, offset) in durations.iter_mut().zip(offsets_ms) {
+            *duration += offset;
+        }
+        durations
+    }
+
+    const DRIFT_MS: [i64; 10] = [
+        3_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000,
+    ];
+
+    #[test]
+    fn a_perfect_search_match_among_several_is_written_though_the_lengths_drift() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &drifted(DRIFT_MS));
+        let mut conn = db.conn().unwrap();
+
+        let outcome = look_up(
+            &mut conn,
+            &musicbrainz(),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        let Verdict::Written { score, reason, .. } = outcome.verdict else {
+            panic!("{:?}", outcome.verdict);
+        };
+        assert_eq!(reason, Reason::Perfect);
+        assert!(
+            score < UNATTENDED_THRESHOLD,
+            "{score} cleared the bar alone"
+        );
+        assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
+    }
+
+    /// Seven Bells in miniature: one track a different recording, which on a
+    /// positional write moves every title after it onto the wrong file.
+    #[test]
+    fn a_perfect_search_match_a_length_contradicts_is_queued() {
+        let mut offsets = DRIFT_MS;
+        offsets[5] = 60_000;
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &drifted(offsets));
+        let mut conn = db.conn().unwrap();
+
+        let outcome = look_up(
+            &mut conn,
+            &musicbrainz(),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Queued { .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(untitled(&conn), 0);
+    }
+
+    /// A text score of 98 puts the search score at 0.988 - close, and not the
+    /// exact match this path trusts.
+    #[test]
+    fn a_near_perfect_search_match_among_several_is_queued() {
+        let (dir, db) = library("Loveless", "My Bloody Valentine", &drifted(DRIFT_MS));
+        let mut conn = db.conn().unwrap();
+        let near = SEARCH_JSON.replacen("\"score\": 100", "\"score\": 98", 1);
+
+        let outcome = look_up(
+            &mut conn,
+            &searching(&near),
+            &ScanLock::default(),
+            &loveless(),
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert!(
+            matches!(outcome.verdict, Verdict::Queued { .. }),
+            "{:?}",
+            outcome.verdict
+        );
+        assert_eq!(untitled(&conn), 0);
     }
 
     #[test]

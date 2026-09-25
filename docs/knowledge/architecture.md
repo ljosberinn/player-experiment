@@ -150,16 +150,21 @@ it, it records the release for a person to decide and writes nothing — and the
 release is filed either way, from its own tags, because waiting for an identity
 that is never coming is a release that never moves.
 
-**Two ways over that bar, because the two scores measure different halves.** The
-fetched score takes the text match for granted and spends its weight on the
+**Three ways over that bar, because the two scores measure different halves.**
+The fetched score takes the text match for granted and spends its weight on the
 per-track durations; the search score is the text MusicBrainz actually matched
 and knows nothing of the lengths. A release the search answered with exactly one
 candidate is written when *that* score clears the threshold, because a single
 candidate is nothing the durations could be telling apart and a queue entry
-offering a choice of one is the clicking the pass exists to avoid. The track
-count still has to agree on either path — the write maps tracks onto files by
-position. A write that took the second path logs `sole=true`, without which its
-`score` field reads as a threshold that leaks.
+offering a choice of one is the clicking the pass exists to avoid. A best
+candidate whose search score is exactly 1.0 — a text match of 100 and the files'
+own track count — is written among any number of others, unless some pair of
+known lengths differs by `TOLERANCE_MS` or more: drift is not disagreement, but
+one different recording shifts every later title onto the wrong file. The track
+count still has to agree on every path — the write maps tracks onto files by
+position. A write that took the second or third path logs `reason=sole` or
+`reason=perfect`, without which its `score` field reads as a threshold that
+leaks.
 
 **What is left to do is derived, not recorded.** `library::survey` walks the
 library once, groups consecutive rows into releases and asks two questions of
