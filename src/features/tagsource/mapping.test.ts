@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReleaseDetail, RemoteTrack, Track } from "../../ipc";
 import {
+  agrees,
   allFields,
   buildEdits,
   defaultAssignment,
@@ -62,6 +63,32 @@ function detail(tracks: RemoteTrack[], over: Partial<ReleaseDetail> = {}): Relea
     ...over,
   };
 }
+
+describe("agrees", () => {
+  const only = remote(1, "Only Shallow");
+  const tagged = track(1, { title: "Only Shallow", artist: "My Bloody Valentine", track_no: 1 });
+
+  it("holds for a file already tagged as its track", () => {
+    // No disc tag reads as disc 1, the way the pairing reads it.
+    expect(agrees(tagged, only, allFields())).toBe(true);
+  });
+
+  it("fails on any ticked per-track field", () => {
+    expect(agrees({ ...tagged, title: "only shallow" }, only, allFields())).toBe(false);
+    expect(agrees({ ...tagged, track_no: 2 }, only, allFields())).toBe(false);
+  });
+
+  it("ignores what an apply would not write", () => {
+    const fields = { ...allFields(), title: false };
+
+    expect(agrees({ ...tagged, title: "only shallow" }, only, fields)).toBe(true);
+  });
+
+  /** The release's fields are the same on every row, so they tell none apart. */
+  it("ignores the release-wide fields", () => {
+    expect(agrees({ ...tagged, album: "loveless", year: 2021 }, only, allFields())).toBe(true);
+  });
+});
 
 describe("defaultAssignment", () => {
   /** The case the whole rule exists for: three files out of twelve. */

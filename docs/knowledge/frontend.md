@@ -673,17 +673,20 @@ absences are what nobody notices coming back — hence the guards in
   `pick` spends the rate-limited fetch. A pane that fetched the top candidate
   as the selection moved would spend a round trip per arrow key, which is why
   the candidate list is still a step and 6e draws what is after it.
-- **The pane's file column is drawn in every state** (section 6f). It is local
-  and known the moment `enter` resolves, so a search or a fetch in flight
-  leaves the MusicBrainz half as `.skeleton` and nothing else blank. No
-  spinner: a 62px `ProgressBar` and a line naming the step. The rail counts
-  four — the files, the candidates, the tracklist, the mapping — because a
-  search has no measured progress to report. The skeleton does not pulse,
-  unlike the sheet: the app's three other skeletons are deliberately static,
-  and the rail already says something is pending. A file row leads with its
-  own track number the way a MusicBrainz row does — `disc-` once any file is
-  past disc 1 — and the two heads count their sides, so a mismatch reads off
-  them.
+- **The mapping waits for a tracklist** (146), against section 6f, which
+  draws the file column in every state: the files alone are a list with
+  nothing to compare them against. No spinner: a 62px `ProgressBar` and a line
+  naming the step. The rail counts four — the files, the candidates, the
+  tracklist, the mapping — because a search has no measured progress to
+  report. A file row leads with its own track number the way a MusicBrainz row
+  does — `disc-` once any file is past disc 1 — and the two heads count their
+  sides, so a mismatch reads off them.
+- **Rows with nothing to write sit in a second `<tbody>`** under an
+  `Unchanged · N` row head (146). `agrees` compares the ticked per-track
+  fields only — title, artist, track and disc number, a missing disc reading
+  as 1; album, album artist, year and artwork are the release's and tell no
+  row apart. Grouping is live, so a swap or a tick moves rows between groups,
+  and the arrows swap within a group. Unmapped files stay in the first group.
 - It is mounted unconditionally in `App`, like `TaskProgress`: it subscribes on
   its own behalf and draws nothing until it is opened, so a dialog `App` does
   not own costs `App` no render.

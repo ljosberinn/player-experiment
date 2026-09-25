@@ -53,8 +53,6 @@ Online.
 | Where | Now | Proposed |
 | --- | --- | --- |
 | `ReleaseLookup.tsx:167` (Set Aside tooltip) | Take this release out of the review queue | Remove from the review queue |
-| `ReleaseLookup.tsx:341` | Your files are already here · matching candidates | Searching MusicBrainz… |
-| `ReleaseLookup.tsx:342` | Your files are already here · reading the tracklist | Reading the tracklist… |
 | `ReleaseLookup.tsx:424` | The release identifiers are written to every song of this release; the ticked fields to the {n} mapped above. | IDs are written to every song; ticked fields to the {n} mapped. |
 | `ReleaseLookup.tsx:490` | MusicBrainz has nothing under that album and artist. Take another release out of the queue, or edit the tags by hand and search again. | No match on MusicBrainz. Fix the album or artist and search again. |
 
@@ -71,11 +69,6 @@ Online.
 | --- | --- | --- |
 | `library/scan.ts:46` | That file is not in a watched folder. Turn on Organise My Library in Settings, or drop the folder it is in. | That file is not in a watched folder. Drop its folder instead, or turn on Organise My Library. |
 | `library/scan.ts:47` | Those {n} files are not in a watched folder. Turn on Organise My Library in Settings, or drop the folders they are in. | Those {n} files are not in a watched folder. Drop their folders instead, or turn on Organise My Library. |
-
-## Open question
-
-- **MusicBrainz waiting lines** (`:341`, `:342`) may follow the design sheet
-  (section 6f). Check the Apex design before changing them.
 
 ## Tests
 

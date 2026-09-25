@@ -215,6 +215,22 @@ export function swapAssignment(assignment: Assignment, from: number, to: number)
   return swapped;
 }
 
+/**
+ * Whether a file already carries its track's ticked per-track fields, so its
+ * row holds nothing to check.
+ *
+ * The album, album artist, year and artwork are left out: they are the
+ * release's, written alike to every file, so they tell no row apart.
+ */
+export function agrees(file: Track, track: RemoteTrack, fields: Fields): boolean {
+  return (
+    (!fields.title || file.title === track.title) &&
+    (!fields.artist || file.artist === track.artist) &&
+    (!fields.trackNo || file.track_no === track.trackNo) &&
+    (!fields.discNo || disc(file.disc_no) === track.discNo)
+  );
+}
+
 /** How many of the selected files an apply would actually write. */
 export function mappedCount(assignment: Assignment): number {
   return assignment.filter((index) => index !== null).length;
