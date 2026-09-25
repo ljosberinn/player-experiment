@@ -175,6 +175,8 @@ impl Import<'_> {
     ) -> AppResult<u32> {
         let mut imported = 0;
         let mut seen = 0;
+        // The previous page's rows the cursor's overlap asks for again.
+        let mut boundary: Vec<i64> = Vec::new();
         on_progress(WriteProgress { done: 0, total: 0 });
 
         loop {
@@ -201,7 +203,16 @@ impl Import<'_> {
             save(&tx, state)?;
             tx.commit()?;
 
-            seen += page.scrobbles.len() as u32;
+            seen += page.scrobbles.len() as u32 - repeats(&boundary, &page.scrobbles);
+            boundary = match state.cursor {
+                Some(to) => page
+                    .scrobbles
+                    .iter()
+                    .map(|s| s.started_at)
+                    .filter(|&started_at| started_at <= to)
+                    .collect(),
+                None => Vec::new(),
+            };
             let left = page.total.saturating_sub(page.scrobbles.len() as u32);
             on_progress(WriteProgress {
                 done: seen,
@@ -353,6 +364,23 @@ fn next_cursor(oldest: i64, cursor: Option<i64>) -> i64 {
         Some(cursor) => (oldest + 1).min(cursor - 1),
         None => oldest + 1,
     }
+}
+
+/// How many of `scrobbles` are `boundary` fetched again, matched one for one:
+/// when the last page ended on one of three scrobbles sharing a second, only
+/// that one is a repeat.
+fn repeats(boundary: &[i64], scrobbles: &[Scrobble]) -> u32 {
+    let mut boundary = boundary.to_vec();
+    scrobbles
+        .iter()
+        .filter(|s| match boundary.iter().position(|&t| t == s.started_at) {
+            Some(i) => {
+                boundary.swap_remove(i);
+                true
+            }
+            None => false,
+        })
+        .count() as u32
 }
 
 /// Writes a page, returning how many plays it added.
@@ -620,6 +648,48 @@ mod tests {
 
         assert_eq!(outcome.unwrap(), 3, "the re-fetched row adds nothing");
         assert_eq!(started(&conn), [300, 300, 400]);
+    }
+
+    #[test]
+    fn the_total_holds_steady_across_the_overlap() {
+        // Two at 300, and each page re-fetches the one before's last second.
+        let (_dir, mut conn) = open();
+        let transport = FakeTransport::scripted(vec![
+            Ok(page(
+                5,
+                3,
+                &array(&[entry(500, "A", "a"), entry(400, "B", "b")]),
+            )),
+            Ok(page(
+                4,
+                2,
+                &array(&[entry(400, "B", "b"), entry(300, "C", "c")]),
+            )),
+            Ok(page(
+                3,
+                1,
+                &array(&[
+                    entry(300, "C", "c"),
+                    entry(300, "D", "d"),
+                    entry(200, "E", "e"),
+                ]),
+            )),
+            Ok(NO_LOVED.to_owned()),
+        ]);
+        let mut progress = Vec::new();
+        let import = Import {
+            transport: &transport,
+            api_key: "KEY",
+            pause: &|_| {},
+        };
+
+        import
+            .run(&mut conn, "listener", false, &mut |p| {
+                progress.push((p.done, p.total))
+            })
+            .unwrap();
+
+        assert_eq!(progress, [(0, 0), (2, 5), (3, 5), (5, 5)]);
     }
 
     #[test]
