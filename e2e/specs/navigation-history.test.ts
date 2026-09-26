@@ -117,15 +117,11 @@ describe("the open view", () => {
 
   it("is open again after the app comes back", async () => {
     // A built-in, because the library is empty here and they are always there.
-    const recent = browser.$("button[aria-label='Recently Added']");
-    await recent.click();
-    await expect(recent).toHaveAttribute("aria-current", "page");
+    await view("Recently Added").click();
+    await expect(view("Recently Added")).toHaveAttribute("aria-current", "page");
 
     await reloadOnceStored((stored) => stored.playlistId !== null);
-    await expect(browser.$("button[aria-label='Recently Added']")).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    await expect(view("Recently Added")).toHaveAttribute("aria-current", "page");
     // The last session's history is not restored.
     await expect(browser.$(BACK)).toBeDisabled();
   });
