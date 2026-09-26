@@ -10,38 +10,40 @@
 
 /* ---------- app bar ---------- */
 
-/* 40px: the mark, the menus, the version and the search field. The transport
-   and the now-playing display rode here until phase 35, and the search field
-   came back in 142 when the player moved to the bottom of the window.
+/* 40px: the mark, the menus, the version, the search field and the window
+   buttons. The transport and the now-playing display rode here until phase
+   35, and the search field came back in 142 when the player moved to the
+   bottom of the window.
 
-   It was the window's title bar until phase 119. `decorations: false` went, the
-   OS draws the frame above it, and the drag region and caption buttons went
-   with it - so what is left is the app's bar rather than the window's, which
-   is what it is now called.
+   It is also the window's title bar: `decorations: false`, so the drag region
+   and the caption buttons are the app's. Phase 119 handed them to the OS
+   frame; 158 took them back.
 
    Flex rather than grid, from phase 34: it was a four-column grid holding four
    things, the brand and the menus made it more, and auto-placement put the
    overflow on a second row. A row that must not wrap should say so rather than
    be counted.
 
-   Translucent over a blur rather than filled. The blur is over the app's own
-   blob layer, not the desktop - the window is not `transparent` - so the OS
-   frame above it neither shows through nor is shown through. Flat today;
-   phase 39 is what it is for, when the extracted cover colours drift behind
-   the window. */
+   Translucent over a blur rather than filled. Flat today; phase 39 is what it
+   is for, when the extracted cover colours drift behind the window. */
 .appbar {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 22px;
   height: 40px;
-  /* Symmetric since phase 119. The right edge used to be the close button,
-     which ran flush into the corner of the window as a caption button must;
-     the search field there now needs the same inset the mark has. */
-  padding: 0 15px;
+  /* No right inset: the close button runs flush into the corner of the
+     window, as a caption button must. */
+  padding-left: 15px;
   background: var(--chrome-veil);
   backdrop-filter: blur(18px);
-  border-bottom: 1px solid var(--chrome-border);
+  /* The separator is drawn inside the bar rather than as a border on it. A
+     border sits outside the 40px content box under `border-box`, so the
+     caption buttons - which fill that box - stopped short of it and left the
+     line showing through the close button's red hover fill. An inset shadow
+     paints below the children, so a hovered button covers it and every other
+     part of the bar still shows it. */
+  box-shadow: inset 0 -1px 0 var(--chrome-border);
 }
 
 /* Nothing on the bar shrinks. Without this a flex item refuses to go below its
@@ -49,6 +51,34 @@
    instead of squeezing the one part that can give. */
 .appbar > * {
   flex: none;
+}
+
+/* Full-height, flush into the corner, at the Windows caption size the design
+   draws - 44x36 in the sheet, 48x40 through phase 129's map. */
+.window-buttons {
+  display: flex;
+  height: 40px;
+}
+
+.window-buttons button {
+  width: 48px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: "Segoe MDL2 Assets", "Segoe Fluent Icons", sans-serif;
+  font-size: 13px;
+  cursor: default;
+}
+
+.window-buttons button:hover {
+  background: var(--hover-veil);
+  color: var(--text);
+}
+
+.window-buttons button.close:hover {
+  background: var(--close-hover);
+  color: var(--on-danger);
 }
 
 /* The mark, the wordmark and the menus. The app bar carries the product

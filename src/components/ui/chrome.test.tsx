@@ -16,6 +16,14 @@ import { Sidebar } from "./Sidebar";
 import { Transport } from "./Transport";
 import { VolumeControl } from "./VolumeControl";
 
+const minimize = vi.fn();
+const toggleMaximize = vi.fn();
+const close = vi.fn();
+const startDragging = vi.fn();
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ minimize, toggleMaximize, close, startDragging }),
+}));
 vi.mock("../../ipc", () => ({ coverUrl: vi.fn((hash: string) => `cover-url:${hash}`) }));
 
 beforeEach(() => {
@@ -48,6 +56,14 @@ function track(overrides: Partial<Track> = {}): Track {
   };
 }
 
+function bar(container: HTMLElement): HTMLElement {
+  const element = container.querySelector<HTMLElement>(".appbar");
+  if (element === null) {
+    throw new Error("no .appbar rendered");
+  }
+  return element;
+}
+
 describe("AppBar", () => {
   it("carries the mark, the wordmark and the version", () => {
     render(<AppBar version="1.2.3">chrome</AppBar>);
@@ -56,16 +72,21 @@ describe("AppBar", () => {
     expect(screen.getByText("v1.2.3")).toBeInTheDocument();
   });
 
-  it("puts the version after the menus and before the search field", () => {
+  it("puts the version after the menus, then the search field, then the window buttons", () => {
     const { container } = render(
       <AppBar version="1.2.3" search={<span>search</span>}>
         <span>menus</span>
       </AppBar>,
     );
+    const children = Array.from(container.querySelector(".appbar")?.children ?? []);
 
-    expect(
-      Array.from(container.querySelector(".appbar")?.children ?? [], (child) => child.textContent),
-    ).toEqual(["APEX", "menus", "v1.2.3", "search"]);
+    expect(children.slice(0, -1).map((child) => child.textContent)).toEqual([
+      "APEX",
+      "menus",
+      "v1.2.3",
+      "search",
+    ]);
+    expect(children.at(-1)?.className).toBe("window-buttons");
   });
 
   it("says nothing about a version it has not been given", () => {
@@ -76,12 +97,83 @@ describe("AppBar", () => {
     expect(screen.queryByText(/^v/)).not.toBeInTheDocument();
   });
 
-  it("draws no window controls, since the OS frame has them", () => {
-    // Phase 119 took `decorations: false` away. A minimise, maximise or close
-    // button here would now be a second set beside the real ones.
-    render(<AppBar version="1.2.3">chrome</AppBar>);
+  it("drives the window controls, since there is no OS frame", async () => {
+    const user = userEvent.setup();
+    render(<AppBar>chrome</AppBar>);
 
-    expect(screen.queryAllByRole("button")).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Minimize" }));
+    await user.click(screen.getByRole("button", { name: "Maximize" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(minimize).toHaveBeenCalledOnce();
+    expect(toggleMaximize).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("starts a window drag from the bar itself", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<AppBar>chrome</AppBar>);
+
+    await user.pointer({ keys: "[MouseLeft>]", target: bar(container) });
+
+    expect(startDragging).toHaveBeenCalledOnce();
+  });
+
+  it("maximizes on a double click of the bar itself", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<AppBar>chrome</AppBar>);
+
+    await user.dblClick(bar(container));
+
+    expect(toggleMaximize).toHaveBeenCalledOnce();
+  });
+
+  it("does not maximize on a single click", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<AppBar>chrome</AppBar>);
+
+    await user.click(bar(container));
+
+    expect(toggleMaximize).not.toHaveBeenCalled();
+    expect(startDragging).toHaveBeenCalledOnce();
+  });
+
+  it("reads the double click off mousedown, not off dblclick", () => {
+    const { container } = render(<AppBar>chrome</AppBar>);
+
+    // `startDragging` hands the drag loop to the OS, which swallows the mouseup
+    // and the second click - so a `dblclick` event never arrives on a bar that
+    // also drags, and an onDoubleClick handler would be dead code. jsdom
+    // delivers a synthetic dblclick happily; Windows does not.
+    fireEvent.dblClick(bar(container));
+    expect(toggleMaximize).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(bar(container), { detail: 2 });
+    expect(toggleMaximize).toHaveBeenCalledOnce();
+  });
+
+  it("does not maximize when the double click lands on a control", async () => {
+    const user = userEvent.setup();
+    render(<AppBar search={<input aria-label="Search" />} />);
+
+    // Double-clicking a text field selects a word; it must not also resize the
+    // window out from under the user.
+    await user.dblClick(screen.getByRole("textbox", { name: "Search" }));
+
+    expect(toggleMaximize).not.toHaveBeenCalled();
+  });
+
+  it("does not drag when the press lands on a control inside the bar", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppBar>
+        <button type="button">Inner</button>
+      </AppBar>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Inner" }));
+
+    expect(startDragging).not.toHaveBeenCalled();
   });
 });
 

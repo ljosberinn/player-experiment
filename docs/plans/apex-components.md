@@ -151,7 +151,7 @@ shell stays governed by the old file until the library covers it.
 - **The button primitive is now what a dialog's actions are.** Elsewhere every
   region still styles its own; `.repeat-button`, `.link-button` and
   `.history-button` are unrelated rules until their own issue migrates them.
-  `.window-buttons` was a fourth until 119 deleted it.
+  `.window-buttons` is a fourth: 119 deleted it and 158 brought it back.
 - **Track list.** Done in 114. Section 03 holds one drawing, 3f, and the row
   treatment it applied comes from **7a** instead — the type specimen is the
   only place the sheet draws a playing row. 3f itself is 120, and it replaces
@@ -163,7 +163,9 @@ shell stays governed by the old file until the library covers it.
   contradict the sheet here: it draws the window buttons behind an `sc-if`
   toggle, so the frame was always a parameter there. This also closed the
   frameless-window coverage gap, since the e2e build had pinned
-  `decorations: true` all along.
+  `decorations: true` all along. 158 reverted it: `decorations: false` again,
+  and `AppBar` is the title bar once more — drag region, double-click and the
+  caption buttons — keeping its name.
 
 ## How the components come out
 

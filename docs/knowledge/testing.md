@@ -356,6 +356,8 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
 
 ## Uncovered on purpose
 
+- The frameless window, custom title bar and drag region — the e2e build pins
+  `decorations: true`, or the embedded driver never sees the webview.
 - The OS half of a file drop — Explorer's drag loop, `wry`'s drop target, and
   the position it reports. Everything from the Tauri event on is covered:
   `tag-editor.test.ts` and `library-drop.test.ts` emit `tauri://drag-enter` and

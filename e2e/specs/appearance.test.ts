@@ -387,10 +387,8 @@ describe("appearance, in the engine that actually lays it out", () => {
       if (bar === null) {
         return null;
       }
-      // Every child measured directly. The version used to be wrapped with the
-      // caption buttons in a `.titlebar-right` cluster, and unwrapping that was
-      // how this test saw the overflow it exists to catch; phase 119 took the
-      // buttons, and the wrapper went with them.
+      // Every child measured directly, the caption buttons included: they are
+      // the last child, so they are what an overflow pushes out first.
       const children = Array.from(bar.children).map((child) => {
         const box = child.getBoundingClientRect();
         return {
