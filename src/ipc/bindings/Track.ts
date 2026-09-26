@@ -17,7 +17,7 @@ export type Track = { id: number, path: string, duration_ms: number, title: stri
  * When a scan, or a failed play, first could not find the file. Null for
  * every track that is where it should be, which is nearly all of them.
  */
-missing_since: number | null, 
+missing_since: number | null, release_mbid: string | null, 
 /**
  * Selected so that "reveal in Library" can build the same release identity
  * the browse query groups by, without a round trip on a control the user

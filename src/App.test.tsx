@@ -612,6 +612,7 @@ describe("App playback", () => {
       play_count: 0,
       last_played_at: null,
       missing_since: null,
+      release_mbid: null,
       release_group_mbid: null,
     };
   }

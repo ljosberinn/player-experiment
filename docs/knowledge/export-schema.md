@@ -108,7 +108,9 @@ closed enum, so an older Apex opening an export that uses a field it does not
 know fails on the whole file rather than on that one playlist. Adding one does
 not move `schemaVersion` — nothing existing is removed or reinterpreted — but a
 reader with its own list of fields has to expect additions. `loved` (issue 101)
-is the first; it takes `is` or `is not` and `{"kind":"none"}`.
+is the first and `releaseMbid` (issue 160, whether the file carries a
+MusicBrainz release id) the second; both take `is` or `is not` and
+`{"kind":"none"}`.
 
 ### `order`
 
@@ -130,8 +132,9 @@ the filter returned — those give different answers as soon as anything else
 narrows the view.
 
 `field` is one of the track columns (`title`, `artist`, `album`, `albumArtist`,
-`genre`, `year`, `trackNo`, `durationMs`, `addedAt`, `playCount`,
-`lastPlayedAt`, `path`); `direction` is `asc` or `desc`.
+`genre`, `year`, `trackNo`, `durationMs`, `bitrate`, `addedAt`, `playCount`,
+`lastPlayedAt`, `path`, and - never written by the editor, but accepted -
+`releaseMbid`); `direction` is `asc` or `desc`.
 
 ## `settings[]`
 

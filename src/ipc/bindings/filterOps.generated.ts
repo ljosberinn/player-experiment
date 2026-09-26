@@ -23,6 +23,7 @@ export const FILTER_FIELD_KINDS: Record<FilterField, FilterFieldKind> = {
   addedAt: "timestamp",
   lastPlayedAt: "timestamp",
   loved: "boolean",
+  releaseMbid: "boolean",
 };
 
 /**

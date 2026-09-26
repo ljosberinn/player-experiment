@@ -120,6 +120,10 @@ export const config: WebdriverIO.Config = {
     // asserts the height of the group that album is drawn as, which the
     // synthetic library's untagged rows would not give.
     "./specs/release-groups.test.ts",
+    // After `library` too: it reads the release id the fixture gave Harbour.
+    // Hides the column and restores the sort, so the Songs view it hands on is
+    // the one it was given.
+    "./specs/musicbrainz-column.test.ts",
     // After `library`, which is what puts songs in the shared library: a
     // cutoff with nothing to cut off proves nothing.
     "./specs/smart-playlists.test.ts",

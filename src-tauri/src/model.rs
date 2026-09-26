@@ -56,6 +56,7 @@ pub struct Track {
     /// every track that is where it should be, which is nearly all of them.
     #[ts(type = "number | null")]
     pub missing_since: Option<i64>,
+    pub release_mbid: Option<String>,
     /// Selected so that "reveal in Library" can build the same release identity
     /// the browse query groups by, without a round trip on a control the user
     /// just pressed. No view renders it.
@@ -96,6 +97,7 @@ pub enum SortField {
     PlayCount,
     LastPlayedAt,
     Path,
+    ReleaseMbid,
 }
 
 impl SortField {
@@ -123,6 +125,7 @@ impl SortField {
             Self::PlayCount => "play_count",
             Self::LastPlayedAt => "last_played_at",
             Self::Path => "path",
+            Self::ReleaseMbid => "release_mbid",
         }
     }
 
@@ -634,7 +637,7 @@ pub enum TagValueField {
 /// [`FilterField::as_sql`] returns a literal.
 ///
 /// Mostly columns on `tracks`, but not necessarily - a [`FilterFieldKind`] of
-/// `Boolean` names a fact the compiler answers with a subquery instead.
+/// `Boolean` names a fact the compiler answers with a predicate of its own.
 ///
 /// **Adding an arm is forward-incompatible**: an export carries the filter
 /// tree verbatim, so an older build meeting a field it does not know fails to
@@ -664,6 +667,8 @@ pub enum FilterField {
     /// Not a column on `tracks`: the loved set is keyed by `plays::match_key`
     /// and reaches a track through `plays.track_id`. See `compile_boolean`.
     Loved,
+    /// Whether the file carries a MusicBrainz release id.
+    ReleaseMbid,
 }
 
 /// What kind of value a field holds, which decides the operators it accepts.
@@ -707,6 +712,7 @@ impl FilterField {
             // column, so naming one here would only be a lie a later reader
             // could act on.
             Self::Loved => unreachable!("Loved is not a column on tracks"),
+            Self::ReleaseMbid => "release_mbid",
         }
     }
 
@@ -727,7 +733,7 @@ impl FilterField {
             | Self::SampleRate
             | Self::PlayCount => FilterFieldKind::Number,
             Self::AddedAt | Self::LastPlayedAt => FilterFieldKind::Timestamp,
-            Self::Loved => FilterFieldKind::Boolean,
+            Self::Loved | Self::ReleaseMbid => FilterFieldKind::Boolean,
         }
     }
 }

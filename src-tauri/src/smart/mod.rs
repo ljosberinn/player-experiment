@@ -202,8 +202,11 @@ fn compile_boolean(rule: &crate::model::FilterRule) -> AppResult<String> {
     if !matches!(rule.value, FilterValue::None) {
         return Err(mismatch(rule, "no value"));
     }
-    let members = match rule.field {
-        crate::model::FilterField::Loved => crate::db::loved::MEMBERS,
+    let holds = match rule.field {
+        crate::model::FilterField::Loved => format!("tracks.id IN ({})", crate::db::loved::MEMBERS),
+        // No blank case: every write to the row goes through `tags::read`,
+        // which reads a blank id as absent.
+        crate::model::FilterField::ReleaseMbid => "tracks.release_mbid IS NOT NULL".to_owned(),
         field => {
             return Err(AppError::Internal(format!(
                 "{field:?} has no membership test."
@@ -211,8 +214,8 @@ fn compile_boolean(rule: &crate::model::FilterRule) -> AppResult<String> {
         }
     };
     match rule.op {
-        FilterOp::Is => Ok(format!("tracks.id IN ({members})")),
-        FilterOp::IsNot => Ok(format!("tracks.id NOT IN ({members})")),
+        FilterOp::Is => Ok(holds),
+        FilterOp::IsNot => Ok(format!("NOT ({holds})")),
         op => Err(AppError::Internal(format!(
             "{:?} does not accept the operator {op:?}.",
             rule.field
@@ -1072,5 +1075,35 @@ mod tests {
         )]);
 
         assert!(compile(&group, NOW).is_err());
+    }
+
+    /// Between them the two rules cover the library once over.
+    #[test]
+    fn release_mbid_splits_the_library_on_whether_one_is_tagged() {
+        let (_dir, db) = seeded();
+        db.conn()
+            .unwrap()
+            .execute(
+                "UPDATE tracks SET release_mbid = 'mb-1' WHERE path IN ('/m/1.mp3', '/m/4.mp3')",
+                [],
+            )
+            .unwrap();
+
+        let tagged = all(vec![rule(
+            FilterField::ReleaseMbid,
+            FilterOp::Is,
+            FilterValue::None,
+        )]);
+        let untagged = all(vec![rule(
+            FilterField::ReleaseMbid,
+            FilterOp::IsNot,
+            FilterValue::None,
+        )]);
+
+        assert_eq!(matches(&db, &tagged), ["/m/1.mp3", "/m/4.mp3"]);
+        assert_eq!(
+            matches(&db, &untagged),
+            ["/m/2.mp3", "/m/3.mp3", "/m/5.mp3", "/m/6.mp3"]
+        );
     }
 }
