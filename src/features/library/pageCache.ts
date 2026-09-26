@@ -33,13 +33,17 @@ export function pagesForRange(startIndex: number, endIndex: number): number[] {
   return pages;
 }
 
-/** Pages a viewport needs that are neither cached nor already being fetched. */
+/**
+ * Pages a viewport needs that are not already being fetched and are either not
+ * cached or cached but `stale` - still drawn, and asked for again all the same.
+ */
 export function missingPages(
   pages: number[],
   cached: PageState,
   inFlight: ReadonlySet<number>,
+  stale: ReadonlySet<number> = new Set(),
 ): number[] {
-  return pages.filter((page) => !cached.has(page) && !inFlight.has(page));
+  return pages.filter((page) => (!cached.has(page) || stale.has(page)) && !inFlight.has(page));
 }
 
 /**

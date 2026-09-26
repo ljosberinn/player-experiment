@@ -122,6 +122,12 @@ interface LibraryState {
    */
   stats: LibraryStats;
   pages: PageState;
+  /**
+   * Cached pages a reload of the same query has yet to replace: still drawn,
+   * since they are what the user was looking at, but fetched again as if
+   * missing.
+   */
+  stalePages: ReadonlySet<number>;
   inFlight: Set<number>;
   /** What is in the search box right now; updates on every keystroke. */
   searchInput: string;
@@ -247,8 +253,13 @@ interface LibraryState {
 
   /** Records where a browse tab was left. See `browseOffsets`. */
   rememberBrowseOffset: (kind: BrowseKind, topGroup: number) => void;
-  /** Reloads the count and drops cached pages; call after any query change. */
-  refresh: () => Promise<void>;
+  /**
+   * Reloads the count and drops cached pages; call after any query change.
+   *
+   * `reload` is the same query asked again because the library moved: the
+   * cached pages stay on screen as stale until their replacements land.
+   */
+  refresh: (reload?: boolean) => Promise<void>;
   /**
    * Reloads on `library://changed`, debounced; returns its own teardown.
    *
@@ -506,6 +517,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   total: 0,
   stats: { tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 },
   pages: new Map(),
+  stalePages: new Set(),
   inFlight: new Set(),
   searchInput: "",
   search: "",
@@ -543,7 +555,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set((state) => ({ browseOffsets: { ...state.browseOffsets, [kind]: topGroup } }));
   },
 
-  refresh: async () => {
+  refresh: async (reload = false) => {
     // Nothing on screen reads the library query while Statistics is open, and
     // `library://changed` fires throughout an import and a resolve. Leaving
     // re-queries, in `applyEntry`.
@@ -556,12 +568,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // belong to the previous query, and keeping them would show the old
     // results underneath a new search. The table renders placeholders in the
     // gap instead of blocking.
-    set({
-      queryToken: token,
-      loading: true,
-      pages: new Map(),
-      inFlight: new Set(),
-    });
+    //
+    // A reload keeps them instead. They are this query's rows, and a scan, an
+    // import or a play count moves few or none of the ones on screen - dropped,
+    // every visible row would blank and redraw all its cells for nothing.
+    set(
+      reload
+        ? {
+            queryToken: token,
+            loading: true,
+            stalePages: new Set(get().pages.keys()),
+            inFlight: new Set(),
+          }
+        : {
+            queryToken: token,
+            loading: true,
+            pages: new Map(),
+            stalePages: new Set(),
+            inFlight: new Set(),
+          },
+    );
     // Local, because the message it stands for no longer lives here: what the
     // drill-in check below needs to know is whether the count it is about to
     // trust actually arrived.
@@ -623,7 +649,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   watch: async () => {
     // Debounced around the event rather than inside `refresh`, so a burst
     // collapses into one reload instead of one per emission.
-    const reload = debounce(() => void get().refresh(), INVALIDATE_DEBOUNCE_MS);
+    const reload = debounce(() => void get().refresh(true), INVALIDATE_DEBOUNCE_MS);
     const off = await onLibraryChanged(reload);
     return () => {
       reload.cancel();
@@ -1065,12 +1091,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   ensureRange: async (startIndex, endIndex) => {
-    const { pages, inFlight, total, queryToken: token } = get();
+    const { pages, stalePages, inFlight, total, queryToken: token } = get();
     if (total === 0) {
       return;
     }
     const visible = pagesForRange(startIndex, Math.min(endIndex, total - 1));
-    const wanted = missingPages(visible, pages, inFlight);
+    const wanted = missingPages(visible, pages, inFlight, stalePages);
     if (wanted.length === 0) {
       return;
     }
@@ -1091,11 +1117,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             if (state.queryToken !== token) {
               return {};
             }
-            const next = new Map(state.pages);
-            next.set(page, rows);
             const stillInFlight = new Set(state.inFlight);
             stillInFlight.delete(page);
-            return { pages: evictFarPages(next, visible), inFlight: stillInFlight };
+            const fresh = new Set(state.stalePages);
+            fresh.delete(page);
+            // A stale page that came back the same keeps its identity, and so
+            // does every row in it that did not move.
+            const previous = state.pages.get(page);
+            const kept = previous === undefined ? rows : reuse(previous, rows);
+            if (kept === previous) {
+              return { stalePages: fresh, inFlight: stillInFlight };
+            }
+            const next = new Map(state.pages);
+            next.set(page, kept);
+            return {
+              pages: evictFarPages(next, visible),
+              stalePages: fresh,
+              inFlight: stillInFlight,
+            };
           });
         } catch (cause) {
           // Reported outside the updater: it is a cross-store write, and an

@@ -251,3 +251,46 @@ describe("what a scroll costs", () => {
     expect(runs.row).toBe(crossed);
   });
 });
+
+describe("what a library change costs", () => {
+  /**
+   * `library://changed` fires for every scan batch, import page and play
+   * count, and for the lookup pass every twenty seconds for two days. Most of
+   * them move nothing on screen; dropping the pages for each redrew all 190
+   * cells in the window, through a frame of placeholder rows.
+   */
+  it("touches nothing when it moved nothing on screen", async () => {
+    await settled();
+    cellRenders = 0;
+    runs.row = 0;
+
+    await act(async () => {
+      await useLibraryStore.getState().refresh(true);
+    });
+    await waitFor(() => expect(useLibraryStore.getState().stalePages.size).toBe(0));
+
+    expect(document.querySelectorAll("tr.song-row").length).toBe(WINDOW_ROWS);
+    expect(cellRenders).toBe(0);
+    expect(runs.row).toBe(0);
+  });
+
+  it("redraws only the row that did move", async () => {
+    await settled();
+    cellRenders = 0;
+    runs.row = 0;
+
+    vi.mocked(queryTracks).mockImplementation(async (query: TrackQuery) =>
+      Array.from({ length: query.limit }, (_, i) => {
+        const row = track(query.offset + i);
+        return row.id === 3 ? { ...row, play_count: 1 } : row;
+      }),
+    );
+    await act(async () => {
+      await useLibraryStore.getState().refresh(true);
+    });
+    await waitFor(() => expect(useLibraryStore.getState().stalePages.size).toBe(0));
+
+    expect(runs.row).toBe(1);
+    expect(cellRenders).toBe(COLUMN_IDS.length);
+  });
+});

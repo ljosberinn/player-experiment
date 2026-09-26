@@ -661,9 +661,11 @@ describe("what a player state event for the same track re-renders", () => {
 
 describe("what a library change that moved nothing re-renders", () => {
   it("nothing, when the playlists are read again unchanged", async () => {
-    vi.mocked(listPlaylists).mockImplementation(async (): Promise<Playlist[]> => [
-      { id: 1, name: "Mix", kind: "static", trackCount: 3, createdAt: 0, builtIn: null },
-    ]);
+    vi.mocked(listPlaylists).mockImplementation(
+      async (): Promise<Playlist[]> => [
+        { id: 1, name: "Mix", kind: "static", trackCount: 3, createdAt: 0, builtIn: null },
+      ],
+    );
     await mounted();
     await act(async () => {
       await usePlaylistsStore.getState().load();
