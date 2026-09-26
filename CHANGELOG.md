@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.20.0](https://github.com/ljosberinn/player-experiment/compare/v0.19.0...v0.20.0) (2026-09-26)
+
+
+### Features
+
+* add an On this day tab to Statistics ([#303](https://github.com/ljosberinn/player-experiment/issues/303)) ([b233f3a](https://github.com/ljosberinn/player-experiment/commit/b233f3ab6565464e5e165a17ab6fb55876b90dd5))
+* draw the charts and statistic figures in Storybook ([#291](https://github.com/ljosberinn/player-experiment/issues/291)) ([6a5fd7c](https://github.com/ljosberinn/player-experiment/commit/6a5fd7c86d29aded1c56f5992c8a6a1c25a16e41))
+* draw the content readouts as a bar ([#161](https://github.com/ljosberinn/player-experiment/issues/161)) ([#321](https://github.com/ljosberinn/player-experiment/issues/321)) ([3db1f41](https://github.com/ljosberinn/player-experiment/commit/3db1f4121373185a8485ae507beac9a53746b585))
+* draw the editing dialogs in Storybook ([#296](https://github.com/ljosberinn/player-experiment/issues/296)) ([8b0278e](https://github.com/ljosberinn/player-experiment/commit/8b0278e62393b16ae2387dff957f6b2f137b3300))
+* draw the last.fm import as a bar in Settings ([#307](https://github.com/ljosberinn/player-experiment/issues/307)) ([9e18eed](https://github.com/ljosberinn/player-experiment/commit/9e18eed96ca077f4a2c476ab876dbd0b93e26c72))
+* draw the Library tab of Statistics in Storybook ([#297](https://github.com/ljosberinn/player-experiment/issues/297)) ([35edc62](https://github.com/ljosberinn/player-experiment/commit/35edc628e0452219a6a067be989980e4781eb61c))
+* draw the library views and sidebar in Storybook ([#295](https://github.com/ljosberinn/player-experiment/issues/295)) ([5a795ef](https://github.com/ljosberinn/player-experiment/commit/5a795ef2e84b1b29e666863a2f6630612609641c))
+* draw the Listening tab of Statistics in Storybook ([#298](https://github.com/ljosberinn/player-experiment/issues/298)) ([a6e6105](https://github.com/ljosberinn/player-experiment/commit/a6e6105852b67a692e1be5de8cfcd879f3c2ebdd))
+* draw the player bar and the shell in Storybook ([#294](https://github.com/ljosberinn/player-experiment/issues/294)) ([583a78b](https://github.com/ljosberinn/player-experiment/commit/583a78b1270c9f86817ad6ece1b872a1b2e891ed))
+* draw the player bar only while a track is loaded ([#153](https://github.com/ljosberinn/player-experiment/issues/153)) ([#312](https://github.com/ljosberinn/player-experiment/issues/312)) ([7f11bd8](https://github.com/ljosberinn/player-experiment/commit/7f11bd8ddcd31daeac311be6c19dc9dcc39c930d))
+* draw the window chrome in Storybook ([#292](https://github.com/ljosberinn/player-experiment/issues/292)) ([52e61ad](https://github.com/ljosberinn/player-experiment/commit/52e61adfae46c58770b74eec5e526f2d96bd6cae))
+* draw the window's own frame again ([#158](https://github.com/ljosberinn/player-experiment/issues/158)) ([#318](https://github.com/ljosberinn/player-experiment/issues/318)) ([3fdaf95](https://github.com/ljosberinn/player-experiment/commit/3fdaf95fc89017e028695407eb6f0b075bbfaff7))
+* drill a Statistics bar into its stretch of time ([#302](https://github.com/ljosberinn/player-experiment/issues/302)) ([e942256](https://github.com/ljosberinn/player-experiment/commit/e942256db3578a73813d725b6df806c469704b4f))
+* focus the search box on Ctrl+F ([#310](https://github.com/ljosberinn/player-experiment/issues/310)) ([c364e4f](https://github.com/ljosberinn/player-experiment/commit/c364e4fb4aaffa5e30cdd27d438c5e72e4648d75))
+* name the new artists under their chart ([#304](https://github.com/ljosberinn/player-experiment/issues/304)) ([2f4cb04](https://github.com/ljosberinn/player-experiment/commit/2f4cb0408e4acfb4d384adcdb92f1ff7d3f7d4e0))
+* put the app version right after the Help menu ([#309](https://github.com/ljosberinn/player-experiment/issues/309)) ([d337bf2](https://github.com/ljosberinn/player-experiment/commit/d337bf2f7835dde76a1f5f2c0208aaf06ecc2472))
+* put the view summary over the content and drop the status bar ([#152](https://github.com/ljosberinn/player-experiment/issues/152)) ([#311](https://github.com/ljosberinn/player-experiment/issues/311)) ([907a01d](https://github.com/ljosberinn/player-experiment/commit/907a01d9df6f96787fe98b09221ebee8aee240c7))
+* reopen the last view on launch ([#155](https://github.com/ljosberinn/player-experiment/issues/155)) ([#316](https://github.com/ljosberinn/player-experiment/issues/316)) ([9327664](https://github.com/ljosberinn/player-experiment/commit/9327664866e95330bbcc3aaefc07a3391ab5757d))
+* resume the last song, paused, in its queue ([#154](https://github.com/ljosberinn/player-experiment/issues/154)) ([#315](https://github.com/ljosberinn/player-experiment/issues/315)) ([64121c1](https://github.com/ljosberinn/player-experiment/commit/64121c1238beb1328e171086dc0f102d1d25b33b))
+* show the Apex mark on the taskbar ([#159](https://github.com/ljosberinn/player-experiment/issues/159)) ([#319](https://github.com/ljosberinn/player-experiment/issues/319)) ([2aa8928](https://github.com/ljosberinn/player-experiment/commit/2aa8928280e260f1db0cf4dc90abcb49dfe681ef))
+* show which songs have a MusicBrainz release ([#160](https://github.com/ljosberinn/player-experiment/issues/160)) ([#320](https://github.com/ljosberinn/player-experiment/issues/320)) ([2d2f940](https://github.com/ljosberinn/player-experiment/commit/2d2f9408245b4f79657f1313f08078c9d69eab94))
+
+
+### Bug Fixes
+
+* centre the browse views' empty state ([#305](https://github.com/ljosberinn/player-experiment/issues/305)) ([bd5eec2](https://github.com/ljosberinn/player-experiment/commit/bd5eec2364f7967b87c1cfdb2fb369ed92c966f4))
+* draw the heatmap's loading grid across the panel ([#301](https://github.com/ljosberinn/player-experiment/issues/301)) ([38086d9](https://github.com/ljosberinn/player-experiment/commit/38086d93597a4611a3f1cc03aab17dde335fa3d3))
+* hold the last.fm import total steady across pages ([#308](https://github.com/ljosberinn/player-experiment/issues/308)) ([49db85a](https://github.com/ljosberinn/player-experiment/commit/49db85aa6dad2eb117db2e6a74dc4b1bb632aa5c))
+* put the smart playlist's sort on one line ([#157](https://github.com/ljosberinn/player-experiment/issues/157)) ([#317](https://github.com/ljosberinn/player-experiment/issues/317))3 ([0b6c86c](https://github.com/ljosberinn/player-experiment/commit/0b6c86c4bf16a0dad4f86762d29879fd38d75689))
+
+
+### Performance
+
+* a drill-in reads its group through an index ([#165](https://github.com/ljosberinn/player-experiment/issues/165)) ([#325](https://github.com/ljosberinn/player-experiment/issues/325)) ([41a74d3](https://github.com/ljosberinn/player-experiment/commit/41a74d3b6caf86e39adc6cb6d6b4033bbb28a2bb))
+* a re-render pass over the frontend ([#163](https://github.com/ljosberinn/player-experiment/issues/163)) ([#323](https://github.com/ljosberinn/player-experiment/issues/323)) ([2c80058](https://github.com/ljosberinn/player-experiment/commit/2c80058a7d595558f9aed721cf04fd2bd95d76ca))
+* resolve the play log in one savepoint ([#166](https://github.com/ljosberinn/player-experiment/issues/166)) ([#326](https://github.com/ljosberinn/player-experiment/issues/326)) ([985857d](https://github.com/ljosberinn/player-experiment/commit/985857df54d1884c9655935ae6376d7fc99c3d6c))
+
 ## [0.19.0](https://github.com/ljosberinn/player-experiment/compare/v0.18.0...v0.19.0) (2026-09-25)
 
 
