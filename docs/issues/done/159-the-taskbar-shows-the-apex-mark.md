@@ -2,8 +2,10 @@
 
 `src-tauri/icons/` is still Tauri's scaffold icon set, so the taskbar, the
 window and the installer show the Tauri logo. Replace the set with the Apex
-mark — the accent rounded square and play triangle `.appbar-mark` draws — from
-one source SVG via `tauri icon`.
+mark — the square and play triangle `.appbar-mark` draws, in the dark theme's
+`--accent` and `--on-accent` — from `src-tauri/icons/mark.svg` via
+`tauri icon`. Only the files `tauri.conf.json` and the existing set use are
+kept; the Android and iOS output is not.
 
 ## Verification
 

@@ -395,7 +395,8 @@
      2.09:1 - unreadable, and it is what the selected row used to be. A fill
      takes `--on-accent`, which is 7.84:1 the other way round. This is the
      pairing the whole rule exists for; on light the two happen to coincide,
-     which is exactly why the rule is a token and not a habit. */
+     which is exactly why the rule is a token and not a habit. The app icon,
+     `src-tauri/icons/mark.svg`, hard-codes this pair. */
   --accent: oklch(0.735 0.167 58); /* #f58a1f */
   --accent-tint: oklch(0.735 0.167 58 / 0.17);
   /* The sheet's own two, unamended: this ground is where its amber was drawn
