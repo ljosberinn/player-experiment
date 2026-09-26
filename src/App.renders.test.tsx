@@ -249,6 +249,19 @@ async function mounted() {
 }
 
 /**
+ * Mounts the player bar, which draws nothing while stopped.
+ *
+ * No track change, so App - which reads only the track - does not re-render
+ * and the counters `mounted` just reset stay meaningful.
+ */
+function loaded() {
+  act(() => {
+    usePlayerStore.setState({ status: "playing" });
+  });
+  expect(document.querySelector(".player-bar")).not.toBeNull();
+}
+
+/**
  * The table is on screen and the counters mean something.
  *
  * Every test here asserts an absence, and an absence is also what you get when
@@ -352,7 +365,10 @@ describe("what a love re-renders", () => {
   it("leaves the song table and the sidebar alone", async () => {
     await mounted();
     act(() => {
-      usePlayerStore.setState({ track: { ...track(1), artist: "Artist", title: "Title" } });
+      usePlayerStore.setState({
+        status: "playing",
+        track: { ...track(1), artist: "Artist", title: "Title" },
+      });
     });
     renders.songTable = 0;
     renders.playlistSidebar = 0;
@@ -369,9 +385,29 @@ describe("what a love re-renders", () => {
   });
 });
 
+describe("what starting and stopping playback re-renders", () => {
+  it("the player bar, and nothing else", async () => {
+    await mounted();
+
+    // The bar comes and goes with the status, which App does not read.
+    for (const status of ["playing", "paused", "stopped"] as const) {
+      act(() => {
+        usePlayerStore.setState({ status });
+      });
+    }
+
+    expectTableMounted();
+    expect(document.querySelector(".player-bar")).toBeNull();
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+    expect(renders.menuBar).toBe(0);
+  });
+});
+
 describe("what a playhead tick re-renders", () => {
   it("leaves the song table alone", async () => {
     await mounted();
+    loaded();
 
     // One tick of the audio thread. This happens four times a second, for the
     // whole length of every song.
@@ -385,6 +421,7 @@ describe("what a playhead tick re-renders", () => {
 
   it("leaves the sidebar alone", async () => {
     await mounted();
+    loaded();
 
     act(() => {
       usePlayerStore.setState({ positionMs: 1_000 });
@@ -396,6 +433,7 @@ describe("what a playhead tick re-renders", () => {
 
   it("stays flat over a song's worth of ticks", async () => {
     await mounted();
+    loaded();
 
     // Four minutes at four ticks a second. Each tick gets its own `act`,
     // because each one arrives from the backend in its own task - batching them
@@ -415,6 +453,7 @@ describe("what a playhead tick re-renders", () => {
 describe("what dragging the volume slider re-renders", () => {
   it("leaves the song table alone", async () => {
     await mounted();
+    loaded();
 
     // The volume slider reports with `onValueChange`, not `onValueCommitted`,
     // because volume has to follow the drag to be usable at all. So this is

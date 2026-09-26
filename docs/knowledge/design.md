@@ -232,7 +232,8 @@ action reads as a target rather than a line of text".
 - **No status bar.** The design draws one with the summary centred; phase 152
   moved the summary to the content it counts and dropped the bar. Zoom is in
   Settings and on the keyboard.
-- **A 100px player bar at the very bottom**, under the content, laid out like
+- **A 100px player bar at the very bottom**, under the content, only while a
+  track is loaded (paused counts, stopped does not). Laid out like
   Spotify's in three columns at 30 / 40 / 30: cover, title over artist and a
   heart on the left; prev/play/next with repeat, over the playhead, centred;
   mute and volume on the right. The cover and title open the track's album, the

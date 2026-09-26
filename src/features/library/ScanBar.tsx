@@ -9,7 +9,7 @@ import { useScanStore } from "./scan";
  * which is why it stays on the content header instead of moving into a menu -
  * a menu that has to be open to tell you a scan is running is no use.
  *
- * Errors are not shown here either. They go to the one error popover the app
+ * Errors are not shown here either. They go to the one error dialog the app
  * has, alongside the four other stores that can fail, rather than appearing as
  * a fifth kind of message in a fifth place.
  */

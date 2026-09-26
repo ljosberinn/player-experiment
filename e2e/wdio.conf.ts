@@ -69,10 +69,6 @@ export const config: WebdriverIO.Config = {
     // there: moving between Songs and Releases needs no songs, and this reloads
     // the webview too - to reach a history with nothing in it yet.
     "./specs/navigation-history.test.ts",
-    // Also before the library: mute and repeat are player state reached
-    // through two buttons on the strip, and neither needs a song to prove it
-    // reaches the backend and comes back. It reloads the webview too.
-    "./specs/transport.test.ts",
     // Also before the library: the readout it photographs is fed a payload
     // rather than a real pass, so songs would only put a table behind it. It
     // leaves the sidebar with no task in it either way.
@@ -142,6 +138,9 @@ export const config: WebdriverIO.Config = {
     // stops the player when it is done, which is what `shortcuts` already
     // hands on.
     "./specs/playback.test.ts",
+    // After `library` too: the player bar is only drawn while a song is
+    // loaded. It reloads the webview, and stops the player when it is done.
+    "./specs/player-bar.test.ts",
     // After `library` too: it needs a real cover, embedded in a real mp3, to
     // extract colours from - and before `virtualization`, whose hundred and
     // fifty thousand synthetic rows have no artwork at all.

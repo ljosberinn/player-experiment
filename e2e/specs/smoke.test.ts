@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { invoke } from "../invoke";
 import { closeMenu, itemsOf, openMenu } from "../menu";
 
 /** Snapshot of what the webview actually holds, for failure messages. */
@@ -108,34 +109,25 @@ describe("application shell", () => {
     await closeMenu();
   });
 
-  it("wires the transport up to a player that is actually running", async () => {
-    // With an empty library there is nothing to play, but the buttons must be
-    // live rather than the disabled placeholders of the pre-playback shell:
-    // that is what proves the player thread started and the commands exist.
-    // CI runners have no audio device, so the app falls back to a null sink -
-    // deliberately, since refusing to start there would be worse.
-    for (const label of ["Previous", "Play", "Next"]) {
-      const button = browser.$(`button[aria-label='${label}']`);
-      await expect(button).toBeExisting();
-      await expect(button).toBeEnabled();
-    }
-
-    await expect(browser.$("input[aria-label='Volume']")).toBeExisting();
+  it("draws no player bar while nothing is loaded", async () => {
+    // With an empty library there is nothing to play, so the bar is not drawn
+    // at all; `player-bar.test.ts` drives it once there is.
+    await expect(browser.$(".player-bar")).not.toBeExisting();
   });
 
   it("survives a play command with an empty queue", async () => {
-    // A round trip through player_toggle: if the command were missing or the
-    // player thread had died, invoke would reject and the store would report
-    // it.
-    //
-    // `.error-popup`, not `.content-error`, which is what this asserted until
-    // phase 123 and could never have failed: that class renders only inside
-    // `TagEditor`, `ReleaseLookup` and `CrashNotice`, none of which is mounted
-    // here. A player error surfaces in `ErrorPopover`.
-    await browser.$("button[aria-label='Play']").click();
+    // A round trip through player_toggle, which is what Space and the media
+    // keys send: if the command were missing or the player thread had died,
+    // invoke would reject. CI runners have no audio device, so the app falls
+    // back to a null sink - deliberately, since refusing to start there would
+    // be worse.
+    await invoke("player_toggle");
 
     await browser.pause(500);
-    await expect(browser.$(".error-popup")).not.toBeExisting();
+    // Nothing to resume, so nothing loads and nothing is reported.
+    expect((await invoke<{ status: string }>("player_snapshot")).status).toBe("stopped");
+    await expect(browser.$("[role='alertdialog']")).not.toBeExisting();
+    await expect(browser.$(".player-bar")).not.toBeExisting();
   });
 
   it("runs a search against FTS5 and clears it again", async () => {

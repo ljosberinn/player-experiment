@@ -894,41 +894,9 @@ button.now-playing-subtitle:hover {
 
 /* Still inline, and correctly so: this is the tag editor's own validation
    message, which belongs beside the field it is about and inside the dialog
-   that owns it. The popover below is for errors that arrive unasked. */
+   that owns it. `ErrorDialog` is for errors that arrive unasked. */
 .content-error {
   color: var(--danger);
-}
-
-/* Anchored to the status display rather than stacked above the table: as a
-   paragraph in the flow it pushed every row down as it appeared, moving the
-   view out from under the pointer, and it sat nowhere near what it described. */
-.error-positioner {
-  z-index: 40;
-}
-
-.error-popup {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-width: 528px;
-  padding: 9px 13px;
-  border: 1px solid var(--danger);
-  background: var(--chrome);
-  box-shadow: var(--shadow);
-}
-
-/* The heading carries the colour and the message stays in the body text:
-   a whole panel of red is harder to read than a red line above one. */
-.error-title {
-  margin: 0;
-  color: var(--danger);
-  font-size: 15.5px;
-  font-weight: 600;
-}
-
-.error-text {
-  /* Paths are long and have no spaces to wrap at. */
-  overflow-wrap: anywhere;
 }
 
 .content-notice {
@@ -2410,9 +2378,16 @@ body:not(:focus-within) .sidebar-row.current {
   white-space: nowrap;
 }
 
-/* A destructive confirmation is narrower than an editor - it asks one thing. */
-.dialog.confirm {
+/* A destructive confirmation is narrower than an editor - it asks one thing.
+   So is an error, which only says one. */
+.dialog.confirm,
+.dialog.error {
   max-width: 502px;
+}
+
+/* Paths are long and have no spaces to wrap at. */
+.dialog.error .dialog-summary {
+  overflow-wrap: anywhere;
 }
 
 /* The only part of updating the user ever sees. On the app bar beside the

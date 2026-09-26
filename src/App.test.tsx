@@ -342,8 +342,6 @@ describe("App", () => {
     await screen.findByText("5 songs, 50 minutes, 214 MB");
 
     expect(screen.queryByText("5 songs, 50 minutes")).not.toBeInTheDocument();
-    // The box keeps its place on the strip; only its contents are hidden.
-    expect(screen.getByText("Nothing playing")).not.toBeVisible();
   });
 
   it("totals what is on screen rather than the whole library", async () => {
@@ -509,7 +507,7 @@ describe("App", () => {
 
     await chooseFromMenu(user, "File", "Rescan");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("permission denied");
   });
 
   it("surfaces a query failure from the store", async () => {
@@ -517,7 +515,7 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("database is locked");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("database is locked");
   });
 });
 
@@ -636,11 +634,12 @@ describe("App playback", () => {
     expect(playerPlay).not.toHaveBeenCalled();
   });
 
-  it("drives the transport from the toolbar", async () => {
+  it("drives the transport from the player bar", async () => {
+    playing(track(1));
     await renderWithLibrary();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Play" }));
+    await user.click(await screen.findByRole("button", { name: "Pause" }));
 
     expect(playerToggle).toHaveBeenCalledOnce();
   });
@@ -969,6 +968,35 @@ describe("App playback", () => {
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
   });
 
+  it("draws no player bar until something is loaded", async () => {
+    await renderWithLibrary();
+
+    expect(document.querySelector(".player-bar")).toBeNull();
+
+    act(() => {
+      usePlayerStore.setState({ status: "playing", track: track(1) });
+    });
+    expect(document.querySelector(".player-bar")).not.toBeNull();
+  });
+
+  it("keeps the player bar through a pause, and drops it on a stop", async () => {
+    playing(track(1));
+    await renderWithLibrary();
+    await screen.findByRole("button", { name: "Pause" });
+
+    act(() => {
+      usePlayerStore.setState({ status: "paused" });
+    });
+    expect(document.querySelector(".player-bar")).not.toBeNull();
+
+    // The engine keeps its queue index through a stop, so the track stays in
+    // the snapshot - the status is what says nothing is loaded.
+    act(() => {
+      usePlayerStore.setState({ status: "stopped" });
+    });
+    expect(document.querySelector(".player-bar")).toBeNull();
+  });
+
   it("names what is playing in the window title, and stops when it stops", async () => {
     // The window has no decorations, so this shows only in Alt+Tab and the
     // taskbar - which is the point of it.
@@ -1226,42 +1254,12 @@ describe("the browse tabs", () => {
   });
 });
 
-describe("the error popover", () => {
+describe("the error dialog", () => {
   it("says nothing while nothing is wrong", async () => {
     render(<App />);
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
 
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("shows a playback error without moving the table", async () => {
-    render(<App />);
-    await waitFor(() => expect(statsMock).toHaveBeenCalled());
-
-    act(() => {
-      useStatusStore.setState({ message: "C:/music/gone.mp3 could not be opened" });
-    });
-
-    // In the popover, which is portalled, rather than in the content area -
-    // as a paragraph in the flow it pushed every row down as it appeared.
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("could not be opened");
-    expect(document.querySelector(".content .error-popup")).toBeNull();
-  });
-
-  it("does not take focus from whatever the user was doing", async () => {
-    render(<App />);
-    const search = await screen.findByRole("searchbox", { name: "Search Library" });
-    search.focus();
-
-    act(() => {
-      useStatusStore.setState({ message: "that file will not open" });
-    });
-    await screen.findByRole("alert");
-
-    // An error arrives unasked, usually mid-scroll or mid-typing. One that
-    // grabs the caret to tell you something interrupts what you were doing.
-    expect(search).toHaveFocus();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("names itself, so the message is not the only thing said", async () => {
@@ -1274,27 +1272,51 @@ describe("the error popover", () => {
 
     // The message alone is often a path and a reason with no subject, and does
     // not say on its own that the app is reporting a fault.
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Something went wrong");
-    expect(alert).toHaveTextContent("could not be opened");
+    const dialog = await screen.findByRole("alertdialog", { name: "Something went wrong" });
+    expect(dialog).toHaveTextContent("could not be opened");
   });
 
-  it("goes away when clicked away from, and clears the error behind it", async () => {
+  it("shows with nothing loaded, when there is no player bar", async () => {
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+    expect(document.querySelector(".player-bar")).toBeNull();
+
+    act(() => {
+      useStatusStore.setState({ message: "the library is locked" });
+    });
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("the library is locked");
+  });
+
+  it("goes away on OK, and clears the error behind it", async () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(statsMock).toHaveBeenCalled());
     act(() => {
       useStatusStore.setState({ message: "that file will not open" });
     });
-    await screen.findByRole("alert");
+    const dialog = await screen.findByRole("alertdialog");
 
-    // No close button: clicking anywhere else already dismisses it, and a
-    // control nothing can tab to is one the mouse could do without.
-    await user.click(document.body);
+    await user.click(within(dialog).getByRole("button", { name: "OK" }));
 
-    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
-    // Cleared at the source, not merely hidden: a popover that hides a live
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    // Cleared at the source, not merely hidden: a dialog that hides a live
     // error would never show that error again.
+    expect(useStatusStore.getState().message).toBeNull();
+  });
+
+  it("goes away on Escape", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(statsMock).toHaveBeenCalled());
+    act(() => {
+      useStatusStore.setState({ message: "that file will not open" });
+    });
+    await screen.findByRole("alertdialog");
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(useStatusStore.getState().message).toBeNull();
   });
 
@@ -1307,11 +1329,11 @@ describe("the error popover", () => {
       useStatusStore.getState().report("that file will not open");
     });
 
-    // One slot, last wins: two unhappy stores are still one popover, and the
+    // One slot, last wins: two unhappy stores are still one dialog, and the
     // newer message is the one on screen.
-    const alerts = await screen.findAllByRole("alert");
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0]).toHaveTextContent("that file will not open");
+    const dialogs = await screen.findAllByRole("alertdialog");
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0]).toHaveTextContent("that file will not open");
   });
 });
 

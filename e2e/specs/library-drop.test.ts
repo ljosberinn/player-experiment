@@ -72,12 +72,11 @@ describe("dropping files on the library", () => {
     // The file is outside every watch folder and the Library folder is off, so
     // there is nowhere to put it and adding its parent would pull the whole of
     // that folder in.
-    await expect(browser.$(".error-text")).toBeDisplayed();
+    await expect(browser.$("[role='alertdialog']")).toBeDisplayed();
     await capture("library-drop-refused");
 
-    // Left up, the popover is furniture in every screenshot the specs after
-    // this one take.
+    // Left up, the dialog would stand over every spec after this one.
     await browser.keys(["Escape"]);
-    await browser.$(".error-popup").waitForExist({ timeout: 10_000, reverse: true });
+    await browser.$("[role='alertdialog']").waitForExist({ timeout: 10_000, reverse: true });
   });
 });
