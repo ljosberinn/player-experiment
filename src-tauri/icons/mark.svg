@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 19 19">
+  <title>Apex</title>
+  <!-- `.appbar-mark` on the dark ground, geometry and all, with `accent` and
+       `on-accent` as hex. Regenerate the set with
+       `npx tauri icon src-tauri/icons/mark.svg` whenever either moves. -->
+  <rect width="19" height="19" fill="#f58a1f"/>
+  <path d="M6.575 5 13.075 9.5 6.575 14z" fill="#100e0b"/>
+</svg>
