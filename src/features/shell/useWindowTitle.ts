@@ -11,15 +11,15 @@ import { windowTitle } from "./windowTitle";
  * invisible in the app itself and shows only in Alt+Tab and the taskbar -
  * which is exactly where a media player should be findable by its song.
  *
- * Subscribes to the track alone, so it runs once a song rather than on every
- * playhead tick.
+ * Subscribes to the title string alone: it is called from `App`, which must
+ * not re-render for a playhead tick, a pause or a play count.
  */
 export function useWindowTitle(): void {
-  const track = usePlayerStore((s) => s.track);
+  const title = usePlayerStore((s) => windowTitle(s.track));
 
   useEffect(() => {
     // Not awaited and not surfaced: a title that failed to change is not worth
     // an error banner over the library.
-    void getCurrentWindow().setTitle(windowTitle(track));
-  }, [track]);
+    void getCurrentWindow().setTitle(title);
+  }, [title]);
 }

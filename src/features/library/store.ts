@@ -29,6 +29,7 @@ import {
   type TrackQuery,
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
+import { reuse } from "../../lib/reuse";
 import { dismiss, notify, report } from "../shell/statusStore";
 import { type StatsPath, statsRoot } from "../stats/path";
 import { albumIdentity } from "./browse";
@@ -573,7 +574,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (get().queryToken !== token) {
         return;
       }
-      set({ stats, total: stats.tracks, loading: false });
+      // Re-asked on every `library://changed`, most of which move no total.
+      set((state) => ({ stats: reuse(state.stats, stats), total: stats.tracks, loading: false }));
     } catch (cause) {
       if (get().queryToken !== token) {
         return;
@@ -695,7 +697,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (tab === "songs" || tab === "stats") {
       // Not merely skipped - cleared, so returning to a browse tab cannot show
       // the previous tab's groups for the moment before the query lands.
-      set({ groups: [], groupsLoading: false, releases: [] });
+      set((state) => ({
+        groups: reuse(state.groups, []),
+        groupsLoading: false,
+        releases: reuse(state.releases, []),
+      }));
       return;
     }
 
@@ -712,7 +718,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       if (get().queryToken !== token) {
         return;
       }
-      set({ groups, groupsLoading: false, releases });
+      set((state) => ({
+        groups: reuse(state.groups, groups),
+        groupsLoading: false,
+        releases: reuse(state.releases, releases),
+      }));
     } catch (cause) {
       if (get().queryToken !== token) {
         return;

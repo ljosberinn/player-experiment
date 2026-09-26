@@ -31,6 +31,18 @@ interface LovedState {
 }
 
 /**
+ * `ids` as a set, or `current` itself when it already holds exactly those.
+ *
+ * The backend answers with the whole set, and usually with the one the UI
+ * already shows - the optimistic love it confirms, or a `loved://changed` that
+ * moved nothing here. Every menu and the player bar read the set.
+ */
+function kept(current: ReadonlySet<number>, ids: number[]): ReadonlySet<number> {
+  const next = new Set(ids);
+  return next.size === current.size && [...next].every((id) => current.has(id)) ? current : next;
+}
+
+/**
  * The loved set.
  *
  * Its own store rather than a field on the last.fm one: loving works on every
@@ -41,7 +53,8 @@ export const useLovedStore = create<LovedState>((set, get) => ({
 
   load: async () => {
     try {
-      set({ loved: new Set(await lovedTracks()) });
+      const loved = await lovedTracks();
+      set((state) => ({ loved: kept(state.loved, loved) }));
     } catch {
       // Left as it was. Nobody asked for this read, and an empty set would
       // make every menu offer Love on a song the user has already loved.
@@ -61,7 +74,8 @@ export const useLovedStore = create<LovedState>((set, get) => ({
     set({ loved: optimistic });
 
     try {
-      set({ loved: new Set(await setLoved(trackIds, loved)) });
+      const answer = await setLoved(trackIds, loved);
+      set((state) => ({ loved: kept(state.loved, answer) }));
     } catch (error) {
       // A local write refused whole - a row that lost its artist or title
       // since the menu opened - so the set is as it was.

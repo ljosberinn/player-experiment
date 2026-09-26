@@ -21,6 +21,7 @@ import {
   setPlaylistFilter,
 } from "../../ipc";
 import { debounce } from "../../lib/debounce";
+import { reuse } from "../../lib/reuse";
 import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { dismiss, notify, report } from "../shell/statusStore";
@@ -116,7 +117,9 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   load: async () => {
     dismiss();
     try {
-      const playlists = await listPlaylists();
+      // Reloaded on every `library://changed`, which mostly moves no count: a
+      // fresh list would wake the sidebar, the menus and the table for nothing.
+      const playlists = reuse(get().playlists, await listPlaylists());
       set({ playlists });
       useLibraryStore.getState().setBuiltIns(playlists);
     } catch (cause) {
