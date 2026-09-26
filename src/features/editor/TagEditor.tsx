@@ -16,10 +16,10 @@ import {
   type TagEdit,
   type TagValueField,
   type Track,
-  type WriteProgress,
 } from "../../ipc";
 import { registerDropTarget } from "../shell/fileDrop";
 import { commonValue, type Draft, FIELDS, hasChanges, numericProblem, toEdit } from "./fields";
+import { useEditorStore } from "./store";
 import { WriteLine } from "./WriteLine";
 
 /**
@@ -31,21 +31,12 @@ import { WriteLine } from "./WriteLine";
  */
 export function TagEditor({
   tracks,
-  progress,
   onSave,
   onCancel,
   onPickCover,
   onDropCover,
 }: {
   tracks: Track[];
-  /**
-   * How far the save has got, or null when none is running.
-   *
-   * The dialog stays open across the write - a batch of 500 files is one mp3
-   * rewritten after another, and a dialog that sits there saying nothing while
-   * that happens is indistinguishable from a hung window.
-   */
-  progress?: WriteProgress | null;
   onSave: (edit: TagEdit) => void;
   onCancel: () => void;
   /**
@@ -128,7 +119,10 @@ export function TagEditor({
     return registerDropTarget({ element: coverBlock, onHover: setHovered, onDrop: dropped });
   }, [coverBlock]);
 
-  const saving = progress != null;
+  // The dialog stays open across the write - a batch of 500 files is one mp3
+  // rewritten after another, and a dialog that sits there saying nothing while
+  // that happens is indistinguishable from a hung window.
+  const saving = useEditorStore((s) => s.progress !== null);
   const problem = numericProblem(draft);
   const message = problem ?? rejected;
   const canSave = problem === null && hasChanges(draft, cover) && !saving;
@@ -232,7 +226,7 @@ export function TagEditor({
       <DialogFooter
         lead={
           saving ? (
-            <WriteLine progress={progress} />
+            <Writing />
           ) : tracks.length > 1 ? (
             <DialogStatus>Only changed fields are written.</DialogStatus>
           ) : undefined
@@ -283,4 +277,13 @@ function TagField({
       />
     </>
   );
+}
+
+/**
+ * The save's progress, subscribed here so a file landing re-renders the line
+ * rather than the dialog.
+ */
+function Writing() {
+  const progress = useEditorStore((s) => s.progress);
+  return <WriteLine progress={progress} />;
 }

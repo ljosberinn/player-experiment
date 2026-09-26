@@ -17,6 +17,7 @@ import {
   playerToggle,
   type Track,
 } from "../../ipc";
+import { reuse } from "../../lib/reuse";
 import { report } from "../shell/statusStore";
 
 /**
@@ -85,10 +86,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   connect: async () => {
     const unlisten = await Promise.all([
       onPlayerState((snapshot) =>
-        set({
+        set((state) => ({
           status: snapshot.status,
-          track: snapshot.track,
-          palette: snapshot.palette,
+          // A pause, a seek and every step of a volume drag re-send the same
+          // track; kept, they wake only what reads the field that moved.
+          track: reuse(state.track, snapshot.track),
+          palette: reuse(state.palette, snapshot.palette),
           durationMs: snapshot.durationMs,
           volume: snapshot.volume,
           muted: snapshot.muted,
@@ -98,7 +101,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           // A state change is a load, a seek or a stop; in all three the
           // authoritative position comes with it.
           positionMs: snapshot.positionMs,
-        }),
+        })),
       ),
       onPlayerPosition(({ positionMs, durationMs }) => set({ positionMs, durationMs })),
       onPlayerError(report),

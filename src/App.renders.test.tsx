@@ -1,13 +1,16 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { useEditorStore } from "./features/editor/store";
 import { useLastfmStore } from "./features/lastfm/store";
 import { useLibraryStore } from "./features/library/store";
 import { useLovedStore } from "./features/love/store";
 import { usePlayerStore } from "./features/player/store";
+import { usePlaylistsStore } from "./features/playlists/store";
 import { useBackgroundTaskStore } from "./features/shell/backgroundTaskStore";
 import { useTagsourceStore } from "./features/tagsource/store";
-import type { Track } from "./ipc";
+import type { PlayerSnapshot, Playlist, Track } from "./ipc";
+import { libraryStats, listPlaylists, onPlayerState } from "./ipc";
 
 /**
  * What wakes up when one value changes.
@@ -25,7 +28,11 @@ import type { Track } from "./ipc";
  * - the search field, which updates on every keystroke;
  * - the selection, which changes on every click, shift-range and Ctrl+A;
  * - the unattended lookup pass, which moves a percentage and a queue count
- *   every twenty seconds for the better part of two days.
+ *   every twenty seconds for the better part of two days;
+ * - `player://state`, which re-sends the whole track for a pause, a seek and
+ *   every step of a volume drag;
+ * - `library://changed`, which re-reads the playlists and the view's totals
+ *   throughout a scan, an import and that same lookup pass.
  *
  * Each used to be subscribed at the top of `App`, so each re-rendered the
  * entire tree - including the song table and its forty virtualized rows.
@@ -119,6 +126,7 @@ vi.mock("./ipc", () => ({
   onLastfmQueued: vi.fn(async () => () => {}),
   onLastfmLovesQueued: vi.fn(async () => () => {}),
   lovedTracks: vi.fn(async () => []),
+  setLoved: vi.fn(async (trackIds: number[]) => trackIds),
   onLovedChanged: vi.fn(async () => () => {}),
   onLastfmImport: vi.fn(async () => () => {}),
   lastfmBeginConnect: vi.fn(),
@@ -153,7 +161,16 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) })
  * asked to render at all, and a stub answers that without depending on how
  * React attributes time. The real components are exercised by their own tests.
  */
-const renders = { songTable: 0, playlistSidebar: 0, browseView: 0, menuBar: 0 };
+const renders = { app: 0, songTable: 0, playlistSidebar: 0, browseView: 0, menuBar: 0 };
+
+// `App` itself, which the stubs cannot see: React Compiler holds a stub still
+// when `App` re-renders with the same props for it. `App` calls this once per
+// render, and it binds nothing jsdom needs.
+vi.mock("./features/shell/useNativeFeel", () => ({
+  useNativeFeel: () => {
+    renders.app += 1;
+  },
+}));
 
 vi.mock("./features/library/SongTable", () => ({
   SongTable: () => {
@@ -245,6 +262,11 @@ async function mounted() {
     await Promise.resolve();
   });
 
+  resetCounts();
+}
+
+function resetCounts() {
+  renders.app = 0;
   renders.songTable = 0;
   renders.playlistSidebar = 0;
   renders.browseView = 0;
@@ -276,10 +298,7 @@ function expectTableMounted() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  renders.songTable = 0;
-  renders.playlistSidebar = 0;
-  renders.browseView = 0;
-  renders.menuBar = 0;
+  resetCounts();
   useLibraryStore.setState({ ...initialLibrary, total: 0, pages: new Map() });
   usePlayerStore.setState({ ...initialPlayer, positionMs: 0 });
   useLovedStore.setState({ loved: new Set() });
@@ -570,5 +589,156 @@ describe("what clicking a row re-renders", () => {
 
     expectTableMounted();
     expect(renders.playlistSidebar).toBe(0);
+  });
+});
+
+/**
+ * What the backend sends on `player://state`, freshly parsed each time the way
+ * an IPC payload is.
+ */
+function snapshot(overrides: Partial<PlayerSnapshot> = {}): PlayerSnapshot {
+  return {
+    status: "playing",
+    track: track(1),
+    palette: [
+      { r: 10, g: 20, b: 30 },
+      { r: 40, g: 50, b: 60 },
+      { r: 70, g: 80, b: 90 },
+    ],
+    queueIndex: 0,
+    queueLen: 20,
+    positionMs: 0,
+    durationMs: 1000,
+    volume: 0.8,
+    muted: false,
+    repeatOne: false,
+    ...overrides,
+  };
+}
+
+/** The handler `App`'s player subscription registered, as the backend reaches it. */
+function playerState(): (snapshot: PlayerSnapshot) => void {
+  const handler = vi.mocked(onPlayerState).mock.calls[0]?.[0];
+  if (handler === undefined) {
+    throw new Error("App registered no player://state handler");
+  }
+  return handler;
+}
+
+describe("what a player state event for the same track re-renders", () => {
+  it("not the window, for a pause", async () => {
+    await mounted();
+    const emit = playerState();
+    act(() => emit(snapshot()));
+    resetCounts();
+
+    act(() => emit(snapshot({ status: "paused" })));
+
+    expectTableMounted();
+    expect(usePlayerStore.getState().status).toBe("paused");
+    expect(renders.app).toBe(0);
+    expect(renders.menuBar).toBe(0);
+  });
+
+  it("stays flat over a volume drag", async () => {
+    await mounted();
+    const emit = playerState();
+    act(() => emit(snapshot()));
+    resetCounts();
+
+    // The engine answers every step of the rail with a state event, so a drag
+    // is this many whole-track payloads.
+    for (let step = 1; step <= 50; step += 1) {
+      act(() => emit(snapshot({ volume: step / 100 })));
+    }
+
+    expectTableMounted();
+    expect(renders.app).toBe(0);
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+});
+
+describe("what a library change that moved nothing re-renders", () => {
+  it("nothing, when the playlists are read again unchanged", async () => {
+    vi.mocked(listPlaylists).mockImplementation(
+      async (): Promise<Playlist[]> => [
+        { id: 1, name: "Mix", kind: "static", trackCount: 3, createdAt: 0, builtIn: null },
+      ],
+    );
+    await mounted();
+    await act(async () => {
+      await usePlaylistsStore.getState().load();
+    });
+    resetCounts();
+
+    await act(async () => {
+      await usePlaylistsStore.getState().load();
+    });
+
+    expectTableMounted();
+    expect(renders.app).toBe(0);
+    expect(renders.menuBar).toBe(0);
+  });
+
+  it("nothing outside the table, when the totals are read again unchanged", async () => {
+    vi.mocked(libraryStats).mockImplementation(async () => ({
+      tracks: 500,
+      durationMs: 500_000,
+      bytes: 0,
+      missing: 2,
+      removed: 0,
+    }));
+    await mounted();
+    await act(async () => {
+      await useLibraryStore.getState().refresh();
+    });
+    resetCounts();
+
+    await act(async () => {
+      await useLibraryStore.getState().refresh();
+    });
+
+    expectTableMounted();
+    expect(renders.app).toBe(0);
+    expect(renders.menuBar).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
+  });
+});
+
+describe("what a tag write's progress re-renders", () => {
+  it("not the window", async () => {
+    await mounted();
+    act(() => {
+      useEditorStore.setState({ tracks: [track(1)], progress: null });
+    });
+    resetCounts();
+
+    for (let done = 0; done <= 5; done += 1) {
+      act(() => {
+        useEditorStore.setState({ progress: { done, total: 5 } });
+      });
+    }
+
+    expect(screen.getByText("Updating the library…")).toBeInTheDocument();
+    expect(renders.app).toBe(0);
+    act(() => {
+      useEditorStore.setState({ tracks: null, progress: null });
+    });
+  });
+});
+
+describe("what the backend confirming a love re-renders", () => {
+  it("nothing more than the love itself did", async () => {
+    await mounted();
+
+    // The set moves once, optimistically, and the backend answers with that
+    // same set.
+    await act(async () => {
+      await useLovedStore.getState().love([1], true);
+    });
+
+    expect(useLovedStore.getState().loved.has(1)).toBe(true);
+    expect(renders.menuBar).toBe(1);
   });
 });

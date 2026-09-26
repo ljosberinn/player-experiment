@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TagEdit, Track } from "../../ipc";
 import { suggestTagValues } from "../../ipc";
 import { routeFileDrop } from "../shell/fileDrop";
+import { useEditorStore } from "./store";
 import { TagEditor } from "./TagEditor";
 
 vi.mock("../../ipc", () => ({
@@ -49,10 +50,11 @@ function open(
   const onCancel = vi.fn();
   const onPickCover = vi.fn(async () => pickedCover);
   const onDropCover = vi.fn(async () => "C:/staged/dropped-cover.png");
+  // The save's progress is the store's, which the dialog reads itself.
+  useEditorStore.setState({ progress });
   render(
     <TagEditor
       tracks={tracks}
-      progress={progress}
       onSave={onSave}
       onCancel={onCancel}
       onPickCover={onPickCover}

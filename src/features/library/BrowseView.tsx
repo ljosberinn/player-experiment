@@ -38,7 +38,9 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
   "use no memo";
 
   const groups = useLibraryStore((state) => state.groups);
-  const loading = useLibraryStore((state) => state.groupsLoading);
+  // The one thing the load state decides, so a reload that lands the same
+  // groups toggles no render on the way.
+  const empty = useLibraryStore((state) => !state.groupsLoading && state.groups.length === 0);
   const openGroup = useLibraryStore((state) => state.openGroup);
   const search = useLibraryStore((state) => state.search);
   // The one piece of the remembered position that is subscribed to: the
@@ -174,7 +176,7 @@ export function BrowseView({ kind }: { kind: BrowseKind }) {
     };
   }, [kind]);
 
-  if (!loading && groups.length === 0) {
+  if (empty) {
     // Unwrapped, so it is a flex child of `.content` and `margin: auto` centres it.
     return (
       <p className="empty-state">

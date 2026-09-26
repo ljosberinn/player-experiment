@@ -66,8 +66,11 @@ export function App() {
   const loadLoved = useLovedStore((s) => s.load);
   const watchLoved = useLovedStore((s) => s.watch);
 
-  const total = useLibraryStore((s) => s.total);
-  const stats = useLibraryStore((s) => s.stats);
+  // Both narrowed to what is drawn from them: a scan or an import moves the
+  // total and the stats on every batch, and the table and the summary line are
+  // what show that - not the window around them.
+  const empty = useLibraryStore((s) => s.total === 0);
+  const missingCount = useLibraryStore((s) => s.stats.missing);
   const playlistId = useLibraryStore((s) => s.playlistId);
   const tab = useLibraryStore((s) => s.tab);
   const showTab = useLibraryStore((s) => s.showTab);
@@ -90,7 +93,8 @@ export function App() {
   const removeFromLibrary = useLibraryStore((s) => s.removeFromLibrary);
   const queueIds = useLibraryStore((s) => s.queueIds);
 
-  const nowPlaying = usePlayerStore((s) => s.track);
+  // The id, not the track: the track is re-sent whenever its play count moves.
+  const nowPlayingId = usePlayerStore((s) => s.track?.id ?? null);
   const connect = usePlayerStore((s) => s.connect);
   const play = usePlayerStore((s) => s.play);
 
@@ -102,7 +106,6 @@ export function App() {
   const editorTracks = useEditorStore((s) => s.tracks);
   const closeTagEditor = useEditorStore((s) => s.close);
   const saveTags = useEditorStore((s) => s.save);
-  const tagProgress = useEditorStore((s) => s.progress);
   const runExportTo = useExportStore((s) => s.run);
 
   const editing = usePlaylistsStore((s) => s.editing);
@@ -370,7 +373,7 @@ export function App() {
             // with its own scroll container: unkeyed they shared one, and
             // Artists opened wherever the album grid had been left.
             <BrowseView key={tab} kind={tab} />
-          ) : total === 0 && playlistId !== null && search === "" ? (
+          ) : empty && playlistId !== null && search === "" ? (
             // An empty playlist is neither an empty library nor a search that
             // found nothing, and both of those give unhelpful advice here.
             <p className="empty-state">
@@ -381,7 +384,7 @@ export function App() {
                   ? "Love a song to add it here."
                   : "Nothing in your library matches its filter yet."}
             </p>
-          ) : total === 0 && search !== "" ? (
+          ) : empty && search !== "" ? (
             // An empty library and an empty result set are different problems,
             // and "add a folder" is unhelpful advice for the second one.
             <p className="empty-state">
@@ -390,7 +393,7 @@ export function App() {
                 Show all songs
               </button>
             </p>
-          ) : total === 0 ? (
+          ) : empty ? (
             <p className="empty-state">
               No songs yet. Use <strong>Add Folders…</strong> to point Apex at your music.
             </p>
@@ -408,7 +411,7 @@ export function App() {
               }
               onRemoveFromLibrary={askRemoval}
               onExport={(trackIds) => void runExport(exportChoice(trackIds, null))}
-              nowPlayingId={nowPlaying?.id ?? null}
+              nowPlayingId={nowPlayingId}
             />
           ) : (
             <SongTable
@@ -427,7 +430,7 @@ export function App() {
               // seen in is a view its library row can be removed from.
               onRemoveFromLibrary={askRemoval}
               onExport={(trackIds) => void runExport(exportChoice(trackIds, null))}
-              nowPlayingId={nowPlaying?.id ?? null}
+              nowPlayingId={nowPlayingId}
             />
           )}
         </main>
@@ -446,7 +449,6 @@ export function App() {
       {editorTracks ? (
         <TagEditor
           tracks={editorTracks}
-          progress={tagProgress}
           onSave={(edit) => void saveTags(edit)}
           onCancel={closeTagEditor}
           onPickCover={async () => {
@@ -476,7 +478,7 @@ export function App() {
       {confirmRemoveMissing ? (
         <ConfirmDialog
           title="Remove missing songs?"
-          body={`${stats.missing} song${stats.missing === 1 ? "" : "s"} cannot be found. Removing them also takes them out of every playlist. If a drive is unplugged, reconnect it and rescan instead.`}
+          body={`${missingCount} song${missingCount === 1 ? "" : "s"} cannot be found. Removing them also takes them out of every playlist. If a drive is unplugged, reconnect it and rescan instead.`}
           confirmLabel="Remove"
           onConfirm={() => {
             setConfirmRemoveMissing(false);

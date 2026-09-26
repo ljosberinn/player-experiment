@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useLibraryStore, VIEW_TITLES, type ViewTab } from "../../features/library/store";
 import { usePlaylistsStore } from "../../features/playlists/store";
 import type { BuiltIn, Playlist } from "../../ipc";
@@ -44,9 +45,7 @@ export function LibraryNav({
   onExport?: ((playlist: Playlist) => void) | undefined;
 }) {
   const playlists = usePlaylistsStore((s) => s.playlists);
-  const playPlaylist = usePlaylistsStore((s) => s.playPlaylist);
   const playlistId = useLibraryStore((s) => s.playlistId);
-  const showPlaylist = useLibraryStore((s) => s.showPlaylist);
 
   return (
     <div className="sidebar-section">
@@ -67,41 +66,67 @@ export function LibraryNav({
         ))}
         {BUILT_INS.map(([builtIn, icon]) => {
           const playlist = playlists.find((candidate) => candidate.builtIn === builtIn);
-          if (playlist === undefined) {
-            return null;
-          }
-          return (
-            <ContextMenu
+          return playlist === undefined ? null : (
+            <BuiltInRow
               key={builtIn}
-              label={`${playlist.name} actions`}
-              items={[
-                {
-                  label: "Play",
-                  disabled: playlist.trackCount === 0,
-                  onSelect: () => void playPlaylist(playlist),
-                },
-                { kind: "separator" },
-                {
-                  label: "Export…",
-                  disabled: playlist.trackCount === 0,
-                  onSelect: () => onExport?.(playlist),
-                },
-              ]}
-              render={<li />}
-            >
-              <button
-                type="button"
-                className="sidebar-item"
-                aria-current={playlist.id === playlistId ? "page" : undefined}
-                onClick={() => void showPlaylist(playlist)}
-              >
-                <Icon name={icon} size={ICON_SIZE} className="sidebar-icon" />
-                <span className="sidebar-label">{playlist.name}</span>
-              </button>
-            </ContextMenu>
+              playlist={playlist}
+              icon={icon}
+              current={playlist.id === playlistId}
+              onExport={onExport}
+            />
           );
         })}
       </ul>
     </div>
   );
 }
+
+/**
+ * A built-in playlist's row. Its own component and `memo`, like
+ * `PlaylistSidebar`'s rows: built inline, opening any playlist rebuilt every
+ * built-in's menu.
+ */
+const BuiltInRow = memo(function BuiltInRow({
+  playlist,
+  icon,
+  current,
+  onExport,
+}: {
+  playlist: Playlist;
+  icon: IconName;
+  current: boolean;
+  onExport?: ((playlist: Playlist) => void) | undefined;
+}) {
+  const playPlaylist = usePlaylistsStore((s) => s.playPlaylist);
+  const showPlaylist = useLibraryStore((s) => s.showPlaylist);
+
+  return (
+    <ContextMenu
+      label={`${playlist.name} actions`}
+      items={[
+        {
+          label: "Play",
+          disabled: playlist.trackCount === 0,
+          onSelect: () => void playPlaylist(playlist),
+        },
+        { kind: "separator" },
+        {
+          label: "Export…",
+          disabled: playlist.trackCount === 0,
+          onSelect: () => onExport?.(playlist),
+        },
+      ]}
+      render={<li />}
+    >
+      <button
+        type="button"
+        className="sidebar-item"
+        aria-current={current ? "page" : undefined}
+        onClick={() => void showPlaylist(playlist)}
+      >
+        <Icon name={icon} size={ICON_SIZE} className="sidebar-icon" />
+        <span className="sidebar-label">{playlist.name}</span>
+      </button>
+    </ContextMenu>
+  );
+});

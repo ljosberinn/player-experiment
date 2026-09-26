@@ -277,6 +277,37 @@ describe("refresh", () => {
     expect(useLibraryStore.getState().pages.size).toBe(0);
   });
 
+  it("keeps the rows on screen through a reload, and asks for them again", async () => {
+    await useLibraryStore.getState().refresh();
+    await useLibraryStore.getState().ensureRange(0, 10);
+    const before = useLibraryStore.getState().rowAt(3);
+    queryTracksMock.mockClear();
+
+    await useLibraryStore.getState().refresh(true);
+
+    // Still drawn while the replacement is out, rather than a placeholder.
+    expect(useLibraryStore.getState().rowAt(3)).toBe(before);
+    expect(useLibraryStore.getState().stalePages).toEqual(new Set([0]));
+
+    await useLibraryStore.getState().ensureRange(0, 10);
+
+    expect(queryTracksMock).toHaveBeenCalledTimes(1);
+    expect(useLibraryStore.getState().stalePages.size).toBe(0);
+    // It came back the same, so it is the same object.
+    expect(useLibraryStore.getState().rowAt(3)).toBe(before);
+  });
+
+  it("forgets stale pages when the query itself changes", async () => {
+    await useLibraryStore.getState().refresh();
+    await useLibraryStore.getState().ensureRange(0, 10);
+    await useLibraryStore.getState().refresh(true);
+
+    await useLibraryStore.getState().refresh();
+
+    expect(useLibraryStore.getState().pages.size).toBe(0);
+    expect(useLibraryStore.getState().stalePages.size).toBe(0);
+  });
+
   it("surfaces a backend failure instead of throwing", async () => {
     statsMock.mockRejectedValue("db is locked");
 

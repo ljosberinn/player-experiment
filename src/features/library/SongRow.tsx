@@ -1,4 +1,5 @@
 import type React from "react";
+import { memo } from "react";
 import type { Track } from "../../ipc";
 import {
   consumeTrackDragClick,
@@ -61,6 +62,10 @@ function offsetWithin(event: React.PointerEvent<HTMLElement>): number {
  * there were re-created - cells, handlers and all - on every render of the
  * body. A flick down a page cost thousands of cell renders.
  *
+ * `memo` as well, because the compiler caches what a row returns, not whether
+ * it is called: without it every row in the window still ran for each click
+ * and each scroll frame, and react-scan outlined all of them.
+ *
  * That puts the whole weight on prop stability, which is why every prop here
  * is a per-row fact rather than a piece of table state: `selected` and
  * `playing` rather than the selection and the playing id, `drop` rather than
@@ -71,7 +76,7 @@ function offsetWithin(event: React.PointerEvent<HTMLElement>): number {
  * same reason the table's window keydown listener does - so a row subscribes
  * to nothing.
  */
-export function SongRow({
+export const SongRow = memo(function SongRow({
   track,
   rowIndex,
   top,
@@ -247,4 +252,4 @@ export function SongRow({
       ))}
     </tr>
   );
-}
+});

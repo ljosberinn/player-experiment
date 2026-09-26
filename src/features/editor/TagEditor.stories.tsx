@@ -3,6 +3,7 @@ import { fn, screen, userEvent } from "storybook/test";
 import { HARBOUR_LIGHTS, LIBRARY } from "../../../.storybook/fixtures";
 import { editingHandlers } from "../../../.storybook/handlers";
 import type { Track } from "../../ipc";
+import { useEditorStore } from "./store";
 import { TagEditor } from "./TagEditor";
 
 function byId(id: number): Track {
@@ -45,5 +46,8 @@ export const StagedArtwork: Story = {
 };
 
 export const Writing: Story = {
-  args: { tracks: HARBOUR_LIGHTS, progress: { done: 3, total: HARBOUR_LIGHTS.length } },
+  args: { tracks: HARBOUR_LIGHTS },
+  beforeEach: () => {
+    useEditorStore.setState({ progress: { done: 3, total: HARBOUR_LIGHTS.length } });
+  },
 };

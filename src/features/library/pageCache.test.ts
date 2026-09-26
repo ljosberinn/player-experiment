@@ -74,6 +74,16 @@ describe("missingPages", () => {
 
     expect(missingPages([3], new Map(), inFlight)).toEqual([]);
   });
+
+  it("asks again for a stale page it still holds, once", () => {
+    const cached: PageState = new Map([
+      [0, page(0)],
+      [1, page(1)],
+    ]);
+
+    expect(missingPages([0, 1], cached, new Set(), new Set([1]))).toEqual([1]);
+    expect(missingPages([0, 1], cached, new Set([1]), new Set([1]))).toEqual([]);
+  });
 });
 
 describe("rowAt", () => {
