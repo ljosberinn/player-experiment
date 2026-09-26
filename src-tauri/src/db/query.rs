@@ -146,6 +146,9 @@ impl BrowseKind {
     ///
     /// Only albums are a release. The other two are single-column keys and
     /// their identity is the key itself.
+    ///
+    /// Migration 20 indexes each of these verbatim, which is all that keeps a
+    /// drill-in from scanning the library: change one and change the index.
     fn identity_sql(self) -> String {
         match self {
             Self::Albums => release_identity(),

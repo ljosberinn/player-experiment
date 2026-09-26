@@ -417,57 +417,56 @@ fn browsing_stays_cheap_on_every_grouping() {
     }
 }
 
-/// A drill-in filters on the group's identity folded to NOCASE, which no index
-/// serves, so each of its pages reads the library once - issue 165.
-const DRILLED: Work = one_pass(30, 2);
-
-#[test]
-fn drilling_into_a_group_reads_the_library_once() {
-    let (_dir, db) = seeded_library();
-    let conn = counted(&db);
-    let q = TrackQuery {
-        browse: Some(BrowseFilter {
-            kind: BrowseKind::Artists,
-            id: Some("Artist042".to_owned()),
-        }),
-        limit: 100,
-        ..Default::default()
-    };
-
-    let (work, rows) = work_of(|| query::query_tracks(&conn, &q).unwrap());
-    assert_eq!(rows.len(), 40);
-    assert_within("artist drill-in", DRILLED, work);
+/// A drill-in reads its group through an expression index, so everything it
+/// runs costs the group rather than the library. Per row of the group rather
+/// than per page: the release ordering is a window over the whole drill-in,
+/// which sorts all of it to cut the first page.
+const fn drilled(rows: u64) -> Work {
+    Work {
+        statements: 1,
+        steps: 500 * rows,
+        scanned: 0,
+        sorts: 2,
+        commits: 0,
+    }
 }
 
 #[test]
-fn listing_a_drill_ins_releases_costs_what_a_browse_grouping_does() {
+fn drilling_into_a_group_reads_only_the_group() {
     let (_dir, db) = seeded_library();
     let conn = counted(&db);
 
-    // A genre is the worst case the view has: the fixture cycles 20 of them,
-    // so this is a twentieth of the library grouped by release - far more than
-    // the artist drill-in above, and the one shape where a `GROUP BY` over a
-    // column with no index could go quadratic instead of merely scanning.
-    let q = TrackQuery {
-        browse: Some(BrowseFilter {
-            kind: BrowseKind::Genres,
-            id: Some("Genre07".to_owned()),
-        }),
-        ..Default::default()
-    };
+    // The fixture cycles 250 artists, 20 genres and lcm(800, 250) = 4000
+    // (album, artist) pairs. A genre is the worst case the view has: a
+    // twentieth of the library, grouped into 200 releases. The artist is
+    // lower-cased because the index has to serve the NOCASE fold too.
+    for (kind, id, rows) in [
+        (BrowseKind::Artists, "artist042", R / 250),
+        (BrowseKind::Albums, "Album042\u{1f}Artist042", 3),
+        (BrowseKind::Genres, "Genre07", R / 20),
+    ] {
+        let q = TrackQuery {
+            browse: Some(BrowseFilter {
+                kind,
+                id: Some(id.to_owned()),
+            }),
+            limit: 100,
+            ..Default::default()
+        };
+        let budget = drilled(rows);
 
-    // Unpaged like `browse_groups`, so it gets that budget rather than a
-    // page's: what this catches is the shape going wrong, not the scan.
-    let (work, releases) = work_of(|| query::release_groups(&conn, &q).unwrap());
-    assert!(!releases.is_empty());
-    assert_within("genre drill-in releases", one_pass(200, 2), work);
+        let (work, page) = work_of(|| query::query_tracks(&conn, &q).unwrap());
+        assert_eq!(page.len() as u64, rows.min(100), "{kind:?} page");
+        assert_within(&format!("{kind:?} drill-in page"), budget, work);
 
-    // And the rows themselves must stay a drill-in: the release ordering is a
-    // window function over it, which sorts it, and that sort is the thing
-    // that could quietly turn a page into a sort of every partition.
-    let (work, rows) = work_of(|| query::query_tracks(&conn, &q).unwrap());
-    assert_eq!(rows.len(), 100);
-    assert_within("genre drill-in page", DRILLED, work);
+        let (work, stats) = work_of(|| query::library_stats(&conn, &q).unwrap());
+        assert_eq!(u64::from(stats.tracks), rows, "{kind:?} totals");
+        assert_within(&format!("{kind:?} drill-in totals"), budget, work);
+
+        let (work, releases) = work_of(|| query::release_groups(&conn, &q).unwrap());
+        assert!(!releases.is_empty());
+        assert_within(&format!("{kind:?} drill-in releases"), budget, work);
+    }
 }
 
 #[test]
