@@ -63,7 +63,7 @@ interface LastfmState {
   dismissError: () => void;
   /**
    * Imports `username`'s history. `fresh` drops what earlier imports brought
-   * in and starts from the top. A failure goes to the status popover, like any
+   * in and starts from the top. A failure goes to the error dialog, like any
    * other operation the user started.
    */
   importHistory: (username: string, fresh: boolean) => Promise<void>;
@@ -118,7 +118,7 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
 
   watch: async () => {
     const stopDisconnected = await onLastfmDisconnected(() => {
-      // Nothing the user did, so it is not a popover - but the Account menu is
+      // Nothing the user did, so it is not an error dialog - but the Account menu is
       // claiming an account that no longer works, and the pane has to explain
       // why the connection went away on its own.
       generation += 1;
@@ -222,7 +222,7 @@ export const useLastfmStore = create<LastfmState>((set, get) => ({
       try {
         set({ imported: (await lastfmStatus()).import });
       } catch {
-        // Left as it was: the popover already says something went wrong.
+        // Left as it was: the error dialog already says something went wrong.
       }
     } finally {
       set({ importing: false, importProgress: null });

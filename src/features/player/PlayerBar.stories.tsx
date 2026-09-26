@@ -1,44 +1,21 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useRef } from "react";
 import { LIBRARY } from "../../../.storybook/fixtures";
 import { playerHandlers } from "../../../.storybook/handlers";
 import type { Track } from "../../ipc";
 import { useLovedStore } from "../love/store";
-import { NowPlayingStatus } from "./NowPlayingStatus";
-import { PlayerLove } from "./PlayerLove";
-import { PlayerRepeat } from "./PlayerRepeat";
-import { PlayerScrubber } from "./PlayerScrubber";
-import { PlayerTransport } from "./PlayerTransport";
-import { PlayerVolume } from "./PlayerVolume";
+import { PlayerBar } from "./PlayerBar";
 import { usePlayerStore } from "./store";
 
 function byId(id: number): Track {
   return LIBRARY.find((entry) => entry.id === id) as Track;
 }
 
-/** The player bar as `App` lays it out, pinned to the foot of the window. */
+/** The player bar pinned to the foot of the window, as `App` places it. */
 function Bar() {
-  const statusRef = useRef<HTMLDivElement>(null);
   return (
     <div className="app">
       <div style={{ flex: 1 }} />
-      <div className="player-bar">
-        <div className="player-bar-left">
-          <NowPlayingStatus ref={statusRef} />
-          <PlayerLove />
-        </div>
-        <div className="player-bar-centre">
-          <div className="player-controls">
-            <span className="player-controls-slot" aria-hidden="true" />
-            <PlayerTransport />
-            <PlayerRepeat />
-          </div>
-          <PlayerScrubber />
-        </div>
-        <div className="player-bar-right">
-          <PlayerVolume />
-        </div>
-      </div>
+      <PlayerBar />
     </div>
   );
 }
@@ -59,9 +36,6 @@ const meta = {
 } satisfies Meta<typeof Bar>;
 
 export default meta;
-
-/** Before the first song: the box holds its place, the rail is empty. */
-export const NothingLoaded: StoryObj<typeof meta> = {};
 
 /** A loved song, a third of the way in. */
 export const Playing: StoryObj<typeof meta> = {

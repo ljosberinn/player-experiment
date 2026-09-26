@@ -10,7 +10,7 @@ is loaded paused at that position; Play continues from there.
   update until Play.
 - Queue: restore the track only, or its queue context too — decide.
 
-Interacts with [153](153-no-player-bar-until-something-plays.md): a restored track
+Interacts with [153](../done/153-no-player-bar-until-something-plays.md): a restored track
 is loaded, so the bar shows.
 
 ## Testing

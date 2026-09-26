@@ -594,11 +594,11 @@ absences are what nobody notices coming back — hence the guards in
   `pendingRemoval` and renders the one `ConfirmDialog`, so the question is asked
   the same way whichever route asked it.
 - **There is one status channel**, `features/shell/statusStore.ts`: one
-  `message` behind the error popover and one `notice` behind the content line,
+  `message` behind the error dialog and one `notice` behind the content line,
   written through the free `report`, `notify` and `dismiss`. No feature store
   carries an `error` of its own — `App` used to merge five of them and pick the
   first, which is the same thing said less directly. One slot, last wins, and
-  an operation clears the popover as it starts so a successful retry is not
+  an operation clears the dialog as it starts so a successful retry is not
   read under the failure before it. Two deliberate exceptions: the updater
   keeps a diagnostic `error` behind `status: "failed"`, deliberately unshown
   because a check that fails usually means the machine is offline, and last.fm
@@ -649,8 +649,11 @@ absences are what nobody notices coming back — hence the guards in
   to `Apex` when nothing is playing. It shows in the frame, in Alt+Tab and in
   the taskbar — the frame since phase 119 gave the decorations back to the OS.
   `tauri.conf.json` still sets the idle title for the first frame.
-- `NowPlaying` and the heart beside it are **hidden, not absent**, when nothing
-  is playing, so the player bar keeps its shape. Clicking the cover or the title
+- `PlayerBar` draws **nothing while stopped**, and keys that on `status`, not
+  `track`: `Engine::stop` keeps the queue index for Play to resume from, so
+  the snapshot still names a track. Errors are an alert dialog
+  (`ErrorDialog`) rather than a popover anchored to the bar, because a failed
+  load is exactly when the bar goes. Clicking the cover or the title
   opens the track's album, or its artist, through one store action that writes
   `tab` and `browse` together and refreshes once; the artist line opens the
   artist the track is filed under (`album_artist ?? artist`). The heart is

@@ -79,8 +79,8 @@ export async function describePlayback(): Promise<string> {
     // A load failure arrives on `player://error` and lands here. On a runner
     // that fell back to the shipped sink this reads "no audio output device",
     // which would mean the silent-sink variable never reached the app.
-    safe("errorPopup", () =>
-      browser.execute(() => document.querySelector(".error-popup")?.textContent ?? ""),
+    safe("errorDialog", () =>
+      browser.execute(() => document.querySelector("[role='alertdialog']")?.textContent ?? ""),
     ),
     safe("statusTitle", () =>
       browser.execute(() => document.querySelector(".now-playing-title")?.textContent ?? ""),

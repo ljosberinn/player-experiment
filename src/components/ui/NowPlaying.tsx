@@ -1,4 +1,3 @@
-import type React from "react";
 import type { Track } from "../../ipc";
 import { coverUrl } from "../../ipc";
 import { fileNameOf } from "../../lib/format";
@@ -7,26 +6,21 @@ import { fileNameOf } from "../../lib/format";
  * Cover art, the title and the artist, at the left of the player bar.
  *
  * What is left of the old `StatusDisplay` once phase 35 took the scrubber out of
- * it and moved the library summary down to the footer. The box keeps its ref:
- * it is where the app says what is playing, and therefore where a playback error
- * belongs to be pointed at.
+ * it and moved the library summary down to the footer.
  *
- * Present when nothing is playing as well, and hidden rather than absent, so
- * the bar looks the same shape before and after the first song. `visibility`
- * keeps the box and drops the contents.
+ * Without a track the box is hidden rather than absent, so it keeps its
+ * place. `visibility` keeps the box and drops the contents.
  */
 export function NowPlaying({
   track,
   onReveal,
   onShowArtist,
-  ref,
 }: {
   track: Track | null;
   /** The cover or the title clicked: "show me where this is". */
   onReveal?: () => void;
   /** The artist clicked. */
   onShowArtist?: () => void;
-  ref?: React.Ref<HTMLDivElement>;
 }) {
   const title = track === null ? "Nothing playing" : (track.title ?? fileNameOf(track.path));
   const artist = track?.artist ?? null;
@@ -35,7 +29,6 @@ export function NowPlaying({
     <div
       className="now-playing"
       data-testid="now-playing"
-      ref={ref}
       // Inline rather than a class: `visibility: hidden` already takes the box
       // out of the accessibility tree, so this is the whole of the change.
       style={track === null ? { visibility: "hidden" } : undefined}

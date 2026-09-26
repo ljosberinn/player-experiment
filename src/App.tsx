@@ -1,10 +1,10 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 import { AppBar } from "./components/ui/AppBar";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
-import { ErrorPopover } from "./components/ui/ErrorPopover";
+import { ErrorDialog } from "./components/ui/ErrorDialog";
 import { LibraryNav } from "./components/ui/LibraryNav";
 import { Sidebar } from "./components/ui/Sidebar";
 import { CrashNotice } from "./features/crash/CrashNotice";
@@ -23,12 +23,7 @@ import { SongTable } from "./features/library/SongTable";
 import { useLibraryStore, VIEW_TITLES } from "./features/library/store";
 import { useSelectionShortcuts } from "./features/library/useSelectionShortcuts";
 import { useLovedStore } from "./features/love/store";
-import { NowPlayingStatus } from "./features/player/NowPlayingStatus";
-import { PlayerLove } from "./features/player/PlayerLove";
-import { PlayerRepeat } from "./features/player/PlayerRepeat";
-import { PlayerScrubber } from "./features/player/PlayerScrubber";
-import { PlayerTransport } from "./features/player/PlayerTransport";
-import { PlayerVolume } from "./features/player/PlayerVolume";
+import { PlayerBar } from "./features/player/PlayerBar";
 import { usePlayerStore } from "./features/player/store";
 import { useGlobalMediaKeys } from "./features/player/useGlobalMediaKeys";
 import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
@@ -62,8 +57,6 @@ export function App() {
   const [confirmRemoveMissing, setConfirmRemoveMissing] = useState(false);
   /** Which category Settings is open on, or null while it is closed. */
   const [settings, setSettings] = useState<SettingsCategory | null>(null);
-  /** What the error popover points at: the box that says what is playing. */
-  const statusRef = useRef<HTMLDivElement>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const loadDynamicBg = useDynamicBackgroundStore((s) => s.load);
   // Launch lifecycle, and nothing else: who is connected is `AppMenus`'
@@ -447,32 +440,10 @@ export function App() {
           about where it belongs in the reading order, not on screen. */}
       <CrashNotice />
 
-      {/* Last, under the content. Laid out like Spotify's: what is playing,
-          the controls over the playhead, the volume.
-
-          Each of these subscribes to its own store values rather than taking
-          them as props. They are the things that change on a schedule of their
-          own - the playhead four times a second, the volume rail at the
-          pointer's sampling rate, the loved set - and read from here they
-          re-rendered the whole app, song table included. */}
-      <div className="player-bar">
-        <div className="player-bar-left">
-          <NowPlayingStatus ref={statusRef} />
-          <PlayerLove />
-        </div>
-        <div className="player-bar-centre">
-          <div className="player-controls">
-            {/* Repeat's width, so Play sits over the middle of the rail. */}
-            <span className="player-controls-slot" aria-hidden="true" />
-            <PlayerTransport />
-            <PlayerRepeat />
-          </div>
-          <PlayerScrubber />
-        </div>
-        <div className="player-bar-right">
-          <PlayerVolume />
-        </div>
-      </div>
+      {/* Last, under the content. Draws nothing while stopped, and
+          subscribes to that on its own behalf so App does not re-render for
+          it. */}
+      <PlayerBar />
 
       {editorTracks ? (
         <TagEditor
@@ -500,11 +471,9 @@ export function App() {
           re-render for a dialog it does not own. */}
       <ReleaseLookup />
 
-      {/* Anchored to the status display rather than stacked above the table.
-          As a paragraph it pushed the rows down as it appeared, shifting the
-          whole view under the pointer, and it sat nowhere near the thing it
-          was about. */}
-      <ErrorPopover message={statusMessage} anchor={statusRef} onDismiss={dismissStatus} />
+      {statusMessage === null ? null : (
+        <ErrorDialog message={statusMessage} onDismiss={dismissStatus} />
+      )}
 
       {confirmRemoveMissing ? (
         <ConfirmDialog

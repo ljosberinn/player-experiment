@@ -102,7 +102,7 @@ describe("the changes job", () => {
       // build runs the generator too; `screenshots.mjs` is an e2e step.
       ["scripts/notices.mjs"],
       ["scripts/screenshots.mjs"],
-      ["e2e/specs/transport.test.ts"],
+      ["e2e/specs/player-bar.test.ts"],
       ["e2e/wdio.conf.ts"],
       ["vite.config.ts"],
       ["biome.json"],

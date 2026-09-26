@@ -130,7 +130,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     } catch {
       // A sidebar that cannot read its own arrangement opens every section,
       // which is the state it would have on a first run. Not worth the one
-      // error popover the app has - nothing the user did has failed.
+      // error dialog the app has - nothing the user did has failed.
     }
   },
 

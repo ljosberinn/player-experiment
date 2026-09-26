@@ -33,7 +33,7 @@ Known, decided, and not scheduled. Anything with work attached lives in
   absence — so songs on a drive that has been unplugged are neither marked
   missing nor removed until the user runs a Rescan.
 - **A failed unattended pass is silent.** It was not asked for, so it is not an
-  error popover; the line in `main.log` is where it says so.
+  error dialog; the line in `main.log` is where it says so.
 - **A first release lookup over a large library takes most of a day.** Two
   MusicBrainz calls per release, one request in flight at a time and a second
   and a half between them, which is roughly seven hours for eight thousand

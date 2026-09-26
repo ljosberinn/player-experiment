@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { contrast, flatten, luminance } from "../contrast";
+import { illegible } from "../legibility";
 import { chooseFromMenu } from "../menu";
 import { clearGround, GROUNDS, type Ground, setGround } from "../theme";
 
@@ -357,135 +358,19 @@ describe("appearance, in the engine that actually lays it out", () => {
         expect(problems).toEqual([]);
       });
 
-      it("makes a control's shape visible against what it sits on", async () => {
-        // Reported by the user after the first version of this suite passed:
-        // the volume slider's rail was `--skeleton`, the loading-placeholder
-        // colour tuned for `--surface`, but the slider sits on `--chrome` in
-        // the toolbar. That was #e3e6ea on #e8e8e8 - 1.02:1, the same
-        // magnitude as the invisible field border, and this suite missed it
-        // because it only looked at text and at field borders.
-        //
-        // WCAG 1.4.11 asks 3:1 of the parts of a control needed to understand
-        // it, and a slider you cannot see the extent of is exactly that.
-        const parts = await browser.execute(
-          (selectors: string[]) =>
-            selectors.flatMap((selector) => {
-              const element = document.querySelector(selector);
-              if (element === null) {
-                return [];
-              }
-              const style = getComputedStyle(element);
-              // Every fill from here up to the root, front to back. A single
-              // layer is not enough since phase 33: a highlight is an 18% wash,
-              // and reading it alone reports it as solid.
-              let painter = element.parentElement;
-              const stack: string[] = [];
-              while (painter !== null) {
-                const fill = getComputedStyle(painter).backgroundColor;
-                if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-                  stack.push(fill);
-                }
-                painter = painter.parentElement;
-              }
-              const behind = stack.length === 0 ? "" : JSON.stringify(stack);
-              // Either edge may carry it: a control can be legible through its
-              // own fill, or through an outline drawn around a fill that is not.
-              return [
-                {
-                  selector,
-                  behind,
-                  fill: style.backgroundColor,
-                  border: style.borderTopWidth === "0px" ? "" : style.borderTopColor,
-                },
-              ];
-            }),
-          [".volume-rail", ".scrubber-rail", ".volume-thumb"],
-        );
-
-        // Guards the guard, and it is not hypothetical: a selector that matches
-        // nothing contributes no entry, so when the playhead's rail was renamed
-        // in phase 35 this test went on passing while measuring two controls
-        // instead of three. Every named selector has to be found.
-        expect(parts).toHaveLength(3);
-
-        const invisible = parts
-          .filter((part) => part.behind !== "")
-          .map((part) => ({
-            ...part,
-            best: Math.max(
-              part.fill === "" ? 0 : contrast(part.fill, flatten(JSON.parse(part.behind))),
-              part.border === "" ? 0 : contrast(part.border, flatten(JSON.parse(part.behind))),
-            ),
-          }))
-          .filter((part) => part.best < 3)
-          .map(
-            (part) =>
-              `${part.selector}: fill ${part.fill || "none"} / border ${part.border || "none"} on ${part.behind} = ${part.best.toFixed(2)}:1`,
-          );
-
-        expect(invisible).toEqual([]);
-      });
-
       it("keeps the chrome legible against what it sits on", async () => {
         // Not one defect but the class of them: a colour pair that works in one
         // theme and collapses in the other, which is how two of the three got
-        // through.
-        // Only the foreground is named. The background is *resolved* by walking
-        // up to the first ancestor that actually paints one, because naming it
-        // by hand is how the first version of this test produced a false
-        // positive: it measured the selected tab's white text against
-        // `.content-header` and reported 1.23:1, when the tab paints its own
-        // accent fill and the real ratio is fine.
-        const measured = await browser.execute(
-          (selectors: string[]) =>
-            selectors.map((selector) => {
-              const element = document.querySelector(selector);
-              if (element === null) {
-                return { selector, text: "", behind: "", from: "" };
-              }
-              // Starts at the element itself and keeps going to the root: a
-              // selected row is an 18% accent wash over the table, so the fill it
-              // paints is not the colour its text actually sits on.
-              let painter: Element | null = element;
-              let from: Element | null = null;
-              const stack: string[] = [];
-              while (painter !== null) {
-                const fill = getComputedStyle(painter).backgroundColor;
-                if (fill !== "" && fill !== "rgba(0, 0, 0, 0)" && fill !== "transparent") {
-                  stack.push(fill);
-                  from ??= painter;
-                }
-                painter = painter.parentElement;
-              }
-              return {
-                selector,
-                text: getComputedStyle(element).color,
-                behind: stack.length === 0 ? "" : JSON.stringify(stack),
-                from: from === null ? "" : from.className.toString() || from.tagName,
-              };
-            }),
-          [
+        // through. The player bar's text is measured in `player-bar.test.ts`,
+        // the first spec with a song to load.
+        expect(
+          await illegible([
             ".view-summary",
-            ".now-playing-title",
-            ".now-playing-subtitle",
-            ".scrubber-time",
             ".sidebar-item[aria-current='page']",
             ".sidebar-item",
             ".empty-state",
-          ],
-        );
-
-        const illegible = measured
-          .filter((one) => one.text !== "" && one.behind !== "")
-          .map((one) => ({ ...one, ratio: contrast(one.text, flatten(JSON.parse(one.behind))) }))
-          // 4.5:1 is the WCAG AA threshold for body text.
-          .filter((one) => one.ratio <= 4.5)
-          .map(
-            (one) =>
-              `${one.selector} (${one.text}) on ${one.from} (${one.behind}) = ${one.ratio.toFixed(2)}:1`,
-          );
-
-        expect(illegible).toEqual([]);
+          ]),
+        ).toEqual([]);
       });
     });
   }
@@ -546,126 +431,26 @@ describe("appearance, in the engine that actually lays it out", () => {
     expect([...wrapped, ...clipped]).toEqual([]);
   });
 
-  it("fills the play button with the accent, not just a ring of it", async () => {
-    // The defect this exists for, and it reached CI: `.transport button` sets
-    // the shape for all three transport buttons and `.transport-play` sets the
-    // accent fill for the middle one - but the first is a class plus an
-    // element and the second is a class alone, so the broader rule won
-    // wherever they overlapped however far above it was written. The button
-    // rendered as a dark circle with an amber halo round it and nothing in the
-    // middle: the app's single most prominent control, absent.
-    //
-    // Nothing could have caught this by reading the stylesheet, because both
-    // rules were correct in isolation. The cascade is a property of the
-    // running document, so this asks the running document.
-    const play = await browser.execute(() => {
-      const button = document.querySelector(".transport-play");
-      const pill = document.querySelector(".transport");
-      if (button === null || pill === null) {
-        return null;
-      }
+  it("gives the body the rest of the window while nothing is loaded", async () => {
+    // A 3px accent strip and a 40px app bar, then the body to the bottom edge.
+    // The player bar joins below it once a song loads; `player-bar.test.ts`
+    // measures the window with it.
+    const measured = await browser.execute(() => {
+      const appbar = document.querySelector(".appbar")?.getBoundingClientRect();
+      const body = document.querySelector(".body")?.getBoundingClientRect();
       return {
-        fill: getComputedStyle(button).backgroundColor,
-        glyph: getComputedStyle(button).color,
-        behind: getComputedStyle(pill).backgroundColor,
+        appbar: appbar === undefined ? -1 : Math.round(appbar.height),
+        gap: appbar === undefined || body === undefined ? -1 : Math.round(body.top - appbar.bottom),
+        bodyBottom: body === undefined ? -1 : Math.round(body.bottom),
+        playerBar: document.querySelector(".player-bar") !== null,
+        height: window.innerHeight,
       };
     });
 
-    expect(play).not.toBe(null);
-    const { fill, glyph, behind } = play as NonNullable<typeof play>;
-
-    // Painted at all, first: a transparent fill is what the defect looked like.
-    expect(fill).not.toBe("rgba(0, 0, 0, 0)");
-    expect(fill).not.toBe("transparent");
-    // And it has to stand out from the band it sits in, which is the whole
-    // job of the one solid accent fill in the chrome.
-    expect(contrast(fill, behind)).toBeGreaterThan(3);
-    // The glyph on top of it stays readable, which is what `--on-accent` is
-    // for - white on this amber would be 2.60:1.
-    expect(contrast(glyph, fill)).toBeGreaterThan(4.5);
-  });
-
-  it("stacks the bands of chrome in order, at the heights the stylesheet states", async () => {
-    // A 3px accent strip, a 40px app bar, the body, and the 100px player bar
-    // at the very bottom since 142. The status bar between the last two went
-    // in 152. Every one of these is
-    // stated in the stylesheet, so a value that drifted would be a silent
-    // visual regression - the kind only the screenshot catches, and only if
-    // somebody looks at it.
-    const measured = await browser.execute(() => ({
-      bands: [".appbar", ".body", ".player-bar"].map((selector) => {
-        const box = document.querySelector(selector)?.getBoundingClientRect();
-        return {
-          selector,
-          top: box === undefined ? -1 : Math.round(box.top),
-          bottom: box === undefined ? -1 : Math.round(box.bottom),
-        };
-      }),
-      height: window.innerHeight,
-    }));
-
-    const heights = Object.fromEntries(
-      measured.bands.map((band) => [band.selector, band.bottom - band.top]),
-    );
-    expect(heights).toMatchObject({ ".appbar": 40, ".player-bar": 100 });
-
-    // Each band starts where the one above it ends, and nothing is below the
-    // player bar.
-    const gaps = measured.bands
-      .slice(1)
-      .map((band, index) => ({ band, above: measured.bands[index] }))
-      .filter(({ band, above }) => above !== undefined && Math.abs(band.top - above.bottom) > 1)
-      .map(({ band, above }) => `${band.selector} starts at ${band.top}, not ${above?.bottom}`);
-    expect(gaps).toEqual([]);
-    expect(Math.abs((measured.bands.at(-1)?.bottom ?? 0) - measured.height)).toBeLessThanOrEqual(1);
-  });
-
-  it("keeps the player bar's columns on one row, with Play over the middle", async () => {
-    // Three columns, the outer two equal, so the centre column - and the play
-    // button over the rail in it - stays centred in the window whatever the
-    // title on the left runs to.
-    const layout = await browser.execute(() => {
-      const bar = document.querySelector(".player-bar");
-      const play = document.querySelector(".transport-play")?.getBoundingClientRect();
-      const rail = document.querySelector(".scrubber-rail")?.getBoundingClientRect();
-      if (bar === null || play === undefined || rail === undefined) {
-        return null;
-      }
-      const columns = Array.from(bar.children).map((child) => {
-        const box = child.getBoundingClientRect();
-        return {
-          what: child.className.toString(),
-          // Centres rather than tops: the centre column is two rows tall and
-          // the other two are one.
-          middle: Math.round(box.top + box.height / 2),
-          right: Math.round(box.right),
-        };
-      });
-      return {
-        columns,
-        width: window.innerWidth,
-        play: play.left + play.width / 2,
-        rail: rail.left + rail.width / 2,
-      };
-    });
-
-    expect(layout).not.toBe(null);
-    const { columns, width, play, rail } = layout as NonNullable<typeof layout>;
-    expect(columns.length).toBe(3);
-
-    const middle = Math.min(...columns.map((column) => column.middle));
-    const offenders = [
-      ...columns
-        .filter((column) => column.middle > middle + 12)
-        .map((column) => `${column.what} sits ${column.middle - middle}px below the row`),
-      ...columns
-        .filter((column) => column.right > width + 1)
-        .map((column) => `${column.what} runs ${column.right - width}px past the window`),
-    ];
-
-    expect(offenders).toEqual([]);
-    expect(Math.abs(play - width / 2)).toBeLessThanOrEqual(2);
-    expect(Math.abs(play - rail)).toBeLessThanOrEqual(2);
+    expect(measured.appbar).toBe(40);
+    expect(Math.abs(measured.gap)).toBeLessThanOrEqual(1);
+    expect(measured.playerBar).toBe(false);
+    expect(Math.abs(measured.bodyBottom - measured.height)).toBeLessThanOrEqual(1);
   });
 
   it("draws the accent strip along the top of the window", async () => {

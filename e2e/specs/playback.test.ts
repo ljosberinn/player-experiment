@@ -25,8 +25,8 @@ import { capture } from "../screenshot";
  * the spec before it left - and a sort of its own would be one more thing to
  * put back.
  *
- * Runs after `logfile.test.ts` and before `dynamic-background.test.ts`, which
- * plays its own tracks and stops the player when it is done - so what this
+ * Runs after `logfile.test.ts` and before `player-bar.test.ts`, which plays
+ * its own track and stops the player when it is done - so what this
  * leaves behind reaches nothing that reads it. It stops the player anyway,
  * which is the state `shortcuts.test.ts` hands on and therefore the one every
  * spec between them has been written against.
@@ -170,7 +170,7 @@ describe("a queue that is playing", () => {
 
     await endTrack();
 
-    // `transport.test.ts` proves the flag reaches the player and comes back.
+    // `player-bar.test.ts` proves the flag reaches the player and comes back.
     // What it cannot prove is the thing the flag is for: that the end of a
     // track means this track again rather than the next one.
     await browser.waitUntil(async () => (await snapshot()).positionMs < 3_000, {
