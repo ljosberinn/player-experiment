@@ -29,7 +29,7 @@ vi.mock("../../ipc", () => ({
   playlistOrder: vi.fn(async () => ({ sort: null, limit: null })),
 }));
 
-const menus = vi.hoisted(() => ({ renders: [] as string[] }));
+const menus = vi.hoisted(() => ({ renders: [] as (string | undefined)[] }));
 
 vi.mock("../../components/ui/ContextMenu", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../components/ui/ContextMenu")>();
