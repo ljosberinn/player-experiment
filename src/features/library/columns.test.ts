@@ -39,6 +39,7 @@ function track(overrides: Partial<Track> = {}): Track {
     play_count: 7,
     last_played_at: null,
     missing_since: null,
+    release_mbid: null,
     release_group_mbid: null,
     ...overrides,
   };
@@ -92,6 +93,11 @@ describe("column rendering", () => {
   it("prints a bit rate the way the release gutter does", () => {
     expect(render("bitrate", track({ bitrate: 320 }))).toBe("320 kbps");
     expect(render("bitrate", track({ bitrate: null }))).toBe("");
+  });
+
+  it("marks a song with a MusicBrainz release and leaves the rest blank", () => {
+    expect(render("releaseMbid", track({ release_mbid: "bb5a" }))).toBe("✓");
+    expect(render("releaseMbid", track({ release_mbid: null }))).toBe("");
   });
 
   it("renders numeric columns as text", () => {

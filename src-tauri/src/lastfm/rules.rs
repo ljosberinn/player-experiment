@@ -104,6 +104,7 @@ mod tests {
             play_count: 0,
             last_played_at: None,
             missing_since: None,
+            release_mbid: None,
             release_group_mbid: None,
         }
     }

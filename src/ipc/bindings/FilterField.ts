@@ -9,10 +9,10 @@
  * [`FilterField::as_sql`] returns a literal.
  *
  * Mostly columns on `tracks`, but not necessarily - a [`FilterFieldKind`] of
- * `Boolean` names a fact the compiler answers with a subquery instead.
+ * `Boolean` names a fact the compiler answers with a predicate of its own.
  *
  * **Adding an arm is forward-incompatible**: an export carries the filter
  * tree verbatim, so an older build meeting a field it does not know fails to
  * read the file. See `docs/knowledge/export-schema.md`.
  */
-export type FilterField = "title" | "artist" | "album" | "albumArtist" | "genre" | "comment" | "path" | "year" | "trackNo" | "discNo" | "durationMs" | "bitrate" | "sampleRate" | "playCount" | "addedAt" | "lastPlayedAt" | "loved";
+export type FilterField = "title" | "artist" | "album" | "albumArtist" | "genre" | "comment" | "path" | "year" | "trackNo" | "discNo" | "durationMs" | "bitrate" | "sampleRate" | "playCount" | "addedAt" | "lastPlayedAt" | "loved" | "releaseMbid";

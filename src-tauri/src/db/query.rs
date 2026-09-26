@@ -163,7 +163,7 @@ pub(crate) const COLUMNS: &str =
                        tracks.track_no, tracks.disc_no, tracks.comment, tracks.bitrate, \
                        tracks.sample_rate, tracks.cover_hash, tracks.added_at, \
                        tracks.play_count, tracks.last_played_at, tracks.missing_since, \
-                       tracks.release_group_mbid";
+                       tracks.release_mbid, tracks.release_group_mbid";
 
 /// Upper bound on a single page, so a bad `limit` cannot ask for the whole
 /// library and blow up the IPC payload.
@@ -190,7 +190,8 @@ pub(crate) fn row_to_track(row: &Row<'_>) -> rusqlite::Result<Track> {
         play_count: row.get(16)?,
         last_played_at: row.get(17)?,
         missing_since: row.get(18)?,
-        release_group_mbid: row.get(19)?,
+        release_mbid: row.get(19)?,
+        release_group_mbid: row.get(20)?,
     })
 }
 

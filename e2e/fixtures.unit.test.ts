@@ -123,6 +123,26 @@ describe("the fixture library's artwork", () => {
   });
 });
 
+describe("the fixture library's MusicBrainz ids", () => {
+  it("writes a release id where Picard does, as user text", () => {
+    const tagged = LIBRARY.find((track) => track.releaseMbid !== undefined);
+    const id3 = tag(fixtureBytes(tagged?.file ?? ""));
+    const at = id3.indexOf("TXXX", 0, "latin1");
+    expect(at, "the tag carries no TXXX frame").toBeGreaterThanOrEqual(0);
+
+    const payload = id3.subarray(at + 10, at + 10 + id3.readUInt32BE(at + 4));
+
+    // Latin-1, then the description lofty maps to the release id, then the id.
+    expect(payload.toString("latin1")).toBe(
+      `\u0000MusicBrainz Album Id\u0000${tagged?.releaseMbid}`,
+    );
+  });
+
+  it("leaves some songs untagged, so the column has both cases", () => {
+    expect(LIBRARY.some((track) => track.releaseMbid === undefined)).toBe(true);
+  });
+});
+
 describe("the PNG it builds by hand", () => {
   const image = picture(tag(fixtureBytes(COVERED?.file ?? "")));
   const parsed = chunks(image);

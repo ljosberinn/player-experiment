@@ -59,6 +59,12 @@ export const ALL_COLUMNS: ColumnDef[] = [
     render: (t) => ADDED.format(t.added_at * 1000),
   },
   { id: "path", label: "Location", width: 422, render: (t) => t.path },
+  {
+    id: "releaseMbid",
+    label: "MusicBrainz",
+    width: 120,
+    render: (t) => (t.release_mbid === null ? "" : "✓"),
+  },
 ];
 
 export const DEFAULT_COLUMN_IDS: SortField[] = [

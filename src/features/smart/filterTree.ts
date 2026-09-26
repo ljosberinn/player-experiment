@@ -59,6 +59,7 @@ export const FIELDS: FieldDef[] = [
   { id: "addedAt", label: "Date Added" },
   { id: "lastPlayedAt", label: "Last Played" },
   { id: "loved", label: "Loved" },
+  { id: "releaseMbid", label: "MusicBrainz Release" },
 ];
 
 /**
@@ -309,6 +310,9 @@ export function setRule(root: FilterGroup, path: Path, rule: FilterRule): Filter
  * `position` needs a static playlist to sit in, and neither exists inside a
  * smart playlist. The backend refuses both, so leaving them out here is the
  * editor agreeing with it rather than the only thing enforcing it.
+ *
+ * `releaseMbid` is left out too, though the backend takes it: ordered by an
+ * opaque id, a cutoff keeps an arbitrary handful of releases.
  */
 export const SORT_FIELDS: { id: SortField; label: string }[] = [
   { id: "title", label: "Title" },

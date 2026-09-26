@@ -577,11 +577,11 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
 - **A built-in is shown in its stored sort, whatever the query asks.** `scope()`
   carries it and `sort_order_by` uses it ahead of relevance too, so a search
   inside Most Played is still most played first. The frontend only draws it.
-- **Not every field is a column.** A `FilterFieldKind::Boolean` field is a
-  fact about the row that `compile_rule` answers with a subquery, above
-  everything that assumes a column - `Loved` reaches `loved` through
-  `tracks.match_key`, and reads "Loved is" with no value at all. The subquery
-  selects `tracks.id`, so `NOT IN` never meets a NULL.
+- **Not every field is a comparison.** A `FilterFieldKind::Boolean` field is a
+  fact about the row that `compile_boolean` answers above everything that
+  assumes a column, and reads "Loved is" with no value at all. `Loved` is a
+  subquery reaching `loved` through `tracks.match_key`; it selects `tracks.id`,
+  so `NOT IN` never meets a NULL. `ReleaseMbid` is `release_mbid IS NOT NULL`.
 - **A new `FilterField` is forward-incompatible for exports** - see
   [export-schema.md](export-schema.md).
 - The backend validates every filter by compiling it before storing.

@@ -112,6 +112,18 @@ function textFrame(id: string, value: string): Buffer {
   return Buffer.concat([header, payload]);
 }
 
+/** One ID3v2.3 user text frame, the kind Picard stores MusicBrainz ids in. */
+function userTextFrame(description: string, value: string): Buffer {
+  const payload = Buffer.concat([
+    Buffer.from([0x00]),
+    Buffer.from(`${description}\u0000${value}`, "latin1"),
+  ]);
+  const header = Buffer.alloc(10);
+  header.write("TXXX", 0, "latin1");
+  header.writeUInt32BE(payload.length, 4);
+  return Buffer.concat([header, payload]);
+}
+
 /**
  * An ID3v2.3 tag.
  *
@@ -128,6 +140,9 @@ function id3(meta: TrackFixture): Buffer {
     textFrame("TCON", meta.genre),
     textFrame("TYER", String(meta.year)),
     textFrame("TRCK", String(meta.trackNo)),
+    ...(meta.releaseMbid === undefined
+      ? []
+      : [userTextFrame("MusicBrainz Album Id", meta.releaseMbid)]),
     ...(meta.cover === undefined ? [] : [apic(png(meta.cover))]),
   ]);
 
@@ -180,6 +195,8 @@ export interface TrackFixture {
    * cover can only show the first half.
    */
   cover?: ReadonlyArray<readonly [number, number, number]>;
+  /** A MusicBrainz release id, on one album only so the column has both cases. */
+  releaseMbid?: string;
 }
 
 /**
@@ -195,6 +212,8 @@ const HARBOUR_COVER = [
   [32, 96, 176],
   [224, 208, 160],
 ] as const;
+
+const HARBOUR_RELEASE = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
 
 /**
  * Six tracks, three albums, three artists.
@@ -223,6 +242,7 @@ export const LIBRARY: TrackFixture[] = [
     frames: 44,
     time: "0:01",
     cover: HARBOUR_COVER,
+    releaseMbid: HARBOUR_RELEASE,
   },
   {
     file: "Blue Room/Harbour/02 Beacon.mp3",
@@ -236,6 +256,7 @@ export const LIBRARY: TrackFixture[] = [
     frames: 82,
     time: "0:02",
     cover: HARBOUR_COVER,
+    releaseMbid: HARBOUR_RELEASE,
   },
   {
     file: "Cascade/Terrace/01 Drift.mp3",
