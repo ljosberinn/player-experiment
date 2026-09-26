@@ -16,6 +16,8 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   ~40 rows whatever the library size. Pages beyond a radius of the viewport are
   evicted.
 - Pages not yet fetched render **skeleton rows** — scrolling never blocks on IPC.
+  A reload after `library://changed` keeps the rows it has and refetches them as
+  `stalePages` instead; see "An answer that did not change keeps its identity".
 - **Every query carries a token.** Responses check it before writing, so a slow
   first search cannot overwrite a later one. The fetch effect keys on the token
   too: a re-sort changes neither the visible range nor the total, and without it
@@ -311,10 +313,48 @@ on every row. `SongTable.renders.test.tsx` counts `ColumnDef.render` calls
 against a 47-row window: a click and a sub-row scroll touch no cell at all, and
 crossing six rows renders six. Before the split those were 235 and 3265.
 
-That also decides what the render test may assert. The `SongTable` stub has no
-subscription, so its count measures `App`, not the real table; the honest
-subject for a selection change is `PlaylistSidebar`, which wants nothing from
-the selection.
+**`SongRow` and `ColumnHeader` are `memo`, the only two calls in `src`.** The
+compiler caches what a component returns, not whether it is called, and a
+compiled parent is what skips the call. `SongTable` is not compiled, so without
+`memo` every row in the window and the header still ran on each click and each
+scroll frame — no cell rendered, but react-scan outlined all of them. The same
+file counts those runs: two rows for a click, none for a sub-row scroll.
+
+That also decides what the render test may assert. The stubs in
+`App.renders.test.tsx` count only when `App` hands them changed props, which the
+compiler prevents, so an `App` render is invisible to them. `App` itself is
+counted through `useNativeFeel`, mocked into a counter — a hook runs once per
+render whatever the compiler caches. The `SongTable` stub has no subscription,
+so the honest subject for a selection change is `PlaylistSidebar`, which wants
+nothing from the selection.
+
+### An answer that did not change keeps its identity
+
+zustand wakes a subscriber when its selector's output fails `Object.is`, and
+every IPC answer is freshly parsed JSON. So a store that writes an answer back
+wakes everything reading it even when nothing moved — and several answers
+arrive unasked: `player://state` re-sends the whole track and palette for a
+pause, a seek and every step of a volume drag; `library://changed` re-reads the
+playlists, the view's stats and its groups on every scan batch, import page and
+play count, and every twenty seconds of the lookup pass. `reuse`
+(`src/lib/reuse.ts`) hands back the previous value, or the previous parts of it,
+where the new one is equal, and those stores write through it. The loved set,
+a `Set` rather than JSON, is kept the same way in its own store.
+
+The page cache goes further. A reload on `library://changed` is the same query
+asked again, so `refresh(true)` keeps the cached pages on screen and marks them
+`stalePages` rather than dropping them; `ensureRange` fetches a stale page as if
+it were missing, and one that comes back equal keeps its identity row by row. A
+change that moved nothing on screen redraws no row, where dropping the pages
+redrew all 190 cells in the window through a frame of placeholders. A new
+search, sort or view still drops them first — those rows belong to a different
+query.
+
+Where a subscriber needs less than the whole value, it selects less:
+`App` reads `total === 0`, `stats.missing` and the playing track's id,
+`useWindowTitle` the title string, `BrowseView` whether it is empty, and
+`TagEditor` whether it is saving — its progress line subscribes on its own, like
+`ReleaseLookup`'s.
 
 ### Seeing it, before counting it
 
@@ -339,7 +379,15 @@ byte-identical bundle to one without.
 
 React Compiler is what makes the overlay honest rather than confusing: a child
 the compiler holds still simply does not light up, and the two components behind
-`"use no memo"` light up because they really did render.
+`"use no memo"` light up because they really did render. Their children light up
+with them unless they are `memo` — which is why the song rows are.
+
+The overlay needs a hand at the controls, so the last pass ([163](../issues/done/163-a-rerender-pass.md))
+also walked the app in jsdom: bippy — the fiber hook react-scan is built on —
+recording every component that rendered while a script drove the real stores
+through their IPC events. It sees no layout, so it cannot scroll or drag; it is
+a scratch harness rather than a test, and the counts it led to are in the two
+render test files.
 
 ### React Compiler
 
