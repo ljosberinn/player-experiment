@@ -261,6 +261,8 @@ pub fn run() {
             commands::save_sidebar_sections,
             commands::load_stats_filters,
             commands::save_stats_filters,
+            commands::load_view,
+            commands::save_view,
             commands::load_dynamic_background,
             commands::save_dynamic_background,
             commands::load_unattended_lookup,

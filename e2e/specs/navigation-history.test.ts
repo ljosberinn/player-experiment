@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { invoke } from "../invoke";
 import { capture } from "../screenshot";
 
 /**
@@ -31,12 +32,40 @@ async function waitForTheApp(): Promise<void> {
   await browser.$(".appbar").waitForExist({ timeout: 30_000 });
 }
 
+/** The stored view's fields a spec here tells views apart by. */
+type StoredView = { tab: string; playlistId: number | null };
+
+const atSongs = (stored: StoredView) => stored.tab === "songs" && stored.playlistId === null;
+
+/**
+ * Reloads once the stored view passes `stored`, so the next launch opens there.
+ *
+ * Waited for rather than assumed, for the sidebar spec's reason: the write
+ * trails the click, and a reload that beats it opens the view before.
+ */
+async function reloadOnceStored(stored: (view: StoredView) => boolean): Promise<void> {
+  await browser.waitUntil(
+    async () => {
+      const json = await invoke<string | null>("load_view");
+      // Never written means the launch default, which is Songs.
+      const view: StoredView =
+        json === null ? { tab: "songs", playlistId: null } : JSON.parse(json);
+      return stored(view);
+    },
+    { timeout: 10_000, timeoutMsg: "the open view never reached the settings table" },
+  );
+  await browser.refresh();
+  await waitForTheApp();
+}
+
 describe("back and forward", () => {
   before(async () => {
     // A reload rather than a guessed starting point: the specs share one app
     // process, so whatever ran before this has already navigated somewhere.
-    await browser.refresh();
+    // From Songs, because a reload now reopens wherever that was.
     await waitForTheApp();
+    await view("Songs").click();
+    await reloadOnceStored(atSongs);
   });
 
   after(async () => {
@@ -77,5 +106,27 @@ describe("back and forward", () => {
 
     await expect(view("Releases")).toHaveAttribute("aria-current", "page");
     await expect(browser.$(FORWARD)).toBeDisabled();
+  });
+});
+
+describe("the open view", () => {
+  after(async () => {
+    await view("Songs").click();
+    await reloadOnceStored(atSongs);
+  });
+
+  it("is open again after the app comes back", async () => {
+    // A built-in, because the library is empty here and they are always there.
+    const recent = browser.$("button[aria-label='Recently Added']");
+    await recent.click();
+    await expect(recent).toHaveAttribute("aria-current", "page");
+
+    await reloadOnceStored((stored) => stored.playlistId !== null);
+    await expect(browser.$("button[aria-label='Recently Added']")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // The last session's history is not restored.
+    await expect(browser.$(BACK)).toBeDisabled();
   });
 });

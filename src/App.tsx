@@ -72,14 +72,13 @@ export function App() {
   const tab = useLibraryStore((s) => s.tab);
   const showTab = useLibraryStore((s) => s.showTab);
   const browse = useLibraryStore((s) => s.browse);
-  const loadColumns = useLibraryStore((s) => s.loadColumns);
+  const restoreView = useLibraryStore((s) => s.restoreView);
   const closeGroup = useLibraryStore((s) => s.closeGroup);
   const sortBy = useLibraryStore((s) => s.sortBy);
   const search = useLibraryStore((s) => s.search);
   // The field itself lives in `SearchBox`; this is for the empty-state's way
   // out of a search that found nothing. An action, so it never changes.
   const clearSearch = useLibraryStore((s) => s.clearSearch);
-  const refresh = useLibraryStore((s) => s.refresh);
   const watchLibrary = useLibraryStore((s) => s.watch);
   const removeMissing = useLibraryStore((s) => s.removeMissing);
   // Null on all but the handful of renders where the question is being asked,
@@ -114,13 +113,11 @@ export function App() {
   const dismissStatus = useStatusStore((s) => s.dismiss);
 
   useEffect(() => {
-    // The layout first: it can move the sort off a hidden column, and doing
-    // that after the first query would mean querying twice on every launch.
-    void loadColumns().then(() => refresh());
-  }, [loadColumns, refresh]);
+    void restoreView();
+  }, [restoreView]);
 
   useEffect(() => {
-    // Not awaited alongside the layout above: nothing waits on it. The
+    // Not awaited alongside the view above: nothing waits on it. The
     // background is on by default and there is nothing playing yet, so the
     // worst a slow read can do is turn the blobs off a moment after the first
     // paint of a window that has none.

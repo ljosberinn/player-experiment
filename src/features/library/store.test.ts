@@ -13,13 +13,16 @@ import {
   forgetRemovedTracks,
   INVALIDATE_DEBOUNCE_MS,
   libraryStats,
+  listPlaylists,
   loadColumnConfig,
+  loadView,
   onLibraryChanged,
   queryTracks,
   releaseGroups,
   removeTracks,
   resetAllColumnConfigs,
   saveColumnConfig,
+  saveView,
 } from "../../ipc";
 import { useStatusStore } from "../shell/statusStore";
 import { albumIdentity } from "./browse";
@@ -38,6 +41,9 @@ vi.mock("../../ipc", () => ({
   browseGroups: vi.fn(async () => []),
   releaseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
+  loadView: vi.fn(async () => null),
+  listPlaylists: vi.fn(async () => []),
+  saveView: vi.fn(async () => undefined),
   saveColumnConfig: vi.fn(async () => undefined),
   resetAllColumnConfigs: vi.fn(async () => undefined),
   removeMissingTracks: vi.fn(async () => 0),
@@ -1041,6 +1047,103 @@ describe("leaving a drill-in that has emptied", () => {
 
     expect(useLibraryStore.getState().browse).toBeNull();
     expect(useLibraryStore.getState().history).toBe(historyBefore);
+  });
+});
+
+describe("restoring the last view", () => {
+  const releases = {
+    tab: "albums",
+    browse: { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") },
+    browseLabel: "Shields",
+    playlistId: null,
+    stats: null,
+  } as const;
+
+  beforeEach(() => {
+    vi.mocked(loadView).mockResolvedValue(null);
+    vi.mocked(listPlaylists).mockResolvedValue([]);
+  });
+
+  it("opens the view the last session was showing, with nothing to go back to", async () => {
+    vi.mocked(loadView).mockResolvedValue(JSON.stringify(releases));
+
+    await useLibraryStore.getState().restoreView();
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      tab: "albums",
+      browse: releases.browse,
+      browseLabel: "Shields",
+      sortBy: "trackNo",
+    });
+    expect(backEntry(useLibraryStore.getState().history)).toBeNull();
+    expect(statsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a built-in in its own order", async () => {
+    const mostPlayed: Playlist = { ...playlist(7, "smart"), builtIn: "mostPlayed" };
+    vi.mocked(listPlaylists).mockResolvedValue([mostPlayed]);
+    vi.mocked(loadView).mockResolvedValue(
+      JSON.stringify({ tab: "songs", browse: null, browseLabel: null, playlistId: 7, stats: null }),
+    );
+
+    await useLibraryStore.getState().restoreView();
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      playlistId: 7,
+      sortBy: "playCount",
+      direction: "desc",
+    });
+    expect(loadColumnConfigMock).toHaveBeenCalledWith(null);
+  });
+
+  it("lands in the library, on the same tab, when the playlist is gone", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([playlist(5)]);
+    vi.mocked(loadView).mockResolvedValue(JSON.stringify({ ...releases, playlistId: 9 }));
+
+    await useLibraryStore.getState().restoreView();
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      tab: "albums",
+      browse: null,
+      playlistId: null,
+    });
+  });
+
+  it("backs out of a drill-in that has emptied to its group list", async () => {
+    vi.mocked(loadView).mockResolvedValue(JSON.stringify(releases));
+    statsMock.mockResolvedValue(stats(0));
+
+    await useLibraryStore.getState().restoreView();
+
+    expect(useLibraryStore.getState()).toMatchObject({ tab: "albums", browse: null });
+    expect(saveView).toHaveBeenLastCalledWith(expect.stringContaining('"browse":null'));
+  });
+
+  it("opens Songs over a value it cannot read", async () => {
+    vi.mocked(loadView).mockResolvedValue("{not json");
+
+    await useLibraryStore.getState().restoreView();
+
+    expect(useLibraryStore.getState()).toMatchObject({ tab: "songs", browse: null });
+    expect(statsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives way to a navigation made while it was reading", async () => {
+    let answer: (stored: string) => void = () => {};
+    vi.mocked(loadView).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+
+    const restoring = useLibraryStore.getState().restoreView();
+    await useLibraryStore.getState().showTab("artists");
+    answer(JSON.stringify(releases));
+    await restoring;
+
+    expect(useLibraryStore.getState().tab).toBe("artists");
+  });
+
+  it("writes each navigation down", async () => {
+    await useLibraryStore.getState().showTab("genres");
+
+    expect(saveView).toHaveBeenLastCalledWith(expect.stringContaining('"tab":"genres"'));
   });
 });
 

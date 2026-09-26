@@ -1238,6 +1238,20 @@ pub fn save_stats_filters(db: State<'_, Db>, filters_json: String) -> AppResult<
     settings::set(&conn, settings::STATS_FILTERS, &filters_json)
 }
 
+/// The view the window last showed, as the frontend wrote it. Opaque for the
+/// filters' reason: what a view is is decided in `features/library/history.ts`.
+#[tauri::command]
+pub fn load_view(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::VIEW)
+}
+
+#[tauri::command]
+pub fn save_view(db: State<'_, Db>, view_json: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::VIEW, &view_json)
+}
+
 /// Whether the cover-coloured background is on.
 ///
 /// A bool rather than the opaque string the sidebar and column layouts use:

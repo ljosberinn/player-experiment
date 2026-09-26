@@ -10,7 +10,9 @@ import {
   INVALIDATE_DEBOUNCE_MS,
   type LibraryStats,
   libraryStats,
+  listPlaylists,
   loadColumnConfig,
+  loadView,
   onLibraryChanged,
   type Playlist,
   queryTracks,
@@ -22,6 +24,7 @@ import {
   type SortDirection,
   type SortField,
   saveColumnConfig,
+  saveView,
   type Track,
   type TrackQuery,
 } from "../../ipc";
@@ -51,8 +54,10 @@ import {
   type History,
   type HistoryEntry,
   historyAt,
+  parseEntry,
   record as recordEntry,
   sameView,
+  serializeEntry,
 } from "./history";
 import {
   evictFarPages,
@@ -342,6 +347,13 @@ interface LibraryState {
   showTrackArtist: (track: Track) => Promise<void>;
   /** Returns from a drill-in to the group list. */
   closeGroup: () => Promise<void>;
+  /**
+   * Opens the view the last session was showing, then runs the first query.
+   *
+   * What launch calls instead of `loadColumns` and `refresh`, which it runs
+   * itself: restoring after them would query the library twice.
+   */
+  restoreView: () => Promise<void>;
   /** Moves the view to `entry` and stores `history` with it. Internal. */
   applyEntry: (entry: HistoryEntry, history: History) => Promise<void>;
   /** Returns to the previously visited view. Does nothing at the start. */
@@ -602,6 +614,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         selection: emptySelection,
         history: dropGroupEntry(state.history, dead),
       });
+      storeView({ ...dead, browse: null, browseLabel: null });
     }
   },
 
@@ -884,6 +897,48 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     await pushEntry({ tab, browse: null, browseLabel: null, playlistId, stats: null });
   },
 
+  restoreView: async () => {
+    const launched = get().history;
+    let entry: HistoryEntry | null = null;
+    try {
+      entry = parseEntry(await loadView());
+      if (entry?.playlistId != null) {
+        // Read here rather than waiting on the playlists store: a built-in's
+        // sort and layout both hang off `builtIns`, and they have to be known
+        // before the first query rather than corrected by a second.
+        const playlists = await listPlaylists();
+        get().setBuiltIns(playlists);
+        if (!playlists.some((playlist) => playlist.id === entry?.playlistId)) {
+          // Where deleting the open playlist lands, as `showPlaylist(null)`.
+          entry = { ...entry, playlistId: null, browse: null, browseLabel: null };
+        }
+      }
+    } catch {
+      // The view is a convenience; Songs is a working window.
+      entry = null;
+    }
+    // Anything clicked while the reads were in flight wins over the restore.
+    if (entry !== null && get().history === launched) {
+      set({
+        tab: entry.tab,
+        browse: entry.browse,
+        browseLabel: entry.browseLabel,
+        statsPath: entry.stats,
+        playlistId: entry.playlistId,
+        // Back has nowhere to go: the last session's history is not restored.
+        history: historyAt(entry),
+        // Up front for the reason `applyEntry` gives.
+        groupsLoading: entry.tab !== "songs" && entry.tab !== "stats",
+        ...sortForEntry(get(), entry, false),
+      });
+    }
+    // The layout before the query: it can move the sort off a hidden column.
+    await get().loadColumns();
+    // An emptied drill-in is left the way one emptied mid-session is, by the
+    // check at the end of this.
+    await get().refresh();
+  },
+
   applyEntry: async (entry, history) => {
     const state = get();
     // Every navigation lands here, including the ones that only look like a
@@ -949,6 +1004,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
         : {}),
     });
+    storeView(entry);
 
     if (crossesPlaylist) {
       // The layout belongs to the view, so it is reloaded rather than carried:
@@ -1211,6 +1267,11 @@ function landingTab(current: ViewTab, playlist: Playlist | null): ViewTab {
 async function pushEntry(entry: HistoryEntry): Promise<void> {
   const state = useLibraryStore.getState();
   await state.applyEntry(entry, recordEntry(state.history, entry));
+}
+
+/** Remembers `entry` for the next launch. A failed write costs only that. */
+function storeView(entry: HistoryEntry): void {
+  void saveView(serializeEntry(entry)).catch(() => {});
 }
 
 /**
