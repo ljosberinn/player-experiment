@@ -911,12 +911,11 @@ button.now-playing-subtitle:hover {
   background: var(--accent);
 }
 
-/* Only ever on screen while a scan is running - the readout returns nothing
-   otherwise, so this costs no space in the ordinary case. */
-.scan-progress {
+/* Where a scan, an export or a last.fm import reports, over the content pane.
+   Both readouts return nothing while idle, so this costs no space in the
+   ordinary case. Placement only, like `.sidebar-task`. */
+.content-task {
   padding: 8px 33px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .scan-error,

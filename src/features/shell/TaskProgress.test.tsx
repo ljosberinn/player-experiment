@@ -69,9 +69,11 @@ describe("TaskProgress", () => {
       emitExport?.({ done: 1200, total: 5000 });
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      `Exporting ${(1200).toLocaleString()} of ${(5000).toLocaleString()}`,
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(
+      `Exporting ${(1200).toLocaleString()} of ${(5000).toLocaleString()}…`,
     );
+    expect(status.querySelector<HTMLElement>(".progress-fill")?.style.width).toBe("24%");
   });
 
   it("says only that an export is running before its first report", async () => {
@@ -81,7 +83,9 @@ describe("TaskProgress", () => {
       useExportStore.setState({ busy: true });
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent("Exporting…");
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(/^Exporting…$/);
+    expect(status.querySelector<HTMLElement>(".progress-fill")?.style.width).toBe("0%");
   });
 
   it("reports a last.fm import, which may be running with Settings closed", async () => {
@@ -91,9 +95,12 @@ describe("TaskProgress", () => {
       useLastfmStore.setState({ importing: true, importProgress: { done: 400, total: 2000 } });
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      `Importing scrobbles ${(400).toLocaleString()} of ${(2000).toLocaleString()}`,
+    // Worded as the Settings pane words the same run.
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(
+      `Importing ${(400).toLocaleString()} of ${(2000).toLocaleString()} scrobbles…`,
     );
+    expect(status.querySelector<HTMLElement>(".progress-fill")?.style.width).toBe("20%");
   });
 
   it("feeds tag progress to the editor store without drawing a line of its own", async () => {

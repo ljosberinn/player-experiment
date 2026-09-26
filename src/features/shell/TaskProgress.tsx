@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { TaskLine } from "../../components/primitives/TaskLine";
 import type { WriteProgress } from "../../ipc";
 import { useEditorStore } from "../editor/store";
 import { useExportStore } from "../export/store";
@@ -52,26 +53,37 @@ export function TaskProgress() {
   }, [watchExport, watchTags]);
 
   if (exporting) {
-    return <TaskLine verb="Exporting" progress={exportProgress} />;
+    return <ContentTask verb="Exporting" progress={exportProgress} />;
   }
   if (importing) {
-    return <TaskLine verb="Importing scrobbles" progress={importProgress} />;
+    return <ContentTask verb="Importing" unit="scrobbles" progress={importProgress} />;
   }
   return null;
 }
 
 /**
- * One line of progress, or just the verb.
- *
- * A total of zero is not a fraction worth drawing: there is a moment before the
- * first event where the honest thing to say is only that it is running.
+ * The verb alone over an empty rail while the total is zero: there is a moment
+ * before the first event where the honest thing to say is only that it is running.
  */
-function TaskLine({ verb, progress }: { verb: string; progress: WriteProgress | null }) {
+function ContentTask({
+  verb,
+  unit,
+  progress,
+}: {
+  verb: string;
+  unit?: string;
+  progress: WriteProgress | null;
+}) {
+  const done = progress?.done ?? 0;
+  const total = progress?.total ?? 0;
+  const headline =
+    total === 0
+      ? `${verb}…`
+      : `${verb} ${done.toLocaleString()} of ${total.toLocaleString()}${unit === undefined ? "" : ` ${unit}`}…`;
+
   return (
-    <span className="scan-progress" role="status">
-      {progress === null || progress.total === 0
-        ? `${verb}…`
-        : `${verb} ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()}`}
-    </span>
+    <div className="content-task" role="status">
+      <TaskLine headline={headline} estimate={null} ratio={total === 0 ? 0 : done / total} />
+    </div>
   );
 }

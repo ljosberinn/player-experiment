@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { TaskLine } from "../../components/primitives/TaskLine";
 import { useScanStore } from "./scan";
 
 /**
@@ -38,9 +39,16 @@ export function ScanBar() {
     return null;
   }
 
+  // A total of zero is the scan before it has counted anything, or a folder with nothing in it.
+  const { scanned, total } = progress;
+  const headline =
+    total === 0
+      ? "Scanning…"
+      : `Scanning ${scanned.toLocaleString()} of ${total.toLocaleString()}…`;
+
   return (
-    <span className="scan-progress" role="status">
-      Scanning {progress.scanned.toLocaleString()} of {progress.total.toLocaleString()}
-    </span>
+    <div className="content-task" role="status">
+      <TaskLine headline={headline} estimate={null} ratio={total === 0 ? 0 : scanned / total} />
+    </div>
   );
 }

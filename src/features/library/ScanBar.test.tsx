@@ -67,9 +67,24 @@ describe("ScanBar", () => {
       });
     });
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      `Scanning ${(1200).toLocaleString()} of ${(5000).toLocaleString()}`,
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(
+      `Scanning ${(1200).toLocaleString()} of ${(5000).toLocaleString()}…`,
     );
+    expect(status.querySelector<HTMLElement>(".progress-fill")?.style.width).toBe("24%");
+  });
+
+  it("says only that a scan is running before it has counted anything", async () => {
+    render(<ScanBar />);
+    await waitFor(() => expect(emitProgress).toBeDefined());
+
+    act(() => {
+      emitProgress?.({ scanned: 0, total: 0, added: 0, updated: 0, missing: 0, done: false });
+    });
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^Scanning…$/);
+    expect(status.querySelector<HTMLElement>(".progress-fill")?.style.width).toBe("0%");
   });
 
   it("stops reporting progress once the scan is done", async () => {
