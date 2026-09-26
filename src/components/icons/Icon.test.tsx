@@ -8,9 +8,9 @@ const NAMES = Object.keys(ICONS) as IconName[];
 /**
  * The adapter, not the artwork.
  *
- * Nothing here asserts what an icon looks like - that is the library's job and
+ * Nothing here asserts what an icon looks like - that is the artwork's job and
  * a picture's, not a test's. What it holds is the contract that makes the
- * library replaceable: every name in the registry resolves, and every icon
+ * family replaceable: every name in the registry resolves, and every icon
  * comes out decorative and at the size it was asked for, whichever family is
  * behind it.
  */
