@@ -1,23 +1,28 @@
 /**
- * The only file importing d3.
+ * The chart maths: tick selection, the domain-to-pixel mapping, and the
+ * arithmetic of a ring segment.
  *
- * What is borrowed is the maths - tick selection, the domain-to-pixel mapping,
- * and the arithmetic of a ring segment - and nothing else: d3 draws no DOM
- * here and holds no state. Every element and every colour a chart puts on
- * screen is this app's.
+ * Ours rather than d3's since [167](../../../docs/issues/done/167-own-the-chart-maths.md):
+ * the charts used one linear map, one tick rule and one arc shape, and those
+ * pulled nine packages. The tick rule and the arc's output follow d3's, so an
+ * axis and a donut draw what they drew before.
  *
- * The scales themselves are d3's objects, re-exported under names of ours.
- * Ticks and arcs are not: a chart needs them as data it can lay out and a test
- * can assert on, so [`ticks`] returns positioned labels rather than an axis
- * generator that would want a DOM node to write into, and [`arcPath`] returns
- * the `d` attribute rather than the generator that makes it.
+ * Ticks and arcs come out as data a chart can lay out and a test can assert
+ * on: [`ticks`] returns positioned labels rather than an axis generator that
+ * would want a DOM node to write into, and [`arcPath`] returns the `d`
+ * attribute rather than a generator that makes it.
  */
 
-import { type ScaleLinear, scaleLinear } from "d3-scale";
-import { arc } from "d3-shape";
+const TAU = Math.PI * 2;
+
+/** d3-path's tolerance for an arc that is nothing or a whole turn. */
+const EPSILON = 1e-6;
 
 /** A continuous numeric scale: a value in the data, a position in pixels. */
-export type LinearScale = ScaleLinear<number, number>;
+export interface LinearScale {
+  (value: number): number;
+  readonly domain: readonly [number, number];
+}
 
 /**
  * The extent of `values`, never collapsed onto a single point.
@@ -38,15 +43,21 @@ export function niceDomain(values: readonly number[]): [number, number] {
 /**
  * A continuous scale over `domain`, in pixels over `range`.
  *
- * The d3 object itself rather than a wrapper: a chart calls it per datum, and
- * a function of ours forwarding to a function of d3's would be a layer that
- * only ever adds a stack frame.
+ * Interpolated as `r0 * (1 - t) + r1 * t` rather than `r0 + t * (r1 - r0)`,
+ * which is exact at both ends: a full-height bar lands on the axis rather than
+ * a rounding error off it.
  */
 export function linearScale(
   domain: readonly [number, number],
   range: readonly [number, number],
 ): LinearScale {
-  return scaleLinear().domain(domain).range(range);
+  const [d0, d1] = domain;
+  const [r0, r1] = range;
+  const scale = (value: number) => {
+    const t = (value - d0) / (d1 - d0);
+    return r0 * (1 - t) + r1 * t;
+  };
+  return Object.assign(scale, { domain });
 }
 
 /** One labelled position on an axis. */
@@ -69,11 +80,41 @@ export function ticks(
   count: number,
   format: (value: number) => string = String,
 ): Tick[] {
-  return scale.ticks(count).map((value) => ({
+  return tickValues(...scale.domain, count).map((value) => ({
     value,
     offset: scale(value),
     label: format(value),
   }));
+}
+
+/**
+ * d3's tick rule: a step of 1, 2, 5 or 10 times a power of ten, whichever is
+ * nearest `(stop - start) / count` on a log scale, and every multiple of it
+ * inside the domain. Ascending domains only, which is all `niceDomain` and
+ * `Bar` produce; anything else yields no ticks.
+ */
+function tickValues(start: number, stop: number, count: number): number[] {
+  const step = (stop - start) / count;
+  const power = Math.floor(Math.log10(step));
+  const error = step / 10 ** power;
+  const factor =
+    error >= Math.sqrt(50) ? 10 : error >= Math.sqrt(10) ? 5 : error >= Math.sqrt(2) ? 2 : 1;
+  // A step below one is held as its reciprocal and divided by, so the third
+  // tick of 0.1 is 3 / 10 rather than 3 * 0.1, which is 0.30000000000000004.
+  const inverse = power < 0;
+  const unit = inverse ? 10 ** -power / factor : 10 ** power * factor;
+  const at = (index: number) => (inverse ? index / unit : index * unit);
+  // Rounded, then nudged inward, rather than a ceil and a floor: `start /
+  // unit` a hair above a whole number would otherwise skip the tick on it.
+  let first = Math.round(inverse ? start * unit : start / unit);
+  let last = Math.round(inverse ? stop * unit : stop / unit);
+  if (at(first) < start) {
+    first += 1;
+  }
+  if (at(last) > stop) {
+    last -= 1;
+  }
+  return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => at(first + index));
 }
 
 /** How many non-empty steps the ramp has: `--chart-ramp-1` to `--chart-ramp-7`. */
@@ -103,16 +144,19 @@ export function rampStep(value: number, largest: number): number {
  * One ring segment as an SVG `d`, centred on the origin, angles clockwise from
  * twelve o'clock.
  *
- * d3's generator rather than the trigonometry, for the case the trigonometry
- * gets wrong: **a slice of a whole turn is a full circle, and one `A` command
- * cannot draw one** - its start and end points coincide, so the renderer draws
- * nothing at all. d3 splits each edge of those into two half turns. One genre
- * holding every track is a state a small library is in from its first scan.
+ * **A slice of a whole turn is a full circle, and one `A` command cannot draw
+ * one** - its start and end points coincide, so the renderer draws nothing at
+ * all. Each edge of those is two half turns instead, the hole wound against
+ * the rim so the nonzero fill rule leaves it empty. One genre holding every
+ * track is a state a small library is in from its first scan.
  *
  * An empty string for a slice of zero, which is what `<path d="">` renders as
  * nothing without the caller needing a branch. d3 gives that case a sliver -
  * out along the radius and straight back - which is a hairline on screen, and
  * a genre a filter has emptied should leave no mark rather than a thin one.
+ *
+ * Coordinates are rounded to three places, as d3's were: `cos` of a quarter
+ * turn is 6e-17, not 0, and a path is no place for that.
  */
 export function arcPath(
   startAngle: number,
@@ -120,8 +164,39 @@ export function arcPath(
   innerRadius: number,
   outerRadius: number,
 ): string {
-  if (endAngle <= startAngle) {
+  const sweep = endAngle - startAngle;
+  if (!(sweep > EPSILON)) {
     return "";
   }
-  return arc()({ startAngle, endAngle, innerRadius, outerRadius }) ?? "";
+  // SVG measures clockwise from three o'clock; a chart, from twelve.
+  const a0 = startAngle - Math.PI / 2;
+  const a1 = endAngle - Math.PI / 2;
+  const outer = `${round(outerRadius)},${round(outerRadius)},0`;
+  const inner = `${round(innerRadius)},${round(innerRadius)},0`;
+
+  if (sweep > TAU - EPSILON) {
+    const rim = polar(outerRadius, a0);
+    const hole = polar(innerRadius, a1);
+    return (
+      `M${rim.at}A${outer},1,1,${rim.opposite}A${outer},1,1,${rim.at}` +
+      `M${hole.at}A${inner},1,0,${hole.opposite}A${inner},1,0,${hole.at}Z`
+    );
+  }
+
+  const large = sweep >= Math.PI ? 1 : 0;
+  return (
+    `M${polar(outerRadius, a0).at}A${outer},${large},1,${polar(outerRadius, a1).at}` +
+    `L${polar(innerRadius, a1).at}A${inner},${large},0,${polar(innerRadius, a0).at}Z`
+  );
+}
+
+/** A point on a circle round the origin, and the one across from it, as `x,y`. */
+function polar(radius: number, angle: number): { at: string; opposite: string } {
+  const x = radius * Math.cos(angle);
+  const y = radius * Math.sin(angle);
+  return { at: `${round(x)},${round(y)}`, opposite: `${round(-x)},${round(-y)}` };
+}
+
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
