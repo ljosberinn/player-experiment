@@ -12,8 +12,10 @@ import {
   type History,
   type HistoryEntry,
   historyAt,
+  parseEntry,
   record,
   sameView,
+  serializeEntry,
 } from "./history";
 
 function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
@@ -257,5 +259,33 @@ describe("a statistics drill-down", () => {
     const history = visited([listening, genre]);
 
     expect(backEntry(history)).toEqual(listening);
+  });
+});
+
+describe("parseEntry", () => {
+  it("reads back what was written", () => {
+    const drilled = entry({
+      tab: "artists",
+      browse: { kind: "artists", id: null },
+      playlistId: 4,
+    });
+    const stats = entry({
+      tab: "stats",
+      stats: { tab: "library", crumbs: [{ kind: "genre", key: "Rock" }] },
+    });
+
+    expect(parseEntry(serializeEntry(drilled))).toEqual(drilled);
+    expect(parseEntry(serializeEntry(stats))).toEqual(stats);
+  });
+
+  it("refuses what no navigation could have written", () => {
+    expect(parseEntry(null)).toBeNull();
+    expect(parseEntry("{not json")).toBeNull();
+    expect(parseEntry(JSON.stringify(entry({ tab: "podcasts" as never })))).toBeNull();
+    // A drill-in filed under another tab, and Statistics with nowhere to point.
+    expect(
+      parseEntry(JSON.stringify(entry({ tab: "albums", browse: { kind: "genres", id: "Rock" } }))),
+    ).toBeNull();
+    expect(parseEntry(JSON.stringify(entry({ tab: "stats" })))).toBeNull();
   });
 });

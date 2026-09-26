@@ -13,6 +13,7 @@ vi.mock("../../../ipc", () => ({
   statsNewArtists: vi.fn(async () => []),
   loadStatsFilters: vi.fn(async () => null),
   saveStatsFilters: vi.fn(async () => undefined),
+  saveView: vi.fn(async () => undefined),
 }));
 
 const newMock = vi.mocked(statsNewArtists);

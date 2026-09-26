@@ -103,6 +103,8 @@ vi.mock("./ipc", () => ({
   moveInPlaylist: vi.fn(),
   browseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
+  loadView: vi.fn(async () => null),
+  saveView: vi.fn(async () => undefined),
   saveColumnConfig: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),

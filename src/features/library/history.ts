@@ -1,5 +1,5 @@
-import type { BrowseFilter } from "../../ipc";
-import { type StatsPath, sameStatsPath } from "../stats/path";
+import type { BrowseFilter, BrowseKind } from "../../ipc";
+import { STATS_TAB_TITLES, type StatsCrumb, type StatsPath, sameStatsPath } from "../stats/path";
 import type { ViewTab } from "./store";
 
 /**
@@ -113,6 +113,112 @@ export function forgetPlaylist(history: History, playlistId: number): History {
     }
   });
   return { entries, index };
+}
+
+export function serializeEntry(entry: HistoryEntry): string {
+  return JSON.stringify(entry);
+}
+
+const BROWSE_KINDS: readonly string[] = ["albums", "artists", "genres"] satisfies BrowseKind[];
+const CRUMB_KINDS: readonly string[] = [
+  "artist",
+  "genre",
+  "album",
+  "period",
+] satisfies StatsCrumb["kind"][];
+
+/**
+ * The entry `stored` describes, or null for anything this app would not have
+ * written - including one whose fields contradict each other, which no
+ * navigation can reach and so no view can show.
+ */
+export function parseEntry(stored: string | null): HistoryEntry | null {
+  if (stored === null) {
+    return null;
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stored);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const { tab, browse, browseLabel, playlistId, stats } = raw as Record<string, unknown>;
+  if (
+    typeof tab !== "string" ||
+    (tab !== "songs" && tab !== "stats" && !BROWSE_KINDS.includes(tab))
+  ) {
+    return null;
+  }
+  if (browseLabel !== null && typeof browseLabel !== "string") {
+    return null;
+  }
+  if (playlistId !== null && !Number.isInteger(playlistId)) {
+    return null;
+  }
+  const filter = parseBrowse(browse);
+  const path = parseStatsPath(stats);
+  if (filter === undefined || path === undefined) {
+    return null;
+  }
+  if (filter !== null && filter.kind !== tab) {
+    return null;
+  }
+  if ((tab === "stats") !== (path !== null) || (tab === "stats" && playlistId !== null)) {
+    return null;
+  }
+  return {
+    tab: tab as ViewTab,
+    browse: filter,
+    browseLabel: browseLabel as string | null,
+    playlistId: playlistId as number | null,
+    stats: path,
+  };
+}
+
+/** Undefined, as distinct from null, for a value that is neither. */
+function parseBrowse(value: unknown): BrowseFilter | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "object") {
+    return undefined;
+  }
+  const { kind, id } = value as Record<string, unknown>;
+  if (typeof kind !== "string" || !BROWSE_KINDS.includes(kind)) {
+    return undefined;
+  }
+  if (id !== null && typeof id !== "string") {
+    return undefined;
+  }
+  return { kind: kind as BrowseKind, id };
+}
+
+function parseStatsPath(value: unknown): StatsPath | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "object") {
+    return undefined;
+  }
+  const { tab, crumbs } = value as Record<string, unknown>;
+  if (typeof tab !== "string" || !(tab in STATS_TAB_TITLES) || !Array.isArray(crumbs)) {
+    return undefined;
+  }
+  const parsed: StatsCrumb[] = [];
+  for (const crumb of crumbs as unknown[]) {
+    if (typeof crumb !== "object" || crumb === null) {
+      return undefined;
+    }
+    const { kind, key } = crumb as Record<string, unknown>;
+    if (typeof kind !== "string" || !CRUMB_KINDS.includes(kind) || typeof key !== "string") {
+      return undefined;
+    }
+    parsed.push({ kind: kind as StatsCrumb["kind"], key });
+  }
+  return { tab: tab as StatsPath["tab"], crumbs: parsed };
 }
 
 /**

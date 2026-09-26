@@ -365,6 +365,15 @@ export function saveStatsFilters(filtersJson: string): Promise<void> {
   return invoke<void>("save_stats_filters", { filtersJson });
 }
 
+/** The view the window last showed, or null before one has been stored. */
+export function loadView(): Promise<string | null> {
+  return invoke<string | null>("load_view");
+}
+
+export function saveView(viewJson: string): Promise<void> {
+  return invoke<void>("save_view", { viewJson });
+}
+
 /** The Listening tab's tiles: one scan of `plays` under the open filters. */
 export function statsListenTotals(query: ListenQuery): Promise<ListenTotals> {
   return invoke<ListenTotals>("stats_listen_totals", { query });

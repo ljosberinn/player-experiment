@@ -46,6 +46,10 @@ pub const SIDEBAR: &str = "sidebar.sections";
 /// grows a facet. Not exportable, for that pair's reason - it describes a view
 /// of a library rather than the library.
 pub const STATS_FILTERS: &str = "stats.filters";
+/// The view the window last showed, as a `HistoryEntry` in JSON. Opaque and
+/// not exportable, for [`STATS_FILTERS`]' reasons - and it names playlist ids
+/// that mean nothing in another library.
+pub const VIEW: &str = "library.view";
 /// Unix seconds of the most recent crash the user has dismissed. Deliberately
 /// not exportable: it describes this machine's history, not the library.
 pub const CRASH_SEEN: &str = "crash.seen";
@@ -396,6 +400,7 @@ mod tests {
         assert!(!is_exportable(SIDEBAR));
         assert!(!is_exportable(COLUMNS));
         assert!(!is_exportable(STATS_FILTERS));
+        assert!(!is_exportable(VIEW));
         // Taste rather than geometry, and so on the other side of that line -
         // both travel with the library the way the volume and the zoom do.
         assert!(is_exportable(DYNAMIC_BACKGROUND));

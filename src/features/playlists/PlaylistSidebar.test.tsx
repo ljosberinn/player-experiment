@@ -26,6 +26,7 @@ vi.mock("../../ipc", () => ({
   moveInPlaylist: vi.fn(),
   loadSidebarSections: vi.fn(async () => null),
   saveSidebarSections: vi.fn(async () => undefined),
+  saveView: vi.fn(async () => undefined),
   onLibraryChanged: vi.fn(async () => () => {}),
   countTracks: vi.fn(async () => 0),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0 })),

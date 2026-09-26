@@ -645,6 +645,15 @@ absences are what nobody notices coming back — hence the guards in
   A release opens in track order even mid-search, and leaving one mid-search
   goes back to relevance rather than carrying its `#` out. The history itself lives in the library store, because a second store holding
   a copy of those three fields would drift out of step with them.
+- **A launch reopens the last view.** `applyEntry` writes each entry to the
+  `library.view` setting, and `restoreView` replaces launch's
+  `loadColumns`-then-`refresh` so the first query is the restored view's. It
+  reads the playlists itself, since a built-in's sort and layout hang off
+  `builtIns`. A gone target lands where it would mid-session: a deleted
+  playlist on the library's same tab, an emptied drill-in on its group list
+  via `refresh`'s eject. The history starts at the restored entry; search is
+  not restored. e2e specs that reload now reopen wherever they left off, so a
+  spec that needs Songs after a reload has to leave on Songs.
 - The **OS window title** follows the player: `Apex — <title> — <artist>`, back
   to `Apex` when nothing is playing. It shows in the frame, in Alt+Tab and in
   the taskbar — the frame since phase 119 gave the decorations back to the OS.

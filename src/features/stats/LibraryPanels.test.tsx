@@ -19,6 +19,7 @@ vi.mock("../../ipc", () => ({
   allTrackIds: vi.fn(async () => []),
   browseGroups: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
+  saveView: vi.fn(async () => undefined),
   saveColumnConfig: vi.fn(async () => undefined),
   listPlaylists: vi.fn(async () => []),
   saveTextFile: vi.fn(async () => undefined),
