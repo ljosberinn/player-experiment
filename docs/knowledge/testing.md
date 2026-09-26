@@ -11,7 +11,7 @@ current frontend coverage is well above it.
 | last.fm | `cargo test` | signature vectors, response parsing, the rules and the queue against a fake transport; one `wiremock` round trip on 127.0.0.1 for the real one |
 | Release lookup | `cargo test` | the whole unattended pass against recorded fixtures: the threshold from both sides and from both scores — a lone candidate of the right length written though its durations disagree, one the text barely matches queued, one of a different length queued, a release with no candidates left untouched and unqueued, genre filled and *not* overwritten, comment untouched, a second sweep a no-op, a cancelled sweep resuming where it stopped, a transient failure retried and a permanent one not, a dry run reaching its second batch, leaving no row behind, and carrying its place across a sweep that ended early; a 503 deferring its release instead of ending the sweep, a run of declines leaving the step on however long it runs against a run of unanswered lookups parking it with the release after it never asked, a 502 counted as the outage a 503 is not, and the drain refusing to place a release whose lookup never reached it; the drain itself asserted by the order of the log lines — a playing release retried before the next batch rather than after the last one, one played all sweep retried at every drain and counted and logged once, and a release that declines twice left to the next sweep |
 | Library folder | `cargo test` + `tempfile` | the layout as a table with no filesystem; the mover over a temp tree: ids, play counts and playlist places kept across a move, a rename that fails partway rolled back, a collision suffixed and an orphan overwritten, the cross-volume fallback driven by an injected `ERROR_NOT_SAME_DEVICE`, a shared source folder keeping its cover, and a tombstoned target still holding its row after a following scan |
-| Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a fixed budget |
+| Perf guards | `cargo test` (`tests/perf.rs`) | 10k synthetic rows and 100k plays: a sorted page, a count, stats, browse groupings and the mark-missing write path each inside a budget of the work SQLite counts — statements, VM steps, rows full-scanned, sorts, commits — never a clock |
 | Frontend unit | Vitest | filter-tree reducer, selection, columns, page cache, formatting |
 | Chart primitives | Vitest + RTL | geometry, never pixels: the plot rect a measured frame hands down, tick offsets, the clamp that keeps a tooltip inside the plot; empty and single-datum inputs for every scale, which is where domains collapse |
 | Frontend component | Vitest + RTL | table (mocked IPC), tag editor incl. mixed-value bulk fields, transport, menus, dialogs |
@@ -296,6 +296,14 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   one play of. The plays seed resolves afterwards, because the seeder leaves
   `track_id` null and an unresolved log reads as nothing owned. It runs after
   `virtualization`, so two thirds of the plays match a synthetic track.
+- **A perf budget is a count, not a time.** The runner took 637ms and 56,715ms
+  over the same genre seed, and a measurement holding the runner to itself
+  overran all the same, so a timing budget either misses the regression or
+  fails on the weather. `tests/perf.rs` reads SQLite's own
+  per-statement counters through the trace and commit hooks; they are the same
+  on every machine and every run, and a regression of the shape these guard
+  moves one by the size of the library. What no counter sees is Rust spending
+  time on rows already fetched.
 - **A synthetic row's values repeat on coprime-ish cycles, and that includes
   the ones nothing reads yet.** Bitrate, sample rate and `added_at` were left
   NULL and zero until the Library panels drew them, which quietly made four of

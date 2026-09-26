@@ -502,8 +502,8 @@ every build, with no key and no account, and a library export carries it as
 `db::stats` reads, never writes. Listening aggregates take a `ListenQuery` over
 `plays`; library ones take the `TrackQuery` every view uses, through `scope`.
 
-- **No rollups.** Every aggregate is one pass, budgeted in `tests/perf.rs` at
-  250k plays. A materialized total would owe an invalidation path.
+- **No rollups.** Every aggregate is one pass, budgeted per play in
+  `tests/perf.rs`. A materialized total would owe an invalidation path.
 - **Buckets are local time**, named by their first local day, weeks from
   Monday. CI pins `TZ` to a zone west of UTC, because on the UTC runner local
   and UTC bucketing agree and the test cannot tell them apart.
