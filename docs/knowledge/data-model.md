@@ -25,6 +25,7 @@ edit a shipped one.
 | 17 | a fifth `release_lookup.status`, `unwritable` — matched with certainty, and the files would not take it. Another whole-table rebuild for 10's reason, plus a **repair**: every `resolved` row whose `release_mbid` is on no track is deleted, because it records a write that never happened |
 | 18 | `lastfm_loved` renamed `loved`, with `remote` (last.fm reported the key; every existing row is set); `tracks.match_key`, indexed, filled by `plays::refold`; `love_queue`; and `loved.syncedWith` seeded from the import's username |
 | 19 | `playlists.built_in`, under a partial unique index. Claims each old seed whose name, filter and order are still the seed's, and deletes `playlists.seeded` |
+| 20 | three `NOCASE` expression indexes, one per `BrowseKind::identity_sql`, so a drill-in seeks its group rather than scanning `tracks` |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -58,6 +59,11 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   release, which is what a sort means once the view is grouped. Outside a
   drill-in the ordering is untouched, so the indexed page plan `tests/perf.rs`
   guards is still the library's.
+- **A drill-in seeks its group through migration 20's indexes.** SQLite matches
+  an expression index only on the same expression under the same collation,
+  so each index spells out `identity_sql` verbatim: edit one without the other
+  and every drill-in scans the library again. The window above then sorts the
+  whole group, so a drill-in costs its group, not a page.
 - **`release_groups` is `browse_groups` with the filter kept.** Both run
   through `scope()`; the grid's list strips `browse` so opening an album cannot
   collapse the album list to that album, and the drill-in's list keeps it

@@ -804,6 +804,25 @@ UPDATE playlists SET built_in = 'mostPlayed'
 
 DELETE FROM settings WHERE key = 'playlists.seeded';
 "#,
+    // 20 - a drill-in reads its group through an index
+    //
+    // `query::scope` filters on the group's identity folded to NOCASE. SQLite
+    // uses an expression index only for the same expression under the same
+    // collation, so each one here is `BrowseKind::identity_sql` spelled out:
+    // change one and the drill-in is a scan of the library again, which
+    // `tests/perf.rs` catches.
+    r#"
+CREATE INDEX idx_tracks_group_artist ON tracks(
+    coalesce(nullif(album_artist, ''), nullif(artist, '')) COLLATE NOCASE
+);
+CREATE INDEX idx_tracks_group_release ON tracks(
+    coalesce(release_group_mbid,
+             coalesce(nullif(album, ''), '') || char(31)
+             || coalesce(coalesce(nullif(album_artist, ''), nullif(artist, '')), ''))
+    COLLATE NOCASE
+);
+CREATE INDEX idx_tracks_group_genre ON tracks(nullif(genre, '') COLLATE NOCASE);
+"#,
 ];
 
 #[cfg(test)]
