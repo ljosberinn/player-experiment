@@ -2001,9 +2001,11 @@ th.status {
   flex: none;
 }
 
-/* The combinator, which is a word rather than a column: `.select` is full-width
-   for the grid cells below, and here that would stretch "any" across the row. */
-.filter-head .select {
+/* The combinator and the sort, which are words in a sentence rather than
+   columns: `.select` is full-width for the grid cells, and in a wrapping row
+   that puts each one on a line of its own. */
+.filter-head .select,
+.filter-order .select {
   width: auto;
 }
 
