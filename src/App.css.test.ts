@@ -1014,24 +1014,27 @@ describe("the stylesheet", () => {
 
   it("keeps the menus' and the task line's own drawing out of `app.css`", () => {
     // Section 05 is one drawing for both menus in the app and for the readout
-    // at the foot of the sidebar. `.sidebar-task` says where that readout
-    // goes - the foot of the sidebar is the app's decision, not the
-    // primitive's - and says nothing about what it looks like, which is the
-    // split 113 drew for the dialogs and 115 for the figures.
+    // at the foot of the sidebar and the ones over the content pane.
+    // `.sidebar-task` and `.content-task` say where those readouts go - that
+    // is the app's decision, not the primitive's - and say nothing about what
+    // they look like, which is the split 113 drew for the dialogs and 115 for
+    // the figures.
     const drawn = rules(sources[3] ?? "")
       .map((one) => uncommented(one.selector))
       .filter((selector) => /\.(menu-[\w-]+|task-line|progress)\b/.test(selector));
 
     expect(drawn).toEqual([]);
 
-    const placement = rules(sources[3] ?? "").find(
-      (one) => uncommented(one.selector).trim() === ".sidebar-task",
-    );
+    for (const selector of [".sidebar-task", ".content-task"]) {
+      const placement = rules(sources[3] ?? "").find(
+        (one) => uncommented(one.selector).trim() === selector,
+      );
 
-    expect(placement, ".sidebar-task should still place the readout").toBeDefined();
-    expect(placement?.body, ".sidebar-task draws what `TaskLine` owns").not.toMatch(
-      /(^|;|\s)(color|font|font-size|line-height|background|border|box-shadow):/,
-    );
+      expect(placement, `${selector} should still place its readout`).toBeDefined();
+      expect(placement?.body, `${selector} draws what \`TaskLine\` owns`).not.toMatch(
+        /(^|;|\s)(color|font|font-[\w-]+|line-height|background|border|box-shadow):/,
+      );
+    }
   });
 
   it("paints every ramp step either mark can ask for, and no more", () => {

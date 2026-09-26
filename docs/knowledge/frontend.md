@@ -786,8 +786,9 @@ absences are what nobody notices coming back — hence the guards in
   whole percent of the lookup pass is eighty releases and the better part of
   half an hour, so a figure that does not move for half an hour reads as hung.
   `TaskProgress` sits on the content header, reads the two per-write channels,
-  and reports on writes that finish in minutes. Different place, different
-  lifetime, different shape. It also draws a last.fm import from the last.fm
+  and reports on writes that finish in minutes as a fraction with no estimate.
+  Different place, different lifetime, different headline; both draw a
+  `TaskLine`, as `ScanBar` beside it does, placed by `.content-task`. It also draws a last.fm import from the last.fm
   store, which subscribes to `lastfm://import` itself, because the import's
   own pane is in Settings and may well be closed.
 - **`tags://progress` has two senders** — a tag save and a lookup's apply, each
