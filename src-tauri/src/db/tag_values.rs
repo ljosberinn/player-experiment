@@ -15,7 +15,7 @@
 //! already indexed on most of these columns, and it is correct by construction:
 //! there is no drift to detect, no repair path to write, and no ordering
 //! dependency between a file write and a count. The cost is bounded by the
-//! library, not by the edit - a 50k-row rebuild is asserted against a budget in
+//! library, not by the edit - a rebuild is held to a pass per vocabulary in
 //! `tests/perf.rs` - and it runs after a scan or an edit, neither of which is
 //! something a person does while trying to type.
 //!

@@ -79,6 +79,9 @@ tauri-plugin-opener = "2.5.4"
 
 [dev-dependencies]
 tempfile = "3"
+# `tests/perf.rs` counts the work SQLite does, through the trace and commit
+# hooks; neither feature changes the SQLite that is compiled.
+rusqlite = { version = "0.40", features = ["trace", "hooks"] }
 # The one test that opens a socket: `lastfm::transport` against a loopback
 # server, so the only code in the product that talks HTTP is not the only code
 # with no coverage. Binds an ephemeral port on 127.0.0.1; no egress, no
