@@ -275,9 +275,10 @@ export function App() {
           no artwork playing or the preference is off. */}
       <DynamicBackground />
 
-      {/* The mark, the menus, the version and the search field. The OS frame
-          above it is the window's own. `SearchBox` subscribes to its own
-          input: read from here, every keystroke re-rendered the whole app. */}
+      {/* The mark, the menus, the version, the search field and the window
+          buttons - the window's title bar, since there is no OS frame.
+          `SearchBox` subscribes to its own input: read from here, every
+          keystroke re-rendered the whole app. */}
       <AppBar version={appInfo?.version ?? null} update={<UpdateButton />} search={<SearchBox />}>
         {/* Its own component because the Edit menu serves the selection:
             built here, a click re-rendered the whole app for a menu nobody

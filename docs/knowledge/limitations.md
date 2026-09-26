@@ -106,6 +106,12 @@ Known, decided, and not scheduled. Anything with work attached lives in
   the actions. Load-bearing since phase 74 rather than incidental: in-app
   dragging routes each `pointermove` to whatever is under the pointer, which
   Chromium's implicit pointer capture for touch and pen would undo.
+- **Hovering maximise shows no snap layouts** — Windows offers them only to a
+  window that hit-tests `HTMAXBUTTON`, and WebView2 covers the whole client
+  area ([tauri#4531](https://github.com/tauri-apps/tauri/issues/4531)). Win+Z
+  and dragging to a screen edge still snap.
+- **The frameless window is not covered end to end** — the e2e build pins
+  `decorations: true` or the embedded driver never sees the webview.
 - **e2e cannot perform an OS drag** — Explorer's own drag loop onto the window.
   What the drag produces is emitted instead, so only the leg between the mouse
   and `wry` is uncovered. In-app dragging is covered from a dispatched

@@ -56,9 +56,9 @@ const all = rules(css);
 
 /** Selectors that may legitimately light up under the pointer. */
 const HOVER_ALLOWED = [
-  // `.window-buttons` used to be here, for the reason every Windows title bar
-  // highlights its caption buttons. Phase 119 gave the frame back to the OS,
-  // so there are no caption buttons left to except.
+  // Every Windows title bar highlights these; not doing so reads as broken
+  // rather than as native. Called out in phase 13.
+  ".window-buttons",
   // The two button primitives, phase 110. The rule this list guards is about
   // rows, cells and list items - a surface you are reading, lighting up under
   // a pointer that is only passing over it. A button is the opposite: it is a
@@ -1150,18 +1150,19 @@ describe("the stylesheet", () => {
     expect(winner.body).toMatch(/min-width:\s*calc\(100% - /);
   });
 
-  it("leaves no caption buttons behind", () => {
-    // Phase 119 handed the frame back to the OS. The rules that drew the
-    // minimise, maximise and close glyphs are the one part of the old title
-    // bar with no equivalent under a native frame, so their absence is checked
-    // rather than remembered - a reinstated `.window-buttons` would be a
-    // second set of window controls beside the real ones.
-    expect(css).not.toMatch(/\.window-buttons/);
-    // The separator can be an ordinary border again. It was an inset shadow
-    // only because the close button's red hover fill had to paint over it.
+  it("lets the caption buttons paint over the app bar's own separator", () => {
+    // The close button's red hover fill runs into the corner of the window, so
+    // it has to reach the bar's bottom edge. A `border-bottom` sits outside the
+    // content box the buttons fill, which left a line of `--chrome-border`
+    // across the red; an inset shadow is inside it and paints below children.
     const appbar = all.find((one) => one.selector.trim().endsWith(".appbar"));
 
-    expect(appbar?.body).toMatch(/border-bottom:\s*1px solid var\(--chrome-border\)/);
+    expect(appbar?.body).not.toMatch(/border-bottom/);
+    expect(appbar?.body).toMatch(/box-shadow:\s*inset 0 -1px 0/);
+
+    const button = all.find((one) => one.selector.trim() === ".window-buttons button");
+
+    expect(button?.body).toMatch(/[^-]height:\s*40px/);
   });
 
   it("blurs behind every translucent panel of chrome", () => {

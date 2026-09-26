@@ -377,6 +377,9 @@ absences are what nobody notices coming back — hence the guards in
   `weight` are bound in the registry, never at a call site.
   - Every icon is decorative: each sits beside its own label or inside a button
     with an `aria-label`, so a name here would be announced twice.
+  - **The caption buttons are the exception** and stay Segoe MDL2 (see
+    `.window-buttons` in `styles/app.css`). Those are the OS glyphs; a library X in the
+    corner of a Windows title bar reads as a web page.
 - **Every dialog is `primitives/Dialog`**, which is header, body and footer
   over one of Base UI's two roots. `role="alert"` picks `AlertDialog` — an
   alert cannot be dismissed by its backdrop, which is why the delete
@@ -655,8 +658,9 @@ absences are what nobody notices coming back — hence the guards in
   not restored. e2e specs that reload now reopen wherever they left off, so a
   spec that needs Songs after a reload has to leave on Songs.
 - The **OS window title** follows the player: `Apex — <title> — <artist>`, back
-  to `Apex` when nothing is playing. It shows in the frame, in Alt+Tab and in
-  the taskbar — the frame since phase 119 gave the decorations back to the OS.
+  to `Apex` when nothing is playing. With `decorations: false` it is invisible
+  in the app and shows only in Alt+Tab and the taskbar, which is where it is
+  wanted.
   `tauri.conf.json` still sets the idle title for the first frame.
 - `PlayerBar` draws **nothing while stopped**, and keys that on `status`, not
   `track`: `Engine::stop` keeps the queue index for Play to resume from, so

@@ -209,10 +209,11 @@ action reads as a target rather than a line of text".
 
 ## Layout
 
-- The OS draws the frame. Phase 119 dropped `decorations: false`, so the title,
-  the caption buttons, the system menu and snap layouts are the window's own.
-- A 40px app bar under it: the mark, the menus, the version, an update when one
-  is ready, the search field.
+- `decorations: false`: the 40px app bar is the title bar — the mark, the
+  menus, the version, an update when one is ready, the search field, the window
+  buttons. It keeps the drag and double-click-to-maximize behaviour. 119 gave
+  the frame to the OS; 158 took it back, against the sheet's "Native OS
+  titlebar assumed".
 - The sidebar is the navigation — LIBRARY (Songs, Releases, Artists, Genres, and
   a dimmed Statistics placeholder), then collapsible SMART PLAYLISTS and PLAYLISTS
   sections with counts. There is no tab bar and no library toolbar.
