@@ -238,6 +238,40 @@ describe("a queue that is playing", () => {
     });
   });
 
+  it("comes back paused where it was, in the same queue", async () => {
+    await playRow(0);
+    await browser.$("button[aria-label='Next']").click();
+    await waitForQueueIndex(1);
+
+    // Half way, because the fixtures are a second or two long and a seek past
+    // the end is held at the end.
+    const at = Math.floor((await snapshot()).durationMs / 2);
+    await invoke("player_seek", { positionMs: at });
+    await browser.waitUntil(async () => (await snapshot()).positionMs >= at, {
+      timeout: 10_000,
+      timeoutMsg: "the seek never arrived",
+    });
+
+    // Playing when it goes, so a paused player afterwards is the restore's
+    // doing and not what was already there. See `e2e_restore_playback`.
+    await invoke("e2e_restore_playback");
+
+    await waitForStatus("paused");
+    const restored = await snapshot();
+    expect(restored.queueIndex).toBe(1);
+    expect(restored.queueLen).toBe(LIBRARY.length);
+    // Where the seek left it rather than where the playhead had run on to.
+    expect(restored.positionMs).toBeGreaterThanOrEqual(at);
+    expect(restored.positionMs).toBeLessThan(at + 250);
+    await expect(browser.$(".now-playing-title")).toHaveText(titles[1] ?? "");
+    await expect(playPause()).toHaveAttribute("aria-label", "Play");
+
+    // The queue came back with it, so Next has somewhere to go.
+    await browser.$("button[aria-label='Next']").click();
+    await waitForQueueIndex(2);
+    await waitForStatus("playing");
+  });
+
   it("loves what is playing from the heart beside it", async () => {
     await playRow(0);
     await pause();

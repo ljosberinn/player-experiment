@@ -61,6 +61,9 @@ Known, decided, and not scheduled. Anything with work attached lives in
   screen that offers it, and no readout saying a pass is running at all. Until
   there is, the log is the only place either shows.
 - **No shuffle, and no repeat-all.** Repeat is one song, on or off. Deliberate.
+- **A crash or a killed process resumes from the last state change**, not from
+  the playhead: the resume point is written on load, pause, seek, stop and a
+  clean exit, never per tick.
 - **A playlist cannot hold the same track twice**, by schema. iTunes allows it;
   reporting "added 6 of 10" is the better answer.
 - **Orphaned covers accumulate again after the one prune.** `covers` is pruned

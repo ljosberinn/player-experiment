@@ -32,6 +32,13 @@ pub enum Command {
         entries: Vec<QueueEntry>,
         index: usize,
     },
+    /// Puts back what the last session left loaded: `index` of `entries`,
+    /// paused at `position_ms`. See [`Engine::restore`].
+    Restore {
+        entries: Vec<QueueEntry>,
+        index: usize,
+        position_ms: i64,
+    },
     /// Play if paused or stopped, pause if playing.
     Toggle,
     Pause,
@@ -207,6 +214,9 @@ pub struct Engine<S: AudioSink> {
     counted: bool,
     /// Whether the successor to the current load has already been prepared.
     prepared: bool,
+    /// Whether the current load was restored and has not been resumed yet,
+    /// so its [`Self::started_at`] is still to be taken.
+    restored: bool,
     last_position_ms: i64,
     /// Unix seconds at which the current load started.
     ///
@@ -242,6 +252,7 @@ impl<S: AudioSink> Engine<S> {
             announced: false,
             counted: false,
             prepared: false,
+            restored: false,
             last_position_ms: 0,
             started_at: 0,
             now,
@@ -296,6 +307,11 @@ impl<S: AudioSink> Engine<S> {
     pub fn handle(&mut self, command: Command) -> Vec<Event> {
         match command {
             Command::SetQueue { entries, index } => self.set_queue(entries, index),
+            Command::Restore {
+                entries,
+                index,
+                position_ms,
+            } => self.restore(entries, index, position_ms),
             Command::Toggle => self.toggle(),
             Command::Pause => self.pause(),
             Command::Resume => self.resume(),
@@ -382,6 +398,42 @@ impl<S: AudioSink> Engine<S> {
         let index = index.min(entries.len() - 1);
         self.queue = entries;
         self.start(index)
+    }
+
+    /// Loads `index` paused at `position_ms`, onto a stopped player only - a
+    /// Play that got in first wins.
+    ///
+    /// Not a new play. A track restored past the threshold was counted by the
+    /// session that took it there, and its `started_at` is taken at the first
+    /// resume rather than at launch, which may be hours earlier.
+    fn restore(&mut self, entries: Vec<QueueEntry>, index: usize, position_ms: i64) -> Vec<Event> {
+        if self.status != PlaybackStatus::Stopped {
+            return Vec::new();
+        }
+        let Some(entry) = entries.get(index).cloned() else {
+            return Vec::new();
+        };
+        if self.sink.load(Path::new(&entry.path)).is_err() {
+            // No `Error`: nobody asked for this, and a dialog about yesterday's
+            // song must not be the first thing the app says.
+            return vec![Event::LoadFailed(entry.track_id)];
+        }
+
+        let position_ms = position_ms.clamp(0, entry.duration_ms.max(0));
+        let position_ms = match self.sink.seek(Duration::from_millis(position_ms as u64)) {
+            Ok(()) => position_ms,
+            Err(_) => 0,
+        };
+
+        self.queue = entries;
+        self.index = Some(index);
+        self.status = PlaybackStatus::Paused;
+        self.announced = false;
+        self.counted = entry.duration_ms > 0 && position_ms >= played_threshold(entry.duration_ms);
+        self.prepared = false;
+        self.restored = true;
+        self.last_position_ms = position_ms;
+        vec![Event::Loaded(entry.track_id), Event::StateChanged]
     }
 
     fn toggle(&mut self) -> Vec<Event> {
@@ -541,8 +593,7 @@ impl<S: AudioSink> Engine<S> {
         if self.counted || duration_ms <= 0 {
             return None;
         }
-        let threshold = (duration_ms as f64 * PLAYED_FRACTION) as i64;
-        if position_ms < threshold {
+        if position_ms < played_threshold(duration_ms) {
             return None;
         }
         self.counted = true;
@@ -608,6 +659,7 @@ impl<S: AudioSink> Engine<S> {
                     self.announced = false;
                     self.counted = false;
                     self.prepared = false;
+                    self.restored = false;
                     self.last_position_ms = 0;
                     // Here rather than at the threshold: this is the moment
                     // the track started, and a pause or a seek between the two
@@ -657,6 +709,9 @@ impl<S: AudioSink> Engine<S> {
         }
         self.sink.play();
         self.status = PlaybackStatus::Playing;
+        if std::mem::take(&mut self.restored) {
+            self.started_at = (self.now)();
+        }
         vec![Event::StateChanged]
     }
 
@@ -699,6 +754,11 @@ impl<S: AudioSink> Engine<S> {
             Err(message) => vec![Event::Error(message)],
         }
     }
+}
+
+/// Where in a track of `duration_ms` it counts as played.
+fn played_threshold(duration_ms: i64) -> i64 {
+    (duration_ms as f64 * PLAYED_FRACTION) as i64
 }
 
 fn clamp_volume(volume: f32) -> f32 {
@@ -1595,5 +1655,112 @@ mod tests {
             "reloaded a stopped player"
         );
         assert_eq!(engine.state().status, PlaybackStatus::Stopped);
+    }
+
+    fn restore(position_ms: i64) -> Command {
+        Command::Restore {
+            entries: vec![entry(1, 10_000), entry(2, 10_000), entry(3, 10_000)],
+            index: 1,
+            position_ms,
+        }
+    }
+
+    #[test]
+    fn a_restore_loads_the_track_paused_where_it_was() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+
+        let events = engine.handle(restore(3_000));
+
+        assert_eq!(events, vec![Event::Loaded(2), Event::StateChanged]);
+        assert!(!engine.sink.playing, "a restore started the music");
+        let state = engine.state();
+        assert_eq!(state.status, PlaybackStatus::Paused);
+        assert_eq!(state.track_id, Some(2));
+        assert_eq!(state.position_ms, 3_000);
+        assert_eq!(state.queue_len, 3);
+
+        // And the queue around it is the one it came from.
+        engine.handle(Command::Next);
+        assert_eq!(engine.state().track_id, Some(3));
+    }
+
+    #[test]
+    fn a_restore_is_not_announced_or_counted_until_it_is_resumed() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(restore(4_000));
+        assert_eq!(engine.tick(), Vec::new(), "a paused restore said something");
+
+        engine.handle(Command::Resume);
+        engine.sink.position = Duration::from_millis(6_000);
+        let events = engine.tick();
+        assert_eq!(announced(&events), Some(2));
+        assert_eq!(played(&events), Some(2));
+    }
+
+    #[test]
+    fn a_restore_past_halfway_is_not_counted_a_second_time() {
+        // The session that took it past halfway counted it.
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(restore(8_000));
+        engine.handle(Command::Resume);
+
+        let events = engine.tick();
+        assert_eq!(played(&events), None, "counted the same play twice");
+        assert_eq!(announced(&events), Some(2), "resuming is on right now");
+    }
+
+    #[test]
+    fn a_restored_play_starts_its_clock_when_it_is_resumed() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let now = std::sync::Arc::new(AtomicI64::new(1_000));
+        let clock = std::sync::Arc::clone(&now);
+        let mut engine = Engine::with_clock(
+            FakeSink::default(),
+            1.0,
+            false,
+            Box::new(move || clock.load(Ordering::SeqCst)),
+        );
+        engine.handle(restore(0));
+        now.store(5_000, Ordering::SeqCst);
+        engine.handle(Command::Resume);
+        now.store(9_000, Ordering::SeqCst);
+        engine.handle(Command::Pause);
+        engine.handle(Command::Resume);
+        engine.sink.position = Duration::from_millis(6_000);
+
+        assert_eq!(
+            engine.tick().into_iter().find_map(|event| match event {
+                Event::Played { started_at, .. } => Some(started_at),
+                _ => None,
+            }),
+            Some(5_000),
+            "the first resume, not the launch and not a later resume"
+        );
+    }
+
+    #[test]
+    fn a_restore_does_not_interrupt_a_play_that_got_there_first() {
+        let mut engine = engine_with(2);
+
+        assert_eq!(engine.handle(restore(3_000)), Vec::new());
+        assert_eq!(engine.state().status, PlaybackStatus::Playing);
+        assert_eq!(engine.state().track_id, Some(1));
+    }
+
+    #[test]
+    fn a_restore_that_will_not_open_says_so_to_the_log_only() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.sink.fail_load = true;
+
+        assert_eq!(engine.handle(restore(3_000)), vec![Event::LoadFailed(2)]);
+        assert_eq!(engine.state().status, PlaybackStatus::Stopped);
+        assert_eq!(engine.state().queue_len, 0);
+    }
+
+    #[test]
+    fn a_restore_past_the_end_is_held_at_the_end() {
+        let mut engine = Engine::new(FakeSink::default(), 1.0, false);
+        engine.handle(restore(60_000));
+        assert_eq!(engine.state().position_ms, 10_000);
     }
 }

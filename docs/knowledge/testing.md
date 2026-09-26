@@ -285,6 +285,11 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   song again — have no route a driver can take. `e2e_end_track` is that route,
   behind `e2e_only`; the engine handles it with the same code the timer
   reaches, so only the sink's own end detection is left to the Rust tests.
+- **One app process serves the whole run, and the player thread outlives a
+  reload**, so no spec can reach a launch's restore by restarting.
+  `e2e_restore_playback`, behind `e2e_only`, stops the player and sends what
+  `take_restore` reads - the launch's own path, minus the process. The write on
+  exit is left to reading.
 - **Two seeds are inserted rather than produced**, behind `e2e_only`:
   `seed_synthetic_tracks` for a library size no fixture folder can reach, and
   `seed_synthetic_plays` for a listening history the suite would otherwise have
