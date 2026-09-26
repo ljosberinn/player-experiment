@@ -412,6 +412,23 @@ pub fn mbid(value: &str) -> Option<String> {
 /// length. The count is what the tests assert idempotence with; no caller
 /// needs it.
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
+    // One transaction rather than a commit per key, which is what the
+    // temporary table's inserts cost where a scan or a removal calls this
+    // bare (issue 166). A savepoint for `regroup`'s reason.
+    conn.execute_batch("SAVEPOINT resolve")?;
+    match resolve_within(conn) {
+        Ok(moved) => {
+            conn.execute_batch("RELEASE resolve")?;
+            Ok(moved)
+        }
+        Err(error) => {
+            conn.execute_batch("ROLLBACK TO resolve; RELEASE resolve")?;
+            Err(error)
+        }
+    }
+}
+
+fn resolve_within(conn: &Connection) -> AppResult<u32> {
     use std::collections::{HashMap, HashSet};
 
     conn.execute_batch(
