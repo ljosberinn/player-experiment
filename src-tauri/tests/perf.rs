@@ -498,8 +498,7 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
     // find, which is exactly the unplugged-drive shape. A statement per row is
     // the design - FTS5 adds several of its own to each - inside the one
     // transaction; an UPDATE that cannot use the primary key reads the table
-    // once per row, which is `scanned` squared. The scan ends in
-    // `plays::resolve`, and the commits are its, a track each - issue 166.
+    // once per row, which is `scanned` squared.
     let (work, summary) = work_of(|| scan::scan(&mut conn, |_| {}).unwrap());
     assert_eq!(summary.missing, ROWS as u32);
     assert_within(
@@ -509,7 +508,7 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
             steps: 800 * R,
             scanned: 10 * R,
             sorts: 20,
-            commits: 2 * R,
+            commits: 10,
         },
         work,
     );
@@ -525,7 +524,7 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
             steps: 300 * R,
             scanned: 10 * R,
             sorts: 20,
-            commits: 2 * R,
+            commits: 10,
         },
         work,
     );
@@ -652,8 +651,7 @@ const P: u64 = PLAYS as u64;
 /// `UPDATE`. **What catches the guard being lost is the count, not a budget**:
 /// a warm run writes zero rows on any machine. The budgets are the coarser
 /// question - whether it is still one pass over the log per read, and a
-/// statement per track rather than per play. Those statements run outside a
-/// transaction and commit one by one - issue 166.
+/// statement per track rather than per play, inside the one transaction.
 #[test]
 fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
     let (_dir, db) = seeded_library();
@@ -666,7 +664,7 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
         steps: 150 * (P + R),
         scanned: 3 * (P + R),
         sorts: 5,
-        commits: 2 * R,
+        commits: 1,
     };
 
     // Cold: every matched row moves off NULL. This is what runs once after an
