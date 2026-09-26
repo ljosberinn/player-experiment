@@ -11,7 +11,7 @@ const base = {
   bytes: 0,
 };
 
-describe("what the footer says the view is showing", () => {
+describe("what the summary says the view is showing", () => {
   it("counts songs and their time on the songs view", () => {
     expect(viewSummary({ ...base, trackCount: 5, durationMs: 3_000_000, bytes: 214_000_000 })).toBe(
       "5 songs, 50 minutes, 214 MB",
@@ -30,7 +30,7 @@ describe("what the footer says the view is showing", () => {
   });
 
   it("counts songs again once a group is opened", () => {
-    // Drilling into one release shows the songs table, so the line under it
+    // Drilling into one release shows the songs table, so the summary over it
     // has to describe songs - the tab is still "albums" at that point.
     expect(
       viewSummary({
@@ -44,9 +44,10 @@ describe("what the footer says the view is showing", () => {
     ).toBe("11 songs, 45 minutes");
   });
 
-  it("says none rather than a bare zero", () => {
-    expect(viewSummary({ ...base })).toBe("No songs");
-    expect(viewSummary({ ...base, tab: "albums" })).toBe("No releases");
+  it("says nothing about an empty view, whose empty state already does", () => {
+    expect(viewSummary({ ...base })).toBe("");
+    expect(viewSummary({ ...base, tab: "albums" })).toBe("");
+    expect(viewSummary({ ...base, tab: "albums", drilledIn: true })).toBe("");
   });
 
   it("uses the singular for one of anything", () => {
@@ -67,8 +68,7 @@ describe("what the footer says the view is showing", () => {
   });
 
   it("says nothing under Statistics, which is all numbers already", () => {
-    // The browse arm would otherwise call its groups genres and report "No
-    // genres" under a view that has none to report.
+    // The browse arm would otherwise call its groups genres.
     expect(viewSummary({ ...base, tab: "stats" })).toBe("");
   });
 });

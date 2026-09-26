@@ -46,12 +46,11 @@ const CATEGORIES: { value: SettingsCategory; label: string }[] = [
  * direct children - the panel is the paned dialog's `DialogBody`, and only
  * one is mounted at a time, so switching category starts it at the top.
  *
- * Interface zoom is the same control the status bar carries, deliberately: the
- * design puts Settings in the Edit menu and the stepper in the corner, and both
- * write the same store. A setting reachable two ways is not a setting
- * duplicated. last.fm is reachable twice on the same terms - the Account menu
- * names the connected user and disconnects in one click, and sends Connect
- * here, where there is room to say what a scrobble carries.
+ * Interface zoom has lived only here and on the keyboard since phase 152 took
+ * the status bar and its stepper away. last.fm is reachable twice, which is
+ * not a setting duplicated: the Account menu names the connected user and
+ * disconnects in one click, and sends Connect here, where there is room to say
+ * what a scrobble carries.
  *
  * The one piece of state held here rather than inside a section is the folder
  * the Library folder and music folder sections have to agree about - the root
@@ -122,7 +121,7 @@ export function SettingsDialog({
           <span>Interface Zoom</span>
           {/* No group label: each button already says what it does, and a
                   plain span cannot carry one without inventing a role for it. */}
-          <span className="statusbar-zoom">
+          <span className="zoom-stepper">
             <button
               type="button"
               aria-label="Zoom out"
@@ -131,7 +130,7 @@ export function SettingsDialog({
             >
               −
             </button>
-            <span className="statusbar-zoom-value" aria-live="polite">
+            <span className="zoom-stepper-value" aria-live="polite">
               {formatZoom(factor)}
             </span>
             <button

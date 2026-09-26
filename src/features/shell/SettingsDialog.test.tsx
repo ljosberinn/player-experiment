@@ -9,6 +9,8 @@ import { useLookupStore } from "./lookupStore";
 import { type SettingsCategory, SettingsDialog } from "./SettingsDialog";
 import { useStatusStore } from "./statusStore";
 import { useThemeStore } from "./themeStore";
+import { DEFAULT_ZOOM } from "./zoom";
+import { useZoomStore } from "./zoomStore";
 
 vi.mock("../../ipc", () => ({
   loadDynamicBackground: vi.fn(async () => true),
@@ -183,10 +185,32 @@ describe("the Settings dialog", () => {
     expect(checkbox()).not.toBeChecked();
   });
 
-  it("carries the interface zoom", () => {
+  it("carries the interface zoom, stepping out and in", async () => {
+    useZoomStore.setState({ factor: DEFAULT_ZOOM });
+    const user = userEvent.setup();
     render(<SettingsDialog onClose={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(await screen.findByText("90%")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(await screen.findByText("100%")).toBeInTheDocument();
+  });
+
+  it("stops the zoom at the ends rather than letting the value run past them", async () => {
+    useZoomStore.setState({ factor: DEFAULT_ZOOM });
+    const user = userEvent.setup();
+    render(<SettingsDialog onClose={vi.fn()} />);
+
+    const out = screen.getByRole("button", { name: "Zoom out" });
+    for (let i = 0; i < 3; i++) {
+      await user.click(out);
+    }
+
+    // 1.0 down to the 0.8 floor is two steps; a third must not move it, and
+    // the button says so rather than silently doing nothing.
+    expect(await screen.findByText("80%")).toBeInTheDocument();
+    expect(out).toBeDisabled();
   });
 
   it("opens the activity log in the file manager", async () => {
@@ -231,7 +255,7 @@ describe("the Settings dialog", () => {
   });
 
   // jsdom has no stylesheet, so a class is all this can check. The zoom
-  // stepper is the exception: `.statusbar-zoom button` draws it bare.
+  // stepper is the exception: `.zoom-stepper button` draws it bare.
   it.each<[string, SettingsCategory, () => void]>([
     ["Appearance", "appearance", () => undefined],
     [
@@ -261,7 +285,7 @@ describe("the Settings dialog", () => {
     }
 
     const buttons = [...pane().querySelectorAll("button")].filter(
-      (button) => button.closest(".statusbar-zoom") === null,
+      (button) => button.closest(".zoom-stepper") === null,
     );
 
     expect(buttons.length).toBeGreaterThan(0);

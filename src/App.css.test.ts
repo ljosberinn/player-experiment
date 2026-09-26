@@ -586,8 +586,10 @@ describe("the stylesheet", () => {
         ["glyph on the transport strip", strip, 3],
         // The one solid accent fill in the chrome, inside its capsule.
         ["play button on the pill", [token("pill", ground)], 3],
-        // `.link-button`, `.statusbar-update`, `.sidebar-dropzone.drop-target`.
+        // `.link-button`, `.sidebar-dropzone.drop-target`.
         ["link on the content pane", [token("surface", ground)], 4.5],
+        // `.appbar-update`.
+        ["link on the app bar", [token("chrome-veil", ground), token("surface", ground)], 4.5],
         ["link in a dialog", [token("chrome", ground)], 4.5],
         ["link on the sidebar", [token("sidebar", ground)], 4.5],
       ] as [string, string[], number][]) {
@@ -861,23 +863,6 @@ describe("the stylesheet", () => {
     }
   });
 
-  it("keeps every status bar child on one row", () => {
-    // The bar is a three-column grid. Auto-placement only moves forward, so a
-    // child assigned to an earlier column than the one before it in the DOM
-    // starts a second row instead - which is exactly how the version and the
-    // zoom stepper ended up below the summary. Stating the row on each makes
-    // the layout independent of DOM order.
-    const placed = all.filter((rule) => /\.statusbar-[\w-]+$/.test(rule.selector.trim()));
-    const withColumn = placed.filter((rule) => /grid-column:/.test(rule.body));
-
-    // Guards the guard: a selector regex that matched nothing would iterate an
-    // empty list and pass however the bar is actually laid out.
-    expect(withColumn.length).toBeGreaterThan(2);
-    for (const rule of withColumn) {
-      expect(rule.body, `${rule.selector} sets a column but no row`).toMatch(/grid-row:\s*1/);
-    }
-  });
-
   it("gives the player bar a fixed height, not a growing one", () => {
     // The layout shift this pins shut used to be inside the now-playing box:
     // idle showed one line, playing showed three plus a scrubber, and the box
@@ -1103,15 +1088,11 @@ describe("the stylesheet", () => {
     }
   });
 
-  it("keeps the app bar and the footer the heights the design draws", () => {
-    // Both are stated rather than left to their contents, and both are what
-    // the player bar and the content pane are measured against. A bar
-    // that sized itself would move every time a version string got a digit
-    // longer or a menu label changed.
-    for (const [selector, height] of [
-      [".appbar", 40],
-      [".statusbar", 30],
-    ] as const) {
+  it("keeps the app bar the height the design draws", () => {
+    // Stated rather than left to its contents, because the content pane is
+    // measured against it. A bar that sized itself would move every time a
+    // version string got a digit longer or a menu label changed.
+    for (const [selector, height] of [[".appbar", 40]] as const) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));
       expect(rule?.body, `${selector} should state its height`).toMatch(
         new RegExp(`[^-]height:\\s*${height}px`),
@@ -1376,7 +1357,8 @@ describe("the stylesheet", () => {
       ".scrubber-time",
       ".sidebar-count",
       ".song-cell.right",
-      ".statusbar-zoom-value",
+      ".view-summary",
+      ".zoom-stepper-value",
       ".stat-row dd",
       ".stat-tile-value",
       ".bar-list-value",

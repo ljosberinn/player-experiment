@@ -109,7 +109,7 @@ async function settledAt(count: number, why: string): Promise<void> {
 
 describe("a smart playlist with a cutoff", () => {
   before(async () => {
-    await browser.$(".statusbar-summary").waitForExist({ timeout: 30_000 });
+    await browser.$(".appbar").waitForExist({ timeout: 30_000 });
   });
 
   it("builds one through the editor", async () => {

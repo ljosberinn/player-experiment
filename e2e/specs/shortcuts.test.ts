@@ -191,8 +191,14 @@ async function clearSearch(): Promise<void> {
   });
 }
 
-function zoomLabel(): Promise<string> {
-  return browser.$(".statusbar-zoom-value").getText();
+/**
+ * The zoom as a percentage, read from the stored preference: the store saves
+ * it only after the webview has taken it, and the window no longer draws the
+ * value anywhere outside Settings.
+ */
+async function zoomLabel(): Promise<string> {
+  const stored = await invoke<string | null>("load_zoom");
+  return `${Math.round(Number(stored ?? 1) * 100)}%`;
 }
 
 /**
@@ -609,14 +615,14 @@ describe("the keys bound at the window", () => {
 
       await browser.waitUntil(async () => (await zoomLabel()) === "90%", {
         timeout: 10_000,
-        timeoutMsg: `Ctrl+minus left the footer reading ${await zoomLabel()}`,
+        timeoutMsg: `Ctrl+minus left the zoom at ${await zoomLabel()}`,
       });
 
       await dispatch("body", { key: "+", ctrlKey: true });
 
       await browser.waitUntil(async () => (await zoomLabel()) === "100%", {
         timeout: 10_000,
-        timeoutMsg: `Ctrl+plus left the footer reading ${await zoomLabel()}`,
+        timeoutMsg: `Ctrl+plus left the zoom at ${await zoomLabel()}`,
       });
     });
 
@@ -642,7 +648,7 @@ describe("the keys bound at the window", () => {
 
       await browser.waitUntil(async () => (await zoomLabel()) === "100%", {
         timeout: 10_000,
-        timeoutMsg: `Ctrl+0 left the footer reading ${await zoomLabel()}`,
+        timeoutMsg: `Ctrl+0 left the zoom at ${await zoomLabel()}`,
       });
     });
   });

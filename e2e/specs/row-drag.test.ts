@@ -134,7 +134,7 @@ async function settledAt(count: number, why: string): Promise<void> {
 
 describe("dragging rows", () => {
   before(async () => {
-    await browser.$(".statusbar-summary").waitForExist({ timeout: 30_000 });
+    await browser.$(".appbar").waitForExist({ timeout: 30_000 });
     await settledAt(LIBRARY.length, "the library never settled");
   });
 

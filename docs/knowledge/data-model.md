@@ -96,7 +96,7 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   where an auxiliary function call can no longer reach it.
 - **Row count is a separate `COUNT(*)`**, so the scrollbar is right without
   loading rows. `count_tracks` is a thin wrapper over `library_stats`, so the
-  footer and the scrollbar cannot describe different views.
+  view summary and the scrollbar cannot describe different views.
 - **`sum()` of no rows is NULL in SQLite**, not 0 — every aggregate is
   `coalesce`d or an empty library fails to decode.
 - **`all_track_ids`** exists because "select all" needs ids, not rows; routing

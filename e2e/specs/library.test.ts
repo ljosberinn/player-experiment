@@ -177,9 +177,7 @@ describe("a library with something in it", () => {
   it("counts what it ingested, and leaves alone what is not audio", async () => {
     // The fixture folder also holds a .jpg and a .txt, so "6 songs" is as much
     // an assertion about those two as about the six mp3s.
-    await expect(browser.$(".statusbar-summary")).toHaveText(
-      new RegExp(`^${LIBRARY.length} songs`),
-    );
+    await expect(browser.$(".view-summary")).toHaveText(new RegExp(`^${LIBRARY.length} songs`));
   });
 
   it("sorts by a column, both ways", async () => {
