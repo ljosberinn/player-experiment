@@ -135,11 +135,12 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
 
 ## Charts
 
-`src/components/charts/`. **`scales.ts` is the only file importing d3** —
-`d3-scale` for the domain-to-pixel mapping, `d3-shape` for the arithmetic of a
-ring segment. What is borrowed is the maths and nothing else, so every element
-and every colour on screen is ours, which is what the design and
-`e2e/contrast.ts` both require.
+`src/components/charts/`. **`scales.ts` holds the maths** — the
+domain-to-pixel mapping, tick selection and the arithmetic of a ring segment.
+It was d3 until 167: one linear map, one tick rule and one arc pulled nine
+packages. The tick rule is d3's, and the arc rounds to three places as d3's
+did, so the switch drew nothing differently. Every element and every colour on
+screen is ours, which is what the design and `e2e/contrast.ts` both require.
 
 - **Ticks come back as data**, `{ value, offset, label }`, not as an axis
   generator wanting a DOM node. A chart lays them out and a test asserts on
@@ -252,8 +253,9 @@ and every colour on screen is ours, which is what the design and
   no maximum. The margin is the other side of the one-constant rule rather than
   an exception to it — what the constant buys is plots that line up, and a
   radial chart has none, so an axis gutter under it is a ring drawn off-centre.
-  `arcPath` is d3's generator rather than trigonometry for one case: a slice of
-  a whole turn is a full circle, and a single SVG `A` command cannot draw one.
+  `arcPath` has one case plain trigonometry gets wrong: a slice of a whole
+  turn is a full circle, and a single SVG `A` command cannot draw one, so each
+  edge is two half turns.
 - **A slice click is a shortcut, and the table holds the real control.**
   `role="img"` makes a frame's whole subtree presentational, so nothing inside
   an svg is reachable by anything but a pointer. A drill therefore has a button
@@ -268,10 +270,8 @@ and every colour on screen is ours, which is what the design and
   play, taken from the scan the tiles already started. `fillSeries` then puts
   the empty buckets back, stepping by the local calendar - a local day is not
   86,400 seconds twice a year.
-- **What has not landed**: `Line`, `Donut`, `Sparkline`. Each wants a real
-  panel as its caller; the donut is 84d. The file list in the plan is a
-  ceiling, not a checklist. `d3-shape` is still not a dependency, because
-  nothing draws an arc or an area.
+- **What has not landed**: `Line`, `Sparkline`. Each wants a real panel as
+  its caller. The file list in the plan is a ceiling, not a checklist.
 - Charts hold no virtualizer, so unlike `SongTable` and `BrowseView` they
   compile clean under the React Compiler and want no `"use no memo"`.
 

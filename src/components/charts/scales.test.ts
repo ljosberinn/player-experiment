@@ -45,7 +45,7 @@ describe("arcPath", () => {
   test("draws a ring segment as two arcs joined by two lines", () => {
     // The shape a donut slice is: out along one radius, round the rim, back in
     // along the other, round the hole. Asserted as commands rather than
-    // coordinates - the numbers are d3's business, the shape is this app's.
+    // coordinates - the numbers are trigonometry's business, the shape is this app's.
     const commands = arcPath(0, TAU / 4, 40, 70).match(/[A-Z]/g);
 
     expect(commands).toStrictEqual(["M", "A", "L", "A", "Z"]);
