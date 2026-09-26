@@ -413,6 +413,15 @@ beside `reveal_crash_log`: a log nobody can find is not one.
   the engine reloads the current entry, seeks back to where it was, and
   restores play or pause. Same play throughout — nothing is re-announced or
   re-scrobbled — and no device left to move to stops with an error.
+- **A launch resumes the last song, paused.** `settings.player.queue` holds the
+  ids `player_play` queued, written per Play because it can be the library;
+  `player.resume` holds the index and position, written on every
+  `StateChanged` and on `RunEvent::Exit`, and deleted on a stop - so a launch
+  after Stop or a queue running out loads nothing. `playback::take_restore`
+  deletes it as it reads, off the setup path, and `Command::Restore` writes it
+  back only by loading: a file that has gone is tried once, marked missing,
+  and never reported. A restore is not a new play - past halfway it is already
+  counted, and `started_at` is taken at the first resume.
 - **"Played" means 50% of the track.** One constant (`PLAYED_FRACTION`) behind
   play counts and scrobbling alike. A repeat loop counts as a play, and
   `Event::Played` carries the wall-clock second the track *started* — derived

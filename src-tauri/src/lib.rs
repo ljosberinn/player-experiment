@@ -142,6 +142,7 @@ pub fn run() {
                 muted,
                 log.clone(),
             ));
+            resume_playback(app.handle().clone(), db.clone(), log.clone());
             app.manage(scrobbler);
             // One lock for everything that rewrites rows from files on disk,
             // so the unattended pass can tell whether it would be racing a
@@ -297,6 +298,7 @@ pub fn run() {
             commands::seed_synthetic_plays,
             commands::e2e_provoke_panic,
             commands::e2e_end_track,
+            commands::e2e_restore_playback,
             commands::lastfm_status,
             commands::lastfm_begin_connect,
             commands::lastfm_complete_connect,
@@ -309,8 +311,43 @@ pub fn run() {
             commands::reveal_crash_log,
             commands::reveal_main_log,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                remember_on_exit(app);
+            }
+        });
+}
+
+/// Puts back what the last session left loaded, off the setup path: the queue
+/// can be the whole library, and looking it up is not worth holding the window
+/// for. A Play that lands first wins; see `Engine::restore`.
+fn resume_playback(app: tauri::AppHandle, db: Db, log: log::Log) {
+    let _ = std::thread::Builder::new()
+        .name("playback-restore".to_owned())
+        .spawn(
+            move || match db.conn().and_then(|conn| playback::take_restore(&conn)) {
+                Ok(Some(command)) => {
+                    let _ = app.state::<Player>().send(command);
+                }
+                Ok(None) => {}
+                Err(error) => log.op("playback.restore").failed(&error),
+            },
+        );
+}
+
+/// Writes where the player stands as the app goes.
+///
+/// State changes write it too, but none happens while a track plays on, so
+/// without this a song closed half way through would come back from its start.
+fn remember_on_exit(app: &tauri::AppHandle) {
+    let (Some(db), Some(player)) = (app.try_state::<Db>(), app.try_state::<Player>()) else {
+        return;
+    };
+    if let Ok(conn) = db.conn() {
+        let _ = playback::remember(&conn, &player.state());
+    }
 }
 
 /// Starts the timer that keeps the watch folders watched.
@@ -615,6 +652,9 @@ fn forward(
     move |event, state| match event {
         Event::StateChanged => {
             if let Ok(conn) = db.conn() {
+                // A load, a pause, a seek or a stop - the moments the resume
+                // point moves other than the playhead running on.
+                let _ = playback::remember(&conn, state);
                 if let Ok(snapshot) = playback::snapshot(&conn, state) {
                     let _ = app.emit("player://state", &snapshot);
                 }

@@ -1358,6 +1358,10 @@ pub fn player_play(
 ) -> AppResult<()> {
     let conn = db.conn()?;
     let entries = playback::queue_entries(&conn, &track_ids)?;
+    // What the engine was given rather than what was asked for, so the index
+    // a later state change writes points into the same list.
+    let queued: Vec<i64> = entries.iter().map(|entry| entry.track_id).collect();
+    settings::save_queue(&conn, &queued)?;
     player.send(Command::SetQueue {
         entries,
         index: index as usize,
@@ -1412,6 +1416,25 @@ pub fn e2e_end_track(player: State<'_, Player>) -> AppResult<()> {
     crate::e2e_only("e2e_end_track")?;
 
     player.send(Command::EndTrack)
+}
+
+/// Stops the player and puts back what it would have been left with at launch.
+/// **Test-only.**
+///
+/// A spec cannot restart the app it drives, and the player thread outlives a
+/// reload, so this is the route to what the next launch does: the same
+/// `take_restore`, read before the stop that would clear it.
+#[tauri::command]
+pub fn e2e_restore_playback(db: State<'_, Db>, player: State<'_, Player>) -> AppResult<()> {
+    crate::e2e_only("e2e_restore_playback")?;
+
+    let conn = db.conn()?;
+    let restore = playback::take_restore(&conn)?;
+    player.send(Command::Stop)?;
+    if let Some(command) = restore {
+        player.send(command)?;
+    }
+    Ok(())
 }
 
 /// Sets the volume and remembers it for the next launch.

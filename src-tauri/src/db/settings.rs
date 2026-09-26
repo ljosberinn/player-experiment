@@ -6,14 +6,22 @@
 use std::path::PathBuf;
 
 use rusqlite::{Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 pub const VOLUME: &str = "player.volume";
 /// Whether output is muted. Stored beside the volume rather than folded into
 /// it: a muted player still knows what level to come back to, and a stored
 /// zero would lose that.
 pub const MUTED: &str = "player.muted";
+/// The last queue played, as a JSON array of track ids. Its own key, written
+/// on each Play rather than on each track change: it can be the whole library.
+pub const QUEUE: &str = "player.queue";
+/// Where in [`QUEUE`] the player stands, as [`ResumePoint`] JSON. Absent while
+/// stopped, which is what makes a launch after a Stop come up with nothing
+/// loaded.
+pub const RESUME: &str = "player.resume";
 pub const WINDOW_GEOMETRY: &str = "window.geometry";
 /// The library view's column layout; a playlist's own lives on its row.
 pub const COLUMNS: &str = "library.columns";
@@ -170,6 +178,11 @@ pub fn get(conn: &Connection, key: &str) -> AppResult<Option<String>> {
         .optional()?)
 }
 
+pub fn remove(conn: &Connection, key: &str) -> AppResult<()> {
+    conn.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+    Ok(())
+}
+
 pub fn set(conn: &Connection, key: &str, value: &str) -> AppResult<()> {
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
@@ -199,6 +212,47 @@ pub fn volume(conn: &Connection) -> AppResult<f32> {
 /// be wrong.
 pub fn muted(conn: &Connection) -> AppResult<bool> {
     Ok(get(conn, MUTED)?.as_deref() == Some("true"))
+}
+
+/// Where the player stood in [`QUEUE`], for the next launch to put back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumePoint {
+    pub index: u32,
+    pub position_ms: i64,
+}
+
+pub fn save_queue(conn: &Connection, track_ids: &[i64]) -> AppResult<()> {
+    let value = serde_json::to_string(track_ids)
+        .map_err(|e| AppError::Internal(format!("encoding the queue: {e}")))?;
+    set(conn, QUEUE, &value)
+}
+
+pub fn save_resume_point(conn: &Connection, point: ResumePoint) -> AppResult<()> {
+    let value = serde_json::to_string(&point)
+        .map_err(|e| AppError::Internal(format!("encoding the resume point: {e}")))?;
+    set(conn, RESUME, &value)
+}
+
+/// The last queue and where in it the player stood, if both are there.
+///
+/// Anything unparseable, or an index outside the queue, reads as nothing to
+/// resume: a launch that loads nothing is the harmless way to be wrong.
+pub fn resume_point(conn: &Connection) -> AppResult<Option<(Vec<i64>, ResumePoint)>> {
+    let Some(point) =
+        get(conn, RESUME)?.and_then(|value| serde_json::from_str::<ResumePoint>(&value).ok())
+    else {
+        return Ok(None);
+    };
+    let Some(queue) =
+        get(conn, QUEUE)?.and_then(|value| serde_json::from_str::<Vec<i64>>(&value).ok())
+    else {
+        return Ok(None);
+    };
+    if point.index as usize >= queue.len() {
+        return Ok(None);
+    }
+    Ok(Some((queue, point)))
 }
 
 /// Minutes between unattended library passes; zero means off.
@@ -418,6 +472,47 @@ mod tests {
     fn neither_library_folder_key_is_exportable() {
         assert!(!is_exportable(ORGANIZE));
         assert!(!is_exportable(LIBRARY_ROOT));
+    }
+
+    #[test]
+    fn the_resume_point_round_trips() {
+        let (_dir, conn) = conn();
+        assert_eq!(resume_point(&conn).unwrap(), None);
+
+        let point = ResumePoint {
+            index: 1,
+            position_ms: 61_000,
+        };
+        save_queue(&conn, &[7, 8, 9]).unwrap();
+        save_resume_point(&conn, point).unwrap();
+        assert_eq!(resume_point(&conn).unwrap(), Some((vec![7, 8, 9], point)));
+
+        remove(&conn, RESUME).unwrap();
+        assert_eq!(resume_point(&conn).unwrap(), None, "a stop resumes nothing");
+    }
+
+    #[test]
+    fn a_resume_point_this_app_did_not_write_resumes_nothing() {
+        let (_dir, conn) = conn();
+        save_queue(&conn, &[7, 8]).unwrap();
+
+        set(&conn, RESUME, "halfway").unwrap();
+        assert_eq!(resume_point(&conn).unwrap(), None);
+
+        // Past the end of the queue it names.
+        set(&conn, RESUME, r#"{"index":2,"positionMs":0}"#).unwrap();
+        assert_eq!(resume_point(&conn).unwrap(), None);
+
+        set(&conn, RESUME, r#"{"index":1,"positionMs":0}"#).unwrap();
+        set(&conn, QUEUE, "[7,").unwrap();
+        assert_eq!(resume_point(&conn).unwrap(), None);
+    }
+
+    #[test]
+    fn neither_half_of_the_resume_point_is_exportable() {
+        // A session's queue is this machine's history, not the library.
+        assert!(!is_exportable(QUEUE));
+        assert!(!is_exportable(RESUME));
     }
 
     #[test]

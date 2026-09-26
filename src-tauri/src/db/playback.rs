@@ -2,10 +2,11 @@
 
 use rusqlite::{Connection, OptionalExtension};
 
-use crate::audio::{EngineState, QueueEntry};
+use crate::audio::{Command, EngineState, QueueEntry};
 use crate::db::query::row_to_track;
+use crate::db::settings::{self, ResumePoint};
 use crate::error::AppResult;
-use crate::model::{PlayerSnapshot, Track};
+use crate::model::{PlaybackStatus, PlayerSnapshot, Track};
 
 /// Fills in the track row the engine only knows by id.
 ///
@@ -88,6 +89,50 @@ pub fn queue_entries(conn: &Connection, ids: &[i64]) -> AppResult<Vec<QueueEntry
         }
     }
     Ok(entries)
+}
+
+/// What the last session left loaded, as the command that puts it back.
+///
+/// Takes the resume point rather than reading it: a restore that does not load
+/// writes nothing back, so a file that has gone is not tried again every
+/// launch. One that loads writes it again through [`remember`].
+pub fn take_restore(conn: &Connection) -> AppResult<Option<Command>> {
+    let resume = settings::resume_point(conn)?;
+    settings::remove(conn, settings::RESUME)?;
+    let Some((queue, point)) = resume else {
+        return Ok(None);
+    };
+
+    // Split at the track, so its index still finds it after songs before it
+    // have left the library.
+    let index = point.index as usize;
+    let mut entries = queue_entries(conn, &queue[..index])?;
+    let rest = queue_entries(conn, &queue[index..])?;
+    if rest.first().map(|entry| entry.track_id) != Some(queue[index]) {
+        return Ok(None);
+    }
+    let index = entries.len();
+    entries.extend(rest);
+    Ok(Some(Command::Restore {
+        entries,
+        index,
+        position_ms: point.position_ms,
+    }))
+}
+
+/// Keeps the resume point in step with the engine: where it stands while a
+/// track is loaded, and nothing once it stops.
+pub fn remember(conn: &Connection, state: &EngineState) -> AppResult<()> {
+    match (state.status, state.queue_index) {
+        (PlaybackStatus::Stopped, _) | (_, None) => settings::remove(conn, settings::RESUME),
+        (_, Some(index)) => settings::save_resume_point(
+            conn,
+            ResumePoint {
+                index,
+                position_ms: state.position_ms,
+            },
+        ),
+    }
 }
 
 /// Records that a track was played.
@@ -173,5 +218,77 @@ mod tests {
 
         // Untouched tracks stay untouched.
         assert_eq!(track_by_id(&conn, 2).unwrap().unwrap().play_count, 0);
+    }
+
+    fn restores(conn: &Connection) -> Option<(Vec<i64>, usize, i64)> {
+        take_restore(conn).unwrap().map(|command| match command {
+            Command::Restore {
+                entries,
+                index,
+                position_ms,
+            } => (
+                entries.iter().map(|entry| entry.track_id).collect(),
+                index,
+                position_ms,
+            ),
+            other => panic!("not a restore: {other:?}"),
+        })
+    }
+
+    fn left_at(conn: &Connection, queue: &[i64], index: u32, position_ms: i64) {
+        settings::save_queue(conn, queue).unwrap();
+        settings::save_resume_point(conn, ResumePoint { index, position_ms }).unwrap();
+    }
+
+    #[test]
+    fn a_restore_puts_back_the_queue_and_the_place_in_it() {
+        let (_dir, conn) = seeded();
+        left_at(&conn, &[3, 1, 2], 1, 400);
+        assert_eq!(restores(&conn), Some((vec![3, 1, 2], 1, 400)));
+    }
+
+    #[test]
+    fn a_restore_finds_its_track_after_songs_before_it_have_gone() {
+        let (_dir, conn) = seeded();
+        left_at(&conn, &[99, 1, 98, 2, 3], 3, 400);
+        assert_eq!(restores(&conn), Some((vec![1, 2, 3], 1, 400)));
+    }
+
+    #[test]
+    fn a_track_that_has_left_the_library_restores_nothing_and_is_forgotten() {
+        let (_dir, conn) = seeded();
+        left_at(&conn, &[1, 99, 2], 1, 400);
+
+        assert_eq!(restores(&conn), None);
+        assert_eq!(settings::get(&conn, settings::RESUME).unwrap(), None);
+    }
+
+    #[test]
+    fn a_stop_forgets_where_the_player_stood() {
+        let (_dir, conn) = seeded();
+        let state = EngineState {
+            status: PlaybackStatus::Paused,
+            track_id: Some(2),
+            next_track_id: None,
+            queue_index: Some(1),
+            queue_len: 2,
+            position_ms: 1_500,
+            duration_ms: 2_000,
+            volume: 1.0,
+            muted: false,
+            repeat_one: false,
+        };
+        settings::save_queue(&conn, &[1, 2]).unwrap();
+
+        remember(&conn, &state).unwrap();
+        assert_eq!(restores(&conn), Some((vec![1, 2], 1, 1_500)));
+
+        remember(&conn, &state).unwrap();
+        let stopped = EngineState {
+            status: PlaybackStatus::Stopped,
+            ..state
+        };
+        remember(&conn, &stopped).unwrap();
+        assert_eq!(restores(&conn), None);
     }
 }
