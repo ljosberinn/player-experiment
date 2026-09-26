@@ -313,12 +313,18 @@ on every row. `SongTable.renders.test.tsx` counts `ColumnDef.render` calls
 against a 47-row window: a click and a sub-row scroll touch no cell at all, and
 crossing six rows renders six. Before the split those were 235 and 3265.
 
-**`SongRow` and `ColumnHeader` are `memo`, the only two calls in `src`.** The
-compiler caches what a component returns, not whether it is called, and a
-compiled parent is what skips the call. `SongTable` is not compiled, so without
-`memo` every row in the window and the header still ran on each click and each
-scroll frame — no cell rendered, but react-scan outlined all of them. The same
-file counts those runs: two rows for a click, none for a sub-row scroll.
+**A row in a list is `memo`.** The compiler caches what a component returns,
+not whether it is called; a compiled parent skips the call by handing back the
+same element, and it cannot do that inside a `.map` — the list is cached as a
+whole, so one changed input rebuilds every item's element. `SongTable` is not
+compiled at all, so without `memo` every row in the window and the header ran on
+each click and each scroll frame; `SongTable.renders.test.tsx` counts two rows
+for a click and none for a sub-row scroll. The sidebar's playlist rows
+(`PlaylistRow`) and the built-ins in `LibraryNav` (`BuiltInRow`) are the same
+case: built inline, opening a playlist re-rendered every row's context menu, and
+`PlaylistSidebar.renders.test.tsx` holds it to the two rows whose highlight
+moved. The rule for each is the table's: per-row facts as props — `current`,
+`dropTarget` — never the open playlist or the drop target itself.
 
 That also decides what the render test may assert. The stubs in
 `App.renders.test.tsx` count only when `App` hands them changed props, which the

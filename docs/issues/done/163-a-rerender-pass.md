@@ -12,14 +12,16 @@ events; `dev:scan` by hand for what needs layout.
 | `App` and the whole tag editor — per `tags://progress` | `App` held the progress | `TagEditor` reads `saving`; a leaf reads progress |
 | menus, table, player bar — per love confirmed | backend answer is a new `Set` | kept when the members match |
 | every visible row and the header — per click, scroll frame | uncompiled `SongTable` calls them | `memo` on both |
+| every playlist row's context menu — per playlist opened, per row a drag crosses | rows built inline in a `.map` | `PlaylistRow`, `BuiltInRow`, `memo` |
 
 Narrowed reads: `App` (`total === 0`, `stats.missing`, track id),
 `useWindowTitle` (title string), `BrowseView` (empty).
 
 Kept: `AppMenus` rebuilding the menu bar per selection change (60).
 
-Counts in `App.renders.test.tsx` (`App` counted through `useNativeFeel`) and
-`SongTable.renders.test.tsx` (row and header runs).
+Counts in `App.renders.test.tsx` (`App` counted through `useNativeFeel`),
+`SongTable.renders.test.tsx` (row and header runs) and
+`PlaylistSidebar.renders.test.tsx` (row menus).
 
 ## Verification
 
@@ -27,5 +29,6 @@ Counts in `App.renders.test.tsx` (`App` counted through `useNativeFeel`) and
   a scroll outlines only rows entering; nothing outlines while a scan, an import
   or the lookup pass runs, beyond the table body and the readout.
 - Pause, seek, drag volume: only the control that changed.
+- Open one playlist after another: two sidebar rows, not all of them.
 - Drag rows onto a playlist; open a row menu; Settings; Statistics with music
   playing: nothing outside the thing being used.

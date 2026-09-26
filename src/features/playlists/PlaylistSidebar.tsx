@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type Dispatch, memo, type SetStateAction, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { ContextMenu } from "../../components/ui/ContextMenu";
@@ -40,14 +40,10 @@ export function PlaylistSidebar({
   const load = usePlaylistsStore((s) => s.load);
   const createPlaylist = usePlaylistsStore((s) => s.create);
   const createFrom = usePlaylistsStore((s) => s.createFrom);
-  const playPlaylist = usePlaylistsStore((s) => s.playPlaylist);
-  const renamePlaylist = usePlaylistsStore((s) => s.rename);
   const removePlaylist = usePlaylistsStore((s) => s.remove);
-  const addTracks = usePlaylistsStore((s) => s.addTracks);
   const editSmart = usePlaylistsStore((s) => s.editSmart);
 
   const selectedId = useLibraryStore((s) => s.playlistId);
-  const showPlaylist = useLibraryStore((s) => s.showPlaylist);
 
   /** Which playlist the pointer is currently over with a valid drag. */
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
@@ -58,8 +54,6 @@ export function PlaylistSidebar({
   // Renaming lives in the store because creating a playlist starts one, and
   // that can happen from outside this component.
   const renamingId = usePlaylistsStore((s) => s.renaming);
-  const startRename = usePlaylistsStore((s) => s.startRename);
-  const endRename = usePlaylistsStore((s) => s.endRename);
 
   const collapsed = usePlaylistsStore((s) => s.collapsed);
   const loadSections = usePlaylistsStore((s) => s.loadSections);
@@ -107,111 +101,17 @@ export function PlaylistSidebar({
   const smart = own.filter((playlist) => playlist.kind === "smart");
   const statics = own.filter((playlist) => playlist.kind !== "smart");
 
-  /**
-   * One row: the item, its right-click menu, and its drop behaviour.
-   *
-   * A function rather than a component because it closes over most of the
-   * state above - the drop target, the rename, the confirmation - and passing
-   * all of that down would be a props list longer than the body.
-   */
   const row = (playlist: Playlist) => (
-    // Each row is its own trigger, which removes the "right-clicking a
-    // playlist selects it first" special case: that existed so the
-    // highlight said which playlist Delete was about to remove, and a
-    // per-row trigger leaves no question in the first place.
-    <ContextMenu
+    <PlaylistRow
       key={playlist.id}
-      label={`${playlist.name} actions`}
-      items={[
-        {
-          label: "Play",
-          // Nothing to play, and nothing to write into an export file.
-          // Disabled rather than absent: the actions still exist, this
-          // playlist just has no contents for them to act on yet.
-          disabled: playlist.trackCount === 0,
-          onSelect: () => void playPlaylist(playlist),
-        },
-        { kind: "separator" },
-        ...(playlist.kind === "smart"
-          ? [{ label: "Edit Filter…", onSelect: () => void editSmart(playlist.id) }]
-          : []),
-        { label: "Rename", onSelect: () => startRename(playlist.id) },
-        { label: "Delete", onSelect: () => setConfirming(playlist) },
-        { kind: "separator" },
-        {
-          label: "Export…",
-          disabled: playlist.trackCount === 0,
-          onSelect: () => onExport?.(playlist),
-        },
-      ]}
-      render={
-        <li
-          className={[
-            "sidebar-row",
-            dropTargetId === playlist.id ? "drop-target" : "",
-            playlist.id === selectedId ? "current" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          // `pointermove` rather than `pointerenter`: enter and leave are
-          // synthesized by React out of `pointerover`/`pointerout` pairs,
-          // and a move bubbles as itself. The guard makes it free
-          // whenever nothing is being dragged, which is almost always.
-          onPointerMove={() => {
-            // A smart playlist's contents come from its filter, so
-            // there is nothing a drop could add. Refusing the drag
-            // outright says so more clearly than accepting it and
-            // doing nothing.
-            if (playlist.kind !== "static" || !isTrackDragging()) {
-              return;
-            }
-            setDropTargetId(playlist.id);
-          }}
-          onPointerLeave={() => setDropTargetId((id) => (id === playlist.id ? null : id))}
-          onPointerUp={() => {
-            if (playlist.kind !== "static" || !isTrackDragging()) {
-              return;
-            }
-            setDropTargetId(null);
-            void addTracks(playlist.id, trackDragIds());
-          }}
-        />
-      }
-    >
-      {renamingId === playlist.id ? (
-        <RenameField
-          name={playlist.name}
-          onCommit={(name) => {
-            endRename();
-            if (name !== playlist.name) {
-              void renamePlaylist(playlist.id, name);
-            }
-          }}
-          onCancel={endRename}
-        />
-      ) : (
-        <button
-          type="button"
-          className="sidebar-item"
-          // Named for the destination, not its size: the count
-          // changes every time a track is added, and a navigation
-          // item whose announced name keeps changing is worse to
-          // use than one that stays put. It stays visible.
-          aria-label={playlist.name}
-          aria-current={playlist.id === selectedId ? "page" : undefined}
-          onClick={() => void showPlaylist(playlist)}
-          onDoubleClick={() => startRename(playlist.id)}
-        >
-          <Icon
-            name={playlist.kind === "smart" ? "smart-playlist" : "playlist"}
-            size={17}
-            className="sidebar-icon"
-          />
-          <span className="sidebar-label">{playlist.name}</span>
-          <span className="sidebar-count">{playlist.trackCount}</span>
-        </button>
-      )}
-    </ContextMenu>
+      playlist={playlist}
+      current={playlist.id === selectedId}
+      dropTarget={dropTargetId === playlist.id}
+      renaming={renamingId === playlist.id}
+      onDropTarget={setDropTargetId}
+      onDelete={setConfirming}
+      onExport={onExport}
+    />
   );
 
   return (
@@ -331,6 +231,136 @@ export function PlaylistSidebar({
     </>
   );
 }
+
+/**
+ * One row: the item, its right-click menu, and its drop behaviour.
+ *
+ * Given per-row facts - `current`, `dropTarget`, `renaming` - rather than the
+ * open playlist and the drop target, and `memo`, for the reason `SongRow` is:
+ * the compiler caches the sidebar's list as a whole, so opening a playlist or
+ * dragging across a row rebuilt every row's menu when two rows had changed.
+ */
+const PlaylistRow = memo(function PlaylistRow({
+  playlist,
+  current,
+  dropTarget,
+  renaming,
+  onDropTarget,
+  onDelete,
+  onExport,
+}: {
+  playlist: Playlist;
+  current: boolean;
+  dropTarget: boolean;
+  renaming: boolean;
+  /** The sidebar's drop target, which the zone below the list shares. */
+  onDropTarget: Dispatch<SetStateAction<number | null>>;
+  onDelete: (playlist: Playlist) => void;
+  onExport?: ((playlist: Playlist) => void) | undefined;
+}) {
+  const playPlaylist = usePlaylistsStore((s) => s.playPlaylist);
+  const renamePlaylist = usePlaylistsStore((s) => s.rename);
+  const addTracks = usePlaylistsStore((s) => s.addTracks);
+  const editSmart = usePlaylistsStore((s) => s.editSmart);
+  const startRename = usePlaylistsStore((s) => s.startRename);
+  const endRename = usePlaylistsStore((s) => s.endRename);
+  const showPlaylist = useLibraryStore((s) => s.showPlaylist);
+
+  return (
+    // Each row is its own trigger, which removes the "right-clicking a
+    // playlist selects it first" special case: that existed so the
+    // highlight said which playlist Delete was about to remove, and a
+    // per-row trigger leaves no question in the first place.
+    <ContextMenu
+      label={`${playlist.name} actions`}
+      items={[
+        {
+          label: "Play",
+          // Nothing to play, and nothing to write into an export file.
+          // Disabled rather than absent: the actions still exist, this
+          // playlist just has no contents for them to act on yet.
+          disabled: playlist.trackCount === 0,
+          onSelect: () => void playPlaylist(playlist),
+        },
+        { kind: "separator" },
+        ...(playlist.kind === "smart"
+          ? [{ label: "Edit Filter…", onSelect: () => void editSmart(playlist.id) }]
+          : []),
+        { label: "Rename", onSelect: () => startRename(playlist.id) },
+        { label: "Delete", onSelect: () => onDelete(playlist) },
+        { kind: "separator" },
+        {
+          label: "Export…",
+          disabled: playlist.trackCount === 0,
+          onSelect: () => onExport?.(playlist),
+        },
+      ]}
+      render={
+        <li
+          className={["sidebar-row", dropTarget ? "drop-target" : "", current ? "current" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          // `pointermove` rather than `pointerenter`: enter and leave are
+          // synthesized by React out of `pointerover`/`pointerout` pairs,
+          // and a move bubbles as itself. The guard makes it free
+          // whenever nothing is being dragged, which is almost always.
+          onPointerMove={() => {
+            // A smart playlist's contents come from its filter, so
+            // there is nothing a drop could add. Refusing the drag
+            // outright says so more clearly than accepting it and
+            // doing nothing.
+            if (playlist.kind !== "static" || !isTrackDragging()) {
+              return;
+            }
+            onDropTarget(playlist.id);
+          }}
+          onPointerLeave={() => onDropTarget((id) => (id === playlist.id ? null : id))}
+          onPointerUp={() => {
+            if (playlist.kind !== "static" || !isTrackDragging()) {
+              return;
+            }
+            onDropTarget(null);
+            void addTracks(playlist.id, trackDragIds());
+          }}
+        />
+      }
+    >
+      {renaming ? (
+        <RenameField
+          name={playlist.name}
+          onCommit={(name) => {
+            endRename();
+            if (name !== playlist.name) {
+              void renamePlaylist(playlist.id, name);
+            }
+          }}
+          onCancel={endRename}
+        />
+      ) : (
+        <button
+          type="button"
+          className="sidebar-item"
+          // Named for the destination, not its size: the count
+          // changes every time a track is added, and a navigation
+          // item whose announced name keeps changing is worse to
+          // use than one that stays put. It stays visible.
+          aria-label={playlist.name}
+          aria-current={current ? "page" : undefined}
+          onClick={() => void showPlaylist(playlist)}
+          onDoubleClick={() => startRename(playlist.id)}
+        >
+          <Icon
+            name={playlist.kind === "smart" ? "smart-playlist" : "playlist"}
+            size={17}
+            className="sidebar-icon"
+          />
+          <span className="sidebar-label">{playlist.name}</span>
+          <span className="sidebar-count">{playlist.trackCount}</span>
+        </button>
+      )}
+    </ContextMenu>
+  );
+});
 
 /** Inline rename: commits on Enter or blur, abandons on Escape. */
 function RenameField({
