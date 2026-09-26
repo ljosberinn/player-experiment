@@ -426,9 +426,11 @@ absences are what nobody notices coming back — hence the guards in
 
 - **Icons go through `components/icons/Icon.tsx`**, named by meaning
   (`"play"`, `"genres"`). `registry.tsx` beside it is the only file that names
-  the library — Phosphor, imported per icon rather than from the root barrel —
-  so swapping families is one file. Library-specific props such as Phosphor's
-  `weight` are bound in the registry, never at a call site.
+  the family — Phosphor's path data for the weights it draws, copied into
+  `icons/phosphor/` with its licence rather than installed, since the package
+  ships all six weights per icon — so swapping families is one file. Which
+  weight an icon draws is bound in the registry, never at a call site.
+  `scripts/notices.mjs` credits the copy through its `VENDORED` list.
   - Every icon is decorative: each sits beside its own label or inside a button
     with an `aria-label`, so a name here would be announced twice.
   - **The caption buttons are the exception** and stay Segoe MDL2 (see

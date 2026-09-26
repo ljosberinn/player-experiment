@@ -30,6 +30,9 @@
  * and test tooling whose code never reaches the bundle. That also means the
  * notices job can install with `--omit=dev`: the package list comes from the
  * lockfile either way, and only production directories are read for text.
+ *
+ * Vendored: material copied into the source rather than installed, which no
+ * lockfile can name. Listed by hand in `VENDORED`.
  */
 
 import { execFileSync } from "node:child_process";
@@ -41,7 +44,22 @@ const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const OUTPUT = join(root, "THIRD-PARTY-NOTICES.md");
 
 /** What the answer is derived from, and so what makes an existing one stale. */
-const LOCKFILES = [join(root, "package-lock.json"), join(root, "src-tauri", "Cargo.lock")];
+const INPUTS = [
+  join(root, "package-lock.json"),
+  join(root, "src-tauri", "Cargo.lock"),
+  fileURLToPath(import.meta.url),
+];
+
+/** Each `directory` holds the licence files its copy came with. */
+const VENDORED = [
+  {
+    name: "Phosphor Icons",
+    version: "2.1.10",
+    license: "MIT",
+    repository: "https://github.com/phosphor-icons/react",
+    directory: "src/components/icons/phosphor",
+  },
+];
 
 /** Licence files ship under many names; these are the ones actually seen. */
 const LICENSE_FILE = /^(LICENSE|LICENCE|COPYING|NOTICE)([-.].*)?$/i;
@@ -181,6 +199,14 @@ function npmPackages() {
     });
 }
 
+function vendoredPackages() {
+  return VENDORED.map(({ directory, ...pkg }) => ({
+    ecosystem: "vendored",
+    ...pkg,
+    texts: licenseTexts(join(root, directory)),
+  }));
+}
+
 function render(packages) {
   const byLicense = new Map();
   for (const pkg of packages) {
@@ -272,24 +298,26 @@ function render(packages) {
  * This runs from `beforeBuildCommand`, so it is in front of every `tauri dev`
  * as well as every bundle, and reading three hundred crate manifests on each
  * one is a wait for an answer that has not changed. Both lockfiles are checked
- * because a dependency of either ecosystem moves it. `--force` skips the
- * question, which is what CI and a release want.
+ * because a dependency of either ecosystem moves it, and this script because
+ * `VENDORED` is written here. `--force` skips the question, which is what CI
+ * and a release want.
  */
 function alreadyCurrent() {
   if (process.argv.includes("--force") || !existsSync(OUTPUT)) {
     return false;
   }
   const generated = statSync(OUTPUT).mtimeMs;
-  return LOCKFILES.every((lock) => !existsSync(lock) || statSync(lock).mtimeMs <= generated);
+  return INPUTS.every((input) => !existsSync(input) || statSync(input).mtimeMs <= generated);
 }
 
 if (alreadyCurrent()) {
-  console.log("THIRD-PARTY-NOTICES.md is newer than both lockfiles; nothing to do.");
+  console.log("THIRD-PARTY-NOTICES.md is newer than its inputs; nothing to do.");
   process.exit(0);
 }
 
 const crates = cargoPackages();
 const npm = npmPackages();
+const vendored = vendoredPackages();
 
 // Neither ecosystem may be empty.
 //
@@ -312,6 +340,15 @@ for (const [ecosystem, found] of [
   }
 }
 
-const packages = [...crates, ...npm];
+// The copy is the only thing that credits a vendored author: nothing installs
+// it, so nothing else would notice its licence going missing.
+for (const pkg of vendored) {
+  if (pkg.texts.length === 0) {
+    console.error(`Found no licence text for vendored ${pkg.name}; it has to ship with its copy.`);
+    process.exit(1);
+  }
+}
+
+const packages = [...crates, ...npm, ...vendored];
 writeFileSync(OUTPUT, render(packages));
 console.log(`Wrote THIRD-PARTY-NOTICES.md for ${packages.length} packages.`);

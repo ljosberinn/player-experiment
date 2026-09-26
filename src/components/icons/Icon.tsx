@@ -4,8 +4,8 @@ import { type GlyphProps, ICONS, type IconName } from "./registry";
  * An icon, named by what it means rather than by what it looks like.
  *
  * The single point every icon in the app goes through. `registry.tsx` maps the
- * names to one library's components and is the only file that mentions which
- * library that is; nothing here or at a call site does.
+ * names to one family's artwork and is the only file that mentions which
+ * family that is; nothing here or at a call site does.
  *
  * Always decorative. Every icon in this app sits beside its own label or inside
  * a button that carries an `aria-label`, so an accessible name here would be
@@ -25,8 +25,8 @@ export function Icon({
 }) {
   const Glyph = ICONS[name];
   // Built rather than spread: under `exactOptionalPropertyTypes` an explicit
-  // `className={undefined}` is not the same as no `className` at all, and the
-  // icon libraries declare theirs the second way.
+  // `className={undefined}` is not the same as no `className` at all, and
+  // `GlyphProps` declares it the second way.
   const props: GlyphProps =
     className === undefined
       ? { size, "aria-hidden": "true" }

@@ -169,8 +169,10 @@ and the GitHub release; nothing publishes while the PR sits there.
   `LICENSE`. symphonia is MPL-2.0, so recipients must be told where to get its
   source — that file is how. It is **generated, not committed**:
   `beforeBuildCommand` runs `npm run notices`, so every bundle describes the
-  graph it is shipping. The generator skips its work when the file is newer than
-  both lockfiles; `--force` overrides that, and CI passes it.
+  graph it is shipping. Code copied in rather than installed has no lockfile
+  entry, so it is listed by hand in the script's `VENDORED`, next to the
+  licence the copy carries. The generator skips its work when the file is newer
+  than both lockfiles and the script; `--force` overrides that, and CI passes it.
 - **The last.fm key is compiled in from the environment.** `APEX_LASTFM_API_KEY`
   and `APEX_LASTFM_API_SECRET` are read with `option_env!`, so a build made
   without them has the feature **inert** rather than broken: the Account menu
