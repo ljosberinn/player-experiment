@@ -133,6 +133,11 @@ const BY_TITLE = [...LIBRARY].sort((a, b) => a.title.localeCompare(b.title));
 
 describe("a library with something in it", () => {
   before(async () => {
+    // A reload rather than the store the spec before handed on: a navigation
+    // over the empty library leaves a column fit pending, and the scan below
+    // would land it on the whole library - the baseline "opening a view"
+    // measures a drill-in against.
+    await browser.refresh();
     await browser.waitUntil(async () => (await browser.getTitle()) === "Apex", {
       timeout: 30_000,
       interval: 500,
