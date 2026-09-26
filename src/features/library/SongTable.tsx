@@ -250,7 +250,7 @@ export function SongTable({
             columns={columns}
             sortBy={sortBy}
             direction={direction}
-            onSort={(id) => void toggleSort(id)}
+            onSort={toggleSort}
           />
         </thead>
 

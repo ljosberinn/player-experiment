@@ -1,5 +1,5 @@
 import type React from "react";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { ContextMenu, type MenuItem } from "../../components/ui/ContextMenu";
 import type { SortDirection, SortField } from "../../ipc";
 import { columnDropIndex, draggedWidth, isDrag } from "./columnDrag";
@@ -35,9 +35,11 @@ interface ResizeDrag {
  * The table's header row: sorting, reordering, resizing and the column menu.
  *
  * Split out of `SongTable` because these four things share one pointer press
- * and would otherwise be interleaved through the row rendering.
+ * and would otherwise be interleaved through the row rendering. `memo` for the
+ * reason `SongRow` has it: the table is not compiled and renders on every click
+ * and scroll frame, none of which move a column.
  */
-export function ColumnHeader({
+export const ColumnHeader = memo(function ColumnHeader({
   columns,
   sortBy,
   direction,
@@ -265,4 +267,4 @@ export function ColumnHeader({
       })}
     </ContextMenu>
   );
-}
+});

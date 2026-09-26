@@ -22,6 +22,46 @@ import { useLibraryStore } from "./store";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => undefined) }));
 
+/**
+ * How often a row and the header run at all, which the cell count cannot see:
+ * the compiler hands back a row's cached cells whether or not the row ran.
+ *
+ * Counted inside the real `memo`, by wrapping the function it holds, so it is
+ * still the component's own comparison that decides whether it runs.
+ */
+const runs = vi.hoisted(() => ({ row: 0, header: 0 }));
+
+function counted<T>(component: T, count: () => void): T {
+  const memoized = component as unknown as { type: (props: object) => unknown };
+  return {
+    ...memoized,
+    type: (props: object) => {
+      count();
+      return memoized.type(props);
+    },
+  } as T;
+}
+
+vi.mock("./SongRow", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./SongRow")>();
+  return {
+    ...actual,
+    SongRow: counted(actual.SongRow, () => {
+      runs.row += 1;
+    }),
+  };
+});
+
+vi.mock("./ColumnHeader", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ColumnHeader")>();
+  return {
+    ...actual,
+    ColumnHeader: counted(actual.ColumnHeader, () => {
+      runs.header += 1;
+    }),
+  };
+});
+
 vi.mock("../../ipc", () => ({
   countTracks: vi.fn(),
   libraryStats: vi.fn(async () => ({ tracks: 0, durationMs: 0, bytes: 0, missing: 0, removed: 0 })),
@@ -155,9 +195,14 @@ describe("what a click costs", () => {
     // unchanged, so the compiler hands back the cached cell array.
     fireEvent.click(rows[2] as HTMLElement);
     cellRenders = 0;
+    runs.row = 0;
+    runs.header = 0;
     fireEvent.click(rows[5] as HTMLElement);
 
     expect(cellRenders).toBe(0);
+    // The same two rows run, and nothing else in the window does.
+    expect(runs.row).toBe(2);
+    expect(runs.header).toBe(0);
   });
 
   it("touches no cell for a shift-range either", async () => {
@@ -177,6 +222,8 @@ describe("what a scroll costs", () => {
   it("touches nothing while the window has not moved", async () => {
     const scroll = await settled();
     cellRenders = 0;
+    runs.row = 0;
+    runs.header = 0;
 
     // A pixel, so no row enters or leaves: the body re-renders and every row's
     // props are still equal.
@@ -184,11 +231,14 @@ describe("what a scroll costs", () => {
     fireEvent.scroll(scroll);
 
     expect(cellRenders).toBe(0);
+    expect(runs.row).toBe(0);
+    expect(runs.header).toBe(0);
   });
 
   it("renders the rows that came into the window and nothing else", async () => {
     const scroll = await settled();
     cellRenders = 0;
+    runs.row = 0;
 
     const crossed = 6;
     scroll.scrollTop = crossed * ROW_HEIGHT;
@@ -198,5 +248,6 @@ describe("what a scroll costs", () => {
     // cached cells; before the split this was 3265, which is the whole body
     // roughly twice per row crossed.
     expect(cellRenders).toBe(crossed * COLUMN_IDS.length);
+    expect(runs.row).toBe(crossed);
   });
 });
