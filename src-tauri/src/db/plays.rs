@@ -34,10 +34,11 @@ const SEPARATOR: char = '\u{1f}';
 ///
 /// **Deliberately conservative**: case, punctuation, diacritics, script and
 /// letters such as `ß` and `ø` folded through [`decompose`] and [`squeeze`],
-/// and a trailing `(feat. …)` or `(with …)` dropped. Nothing else. Folding
-/// `(Live)` into the studio cut would destroy a distinction the MBIDs exist to
-/// preserve, and a key that matched too much is worse than one that matches
-/// nothing - it attributes plays to a song the user never heard.
+/// and a trailing remaster marker and `(feat. …)` or `(with …)` dropped.
+/// Nothing else. Folding `(Live)` into the studio cut would destroy a
+/// distinction the MBIDs exist to preserve, and a key that matched too much is
+/// worse than one that matches nothing - it attributes plays to a song the
+/// user never heard. A remaster is not that: it is the same recording.
 ///
 /// **Punctuation is inside that boundary, and was not always.** The key was
 /// case and whitespace alone until issue 120, which measured 9,282 unlinked
@@ -338,9 +339,11 @@ fn roman(word: &str) -> Option<u32> {
 
 /// One side of a key.
 ///
-/// **The order is load-bearing in both directions.** [`without_featuring`]
-/// matches its openers lowercase, so it runs after [`decompose`]; and it
-/// matches on parentheses, which [`squeeze`] deletes, so it runs before that.
+/// **The order is load-bearing in both directions.** [`without_remaster`] and
+/// [`without_featuring`] match lowercase, so they run after [`decompose`]; and
+/// they match on delimiters, which [`squeeze`] deletes, so they run before
+/// that. The marker goes first because a streaming service appends it after
+/// the credit: `Song (feat. X) - Remastered`.
 ///
 /// **A side that squeezes to nothing keeps its unsqueezed spelling.** `!!!`,
 /// `†††` and the title `?` are alphanumeric-free, and an empty side empties
@@ -349,19 +352,101 @@ fn roman(word: &str) -> Option<u32> {
 /// before.
 fn normalize(value: &str) -> String {
     let decomposed = decompose(value);
-    let folded = without_featuring(decomposed.trim()).trim_end();
+    let folded = without_featuring(without_remaster(decomposed.trim())).trim_end();
     match squeeze(folded) {
         squeezed if squeezed.is_empty() => folded.to_owned(),
         squeezed => squeezed,
     }
 }
 
+/// Whether `word` belongs to a remaster marker: `Some(true)` for the word that
+/// makes it one, `Some(false)` for a word that may only come along.
+///
+/// `version` is here as a companion only - `(2011 Version)` alone is a
+/// different recording as often as not, and `(Live Version)` always is.
+fn remaster_word(word: &str) -> Option<bool> {
+    match word {
+        "remaster" | "remastered" => Some(true),
+        "digital" | "digitally" | "version" => Some(false),
+        _ if word.len() == 4 && word.bytes().all(|byte| byte.is_ascii_digit()) => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether `run` is a remaster marker and nothing else.
+fn is_remaster(run: &str) -> bool {
+    let mut remaster = false;
+    for word in run
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+    {
+        match remaster_word(word) {
+            Some(named) => remaster |= named,
+            None => return false,
+        }
+    }
+    remaster
+}
+
+/// `value` without a trailing remaster marker: ` - <marker>`, `(<marker>)` or
+/// `[<marker>]`.
+///
+/// A remaster is the same recording mastered again, which the album fold's
+/// [`EDITIONS`] already holds. A marker with nothing before it is the title.
+fn without_remaster(value: &str) -> &str {
+    let trimmed = value.trim_end();
+    let bracketed = match trimmed.chars().last() {
+        Some(')') => trimmed.rfind('('),
+        Some(']') => trimmed.rfind('['),
+        _ => None,
+    };
+    let (before, run) = match bracketed {
+        Some(open) => (&trimmed[..open], &trimmed[open + 1..trimmed.len() - 1]),
+        None => match trimmed.rfind(" - ") {
+            // A bracket in the suffix means the dash is inside a run, as in
+            // `(Live - Remastered)`, and the run is what gets judged.
+            Some(dash) if !trimmed[dash..].contains(['(', ')', '[', ']']) => {
+                (&trimmed[..dash], &trimmed[dash + 3..])
+            }
+            _ => return value,
+        },
+    };
+    let before = before.trim_end();
+    if !before.is_empty() && is_remaster(run) {
+        before
+    } else {
+        value
+    }
+}
+
+/// A stored key's title side without the trailing words of a remaster marker.
+///
+/// [`squeeze`] has already deleted the delimiter [`without_remaster`] looks
+/// for, so this can only go by the words, and takes every marker word at the
+/// end but the first word of the title.
+fn without_remaster_words(title: &str) -> &str {
+    let mut rest = title;
+    let mut remaster = false;
+    while let Some((before, word)) = rest.rsplit_once(' ') {
+        let Some(named) = remaster_word(word) else {
+            break;
+        };
+        remaster |= named;
+        rest = before;
+    }
+    if remaster {
+        rest
+    } else {
+        title
+    }
+}
+
 /// `value` without a trailing parenthesised credit.
 ///
-/// The one suffix worth dropping: the same song is tagged `Song`,
-/// `Song (feat. Guest)` and `Song (with Guest)` across a library, and they are
-/// one song. Only at the end, and only these openers - `(Live)`,
-/// `(Remastered)` and `(Radio Edit)` name different recordings and stay.
+/// The same song is tagged `Song`, `Song (feat. Guest)` and
+/// `Song (with Guest)` across a library, and they are one song. Only at the
+/// end, and only these openers - `(Live)` and `(Radio Edit)` name different
+/// recordings and stay.
 fn without_featuring(value: &str) -> &str {
     const OPENERS: &[&str] = &["feat.", "feat ", "featuring ", "ft.", "ft ", "with "];
 
@@ -832,7 +917,7 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// does not half-link; it does not link at all. Bump it too when `resolve`
 /// gives a track another key, as 3 did for the album artist and 4 for the
 /// album: the stored keys stay put, but nothing else resolves at launch.
-const MATCH_FOLD_VERSION: &str = "5";
+const MATCH_FOLD_VERSION: &str = "6";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -841,7 +926,9 @@ const MATCH_FOLD_VERSION: &str = "5";
 /// has neither column, so it folds the stored key in place, a side at a time:
 /// the new fold refines the old one, so folding an old key again lands where
 /// folding the original tags would - but [`squeeze`] eats [`SEPARATOR`], so
-/// the key cannot be folded whole.
+/// the key cannot be folded whole. The exception is the remaster marker, whose
+/// delimiter the old key has lost; [`without_remaster_words`] goes by its words
+/// instead.
 ///
 /// `tracks` counts its rows apart from the rest: a key written for the first
 /// time is how migration 18's column is backfilled, and the caller has to know
@@ -894,7 +981,7 @@ pub fn refold(conn: &mut Connection) -> AppResult<Refolded> {
             let Some((artist, title)) = stored.split_once(SEPARATOR) else {
                 continue;
             };
-            let folded = match_key(artist, title);
+            let folded = match_key(artist, without_remaster_words(title));
             if folded != stored && !folded.is_empty() {
                 refolded.push((stored, folded));
             }
@@ -1142,13 +1229,45 @@ mod tests {
             match_key("Talk Talk", "Ascension Day"),
             match_key("Talk Talk", "Ascension Day (Live)")
         );
-        assert_ne!(
-            match_key("Talk Talk", "Ascension Day"),
-            match_key("Talk Talk", "Ascension Day (Remastered)")
-        );
 
         // The separator is doing its job.
         assert_ne!(match_key("ab", "c"), match_key("a", "bc"));
+    }
+
+    /// A remaster is the recording mastered again, and streaming services
+    /// append it to the title (issue 171).
+    #[test]
+    fn a_remaster_marker_is_the_same_recording() {
+        let song = match_key("Rome", "L'Assassin");
+        for spelling in [
+            "L'assassin - Remastered",
+            "L'Assassin - Remastered 2016",
+            "L'Assassin - 2011 Remastered Version",
+            "L'Assassin - Digitally Remastered",
+            "L'Assassin (2016 - Remaster)",
+            "L'Assassin [Remastered]",
+            "L'Assassin (feat. Guest) - Remastered",
+        ] {
+            assert_eq!(match_key("Rome", spelling), song, "{spelling}");
+        }
+
+        for spelling in [
+            "L'Assassin (remastered out-take)",
+            "L'Assassin (premaster)",
+            "L'Assassin (Live)",
+            "L'Assassin - Live",
+            "L'Assassin (2011 Version)",
+            // The dash is inside the run, so the run is what gets judged.
+            "L'Assassin (Live - Remastered)",
+        ] {
+            assert_ne!(match_key("Rome", spelling), song, "{spelling}");
+        }
+
+        // A marker with nothing before it is the title.
+        assert_eq!(
+            match_key("Rome", "(Remastered)"),
+            format!("rome{SEPARATOR}remastered")
+        );
     }
 
     /// Letters in their own right rather than a base letter and a mark, so
@@ -2003,6 +2122,24 @@ mod tests {
             )
             .unwrap();
         assert!(remote, "still the song last.fm reported");
+        assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
+    }
+
+    /// A stored key is squeezed, so the ` - ` that delimited the marker is
+    /// gone and only its words are left to strip.
+    #[test]
+    fn a_loved_key_loses_its_remaster_words() {
+        let (_dir, mut conn) = open();
+        let stored = format!("pink floyd{SEPARATOR}echoes 2011 remastered version");
+        conn.execute(
+            "INSERT INTO loved (match_key, remote) VALUES (?1, 1)",
+            [&stored],
+        )
+        .unwrap();
+
+        refold(&mut conn).unwrap();
+
+        assert_eq!(keys(&conn, "loved"), [match_key("Pink Floyd", "Echoes")]);
         assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
     }
 
