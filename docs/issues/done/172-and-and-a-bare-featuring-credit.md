@@ -7,21 +7,23 @@
   `gods and monsters`.
 - `Casper — In deinen Armen feat. Amaris` (45 plays). The file is `Casper feat.
   Amaris — In deinen Armen`, with album artist `Casper`. `without_featuring`
-  drops a credit only inside parentheses, and never touches the artist.
+  drops a credit only inside parentheses.
 
 ## Fix
 
 In `normalize` (`src-tauri/src/db/plays.rs`):
 
 - Before `squeeze`, replace `&` with ` and `.
-- On both sides, drop a trailing bare credit: a whitespace-led `feat.`,
-  `feat`, `featuring` or `ft.` and everything after it. `with` and a bare `ft`
-  stay, because they occur in ordinary titles.
-- Bump `MATCH_FOLD_VERSION`, and update the `without_featuring` and `match_key`
-  doc comments.
+- On both sides, drop a bare credit: a whole, whitespace-led `feat.`, `feat`,
+  `featuring` or `ft.` outside brackets, up to the next bracket or ` - `. What
+  follows stays, so `Song feat. X (Live)` is `Song (Live)`. `with` and a bare
+  `ft` stay, because they occur in ordinary titles.
+- In `refold`, a loved key that was a track's stored key moves to the track's
+  new key. The stored key has lost the `&`, so folding it again cannot get
+  there. A key two tracks shared and the fold parts is loved under both.
+- Bump `MATCH_FOLD_VERSION` to 7.
 
-Stack this on [171](171-a-remaster-marker-is-the-same-song.md). All three change
-the fold and bump the same version.
+Stacked on [171](171-a-remaster-marker-is-the-same-song.md).
 
 ## Measurements
 
@@ -43,9 +45,15 @@ In `plays.rs`:
 - `Gods & Monsters`/`Gods and Monsters` give one key.
 - `Casper — In deinen Armen feat. Amaris` and `Casper feat. Amaris — In deinen
   Armen` give one key.
-- `Dance with Me` and `Left ft Right` keep their words.
+- A bracket or ` - ` after the credit stays.
+- `Dance with Me`, `Left ft Right`, `Creature Feature` and a credit inside a
+  bracketed run keep their words.
+- A loved `simon garfunkel…` key is loved under both `Simon & Garfunkel` and
+  `Simon Garfunkel` tracks after `refold`.
 
 ## Verification
 
 - `Gods & Monsters` and `In deinen Armen feat. Amaris` are gone from *Heard,
   never owned*.
+- A song loved before the update with `&` in its artist or title is still
+  loved.

@@ -34,7 +34,8 @@ const SEPARATOR: char = '\u{1f}';
 ///
 /// **Deliberately conservative**: case, punctuation, diacritics, script and
 /// letters such as `ß` and `ø` folded through [`decompose`] and [`squeeze`],
-/// and a trailing remaster marker and `(feat. …)` or `(with …)` dropped.
+/// `&` read as `and`, and a trailing remaster marker, `(feat. …)` or
+/// `(with …)`, and a bare `feat. …` dropped.
 /// Nothing else. Folding `(Live)` into the studio cut would destroy a
 /// distinction the MBIDs exist to preserve, and a key that matched too much is
 /// worse than one that matches nothing - it attributes plays to a song the
@@ -339,11 +340,11 @@ fn roman(word: &str) -> Option<u32> {
 
 /// One side of a key.
 ///
-/// **The order is load-bearing in both directions.** [`without_remaster`] and
-/// [`without_featuring`] match lowercase, so they run after [`decompose`]; and
-/// they match on delimiters, which [`squeeze`] deletes, so they run before
-/// that. The marker goes first because a streaming service appends it after
-/// the credit: `Song (feat. X) - Remastered`.
+/// **The order is load-bearing in both directions.** [`without_remaster`],
+/// [`without_featuring`] and [`without_bare_credit`] match lowercase, so they
+/// run after [`decompose`]; and they match on delimiters, which [`squeeze`]
+/// deletes, so they run before that. The marker goes first because a streaming
+/// service appends it after the credit: `Song (feat. X) - Remastered`.
 ///
 /// **A side that squeezes to nothing keeps its unsqueezed spelling.** `!!!`,
 /// `†††` and the title `?` are alphanumeric-free, and an empty side empties
@@ -352,9 +353,12 @@ fn roman(word: &str) -> Option<u32> {
 /// before.
 fn normalize(value: &str) -> String {
     let decomposed = decompose(value);
-    let folded = without_featuring(without_remaster(decomposed.trim())).trim_end();
-    match squeeze(folded) {
-        squeezed if squeezed.is_empty() => folded.to_owned(),
+    let folded =
+        without_bare_credit(without_featuring(without_remaster(decomposed.trim())).trim_end());
+    // `&` is a word, and `squeeze` would delete it: `Gods & Monsters` is
+    // tagged `Gods and Monsters`.
+    match squeeze(&folded.replace('&', " and ")) {
+        squeezed if squeezed.is_empty() => folded.into_owned(),
         squeezed => squeezed,
     }
 }
@@ -446,7 +450,7 @@ fn without_remaster_words(title: &str) -> &str {
 /// The same song is tagged `Song`, `Song (feat. Guest)` and
 /// `Song (with Guest)` across a library, and they are one song. Only at the
 /// end, and only these openers - `(Live)` and `(Radio Edit)` name different
-/// recordings and stay.
+/// recordings and stay. Without the parentheses, [`without_bare_credit`]'s.
 fn without_featuring(value: &str) -> &str {
     const OPENERS: &[&str] = &["feat.", "feat ", "featuring ", "ft.", "ft ", "with "];
 
@@ -461,6 +465,60 @@ fn without_featuring(value: &str) -> &str {
         rest[..open].trim_end()
     } else {
         value
+    }
+}
+
+/// `value` without a credit outside brackets: the `Song feat. Guest` a
+/// scrobbler writes for a tag's `Song (feat. Guest)`, and `Artist feat. Guest`
+/// on the other side.
+///
+/// The credit runs to the next bracket or ` - `, and what follows stays: `Song
+/// feat. Guest (Live)` is the live cut. Whole words, because `Creature Feature`
+/// is a title, and neither `with` nor a bare `ft`, because `Dance with Me` and
+/// `Left ft Right` are too. A bare `feat` stays in because a stored key has
+/// already lost the period.
+fn without_bare_credit(value: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+
+    fn is_credit(rest: &str) -> bool {
+        rest.starts_with("feat.")
+            || rest.starts_with("ft.")
+            || ["feat", "featuring"].iter().any(|word| {
+                rest.strip_prefix(word)
+                    .is_some_and(|after| after.is_empty() || after.starts_with(char::is_whitespace))
+            })
+    }
+
+    let mut depth = 0_u32;
+    let mut credit = None;
+    for (index, character) in value.char_indices() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            _ if depth == 0
+                && character.is_whitespace()
+                && is_credit(&value[index + character.len_utf8()..])
+                && !value[..index].trim().is_empty() =>
+            {
+                credit = Some(index);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let Some(start) = credit else {
+        return Cow::Borrowed(value);
+    };
+    let before = value[..start].trim_end();
+    let rest = &value[start..];
+    match rest
+        .find(['(', '['])
+        .into_iter()
+        .chain(rest.find(" - "))
+        .min()
+    {
+        Some(tail) => Cow::Owned(format!("{before} {}", rest[tail..].trim_start())),
+        None => Cow::Borrowed(before),
     }
 }
 
@@ -917,7 +975,7 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// does not half-link; it does not link at all. Bump it too when `resolve`
 /// gives a track another key, as 3 did for the album artist and 4 for the
 /// album: the stored keys stay put, but nothing else resolves at launch.
-const MATCH_FOLD_VERSION: &str = "6";
+const MATCH_FOLD_VERSION: &str = "7";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -929,6 +987,11 @@ const MATCH_FOLD_VERSION: &str = "6";
 /// the key cannot be folded whole. The exception is the remaster marker, whose
 /// delimiter the old key has lost; [`without_remaster_words`] goes by its words
 /// instead.
+///
+/// **A loved key that was a track's follows the track.** The old key has lost
+/// the `&` the fold now reads as `and`, and the period of `ft.`, so folding it
+/// again cannot land where the track's tags do. A key two tracks shared and
+/// the new fold parts is loved under both.
 ///
 /// `tracks` counts its rows apart from the rest: a key written for the first
 /// time is how migration 18's column is backfilled, and the caller has to know
@@ -943,6 +1006,8 @@ const MATCH_FOLD_VERSION: &str = "6";
 /// loser is what that index is for. Nothing carries a foreign key onto
 /// `plays.id`, so the dropped row orphans nothing.
 pub fn refold(conn: &mut Connection) -> AppResult<Refolded> {
+    use std::collections::{BTreeSet, HashMap};
+
     let tx = conn.transaction()?;
 
     let mut rewritten: Vec<(i64, String)> = Vec::new();
@@ -958,6 +1023,7 @@ pub fn refold(conn: &mut Connection) -> AppResult<Refolded> {
     }
 
     let mut retagged: Vec<(i64, Option<String>)> = Vec::new();
+    let mut carried: HashMap<String, BTreeSet<String>> = HashMap::new();
     {
         let mut statement = tx.prepare("SELECT id, artist, title, match_key FROM tracks")?;
         let mut rows = statement.query([])?;
@@ -966,23 +1032,41 @@ pub fn refold(conn: &mut Connection) -> AppResult<Refolded> {
                 row.get::<_, Option<String>>(1)?.as_deref(),
                 row.get::<_, Option<String>>(2)?.as_deref(),
             );
-            if folded != row.get::<_, Option<String>>(3)? {
+            let stored = row.get::<_, Option<String>>(3)?;
+            // Every track rather than the ones that move, so a key shared with
+            // a track whose key stays keeps its love there too.
+            if let (Some(stored), Some(folded)) = (&stored, &folded) {
+                carried
+                    .entry(stored.clone())
+                    .or_default()
+                    .insert(folded.clone());
+            }
+            if folded != stored {
                 retagged.push((row.get(0)?, folded));
             }
         }
     }
 
-    let mut refolded: Vec<(String, String)> = Vec::new();
+    let mut refolded: Vec<(String, BTreeSet<String>)> = Vec::new();
     {
         let mut statement = tx.prepare("SELECT match_key FROM loved")?;
         let mut rows = statement.query([])?;
         while let Some(row) = rows.next()? {
             let stored: String = row.get(0)?;
-            let Some((artist, title)) = stored.split_once(SEPARATOR) else {
-                continue;
+            let folded = match carried.remove(&stored) {
+                Some(folded) => folded,
+                None => {
+                    let Some((artist, title)) = stored.split_once(SEPARATOR) else {
+                        continue;
+                    };
+                    let folded = match_key(artist, without_remaster_words(title));
+                    if folded.is_empty() {
+                        continue;
+                    }
+                    BTreeSet::from([folded])
+                }
             };
-            let folded = match_key(artist, without_remaster_words(title));
-            if folded != stored && !folded.is_empty() {
+            if folded.len() > 1 || !folded.contains(&stored) {
                 refolded.push((stored, folded));
             }
         }
@@ -1011,8 +1095,12 @@ pub fn refold(conn: &mut Connection) -> AppResult<Refolded> {
         )?;
         let mut delete = tx.prepare("DELETE FROM loved WHERE match_key = ?1")?;
         for (stored, folded) in &refolded {
-            insert.execute([folded, stored])?;
-            delete.execute([stored])?;
+            for key in folded {
+                insert.execute([key, stored])?;
+            }
+            if !folded.contains(stored) {
+                delete.execute([stored])?;
+            }
             moved += 1;
         }
     }
@@ -1268,6 +1356,63 @@ mod tests {
             match_key("Rome", "(Remastered)"),
             format!("rome{SEPARATOR}remastered")
         );
+    }
+
+    /// `&` is a word `squeeze` would delete, and a scrobbler writes the credit
+    /// a tag brackets without the brackets (issue 172).
+    #[test]
+    fn an_ampersand_and_a_bare_credit_are_the_same_song() {
+        assert_eq!(
+            match_key("Lana Del Rey", "Gods & Monsters"),
+            match_key("Lana Del Rey", "Gods and Monsters")
+        );
+        assert_eq!(
+            match_key("Simon & Garfunkel", "The Boxer"),
+            match_key("Simon and Garfunkel", "The Boxer")
+        );
+
+        let song = match_key("Casper", "In deinen Armen");
+        for (artist, title) in [
+            ("Casper", "In deinen Armen feat. Amaris"),
+            ("Casper feat. Amaris", "In deinen Armen"),
+            ("Casper", "In deinen Armen Feat Amaris"),
+            ("Casper", "In deinen Armen featuring Amaris"),
+            ("Casper", "In deinen Armen ft. Amaris"),
+            ("Casper ft. Amaris & Guest", "In deinen Armen"),
+            ("Casper", "In deinen Armen feat. Amaris - Remastered"),
+        ] {
+            assert_eq!(match_key(artist, title), song, "{artist:?} - {title:?}");
+        }
+
+        // What follows the credit names the recording, and stays.
+        for version in [" (Live)", " [Live]", " - Live"] {
+            assert_eq!(
+                match_key("Casper", &format!("In deinen Armen feat. Amaris{version}")),
+                match_key("Casper", &format!("In deinen Armen{version}")),
+                "{version:?}"
+            );
+        }
+        assert_ne!(
+            match_key("Casper", "In deinen Armen feat. Amaris (Live)"),
+            song
+        );
+
+        // Words that only look like a credit, and a credit in a run that
+        // `without_featuring` does not own.
+        for title in [
+            "Dance with Me",
+            "Left ft Right",
+            "Creature Feature",
+            "Feathers and Wax",
+            "Feat. of Clay",
+            "Harbour (Live feat. Guest)",
+        ] {
+            assert_eq!(
+                match_key("Blue Room", title),
+                format!("blue room{SEPARATOR}{}", squeeze(&decompose(title))),
+                "{title:?}"
+            );
+        }
     }
 
     /// Letters in their own right rather than a base letter and a mark, so
@@ -2140,6 +2285,30 @@ mod tests {
         refold(&mut conn).unwrap();
 
         assert_eq!(keys(&conn, "loved"), [match_key("Pink Floyd", "Echoes")]);
+        assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
+    }
+
+    /// A stored key has lost the `&`, so only the track it was the key of knows
+    /// where it goes - and a track whose key stays keeps the love too.
+    #[test]
+    fn a_loved_key_follows_its_tracks_through_the_fold() {
+        let (_dir, mut conn) = open();
+        let stored = format!("simon garfunkel{SEPARATOR}the boxer");
+        add_track(&conn, 1, Some("Simon & Garfunkel"), Some("The Boxer"));
+        add_track(&conn, 2, Some("Simon Garfunkel"), Some("The Boxer"));
+        conn.execute("UPDATE tracks SET match_key = ?1", [&stored])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO loved (match_key, remote) VALUES (?1, 0)",
+            [&stored],
+        )
+        .unwrap();
+
+        refold(&mut conn).unwrap();
+
+        let mut loved = crate::db::loved::tracks(&conn).unwrap();
+        loved.sort();
+        assert_eq!(loved, [1, 2]);
         assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
     }
 
