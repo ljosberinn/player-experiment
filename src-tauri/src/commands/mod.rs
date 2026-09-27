@@ -251,8 +251,8 @@ pub fn remove_missing_tracks(app: tauri::AppHandle, db: State<'_, Db>) -> AppRes
         &app,
         op(&app, "tracks.remove_missing"),
         || {
-            let conn = db.conn()?;
-            scan::remove_missing(&conn)
+            let mut conn = db.conn()?;
+            scan::remove_missing(&mut conn)
         },
         |removed| Fields::new().add("removed", removed),
     )

@@ -317,10 +317,10 @@ fn removing_missing_tracks_is_the_only_thing_that_deletes_rows() {
     std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
     scan_now(&h.db);
 
-    let conn = h.db.conn().unwrap();
+    let mut conn = h.db.conn().unwrap();
     assert_eq!(all_tracks(&conn).len(), 5, "still there, just marked");
 
-    assert_eq!(scan::remove_missing(&conn).unwrap(), 1);
+    assert_eq!(scan::remove_missing(&mut conn).unwrap(), 1);
 
     let left = all_tracks(&conn);
     assert_eq!(left.len(), 4);
@@ -349,7 +349,7 @@ fn deleting_a_track_leaves_no_orphan_in_the_search_index() {
     std::fs::remove_file(h.music.join("Grizzly Bear/Shields/01 Sleeping Ute.mp3")).unwrap();
     scan_now(&h.db);
 
-    let conn = h.db.conn().unwrap();
+    let mut conn = h.db.conn().unwrap();
     let query = TrackQuery {
         search: Some("Sleeping".to_owned()),
         ..Default::default()
@@ -360,7 +360,7 @@ fn deleting_a_track_leaves_no_orphan_in_the_search_index() {
 
     // It is the deletion that has to leave the index clean, and deletion is
     // now only ever this.
-    scan::remove_missing(&conn).unwrap();
+    scan::remove_missing(&mut conn).unwrap();
 
     assert_eq!(query::count_tracks(&conn, &query).unwrap(), 0);
 }

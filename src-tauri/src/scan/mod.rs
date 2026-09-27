@@ -284,21 +284,25 @@ pub fn clear_missing(conn: &Connection, id: i64) -> AppResult<bool> {
 
 /// Deletes every track currently marked missing, returning how many went.
 ///
-/// Playlist entries follow through `ON DELETE CASCADE`, which is why this is a
-/// deliberate action rather than something a scan does on the user's behalf.
+/// Playlist entries of a song with no other copy follow through `ON DELETE
+/// CASCADE`, which is why this is a deliberate action rather than something a
+/// scan does on the user's behalf.
 ///
 /// No tombstones, unlike `remove_tracks`: a drive coming back should restore
 /// what was on it, which is the whole point of migration 3. Only an explicit
 /// per-row removal is a statement about wanting the song gone.
-pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
-    let removed = conn.execute("DELETE FROM tracks WHERE missing_since IS NOT NULL", [])?;
+pub fn remove_missing(conn: &mut Connection) -> AppResult<u32> {
+    let tx = conn.transaction()?;
+    let ids = tx
+        .prepare("SELECT id FROM tracks WHERE missing_since IS NOT NULL")?
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<i64>, _>>()?;
+    let removed = delete_handing_on(&tx, &ids)?;
     // Those rows were carrying tag values, and a value nothing carries any more
     // should stop being suggested.
-    crate::db::tag_values::rebuild(conn)?;
-    // The plays those files answered for are still facts; only the link to a
-    // file is gone, and that is what a rebuild recomputes.
-    crate::db::plays::resolve(conn)?;
-    Ok(removed as u32)
+    crate::db::tag_values::rebuild(&tx)?;
+    tx.commit()?;
+    Ok(removed)
 }
 
 /// Deletes the named tracks and tombstones their paths, returning how many went.
@@ -317,7 +321,7 @@ pub fn remove_tracks(conn: &mut Connection, ids: &[i64]) -> AppResult<u32> {
     }
 
     let tx = conn.transaction()?;
-    let mut removed = 0_u32;
+    let mut present = Vec::with_capacity(ids.len());
     {
         // The path is read back rather than taken from the caller: the caller
         // knows a selection by id, and a tombstone on a path that was never in
@@ -327,25 +331,110 @@ pub fn remove_tracks(conn: &mut Connection, ids: &[i64]) -> AppResult<u32> {
             "INSERT INTO removed_paths (path, removed_at) VALUES (?1, ?2)
              ON CONFLICT(path) DO UPDATE SET removed_at = excluded.removed_at",
         )?;
-        let mut delete = tx.prepare("DELETE FROM tracks WHERE id = ?1")?;
         let at = now_secs();
 
         for id in ids {
             let path: Option<String> = path_of.query_row([id], |row| row.get(0)).optional()?;
             let Some(path) = path else { continue };
             tombstone.execute(rusqlite::params![path, at])?;
-            delete.execute([id])?;
-            removed += 1;
+            present.push(*id);
         }
     }
-    tx.commit()?;
+    let removed = delete_handing_on(&tx, &present)?;
 
     // Five whole-table aggregates per gesture, rather than per-value decrements
     // across five fields. The rebuild is the cheaper thing to be sure of, and
     // it is what `remove_missing` already does.
-    crate::db::tag_values::rebuild(conn)?;
-    crate::db::plays::resolve(conn)?;
+    crate::db::tag_values::rebuild(&tx)?;
+    tx.commit()?;
     Ok(removed)
+}
+
+/// Deletes the rows `ids` names, first handing each one's play count, last
+/// played and playlist places to the copy of its song that stays (issue 169).
+///
+/// The copy is the one `plays::resolve` links the song's plays to - present
+/// before missing, then the lowest id - over `tracks.match_key` alone. A song
+/// whose every copy goes hands nothing on, and its plays stay in the log
+/// unlinked.
+///
+/// **`max`, never add**, for `lastfm::import::count`'s reason: after an import
+/// the copy that stays already counts the other copy's plays. The plays the log
+/// links to it once this removal is resolved are the third term, since they
+/// include local plays of the other copy.
+///
+/// One insert per id into a temporary table, for the parameter limit
+/// `remove_tracks` gives.
+fn delete_handing_on(conn: &Connection, ids: &[i64]) -> AppResult<u32> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS temp.removing;
+         CREATE TEMP TABLE removing (id INTEGER PRIMARY KEY);
+         DROP TABLE IF EXISTS temp.hand_on;
+         CREATE TEMP TABLE hand_on (
+             absorbed       INTEGER PRIMARY KEY,
+             keeper         INTEGER NOT NULL,
+             play_count     INTEGER NOT NULL,
+             last_played_at INTEGER
+         );",
+    )?;
+    {
+        let mut insert = conn.prepare("INSERT OR IGNORE INTO temp.removing (id) VALUES (?1)")?;
+        for id in ids {
+            insert.execute([id])?;
+        }
+    }
+
+    conn.execute_batch(
+        "INSERT INTO temp.hand_on (absorbed, keeper, play_count, last_played_at)
+         SELECT id, keeper, play_count, last_played_at FROM (
+             SELECT t.id, t.play_count, t.last_played_at,
+                    (SELECT k.id FROM tracks k
+                      WHERE k.match_key = t.match_key
+                        AND k.id NOT IN (SELECT id FROM temp.removing)
+                      ORDER BY k.missing_since IS NOT NULL, k.id
+                      LIMIT 1) AS keeper
+               FROM tracks t
+              WHERE t.id IN (SELECT id FROM temp.removing)
+                AND t.match_key IS NOT NULL)
+          WHERE keeper IS NOT NULL;
+
+         -- OR IGNORE where the keeper already holds that place, or a second
+         -- removed copy has just taken it: the entry left behind cascades.
+         UPDATE OR IGNORE playlist_tracks
+            SET track_id = (SELECT keeper FROM temp.hand_on WHERE absorbed = track_id)
+          WHERE track_id IN (SELECT absorbed FROM temp.hand_on);",
+    )?;
+
+    let removed = conn.execute(
+        "DELETE FROM tracks WHERE id IN (SELECT id FROM temp.removing)",
+        [],
+    )?;
+    // The plays those files answered for are still facts; only the link to a
+    // file is gone, and that is what a rebuild recomputes.
+    crate::db::plays::resolve(conn)?;
+
+    // Guarded for `lastfm::import::count`'s reason: every update of `tracks`
+    // reindexes the row in `tracks_fts`.
+    conn.execute_batch(
+        "UPDATE tracks
+            SET play_count = max(play_count, h.plays),
+                last_played_at = nullif(max(coalesce(last_played_at, 0), h.last), 0)
+           FROM (SELECT keeper,
+                        max(max(play_count),
+                            (SELECT count(*) FROM plays WHERE track_id = keeper)) AS plays,
+                        max(coalesce(max(last_played_at), 0),
+                            coalesce((SELECT max(started_at) FROM plays
+                                       WHERE track_id = keeper), 0)) AS last
+                   FROM temp.hand_on
+                  GROUP BY keeper) h
+          WHERE tracks.id = h.keeper
+            AND (h.plays > tracks.play_count
+                 OR h.last > coalesce(tracks.last_played_at, 0));
+
+         DROP TABLE temp.removing;
+         DROP TABLE temp.hand_on;",
+    )?;
+    Ok(removed as u32)
 }
 
 /// Drops every tombstone, returning how many went.
@@ -1104,15 +1193,168 @@ mod tests {
         // A drive coming back should restore what was on it: that is migration
         // 4's whole purpose, and a tombstone would quietly undo it.
         let (_dir, db) = library();
-        let conn = db.conn().unwrap();
+        let mut conn = db.conn().unwrap();
         conn.execute(
             "UPDATE tracks SET missing_since = 1 WHERE path = '/m/go.mp3'",
             [],
         )
         .unwrap();
 
-        assert_eq!(remove_missing(&conn).unwrap(), 1);
+        assert_eq!(remove_missing(&mut conn).unwrap(), 1);
 
         assert!(load_removed(&conn).unwrap().is_empty());
+    }
+
+    /// Two copies of one song, the older one played and in two playlists, the
+    /// second of which the newer copy is not in. Returns (older, newer).
+    fn copies(conn: &Connection) -> (i64, i64) {
+        let key = crate::db::plays::match_key("Band", "Song");
+        for (path, play_count, last) in [("/m/old.mp3", 40, Some(500)), ("/m/new.mp3", 0, None)] {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, title, artist, added_at, match_key,
+                                     play_count, last_played_at)
+                 VALUES (?1, 1, 1, 'Song', 'Band', 0, ?2, ?3, ?4)",
+                rusqlite::params![path, key, play_count, last],
+            )
+            .unwrap();
+        }
+        let (old, new) = (id_of(conn, "/m/old.mp3"), id_of(conn, "/m/new.mp3"));
+        conn.execute_batch(&format!(
+            "INSERT INTO playlists (id, name, kind, created_at) VALUES
+                 (10, 'Both', 'static', 0), (11, 'Old', 'static', 0);
+             INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES
+                 (10, {old}, 1), (10, {new}, 2), (11, {old}, 3);"
+        ))
+        .unwrap();
+        (old, new)
+    }
+
+    fn counted(conn: &Connection, id: i64) -> (i64, Option<i64>) {
+        conn.query_row(
+            "SELECT play_count, last_played_at FROM tracks WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    fn places(conn: &Connection) -> Vec<(i64, i64, i64)> {
+        conn.prepare("SELECT playlist_id, track_id, position FROM playlist_tracks ORDER BY 1, 3")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    fn play(conn: &Connection, started_at: i64) {
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, match_key)
+             VALUES (?1, 'local', 'Band', 'Song', ?2)",
+            rusqlite::params![started_at, crate::db::plays::match_key("Band", "Song")],
+        )
+        .unwrap();
+    }
+
+    fn empty() -> (tempfile::TempDir, crate::db::Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::Db::open(dir.path().join("library.sqlite3")).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn removing_the_played_copy_hands_its_plays_to_the_one_that_stays() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+
+        assert_eq!(remove_tracks(&mut conn, &[old]).unwrap(), 1);
+
+        assert_eq!(counted(&conn, new), (40, Some(500)));
+        // Where the copy that stays is already in the playlist, the place goes.
+        assert_eq!(places(&conn), [(10, new, 2), (11, new, 3)]);
+    }
+
+    #[test]
+    fn the_copy_that_stays_keeps_a_higher_count() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        conn.execute(
+            "UPDATE tracks SET play_count = 50, last_played_at = 900 WHERE id = ?1",
+            [new],
+        )
+        .unwrap();
+
+        remove_tracks(&mut conn, &[old]).unwrap();
+
+        assert_eq!(counted(&conn, new), (50, Some(900)));
+    }
+
+    #[test]
+    fn the_plays_the_log_links_to_the_copy_that_stays_count_too() {
+        // Local plays of the newer copy were logged against the older one,
+        // which `resolve` preferred while both were there.
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        conn.execute(
+            "UPDATE tracks SET play_count = 1 WHERE id IN (?1, ?2)",
+            [old, new],
+        )
+        .unwrap();
+        for started_at in [100, 200, 700] {
+            play(&conn, started_at);
+        }
+
+        remove_tracks(&mut conn, &[old]).unwrap();
+
+        assert_eq!(counted(&conn, new), (3, Some(700)));
+    }
+
+    #[test]
+    fn removing_every_copy_hands_nothing_on() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        play(&conn, 100);
+        crate::db::plays::resolve(&conn).unwrap();
+
+        assert_eq!(remove_tracks(&mut conn, &[old, new]).unwrap(), 2);
+
+        assert!(places(&conn).is_empty());
+        assert_eq!(
+            count(&conn, "SELECT count(*) FROM plays WHERE track_id IS NULL"),
+            1,
+            "the play stays in the log, unlinked"
+        );
+    }
+
+    #[test]
+    fn removing_a_missing_copy_hands_its_plays_to_the_one_that_is_there() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        conn.execute("UPDATE tracks SET missing_since = 1 WHERE id = ?1", [old])
+            .unwrap();
+
+        assert_eq!(remove_missing(&mut conn).unwrap(), 1);
+
+        assert_eq!(counted(&conn, new), (40, Some(500)));
+        assert_eq!(places(&conn), [(10, new, 2), (11, new, 3)]);
+    }
+
+    #[test]
+    fn a_song_with_one_copy_is_removed_as_before() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        conn.execute("UPDATE tracks SET match_key = 'other' WHERE id = ?1", [new])
+            .unwrap();
+
+        remove_tracks(&mut conn, &[old]).unwrap();
+
+        assert_eq!(counted(&conn, new), (0, None));
+        assert_eq!(places(&conn), [(10, new, 2)]);
     }
 }

@@ -378,6 +378,13 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   — so the winner is fixed rather than incidental: present before unplugged,
   then the lower id, which is migration 12's tiebreak. Without it the function
   is not idempotent and its guarded `UPDATE` rewrites the log on every run.
+- **A removed row hands its count to the copy that stays** (169), in both
+  removals' transaction: the copy `resolve` would pick by `tracks.match_key`
+  takes the max of its own `play_count`, the removed row's and its linked plays
+  after `resolve`, the same for `last_played_at`, and the removed row's
+  playlist places where it has none of its own. `max` for the import's reason.
+  Only the artist key: a compilation copy hands its count to the album copy the
+  log already links. A removal that takes every copy hands nothing on.
 - **A track also links through its album artist** (135), because last.fm
   credits the primary artist and puts a guest in the title: the file says
   `Prezident mit Absztrakkt`, the scrobble `Prezident`. Those keys go in after
