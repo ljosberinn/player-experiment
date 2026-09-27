@@ -15,6 +15,9 @@ multi-ecosystem-groups:
   tauri:
     schedule:
       interval: weekly
+    # Dependabot rejects this key on the npm and cargo entries once they
+    # belong to a multi-ecosystem group, so it lives here instead.
+    open-pull-requests-limit: 10
 
 updates:
   - package-ecosystem: npm
@@ -24,7 +27,6 @@ updates:
       - "@tauri-apps/*"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
     groups:
       npm-minor-and-patch:
         update-types:
@@ -55,7 +57,6 @@ updates:
       - tauri-*
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
     groups:
       cargo-minor-and-patch:
         update-types:
