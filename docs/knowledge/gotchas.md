@@ -209,6 +209,19 @@ decodes gray below its first rows. Any save does it, not just a cover change, as
 long as the tag has a frame the companion keeps. `write::drop_unsynchronisation`
 clears both flags before the save.
 
+**Two ID3v2 tags back to back at the start of an mp3 are read as one and
+written as two.** The mpeg reader merges each later tag into the first with
+`FrameList::insert`, so the later tag's frames win; `write_id3v2` replaces only
+the first. A saved edit to a field the second tag also holds is undone by the
+next read. And a save starts with `VerifiedFile::new`, which sniffs the content
+(`Probe::open` on read trusts the extension): it skips one tag, then looks for a
+frame sync within `DEFAULT_MAX_JUNK_BYTES` (1,024), so a second tag larger than
+that fails every save with "no format could be determined". `WriteOptions`
+carries `ParseOptions`, but the sniff never sees them.
+`write::drop_stacked_tags` cuts every leading tag off the temp copy before the
+save when there are two or more; the tag being saved already holds their merged
+frames.
+
 ## Moving files
 
 **A tombstone is a hazard at the target, not at the source.** `scan::plan` skips

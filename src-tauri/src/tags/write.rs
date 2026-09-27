@@ -5,6 +5,7 @@
 //! disk cannot leave a half-written mp3 where music used to be.
 
 use std::collections::HashMap;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -468,6 +469,17 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
         mutate(&mut tag, resolved);
         let kind = tag.tag_type();
 
+        if let Err(error) = drop_stacked_tags(&temp) {
+            let fields = here("strip")
+                .add("cause", causes(&error))
+                .add("os", os_code(&error));
+            return Err(Failure {
+                error: AppError::io(temp.display(), error),
+                fields,
+                kind: Cause::Refused,
+            });
+        }
+
         save_tag(&temp, tag).map_err(|refused| {
             let fields = here("save")
                 .add("tag", format!("{kind:?}/{source}"))
@@ -511,6 +523,65 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
         });
     }
     Ok(())
+}
+
+/// The length of the ID3v2 tag whose 10-byte header is `header`, footer
+/// included, or `None` if it is not one.
+fn tag_len(header: &[u8; 10]) -> Option<u64> {
+    if &header[..3] != b"ID3" || !(2..=4).contains(&header[3]) {
+        return None;
+    }
+    if header[6..].iter().any(|byte| byte & 0x80 != 0) {
+        return None;
+    }
+    let size = header[6..]
+        .iter()
+        .fold(0u64, |size, &byte| (size << 7) | u64::from(byte));
+    // Honoured on v2.3 too, as lofty's reader does, so this skips exactly the
+    // tags it merged.
+    let footer = if header[3] >= 3 && header[5] & 0x10 != 0 {
+        10
+    } else {
+        0
+    };
+    Some(10 + size + footer)
+}
+
+/// Rewrites `path` without the ID3v2 tags at its start when two or more sit
+/// there back to back.
+///
+/// lofty replaces only the first on save, and on read lets a later tag's
+/// frames win over the first's, so an edit to a field both hold is undone by
+/// the next read. A second tag over 1,024 bytes also hides the audio from the
+/// format sniff every save starts with, and the save is refused. The tag about
+/// to be saved was read with all of them merged, so dropping them loses
+/// nothing it holds.
+fn drop_stacked_tags(path: &Path) -> std::io::Result<()> {
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut end = 0;
+    let mut count = 0;
+    let mut header = [0u8; 10];
+    while end + 10 <= len {
+        file.seek(SeekFrom::Start(end))?;
+        file.read_exact(&mut header)?;
+        match tag_len(&header) {
+            Some(tag) if end + tag <= len => {
+                end += tag;
+                count += 1;
+            }
+            _ => break,
+        }
+    }
+    if count < 2 {
+        return Ok(());
+    }
+
+    file.seek(SeekFrom::Start(end))?;
+    let mut audio = Vec::new();
+    file.read_to_end(&mut audio)?;
+    drop(file);
+    std::fs::write(path, audio)
 }
 
 /// Replaces a `COMM` or `USLT` language lofty would refuse to write with
@@ -874,6 +945,61 @@ mod tests {
             "image/jpeg"
         );
         assert!(check_cover(&vec![0; MAX_COVER_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn a_tag_header_gives_the_whole_tag_length() {
+        // Size 0x81 as synchsafe bytes is 129.
+        assert_eq!(tag_len(b"ID3\x04\x00\x00\x00\x00\x01\x01"), Some(139));
+        assert_eq!(
+            tag_len(b"ID3\x04\x00\x10\x00\x00\x01\x01"),
+            Some(149),
+            "footer"
+        );
+        assert_eq!(
+            tag_len(b"ID3\x03\x00\x10\x00\x00\x00\x00"),
+            Some(20),
+            "v2.3 footer"
+        );
+        assert_eq!(
+            tag_len(b"ID3\x02\x00\x10\x00\x00\x00\x00"),
+            Some(10),
+            "no footer in v2.2"
+        );
+        assert_eq!(tag_len(b"ID3\x05\x00\x00\x00\x00\x00\x00"), None, "version");
+        assert_eq!(
+            tag_len(b"ID3\x04\x00\x00\x00\x00\x00\x80"),
+            None,
+            "not synchsafe"
+        );
+        assert_eq!(
+            tag_len(b"\xFF\xFB\x90\xC0\x00\x00\x00\x00\x00\x00"),
+            None,
+            "audio"
+        );
+    }
+
+    #[test]
+    fn only_a_second_tag_gets_the_leading_ones_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("track.mp3");
+        let tag: &[u8] = b"ID3\x04\x00\x00\x00\x00\x00\x02\x00\x00";
+        let audio: &[u8] = b"\xFF\xFB\x90\xC0audio";
+
+        let one = [tag, audio].concat();
+        std::fs::write(&path, &one).unwrap();
+        drop_stacked_tags(&path).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), one);
+
+        std::fs::write(&path, [tag, tag, tag, audio].concat()).unwrap();
+        drop_stacked_tags(&path).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), audio);
+
+        // Junk between the two is left for lofty to make of it.
+        let junk = [tag, b"junk", tag, audio].concat();
+        std::fs::write(&path, &junk).unwrap();
+        drop_stacked_tags(&path).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), junk);
     }
 
     #[test]

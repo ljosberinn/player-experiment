@@ -841,6 +841,78 @@ fn a_comment_language_that_can_be_written_back_is_left_alone() {
     assert_eq!(&fixture::comment_language(&path), b"deu");
 }
 
+/// Past the 1,024 bytes lofty searches beyond the first tag for audio, a save
+/// could not tell what kind of file it was writing to.
+#[test]
+fn a_file_with_a_large_second_tag_saves_as_one_tag() {
+    let h = harness();
+    let path = h.music.join("loose/two-tags-large.mp3");
+    fixture::write_mp3_with_two_tags(
+        &path,
+        10,
+        &[("TIT2", "Two Tags")],
+        &[("TCON", "Second Only")],
+        2048,
+    );
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Two Tags");
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            title: set("Edited"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+    let on_disk = tags::read(&path).unwrap();
+    assert_eq!(on_disk.title.as_deref(), Some("Edited"));
+    assert_eq!(on_disk.genre.as_deref(), Some("Second Only"));
+    assert_eq!(row(&h.db, track).0.as_deref(), Some("Edited"));
+    assert_eq!(fixture::leading_tags(&path), 1);
+}
+
+/// lofty lets the second tag's frames win on read, so an edit written only to
+/// the first would be undone by the next read.
+#[test]
+fn an_edit_is_not_undone_by_a_small_second_tag_holding_the_same_field() {
+    let h = harness();
+    let path = h.music.join("loose/two-tags-small.mp3");
+    fixture::write_mp3_with_two_tags(
+        &path,
+        10,
+        &[("TIT2", "Hidden"), ("TCON", "First Only")],
+        &[("TIT2", "Shown")],
+        0,
+    );
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Shown");
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            title: set("Edited"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+    let on_disk = tags::read(&path).unwrap();
+    assert_eq!(on_disk.title.as_deref(), Some("Edited"));
+    assert_eq!(on_disk.genre.as_deref(), Some("First Only"));
+    assert_eq!(row(&h.db, track).0.as_deref(), Some("Edited"));
+    assert_eq!(fixture::leading_tags(&path), 1);
+}
+
 /// JPEG-shaped bytes with the `FF 00` escapes a real entropy stream is full
 /// of, which are what an unsynchronising reader strips.
 const ESCAPED_JPEG: &[u8] = b"\xFF\xD8\xFF\xE0scan\xFF\x00rows\xFF\x00more\xFF\xD9";
