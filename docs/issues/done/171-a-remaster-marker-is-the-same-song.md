@@ -12,27 +12,28 @@ again, and the album fold's `EDITIONS` already treats it that way.
 
 ## Fix
 
-In `normalize` (`src-tauri/src/db/plays.rs`), strip a trailing remaster marker
-from the title, next to `without_featuring`. This runs after `decompose`, and
-before `squeeze` removes the delimiters. It applies to plays and tracks both.
-The library holds 14 titles like `Summer Wind (Remastered 2008)`, and those
-stop matching too.
+`without_remaster` in `normalize` (`src-tauri/src/db/plays.rs`) strips a
+trailing remaster marker, next to `without_featuring`, so on both sides of the
+key, like the featuring credit. This runs after `decompose`, and before
+`squeeze` removes the delimiters. It applies to plays and tracks both. The
+library holds 14 titles like `Summer Wind (Remastered 2008)`, and those stop
+matching too.
 
-- Forms: ` - <marker>`, `(<marker>)`, `[<marker>]`.
+- Forms: ` - <marker>`, `(<marker>)`, `[<marker>]`. A ` - ` whose suffix holds
+  a bracket is inside a run (`(Live - Remastered)`) and is not a marker.
 - A marker is made only of the words `remaster`, `remastered`, `digital`,
   `digitally`, `version` and a four-digit year, and it has to contain
   `remaster` or `remastered` as a whole word. So `(remastered out-take)` and
-  `(premaster)` stay.
-- Strip the marker before the featuring credit, so that `Song (feat. X) -
-  Remastered` loses both.
-- `loved` keys are stored squeezed, and the delimiter is gone from them. Its
-  in-place refold strips trailing marker words instead. One row is affected
-  today: `pink floyd␟echoes 2011 remastered version`.
-- Bump `MATCH_FOLD_VERSION`, and correct the `without_featuring` and
-  `match_key` doc comments.
+  `(premaster)` stay. A marker with nothing before it is the title.
+- The marker is stripped before the featuring credit, so that
+  `Song (feat. X) - Remastered` loses both.
+- `loved` keys are stored squeezed, and the delimiter is gone from them. Their
+  in-place refold strips trailing marker words from the title side instead,
+  never the first word. One row is affected today:
+  `pink floyd␟echoes 2011 remastered version`.
+- `MATCH_FOLD_VERSION` is 6.
 
-Stack this on [170](../done/170-letters-nfkd-cannot-fold.md). Both change the fold and
-bump the same version.
+Stacked on [170](170-letters-nfkd-cannot-fold.md).
 
 ## Measurements
 
