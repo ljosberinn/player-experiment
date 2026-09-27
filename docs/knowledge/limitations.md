@@ -89,7 +89,8 @@ Known, decided, and not scheduled. Anything with work attached lives in
   edit, or refusing to remove one row out of a selection.
 - **A removal cannot be undone, only forgotten.** File ▸ Forget Removed Songs
   lifts the tombstones so a rescan re-adds the files; the rows they had, and
-  the ids, play counts and playlist places on them, are gone.
+  the ids, play counts and playlist places on them, are gone, or on the copy of
+  the same song that stayed.
 - **260 characters is the ceiling for every path this app builds.** There is no
   `longPathAware` manifest in `src-tauri`, and Rust's `std::fs` hands paths to
   the wide Win32 API without adding a `\\?\` prefix of its own. Prefixing one

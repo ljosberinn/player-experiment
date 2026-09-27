@@ -197,7 +197,7 @@ fn removing_missing_tracks_takes_their_playlist_entries_with_them() {
 
     std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
     scan::scan(&mut conn, |_| {}).expect("rescan");
-    assert_eq!(scan::remove_missing(&conn).unwrap(), 1);
+    assert_eq!(scan::remove_missing(&mut conn).unwrap(), 1);
 
     assert_eq!(view(&h.db, playlist.id), ["Sleeping Ute"]);
 }

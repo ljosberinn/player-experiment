@@ -33,7 +33,7 @@ export const ConfirmLabel: StoryObj<typeof meta> = {
   render: () => (
     <ConfirmDialog
       title="Remove missing songs?"
-      body="3 songs cannot be found. Removing them also takes them out of every playlist. If a drive is unplugged, reconnect it and rescan instead."
+      body="3 songs cannot be found. Removing them also takes them out of every playlist. Plays and playlist places move to another copy of the same song, where there is one. If a drive is unplugged, reconnect it and rescan instead."
       confirmLabel="Remove"
       onConfirm={() => {}}
       onCancel={() => {}}
@@ -46,7 +46,7 @@ export const LongBody: StoryObj<typeof meta> = {
   render: () => (
     <ConfirmDialog
       title="Remove these songs?"
-      body="1,284 songs will be removed from your library and every playlist. The files stay on disk; a rescan adds them back only after File ▸ Forget Removed Songs."
+      body="1,284 songs will be removed from your library and every playlist. Plays and playlist places move to another copy of the same song, where there is one. The files stay on disk; a rescan adds them back only after File ▸ Forget Removed Songs."
       confirmLabel="Remove"
       onConfirm={() => {}}
       onCancel={() => {}}
