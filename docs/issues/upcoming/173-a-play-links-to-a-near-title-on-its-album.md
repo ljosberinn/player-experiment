@@ -46,7 +46,7 @@ Compute this tier into the per-play assignment of 145, not as a later
 `UPDATE`, so that `resolve` stays idempotent. Bump `MATCH_FOLD_VERSION`, so
 that existing libraries resolve once.
 
-Stack this on [172](172-and-and-a-bare-featuring-credit.md). The measurements
+Stack this on [172](../done/172-and-and-a-bare-featuring-credit.md). The measurements
 assume that fold, and `Gods & Monsters` links there instead.
 
 ## Measurements
