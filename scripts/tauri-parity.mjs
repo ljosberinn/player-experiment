@@ -4,11 +4,9 @@
  *
  * `tauri build` refuses to start on such a mismatch, so without this the first
  * report comes from the e2e job, several minutes into a debug build, in a log
- * nobody reads to the end. The mismatch is also the normal outcome of an
- * automated bump rather than an unlucky one: Dependabot groups per ecosystem
- * and cannot bump `tauri-plugin-updater` and `@tauri-apps/plugin-updater` in
- * one pull request, so every Tauri update arrives as one half and is red by
- * construction until the other half is pushed on top.
+ * nobody reads to the end. Dependabot's `tauri` multi-ecosystem group bumps
+ * both halves in one pull request; this catches the case where only one half
+ * moves anyway, such as a hand-edited lockfile.
  *
  * Versions come from the lockfiles, because those are what an install
  * resolves to and so what the CLI compares. Only packages present on both

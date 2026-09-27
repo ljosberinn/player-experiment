@@ -111,14 +111,16 @@ red run points at one suspect. Two npm groups are the exception —
 installed one at a time: the first scheduled run opened four separate pull
 requests that each failed at `npm ci` with ERESOLVE.
 
-**Tauri updates always arrive half-done.** `tauri-plugin-updater` is a cargo
-dependency and `@tauri-apps/plugin-updater` an npm one, Dependabot groups per
-ecosystem, and `tauri build` refuses to start unless the two agree on
-major.minor — so a Tauri bump is red by construction until the other half is
-pushed onto the same branch by hand. `npm run tauri:parity` says so in the
-`frontend` job rather than minutes into the e2e build. Pushing to a
-`dependabot/*` branch also costs the auto-merge below, whose `actor` condition
-no longer holds; merge those by hand.
+**Tauri updates arrive as one pull request across both ecosystems.**
+`tauri build` refuses to start unless a package's npm and cargo halves (e.g.
+`@tauri-apps/plugin-updater` and `tauri-plugin-updater`) agree on major.minor,
+so a per-ecosystem group would bump one half and be red by construction. The
+`tauri` multi-ecosystem group (`@tauri-apps/*` on npm, `tauri` and `tauri-*` on
+cargo) bumps both together, majors included — `update-types` is not supported
+there. `npm run tauri:parity` still guards the pairing in the `frontend` job,
+rather than minutes into the e2e build. If a half ever arrives alone, push the
+other onto the same branch; that costs the auto-merge below, whose `actor`
+condition no longer holds, so merge it by hand.
 
 `.github/workflows/dependabot.yml` then lands them: green run on a
 `dependabot/*` branch → squash-merge. Majors included; the gate is the same six
