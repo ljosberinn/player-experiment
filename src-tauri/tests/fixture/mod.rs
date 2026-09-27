@@ -167,6 +167,56 @@ fn write_hand_built_mp3_flagged(path: &Path, audio_frames: usize, flags: u8, fra
     std::fs::write(path, bytes).expect("write fixture mp3");
 }
 
+/// An ID3v2.4 tag of text frames, with `padding` zero bytes inside its size.
+fn text_tag(frames: &[(&str, &str)], padding: usize) -> Vec<u8> {
+    let mut body: Vec<u8> = frames
+        .iter()
+        .flat_map(|(id, value)| text_frame(id, value))
+        .collect();
+    body.resize(body.len() + padding, 0);
+    let mut tag = Vec::from(&b"ID3\x04\x00\x00"[..]);
+    tag.extend_from_slice(&synchsafe(body.len() as u32));
+    tag.extend_from_slice(&body);
+    tag
+}
+
+/// An mp3 with two ID3v2 tags back to back ahead of the audio, as some taggers
+/// leave behind. `padding` pads the second one, which is what decides whether
+/// lofty can still find the audio past it.
+pub fn write_mp3_with_two_tags(
+    path: &Path,
+    frames: usize,
+    first: &[(&str, &str)],
+    second: &[(&str, &str)],
+    padding: usize,
+) {
+    let mut bytes = text_tag(first, 0);
+    bytes.extend_from_slice(&text_tag(second, padding));
+    bytes.extend_from_slice(&silent_mp3(frames));
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixture dir");
+    }
+    std::fs::write(path, bytes).expect("write fixture mp3");
+}
+
+/// How many ID3v2 tags sit back to back at the start of the mp3 at `path`,
+/// counted off the disk because lofty merges them into one on read.
+pub fn leading_tags(path: &Path) -> usize {
+    let bytes = std::fs::read(path).expect("read mp3");
+    let mut at = 0;
+    let mut count = 0;
+    while bytes[at..].starts_with(b"ID3") {
+        let size = bytes[at + 6..at + 10]
+            .iter()
+            .fold(0usize, |size, &byte| (size << 7) | usize::from(byte));
+        let footer = if bytes[at + 5] & 0x10 != 0 { 10 } else { 0 };
+        at += 10 + size + footer;
+        count += 1;
+    }
+    count
+}
+
 /// An mp3 whose date frame lofty will read but refuse to write back.
 ///
 /// Hand-built because no lofty call can produce one: an out-of-range month or
