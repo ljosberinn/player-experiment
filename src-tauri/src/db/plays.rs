@@ -645,6 +645,10 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // (album, title) to the track `play_keys`' tiebreak picks, and every
     // library artist a track under that pair names.
     let mut albums: HashMap<(String, String), (i64, HashSet<String>)> = HashMap::new();
+    // (library artist, album) to each distinct title on it and the track the
+    // tiebreak picks for that title, under both the artist and the album
+    // artist.
+    let mut shelves: HashMap<(String, String), Vec<(String, i64)>> = HashMap::new();
     // Each album spelling is folded once: a log repeats them by the thousand.
     let mut folds: HashMap<String, String> = HashMap::new();
     {
@@ -688,21 +692,32 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
                 fallbacks.push((fallback, id));
             }
 
-            let owner = normalize(if album_artist.trim().is_empty() {
+            let artist = normalize(artist);
+            let album_artist = normalize(album_artist);
+            let album = folds
+                .entry(album)
+                .or_insert_with_key(|album| fold_album(album))
+                .clone();
+            let title = normalize(title);
+            if album.is_empty() || title.is_empty() {
+                continue;
+            }
+            let owners =
+                std::iter::once(&artist).chain((album_artist != artist).then_some(&album_artist));
+            for owner in owners.filter(|owner| !owner.is_empty()) {
+                let shelf = shelves.entry((owner.clone(), album.clone())).or_default();
+                if !shelf.iter().any(|(held, _)| held == &title) {
+                    shelf.push((title.clone(), id));
+                }
+            }
+            let owner = if album_artist.is_empty() {
                 artist
             } else {
                 album_artist
-            });
-            let pair = (
-                folds
-                    .entry(album)
-                    .or_insert_with_key(|album| fold_album(album))
-                    .clone(),
-                normalize(title),
-            );
-            if !owner.is_empty() && !pair.0.is_empty() && !pair.1.is_empty() {
+            };
+            if !owner.is_empty() {
                 albums
-                    .entry(pair)
+                    .entry((album, title))
                     .or_insert_with(|| (id, HashSet::new()))
                     .1
                     .insert(owner);
@@ -762,6 +777,50 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         }
     }
 
+    // **A near title is the last resort after the album, on the artist's own
+    // copy of it.** `Dia Artio` is `Dea Artio` and `Terraplane` is
+    // `Terraplane '99`, and no fold can say so without folding different
+    // songs together. The album narrows the field to a dozen titles, and
+    // [`nearest`] links only one that stands out from the rest (issue 173).
+    {
+        let mut plays = conn.prepare(
+            "SELECT id, artist, title, album FROM plays
+              WHERE match_key <> '' AND album <> ''
+                AND match_key NOT IN (SELECT key FROM temp.play_keys)
+                AND id NOT IN (SELECT play_id FROM temp.album_links)",
+        )?;
+        let mut spellings: HashMap<(String, String, String), Option<i64>> = HashMap::new();
+        // Read to the end before writing, since the query reads the table
+        // the links go into.
+        let mut links: Vec<(i64, i64)> = Vec::new();
+        let mut rows = plays.query([])?;
+        while let Some(row) = rows.next()? {
+            let spelling: (String, String, String) = (row.get(1)?, row.get(2)?, row.get(3)?);
+            let track_id = match spellings.get(&spelling) {
+                Some(track_id) => *track_id,
+                None => {
+                    let album = folds
+                        .entry(spelling.2.clone())
+                        .or_insert_with_key(|album| fold_album(album));
+                    let track_id = shelves
+                        .get(&(normalize(&spelling.0), album.clone()))
+                        .and_then(|shelf| nearest(&normalize(&spelling.1), shelf));
+                    spellings.insert(spelling, track_id);
+                    track_id
+                }
+            };
+            if let Some(track_id) = track_id {
+                links.push((row.get(0)?, track_id));
+            }
+        }
+
+        let mut link =
+            conn.prepare("INSERT INTO temp.album_links (play_id, track_id) VALUES (?1, ?2)")?;
+        for (play_id, track_id) in &links {
+            link.execute([play_id, track_id])?;
+        }
+    }
+
     // **The guard is what makes the full scan affordable.** After a three-track
     // tag edit the statement still reads every play, but it writes only the
     // handful whose link actually moved, instead of rewriting a quarter of a
@@ -786,6 +845,116 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
 
     conn.execute_batch("DROP TABLE temp.play_keys; DROP TABLE temp.album_links;")?;
     Ok(moved as u32)
+}
+
+/// How near a title has to be to link, and how far ahead of the next title on
+/// its album, as [`similarity`] measures them.
+const NEAR: f64 = 0.85;
+const MARGIN: f64 = 0.1;
+
+/// The words that make a longer title another recording or another piece:
+/// `Unsachlich (Skit)`, `My Everlasting Life II`.
+const VERSIONS: &[&str] = &[
+    "live",
+    "remix",
+    "mix",
+    "skit",
+    "orchestral",
+    "acoustic",
+    "demo",
+    "instrumental",
+    "edit",
+    "version",
+    "intro",
+    "outro",
+    "reprise",
+    "interlude",
+    "unplugged",
+    "radio",
+    "extended",
+    "dub",
+    "part",
+    "pt",
+    "2",
+    "3",
+    "4",
+    "5",
+    "ii",
+    "iii",
+    "iv",
+    "v",
+];
+
+/// The track on `shelf` whose title is near `title`, when exactly one is.
+///
+/// Near enough is [`NEAR`], and the runner-up has to trail by [`MARGIN`], so
+/// that of `Part 1` and `Part 2` neither is picked. A title that is the
+/// other plus a word from [`VERSIONS`] never links, however near: a skit or a
+/// sequel is a different track that reads as a spelling.
+fn nearest(title: &str, shelf: &[(String, i64)]) -> Option<i64> {
+    let mut best: Option<(f64, &str, i64)> = None;
+    let mut second = 0.0_f64;
+    for (candidate, track_id) in shelf {
+        let score = similarity(title, candidate);
+        match best {
+            Some((leader, ..)) if score <= leader => second = second.max(score),
+            _ => {
+                if let Some((leader, ..)) = best {
+                    second = second.max(leader);
+                }
+                best = Some((score, candidate, *track_id));
+            }
+        }
+    }
+    let (score, candidate, track_id) = best?;
+    (score >= NEAR && score - second >= MARGIN && !adds_a_version(title, candidate))
+        .then_some(track_id)
+}
+
+/// The share of both titles' characters their longest common subsequence
+/// covers, from 0 to 1.
+///
+/// Both lengths rather than the longer one, which is Python's `difflib` ratio
+/// the thresholds were first measured with: `Terraplane` against `Terraplane
+/// 99` is three insertions, 0.77 of the longer title and 0.87 of the two.
+fn similarity(a: &str, b: &str) -> f64 {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut row = vec![0_u32; b.len() + 1];
+    for left in &a {
+        let mut diagonal = 0;
+        for (index, right) in b.iter().enumerate() {
+            let above = row[index + 1];
+            row[index + 1] = if left == right {
+                diagonal + 1
+            } else {
+                above.max(row[index])
+            };
+            diagonal = above;
+        }
+    }
+    2.0 * f64::from(row[b.len()]) / (a.len() + b.len()) as f64
+}
+
+/// Whether one title is the other with words added, and one of them is in
+/// [`VERSIONS`].
+fn adds_a_version(a: &str, b: &str) -> bool {
+    let a: Vec<&str> = a.split(' ').collect();
+    let b: Vec<&str> = b.split(' ').collect();
+    let (shorter, longer) = if a.len() < b.len() { (a, b) } else { (b, a) };
+    if shorter.len() == longer.len() {
+        return false;
+    }
+    let mut kept = shorter.iter().peekable();
+    let mut added = Vec::new();
+    for word in &longer {
+        if kept.peek() == Some(&word) {
+            kept.next();
+        } else {
+            added.push(*word);
+        }
+    }
+    kept.peek().is_none() && added.iter().any(|word| VERSIONS.contains(word))
 }
 
 /// Recomputes `album_groups` for the whole log, returning how many rows moved.
@@ -973,9 +1142,10 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// reason [`FOLD_VERSION`] gives - and more sharply, because this key is
 /// stored rather than derived on read. A library whose keys predate the fold
 /// does not half-link; it does not link at all. Bump it too when `resolve`
-/// gives a track another key, as 3 did for the album artist and 4 for the
-/// album: the stored keys stay put, but nothing else resolves at launch.
-const MATCH_FOLD_VERSION: &str = "7";
+/// gives a track another key, as 3 did for the album artist, 4 for the album
+/// and 8 for a near title: the stored keys stay put, but nothing else resolves
+/// at launch.
+const MATCH_FOLD_VERSION: &str = "8";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -1966,6 +2136,124 @@ mod tests {
         assert!(refold_if_stale(&mut conn).unwrap().is_some());
         assert_eq!([linked(&conn, 10), linked(&conn, 11)], [Some(1), Some(2)]);
         assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once");
+    }
+
+    fn industrial_silence(conn: &Connection) {
+        on_album(conn, 1, "Madrugada", "Industrial Silence", "Terraplane '99");
+        on_album(conn, 2, "Madrugada", "Industrial Silence", "Vocal");
+    }
+
+    /// A near title on the artist's own album is the same song under another
+    /// spelling (issue 173).
+    #[test]
+    fn a_near_title_on_its_album_links() {
+        let (_dir, conn) = open();
+        industrial_silence(&conn);
+        // A second copy of the album, which is not a rival title.
+        on_album(
+            &conn,
+            3,
+            "Madrugada",
+            "Industrial Silence",
+            "Terraplane '99",
+        );
+        on_album(
+            &conn,
+            4,
+            "Wolves in the Throne Room",
+            "Two Hunters",
+            "Dea Artio",
+        );
+        on_album(
+            &conn,
+            5,
+            "Wolves in the Throne Room",
+            "Two Hunters",
+            "Cleansing",
+        );
+        played_on(&conn, 10, "Madrugada", "Industrial Silence", "Terraplane");
+        played_on(
+            &conn,
+            11,
+            "Wolves in the Throne Room",
+            "Two Hunters",
+            "Dia Artio",
+        );
+
+        resolve(&conn).unwrap();
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [Some(1), Some(4)]);
+        assert_eq!(resolve(&conn).unwrap(), 0, "a second pass moves nothing");
+    }
+
+    /// An unplugged drive keeps the link, as it does for a key.
+    #[test]
+    fn a_near_title_on_a_missing_track_links() {
+        let (_dir, conn) = open();
+        industrial_silence(&conn);
+        conn.execute("UPDATE tracks SET missing_since = 1 WHERE id = 1", [])
+            .unwrap();
+        played_on(&conn, 10, "Madrugada", "Industrial Silence", "Terraplane");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(1));
+    }
+
+    #[test]
+    fn a_near_title_that_adds_a_version_stays_unlinked() {
+        let (_dir, conn) = open();
+        on_album(
+            &conn,
+            1,
+            "King Dude",
+            "Tonight's Special Death",
+            "My Everlasting Life II",
+        );
+        on_album(
+            &conn,
+            2,
+            "Absztrakkt",
+            "Diamantgeiszt",
+            "Back in the daysz (Skit)",
+        );
+        played_on(
+            &conn,
+            10,
+            "King Dude",
+            "Tonight's Special Death",
+            "My Everlasting Life",
+        );
+        played_on(
+            &conn,
+            11,
+            "Absztrakkt",
+            "Diamantgeiszt",
+            "Back in the daysz",
+        );
+
+        resolve(&conn).unwrap();
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [None, None]);
+    }
+
+    #[test]
+    fn a_near_title_with_a_close_runner_up_stays_unlinked() {
+        let (_dir, conn) = open();
+        on_album(&conn, 1, "Blue Room", "Harbour", "Harbour Lights");
+        on_album(&conn, 2, "Blue Room", "Harbour", "Harbor Light");
+        played_on(&conn, 10, "Blue Room", "Harbour", "Harbour Light");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), None);
+    }
+
+    #[test]
+    fn a_near_title_on_another_album_stays_unlinked() {
+        let (_dir, conn) = open();
+        on_album(&conn, 1, "Madrugada", "The Deep End", "Terraplane '99");
+        on_album(&conn, 2, "Madrugada", "Industrial Silence", "Vocal");
+        played_on(&conn, 10, "Madrugada", "Industrial Silence", "Terraplane");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), None);
     }
 
     /// `heading` is a spelling out of the user's own history and never an
