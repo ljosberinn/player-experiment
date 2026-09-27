@@ -32,12 +32,12 @@ const SEPARATOR: char = '\u{1f}';
 /// The identity two spellings of one song share, or empty for a play nothing
 /// can be matched to.
 ///
-/// **Deliberately conservative**: case, punctuation, diacritics and script
-/// folded through [`decompose`] and [`squeeze`], and a trailing `(feat. …)` or
-/// `(with …)` dropped. Nothing else. Folding `(Live)` into the studio cut
-/// would destroy a distinction the MBIDs exist to preserve, and a key that
-/// matched too much is worse than one that matches nothing - it attributes
-/// plays to a song the user never heard.
+/// **Deliberately conservative**: case, punctuation, diacritics, script and
+/// letters such as `ß` and `ø` folded through [`decompose`] and [`squeeze`],
+/// and a trailing `(feat. …)` or `(with …)` dropped. Nothing else. Folding
+/// `(Live)` into the studio cut would destroy a distinction the MBIDs exist to
+/// preserve, and a key that matched too much is worse than one that matches
+/// nothing - it attributes plays to a song the user never heard.
 ///
 /// **Punctuation is inside that boundary, and was not always.** The key was
 /// case and whitespace alone until issue 120, which measured 9,282 unlinked
@@ -134,8 +134,9 @@ fn fold_album(album: &str) -> String {
     parts_in_arabic(&squeeze(&folded))
 }
 
-/// `value` lowercased, compatibility-decomposed, and stripped of the combining
-/// marks that decomposition exposed.
+/// `value` lowercased, compatibility-decomposed, stripped of the combining
+/// marks that decomposition exposed, and with the letters it leaves whole
+/// [`spelled`] out.
 ///
 /// NFKD rather than NFD because `…` is one codepoint that only compatibility
 /// decomposition turns into `...`, which is the whole of the Marathonmann
@@ -143,11 +144,65 @@ fn fold_album(album: &str) -> String {
 fn decompose(value: &str) -> String {
     use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 
-    value
+    let mut decomposed = String::with_capacity(value.len());
+    for character in value
         .to_lowercase()
         .nfkd()
         .filter(|character| !is_combining_mark(*character))
-        .collect()
+    {
+        match spelled(character) {
+            Some(spelling) => decomposed.push_str(spelling),
+            None => decomposed.push(character),
+        }
+    }
+    decomposed
+}
+
+/// A lowercase letter NFKD cannot take apart, in the Latin a tag without it
+/// spells it with.
+///
+/// `ß` against `ss` is 187 unlinked plays over a real log, and it is a letter
+/// rather than `s` and a mark, so decomposition leaves it alone - as it does
+/// the rest of these. Not Unicode case folding, which spells out `ß` and none
+/// of the others.
+///
+/// `ø` is `o` rather than `oe`: `o` links 22 spellings and `oe` 3. The runes
+/// are the 24 of the Elder Futhark; the block's punctuation is not
+/// alphanumeric, so [`squeeze`] already reads it as a word break.
+fn spelled(character: char) -> Option<&'static str> {
+    Some(match character {
+        'ß' => "ss",
+        'æ' => "ae",
+        'œ' => "oe",
+        'ø' => "o",
+        'ð' | 'đ' => "d",
+        'þ' => "th",
+        'ł' => "l",
+        'ᚠ' => "f",
+        'ᚢ' => "u",
+        'ᚦ' => "th",
+        'ᚨ' => "a",
+        'ᚱ' => "r",
+        'ᚲ' => "k",
+        'ᚷ' => "g",
+        'ᚹ' => "w",
+        'ᚺ' => "h",
+        'ᚾ' => "n",
+        'ᛁ' | 'ᛇ' => "i",
+        'ᛃ' => "j",
+        'ᛈ' => "p",
+        'ᛉ' => "z",
+        'ᛊ' => "s",
+        'ᛏ' => "t",
+        'ᛒ' => "b",
+        'ᛖ' => "e",
+        'ᛗ' => "m",
+        'ᛚ' => "l",
+        'ᛜ' => "ng",
+        'ᛞ' => "d",
+        'ᛟ' => "o",
+        _ => return None,
+    })
 }
 
 /// `value` with everything that is not a letter or a digit turned into a
@@ -748,7 +803,7 @@ fn regroup_within(conn: &Connection) -> AppResult<u32> {
 /// word added to `EDITIONS`, a suffix added to `FORMATS`, a new cause
 /// altogether - each of them leaves every existing library grouped the way
 /// the old vocabulary grouped it, and nothing else asks for a pass.
-const FOLD_VERSION: &str = "1";
+const FOLD_VERSION: &str = "2";
 
 /// Runs [`regroup`] if this library's grouping predates [`FOLD_VERSION`],
 /// answering whether it did.
@@ -777,7 +832,7 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// does not half-link; it does not link at all. Bump it too when `resolve`
 /// gives a track another key, as 3 did for the album artist and 4 for the
 /// album: the stored keys stay put, but nothing else resolves at launch.
-const MATCH_FOLD_VERSION: &str = "4";
+const MATCH_FOLD_VERSION: &str = "5";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -1096,6 +1151,44 @@ mod tests {
         assert_ne!(match_key("ab", "c"), match_key("a", "bc"));
     }
 
+    /// Letters in their own right rather than a base letter and a mark, so
+    /// NFKD has nothing to strip from them (issue 170).
+    #[test]
+    fn a_letter_decomposition_leaves_whole_folds_to_its_spelling() {
+        let cases = [
+            (
+                ("Von Thronstahl", "Ganz in Weiß und ganz in Eisen"),
+                ("Von Thronstahl", "Ganz In Weiss Und Ganz In Eisen"),
+            ),
+            (("Burzum", "Heiðr"), ("Burzum", "Heidr")),
+            (("Borknagar", "Æra"), ("Borknagar", "Aera")),
+            (("Troll", "Mørkets Skoger"), ("Troll", "Morkets Skoger")),
+            (("Windir", "LIKBØR"), ("Windir", "Likbor")),
+            (("Sólstafir", "Þín Orð"), ("Solstafir", "Thin Ord")),
+            (
+                ("Mgła", "Exercises in Futility"),
+                ("Mgla", "Exercises in Futility"),
+            ),
+            (
+                ("The Ruins of Beverast", "ᚨᛚᚢ"),
+                ("The Ruins of Beverast", "Alu"),
+            ),
+            // Rune punctuation is a word break, the way `squeeze` treats a
+            // space.
+            (
+                ("Wardruna", "ᚦᚢᚱᛁᛊᚨᛉ᛫ᛞᚨᚷᚨᛉ"),
+                ("Wardruna", "Thurisaz Dagaz"),
+            ),
+        ];
+        for (left, right) in cases {
+            assert_eq!(
+                match_key(left.0, left.1),
+                match_key(right.0, right.1),
+                "{left:?} and {right:?} are one song"
+            );
+        }
+    }
+
     #[test]
     fn a_side_of_punctuation_alone_still_makes_a_key() {
         // `squeeze` drops everything non-alphanumeric, and an empty side
@@ -1145,6 +1238,11 @@ mod tests {
             (
                 ("Sigur Rós", "Ágætis Byrjun"),
                 ("SIGUR RÓS", "ÁGÆTIS BYRJUN"),
+            ),
+            // A letter NFKD leaves whole, which the fold spells out itself.
+            (
+                ("Rammstein", "Große Freiheit"),
+                ("Rammstein", "Grosse Freiheit"),
             ),
             // One codepoint that only compatibility decomposition turns into
             // three, and the whole of the Marathonmann group.
@@ -1906,6 +2004,44 @@ mod tests {
             .unwrap();
         assert!(remote, "still the song last.fm reported");
         assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
+    }
+
+    /// Issue 170's letters, on a library whose stored keys kept `ß` whole.
+    #[test]
+    fn a_library_on_the_previous_fold_spells_its_letters_out_once() {
+        let (_dir, mut conn) = open();
+        let stored = format!("von thronstahl{SEPARATOR}ganz in weiß und ganz in eisen");
+        add_track(
+            &conn,
+            1,
+            Some("Von Thronstahl"),
+            Some("Ganz in Weiß und ganz in Eisen"),
+        );
+        conn.execute("UPDATE tracks SET match_key = ?1", [&stored])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO loved (match_key, remote) VALUES (?1, 0)",
+            [&stored],
+        )
+        .unwrap();
+        played(
+            &conn,
+            10,
+            "Von Thronstahl",
+            "Ganz In Weiss Und Ganz In Eisen",
+        );
+        crate::db::settings::set(&conn, crate::db::settings::MATCH_FOLD, "4").unwrap();
+
+        assert!(refold_if_stale(&mut conn).unwrap().is_some());
+        assert_eq!(linked(&conn, 10), Some(1));
+        assert_eq!(
+            keys(&conn, "loved"),
+            [match_key(
+                "Von Thronstahl",
+                "Ganz In Weiss Und Ganz In Eisen"
+            )]
+        );
+        assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once");
     }
 
     /// Migration 18 adds `tracks.match_key` empty, and this pass is what fills

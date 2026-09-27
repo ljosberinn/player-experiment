@@ -351,8 +351,10 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   than thirty seconds are last.fm's conditions for accepting a scrobble, not
   this app's for remembering a play.
 - **`match_key` is normalized in Rust** — case, punctuation, diacritics and
-  script folded, and a trailing `(feat. …)` dropped, nothing else. `lower()`
-  and `COLLATE NOCASE` are ASCII-only and would leave Motörhead unfolded, and
+  script folded, the letters NFKD leaves whole (`ß`, `ø`, `æ`, `ð`, `þ`, the
+  Elder Futhark runes) spelled out in Latin (170), and a trailing `(feat. …)`
+  dropped, nothing else. `lower()` and `COLLATE NOCASE` are ASCII-only and
+  would leave Motörhead unfolded, and
   folding `(Live)` into the studio cut would destroy a distinction worth
   keeping. A key with an empty side is empty, because one built from nothing
   matches every untagged file — so a side that is punctuation alone (`!!!`,
@@ -368,7 +370,8 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   migration 18; the thread that runs it emits `loved://changed` when a track
   key moved, because the window read the set before it ran. Version 3 rewrites
   no key and exists for the `resolve` it runs: the album artist fallback below.
-  Version 4 is the same for the album link.
+  Version 4 is the same for the album link. Version 5 is the spelled-out
+  letters, and moves `ALBUM_FOLD` to 2 with it.
 - **`tracks.match_key` is written wherever artist or title is** - the scan's
   insert and update, and `tags::write::sync_row` - as `plays::track_key`,
   which is NULL rather than empty for an untagged file.
@@ -432,6 +435,8 @@ attributed away from their biggest spelling.
   decomposition turns into `...`. It folds the five causes the log actually
   shows — a parenthesised or bracketed edition marker, punctuation,
   `Pt.`/`Part` against a roman numeral, diacritics, non-ASCII case — and stops.
+  The letters `match_key` spells out are spelled out here too, through the same
+  `decompose`.
   **`version` and `special` are deliberately out of the vocabulary**: a bare
   `(… Version)` stripped would fold `(Live Version)` into the studio cut.
 - **`heading` is a spelling out of the user's own history**, never an invented
