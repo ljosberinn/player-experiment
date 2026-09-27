@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.1](https://github.com/ljosberinn/player-experiment/compare/v0.20.0...v0.20.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* a play folds ß, ø, æ, ð, þ and runes into the file's spelling ([#170](https://github.com/ljosberinn/player-experiment/issues/170)) ([#336](https://github.com/ljosberinn/player-experiment/issues/336)) ([8214957](https://github.com/ljosberinn/player-experiment/commit/821495731c4f9845d8ac40ac2d04346f74469372))
+* a play links to a near title on its own album ([#173](https://github.com/ljosberinn/player-experiment/issues/173)) ([#340](https://github.com/ljosberinn/player-experiment/issues/340)) ([a7987b8](https://github.com/ljosberinn/player-experiment/commit/a7987b81fdd8e137fdbf39f18057f44098d0d881))
+* a play titled - Remastered links to the file ([#171](https://github.com/ljosberinn/player-experiment/issues/171)) ([#337](https://github.com/ljosberinn/player-experiment/issues/337)) ([3c6e896](https://github.com/ljosberinn/player-experiment/commit/3c6e8960b83de3f3c9535e81bab8f0da5b715502))
+* a play with & or a bare feat. credit links to the file ([#172](https://github.com/ljosberinn/player-experiment/issues/172)) ([#339](https://github.com/ljosberinn/player-experiment/issues/339)) ([ef7707e](https://github.com/ljosberinn/player-experiment/commit/ef7707e2752913428ba417a641e7f0b503e007e9))
+* a removed copy hands its plays on ([#169](https://github.com/ljosberinn/player-experiment/issues/169)) ([#333](https://github.com/ljosberinn/player-experiment/issues/333)) ([e05bb77](https://github.com/ljosberinn/player-experiment/commit/e05bb77f24ccd5a8c2452716cf33742ee2690a8a))
+* an mp3 with two ID3v2 tags saves as one ([#169](https://github.com/ljosberinn/player-experiment/issues/169)) ([#330](https://github.com/ljosberinn/player-experiment/issues/330)) ([1979c15](https://github.com/ljosberinn/player-experiment/commit/1979c15618763968f11d891c05f296f81951c6a2))
+
 ## [0.20.0](https://github.com/ljosberinn/player-experiment/compare/v0.19.0...v0.20.0) (2026-09-26)
 
 
