@@ -7,9 +7,21 @@ version: 2
 # grouped update is cheap to bisect by hand and twenty separate pull requests
 # a week are not. Majors are opened one at a time for the opposite reason: a
 # red run has to point at one suspect.
+
+# Tauri's npm and cargo halves must agree on major.minor (`tauri:parity`), so a
+# per-ecosystem group bumps one half and is red by construction. This group
+# puts both halves in one pull request, majors included.
+multi-ecosystem-groups:
+  tauri:
+    schedule:
+      interval: weekly
+
 updates:
   - package-ecosystem: npm
     directory: /
+    multi-ecosystem-group: tauri
+    patterns:
+      - "@tauri-apps/*"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
@@ -37,6 +49,10 @@ updates:
 
   - package-ecosystem: cargo
     directory: /src-tauri
+    multi-ecosystem-group: tauri
+    patterns:
+      - tauri
+      - tauri-*
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
