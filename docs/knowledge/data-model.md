@@ -352,11 +352,13 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   this app's for remembering a play.
 - **`match_key` is normalized in Rust** — case, punctuation, diacritics and
   script folded, the letters NFKD leaves whole (`ß`, `ø`, `æ`, `ð`, `þ`, the
-  Elder Futhark runes) spelled out in Latin (170), and a trailing `(feat. …)`
-  dropped, nothing else. `lower()` and `COLLATE NOCASE` are ASCII-only and
-  would leave Motörhead unfolded, and
+  Elder Futhark runes) spelled out in Latin (170), and a trailing remaster
+  marker (171) and `(feat. …)` dropped, nothing else. `lower()` and
+  `COLLATE NOCASE` are ASCII-only and would leave Motörhead unfolded, and
   folding `(Live)` into the studio cut would destroy a distinction worth
-  keeping. A key with an empty side is empty, because one built from nothing
+  keeping; a remaster is the same recording. A marker is ` - `, `(…)` or `[…]`
+  holding only `remaster(ed)`, `digital(ly)`, `version` and a year, and it
+  must say `remaster`. A key with an empty side is empty, because one built from nothing
   matches every untagged file — so a side that is punctuation alone (`!!!`,
   the title `?`) keeps its unfolded spelling rather than becoming that.
 - **`plays.matchFold` is which fold the stored keys were built with**, in
@@ -366,12 +368,14 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   them, and `plays::refold` is that pass. It runs `resolve` itself, because
   nothing else runs `resolve` at launch. `loved` has no artist and title to
   recompute from and folds the stored key a side at a time, the separator held
-  out of `squeeze`. Version 2 exists to backfill `tracks.match_key` after
+  out of `squeeze`; its remaster marker lost the delimiter, so that part goes
+  by trailing marker words. Version 2 exists to backfill `tracks.match_key` after
   migration 18; the thread that runs it emits `loved://changed` when a track
   key moved, because the window read the set before it ran. Version 3 rewrites
   no key and exists for the `resolve` it runs: the album artist fallback below.
   Version 4 is the same for the album link. Version 5 is the spelled-out
-  letters, and moves `ALBUM_FOLD` to 2 with it.
+  letters, and moves `ALBUM_FOLD` to 2 with it. Version 6 is the remaster
+  marker.
 - **`tracks.match_key` is written wherever artist or title is** - the scan's
   insert and update, and `tags::write::sync_row` - as `plays::track_key`,
   which is NULL rather than empty for an untagged file.
