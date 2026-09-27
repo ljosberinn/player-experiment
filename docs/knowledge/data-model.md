@@ -380,7 +380,8 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   no key and exists for the `resolve` it runs: the album artist fallback below.
   Version 4 is the same for the album link. Version 5 is the spelled-out
   letters, and moves `ALBUM_FOLD` to 2 with it. Version 6 is the remaster
-  marker. Version 7 is `&` and the bare credit.
+  marker. Version 7 is `&` and the bare credit. Version 8 rewrites no key
+  and exists for the near-title link below.
 - **`tracks.match_key` is written wherever artist or title is** - the scan's
   insert and update, and `tags::write::sync_row` - as `plays::track_key`,
   which is NULL rather than empty for an untagged file.
@@ -411,6 +412,13 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   title track or a cover. The link is per play, not per key, so it lives in its
   own temporary table and joins the key's in one `UPDATE` - a second one would
   find it nulled and write it back every run.
+- **A play nothing else links can link to a near title on its album** (173):
+  `Dia Artio` is the file's `Dea Artio`, and no fold can say so safely. Only
+  the play's own artist's (or album artist's) copy of its folded album is
+  searched, and the nearest title links when it scores at least 0.85 - the
+  longest common subsequence over both titles' length, `difflib`'s ratio -
+  leads the next title on the album by 0.1, and is not the other title plus a
+  version word (`Skit`, `Live`, `II`). The link goes in the album tier's table.
 - **`idx_plays_identity` is the dedupe rule within one source, not across
   them.** last.fm autocorrects artist and title, so a play this app wrote comes
   back from the import under a spelling that computes a different key. That
@@ -423,7 +431,7 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   id. Most of last.fm's are pre-NGS ids MusicBrainz has since retired, and
   probing a sample of them returned 404 for every entity type. So the columns
   stay as part of what a play was, and `resolve` is the key - the artist's,
-  then the album artist's - and then the album.
+  then the album artist's - then the album, then a near title on it.
 
 ## Album groups
 
