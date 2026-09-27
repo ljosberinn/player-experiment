@@ -453,8 +453,7 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         // **Which track wins a key is fixed rather than incidental.** The same
         // song on its album and on a compilation is two rows and one key, and
         // a library has hundreds of those. Present beats unplugged and the
-        // older id beats the newer, which is migration 12's tiebreak for the
-        // same reason it was chosen there: without one the winner follows scan
+        // older id beats the newer: without a tiebreak the winner follows scan
         // order, this function stops being idempotent, and the guarded UPDATE
         // below rewrites the whole table on every run.
         let mut tracks = conn.prepare(
@@ -789,7 +788,7 @@ const MATCH_FOLD_VERSION: &str = "4";
 /// the key cannot be folded whole.
 ///
 /// `tracks` counts its rows apart from the rest: a key written for the first
-/// time is how migration 18's column is backfilled, and the caller has to know
+/// time is how `tracks.match_key` is filled, and the caller has to know
 /// the loved set moved.
 ///
 /// **Every table is read to the end before any is written.** The `plays`
@@ -1908,8 +1907,8 @@ mod tests {
         assert_eq!(refold(&mut conn).unwrap().moved, 0, "and it is idempotent");
     }
 
-    /// Migration 18 adds `tracks.match_key` empty, and this pass is what fills
-    /// it: the key is a Rust fold SQL cannot express.
+    /// `tracks.match_key` starts empty, and this pass is what fills it: the
+    /// key is a Rust fold SQL cannot express.
     #[test]
     fn a_track_with_no_key_yet_is_given_one() {
         let (_dir, mut conn) = open();

@@ -147,7 +147,7 @@ impl BrowseKind {
     /// Only albums are a release. The other two are single-column keys and
     /// their identity is the key itself.
     ///
-    /// Migration 20 indexes each of these verbatim, which is all that keeps a
+    /// `db::schema` indexes each of these verbatim, which is all that keeps a
     /// drill-in from scanning the library: change one and change the index.
     fn identity_sql(self) -> String {
         match self {
@@ -2176,7 +2176,7 @@ mod tests {
     /// A library with the shapes that break naive grouping: a compilation
     /// whose per-track artists differ, an album split across two discs, an
     /// album name reused by a different artist, and an untagged file.
-    /// Three tags, two of which resolve under `black metal` in migration 11's
+    /// Three tags, two of which resolve under `black metal` in the seeded
     /// tree: the label itself and a child the suffix derivation reaches.
     /// `Techno` resolves elsewhere and is what the filter must drop.
     fn subtree() -> (tempfile::TempDir, Db) {

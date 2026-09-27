@@ -53,7 +53,7 @@ export function menus({
   /** How many songs are selected; what File's removal entry acts on. */
   selectionCount: number;
   missingCount: number;
-  /** How many paths a removal has tombstoned. See migration 7. */
+  /** How many paths a removal has tombstoned. See `removed_paths` in `db::schema`. */
   removedCount: number;
   /** Whether Export Selection has anything to write. */
   hasExportTarget: boolean;

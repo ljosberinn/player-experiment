@@ -312,7 +312,7 @@ impl Import<'_> {
 /// plays say, never lowering either.
 ///
 /// **`max`, because adding would count twice** every play from before
-/// migration 13 that was also scrobbled: those are in `play_count` and come
+/// the play log that was also scrobbled: those are in `play_count` and come
 /// back as `lastfm` rows. A local play since is one on each side, and
 /// `insert` keeps its scrobble out.
 ///

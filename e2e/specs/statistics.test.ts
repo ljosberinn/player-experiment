@@ -282,7 +282,7 @@ describe("the Statistics view", () => {
 
   /**
    * The drill only exists over the six fixture files. `Ambient`, `Downtempo`
-   * and `Modern Classical` resolve through migration 11's tree and land under
+   * and `Modern Classical` resolve through the seeded genre tree and land under
    * a root that has something below it; the synthetic `Genre00`-`Genre19` are
    * in no layer of it, so they are roots with no children and no way down.
    *

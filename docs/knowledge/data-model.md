@@ -1,31 +1,26 @@
 # Data model
 
-SQLite via `rusqlite` (bundled), migrations in `src-tauri/src/db/schema.rs`.
-`PRAGMA user_version` records progress. **Migrations are append-only** — never
-edit a shipped one.
+SQLite via `rusqlite` (bundled), schema in `src-tauri/src/db/schema.rs`.
+`PRAGMA user_version` records how far a database has come. The first entry of
+`MIGRATIONS` creates the whole schema and stamps 20; each later one stamps one
+more. **Migrations are append-only** — never edit a shipped one. A database at
+1–19 is refused: 0.20.0 is the build that brings one up to 20.
 
-| # | Adds |
+| Table | Holds |
 | --- | --- |
-| 1 | `covers`, `tracks`, `playlists`, `playlist_tracks`, `settings`, `watch_folders` |
-| 2 | `tracks_fts` (FTS5 external-content over title/artist/album/album_artist/genre/comment, kept current by triggers) |
-| 3 | `tracks.missing_since` + a **partial** index |
-| 4 | `tag_values` — the distinct values a library uses, for autocompletion |
-| 5 | `covers.palette` — the dominant colours of a cover |
-| 6 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
-| 7 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
-| 8 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
-| 9 | `release_lookup` — what the unattended lookup pass has been through — plus `tracks.release_type`, MusicBrainz's release-group primary type, read off the file the way the two ids above are |
-| 10 | a fourth `release_lookup.status`, `aside` — a queued release the user has said to leave alone. A whole-table rebuild, because the vocabulary is a CHECK constraint and SQLite cannot widen one in place |
-| 11 | `genres`, `genre_edges`, `genre_aliases`, `genre_overrides` — the genre hierarchy, seeded from a generated data file `concat!`ed into the migration |
-| 12 | `tracks.path` collates `NOCASE` — one file is one row whatever it is spelled like. A whole-table rebuild, because the constraint is on the column, and a merge in the same migration for the rows that collide under the fold |
-| 13 | `plays` — one row per play, with the artist and title as they were heard. `track_id` is the one derived column and the one foreign key; `idx_plays_identity` over `(started_at, match_key)` is the dedupe rule within a source |
-| 14 | `lastfm_loved` — the loved set the last import fetched |
-| 15 | no schema: deletes the MusicBrainz id backfill's two `settings` flags, retired by the pass that reads the release type too |
-| 16 | `album_groups` — which album spellings are one album |
-| 17 | a fifth `release_lookup.status`, `unwritable` — matched with certainty, and the files would not take it. Another whole-table rebuild for 10's reason, plus a **repair**: every `resolved` row whose `release_mbid` is on no track is deleted, because it records a write that never happened |
-| 18 | `lastfm_loved` renamed `loved`, with `remote` (last.fm reported the key; every existing row is set); `tracks.match_key`, indexed, filled by `plays::refold`; `love_queue`; and `loved.syncedWith` seeded from the import's username |
-| 19 | `playlists.built_in`, under a partial unique index. Claims each old seed whose name, filter and order are still the seed's, and deletes `playlists.seeded` |
-| 20 | three `NOCASE` expression indexes, one per `BrowseKind::identity_sql`, so a drill-in seeks its group rather than scanning `tracks` |
+| `tracks` | one row per file. `path` collates `NOCASE`, so one file is one row whatever it is spelled like; `missing_since` marks a file gone rather than deleting it, under a **partial** index; `release_mbid`, `release_group_mbid` and `release_type` are read off the tags; `match_key` is filled by `plays::refold`; three `NOCASE` expression indexes, one per `BrowseKind::identity_sql` |
+| `tracks_fts` | FTS5 external-content over title/artist/album/album_artist/genre/comment, kept current by triggers |
+| `covers` | artwork by hash, with `palette`, its dominant colours |
+| `playlists`, `playlist_tracks` | `playlists.built_in` under a partial unique index |
+| `settings`, `watch_folders` | |
+| `removed_paths` | files an explicit removal took out, so a rescan does not add them back |
+| `tag_values` | the distinct values a library uses, for autocompletion |
+| `scrobble_queue` | plays recorded but not yet accepted by last.fm |
+| `release_lookup` | what the unattended lookup pass has been through. The statuses are a CHECK, which SQLite cannot widen in place, so a new one is a table rebuild |
+| `plays` | one row per play, with the artist and title as they were heard. `track_id` is the one derived column and the one foreign key; `idx_plays_identity` over `(started_at, match_key)` is the dedupe rule within a source |
+| `loved`, `love_queue` | the loved set, with `remote` for keys last.fm reported, and the latest love or unlove per song still to reach last.fm |
+| `album_groups` | which album spellings are one album |
+| `genres`, `genre_edges`, `genre_aliases`, `genre_overrides` | the genre hierarchy, seeded from a generated data file `concat!`ed into the schema |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -33,12 +28,6 @@ for a migration that rebuilds a table: with enforcement on, `DROP TABLE tracks`
 is an implicit `DELETE FROM` and `playlist_tracks`' `ON DELETE CASCADE` takes
 every playlist in the library with it. The pragma is a no-op inside a
 transaction, so it cannot be set by the migration that needs it.
-
-**The rule has been broken once, before v1.** The tag-edit undo journal was
-migration 3, and 82a deleted the entry rather than adding one that drops the
-table: the numbering above shifted under every database in existence, so
-`migrate` refuses them all and the fix is to delete `library.sqlite3` and
-rescan. Only a pre-v1 schema can be treated that way; the rule stands.
 
 ## One query, narrowed
 
@@ -59,7 +48,7 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   release, which is what a sort means once the view is grouped. Outside a
   drill-in the ordering is untouched, so the indexed page plan `tests/perf.rs`
   guards is still the library's.
-- **A drill-in seeks its group through migration 20's indexes.** SQLite matches
+- **A drill-in seeks its group through an expression index.** SQLite matches
   an expression index only on the same expression under the same collation,
   so each index spells out `identity_sql` verbatim: edit one without the other
   and every drill-in scans the library again. The window above then sorts the
@@ -138,11 +127,11 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   would mean decoding before knowing whether the row already exists, which is
   55,781 decodes on a first scan rather than 5,799, inside the serial write
   transactions.
-- **Normalizing an existing library is a thread, not a migration** — the
-  reasoning migration 5 already settled. `covers.normalized` is a settings
-  flag that marks it done, and `covers.normalizedThrough` holds the
-  last hash finished, so a quit part-way through resumes. No schema change, so
-  the migration table above is unchanged.
+- **Normalizing an existing library is a thread, not a migration**: decoding
+  every cover inside the transaction that runs before the window is shown is
+  the wrong trade. `covers.normalized` is a settings flag that marks it done,
+  and `covers.normalizedThrough` holds the last hash finished, so a quit
+  part-way through resumes.
 - **`tracks.cover_hash` carries no `ON DELETE`, so a sweep collects instead.**
   SQLite cannot drop a parent when its last child goes, and a trigger per
   removal would want an index on `tracks(cover_hash)` that nothing else reads.
@@ -150,8 +139,8 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   tracks …)` on the `cover-normalize` thread, behind no flag. See
   [the architecture](architecture.md).
 
-**The MusicBrainz release ids are backfilled the same way.** Migration 8
-assumed nothing had written them, but Picard had: about 9% of the measured
+**The MusicBrainz release ids are backfilled the same way.** Picard writes
+them too: about 9% of the measured
 library carries a release and release group id, and a scan never re-reads an
 unchanged file, so none of them had reached the rows — which left the lookup
 pass searching, and overwriting, releases whose files already named them.
@@ -166,8 +155,7 @@ sometimes behind a byte-order mark, and sometimes as a secondary type alone
 (`live`). `tags::primary_type` takes the first primary type named and nothing
 otherwise, on every read. The same pass fills the type wherever the row's is
 not already a primary type, since a scan stored Picard's raw before; the mover
-then re-files those releases. Migration 15 retires the ids-only pass's flags,
-so a library that finished that pass runs this one.
+then re-files those releases.
 
 ## The Library folder
 
@@ -293,9 +281,9 @@ meant to collapse those tiles was split by the same key the grid is split by.
   of a name. `release_type` cannot help; `tags::primary_type` discards secondary
   types, so no row ever carries `compilation`.
 
-### The four statuses, and what leaves the queue
+### The five statuses, and what leaves the queue
 
-`resolved`, `review`, `none` and — since migration 10 — `aside`. Only `review`
+`resolved`, `review`, `none`, `aside` and `unwritable`. Only `review`
 is counted beside the sidebar's row and offered in the dialog.
 
 - **Back to Queue in the review dialog writes nothing.** It means "not now":
@@ -364,8 +352,7 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   them, and `plays::refold` is that pass. It runs `resolve` itself, because
   nothing else runs `resolve` at launch. `loved` has no artist and title to
   recompute from and folds the stored key a side at a time, the separator held
-  out of `squeeze`. Version 2 exists to backfill `tracks.match_key` after
-  migration 18; the thread that runs it emits `loved://changed` when a track
+  out of `squeeze`. Version 2 exists to fill `tracks.match_key`; the thread that runs it emits `loved://changed` when a track
   key moved, because the window read the set before it ran. Version 3 rewrites
   no key and exists for the `resolve` it runs: the album artist fallback below.
   Version 4 is the same for the album link.
@@ -376,7 +363,7 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   `tag_values::rebuild` runs, for the reason that module gives at length. One
   key names several tracks routinely — the album copy and the compilation copy
   — so the winner is fixed rather than incidental: present before unplugged,
-  then the lower id, which is migration 12's tiebreak. Without it the function
+  then the lower id. Without the tiebreak the function
   is not idempotent and its guarded `UPDATE` rewrites the log on every run.
 - **A track also links through its album artist** (135), because last.fm
   credits the primary artist and puts a guest in the title: the file says
@@ -465,7 +452,7 @@ leaves for the next one's `from=`. It is not exportable.
   that resets the state. That is how a scrobble deleted on last.fm leaves.
 - **A run ends by raising `tracks.play_count` and `last_played_at`** to the
   count and newest `started_at` of each track's linked plays, after `resolve`
-  and in its transaction. `max`, never add: a play from before migration 13
+  and in its transaction. `max`, never add: a play from before the play log
   that was scrobbled is in the count and comes back as a row. So nothing is
   ever lowered, a deleted scrobble included, and only the copy `resolve` links
   a key to is raised — by the plays of every copy, local ones included.
@@ -595,7 +582,7 @@ type Group = { combinator: "and" | "or"; children: (Rule | Group)[] };
 ## The genre tree
 
 An ID3 genre frame is free text, and the drill-down 84d wants is black metal →
-atmospheric black metal, raw black metal. Migration 11 carries the hierarchy
+atmospheric black metal, raw black metal. The schema seeds the hierarchy
 that makes that possible, and `db::genres` turns one tag string into a genre and
 a parent.
 
@@ -608,7 +595,7 @@ a parent.
 
 - **From Wikidata, and committed.** `scripts/genres.mjs` (`npm run genres`) runs
   three SPARQL queries and writes `src-tauri/data/genres.sql`, which the
-  migration `concat!`s in. It is CC0, so it ships with no attribution burden,
+  schema `concat!`s in. It is CC0, so it ships with no attribution burden,
   and it is the only source with both the granularity and the licence — the
   alternatives are argued out in [plans/statistics.md](../plans/statistics.md).
   **The runtime never touches the network**; offline-first and the CSP both

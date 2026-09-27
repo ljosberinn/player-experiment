@@ -1,9 +1,9 @@
 //! The loved set: which songs the user loves.
 //!
 //! Keyed by [`crate::db::plays::match_key`] and nothing else, because loved is
-//! a fact about a song rather than about a play or about a file - see schema
-//! migration 13. `tracks.match_key` (migration 18) is the bridge back to rows,
-//! so a song never played is as lovable as one heard a thousand times.
+//! a fact about a song rather than about a play or about a file.
+//! `tracks.match_key` is the bridge back to rows, so a song never played is as
+//! lovable as one heard a thousand times.
 //!
 //! Local state first. A connected last.fm account mirrors it through
 //! `lastfm::love`, and `remote` records which keys last.fm itself reported:

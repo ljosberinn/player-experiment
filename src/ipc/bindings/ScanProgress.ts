@@ -5,6 +5,7 @@
  */
 export type ScanProgress = { scanned: number, total: number, added: number, updated: number, 
 /**
- * Files that have gone from disk. Marked, not deleted - see migration 3.
+ * Files that have gone from disk. Marked, not deleted - see
+ * `tracks.missing_since`.
  */
 missing: number, done: boolean, };

@@ -63,15 +63,22 @@ impl Db {
 /// Applies every migration the database has not seen yet.
 pub fn migrate(conn: &mut Connection) -> AppResult<()> {
     let version: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    let applied = version as usize;
+    let version = version as usize;
+    let latest = schema::FIRST_VERSION + schema::MIGRATIONS.len() - 1;
 
-    if applied > schema::MIGRATIONS.len() {
+    if version > latest {
         return Err(AppError::Internal(format!(
-            "database is at version {applied}, but this build only knows {}. \
-             Refusing to run against a newer schema.",
-            schema::MIGRATIONS.len()
+            "database is at version {version}, but this build only knows {latest}. \
+             Refusing to run against a newer schema."
         )));
     }
+    if version != 0 && version < schema::FIRST_VERSION {
+        return Err(AppError::Internal(format!(
+            "database is at version {version}, older than this build can upgrade. \
+             Open it once with 0.20.0 first."
+        )));
+    }
+    let applied = version.saturating_sub(schema::FIRST_VERSION - 1);
 
     // SQLite's own procedure for a migration that rebuilds a table: with
     // enforcement on, `DROP TABLE tracks` is an implicit `DELETE FROM` and
@@ -89,7 +96,7 @@ fn apply(conn: &mut Connection, applied: usize) -> AppResult<()> {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
         // PRAGMA does not accept bound parameters.
-        tx.pragma_update(None, "user_version", (index + 1) as i64)?;
+        tx.pragma_update(None, "user_version", (schema::FIRST_VERSION + index) as i64)?;
         tx.commit()?;
     }
 
@@ -113,26 +120,10 @@ mod tests {
         let version: u32 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version as usize, schema::MIGRATIONS.len());
-    }
-
-    /// The journal was migration 3 and is deleted rather than emptied, so a
-    /// fresh database never holds the table at all. How many migrations there
-    /// are is the test above's business - pinning the count here would make
-    /// every later migration look like the journal coming back.
-    #[test]
-    fn a_fresh_database_has_no_undo_journal() {
-        let (_dir, db) = temp_db();
-        let conn = db.conn().unwrap();
-
-        let journal: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'tag_undo')",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(!journal, "tag_undo is still in the schema");
+        assert_eq!(
+            version as usize,
+            schema::FIRST_VERSION + schema::MIGRATIONS.len() - 1
+        );
     }
 
     #[test]
@@ -152,37 +143,17 @@ mod tests {
     }
 
     #[test]
-    fn an_older_database_gains_the_missing_column_with_its_rows_intact() {
-        // The upgrade path a real library takes, rather than the fresh-create
-        // path every other test exercises: stop at the version before the
-        // column existed, put a row in, then migrate the rest of the way.
+    fn refuses_a_database_from_before_the_first_version() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("library.sqlite3");
-        {
-            let mut conn = Connection::open(&path).unwrap();
-            let tx = conn.transaction().unwrap();
-            for (index, sql) in schema::MIGRATIONS.iter().enumerate().take(2) {
-                tx.execute_batch(sql).unwrap();
-                tx.pragma_update(None, "user_version", (index + 1) as i64)
-                    .unwrap();
-            }
-            tx.execute(
-                "INSERT INTO tracks (path, mtime, size, added_at) VALUES ('/m/a.mp3', 1, 2, 3)",
-                [],
-            )
+        let mut conn = Connection::open(dir.path().join("library.sqlite3")).unwrap();
+        conn.pragma_update(None, "user_version", (schema::FIRST_VERSION - 1) as i64)
             .unwrap();
-            tx.commit().unwrap();
-        }
 
-        let db = Db::open(&path).expect("migrate an existing library");
-        let conn = db.conn().unwrap();
-
-        // Present, and null for a track nobody has looked for yet - not zero,
-        // which would read as "missing since the epoch".
-        let missing: Option<i64> = conn
-            .query_row("SELECT missing_since FROM tracks", [], |r| r.get(0))
-            .unwrap();
-        assert!(missing.is_none());
+        let err = migrate(&mut conn).expect_err("must refuse an older schema");
+        assert!(
+            err.to_string().contains("0.20.0"),
+            "unexpected message: {err}"
+        );
     }
 
     #[test]

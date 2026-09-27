@@ -87,9 +87,9 @@ pub struct ScanPlan {
     pub updated: Vec<PathBuf>,
     /// Known files that are no longer on disk and are not already marked.
     ///
-    /// Not deleted: see migration 3. Already-marked files are left out so the
-    /// timestamp keeps saying when the file first went, not when it was last
-    /// looked for.
+    /// Not deleted: see `tracks.missing_since`. Already-marked files are left
+    /// out so the timestamp keeps saying when the file first went, not when it
+    /// was last looked for.
     pub missing: Vec<i64>,
     /// Marked files that turned up again - an external drive plugged back in.
     pub returned: Vec<i64>,
@@ -152,8 +152,8 @@ pub fn now_secs() -> i64 {
 ///
 /// Split out from the scan so the decision logic is testable on its own.
 ///
-/// `removed` is the tombstones of migration 7: paths the user took out of the
-/// library by hand. Such a file is skipped outright rather than added, which is
+/// `removed` is the tombstones in `removed_paths`: paths the user took out of
+/// the library by hand. Such a file is skipped outright rather than added, which is
 /// what stops the next Rescan from undoing the removal. It cannot appear in
 /// `known` either - the row went with it - so the missing loop below never sees
 /// one.
@@ -234,7 +234,7 @@ fn load_known(conn: &Connection) -> AppResult<HashMap<Vec<u8>, Known>> {
     Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
 }
 
-/// The paths a removal has tombstoned. See migration 7.
+/// The paths a removal has tombstoned. See `removed_paths` in `db::schema`.
 fn load_removed(conn: &Connection) -> AppResult<HashSet<Vec<u8>>> {
     let mut stmt = conn.prepare("SELECT path FROM removed_paths")?;
     let rows = stmt.query_map([], |row| {
@@ -288,8 +288,8 @@ pub fn clear_missing(conn: &Connection, id: i64) -> AppResult<bool> {
 /// deliberate action rather than something a scan does on the user's behalf.
 ///
 /// No tombstones, unlike `remove_tracks`: a drive coming back should restore
-/// what was on it, which is the whole point of migration 3. Only an explicit
-/// per-row removal is a statement about wanting the song gone.
+/// what was on it, which is the whole point of `missing_since`. Only an
+/// explicit per-row removal is a statement about wanting the song gone.
 pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
     let removed = conn.execute("DELETE FROM tracks WHERE missing_since IS NOT NULL", [])?;
     // Those rows were carrying tag values, and a value nothing carries any more
@@ -306,7 +306,7 @@ pub fn remove_missing(conn: &Connection) -> AppResult<u32> {
 /// The file on disk is not touched. What makes this different from
 /// `remove_missing` is the tombstone: the file is still under a watch folder,
 /// so without a record of the removal the next Rescan would add it straight
-/// back. See migration 7.
+/// back. See `removed_paths` in `db::schema`.
 ///
 /// One statement per id rather than an `IN` list, for the reason `set_missing`
 /// gives: Ctrl+A puts the whole library in this list, and SQLite's parameter
@@ -558,11 +558,10 @@ const MBID_CHUNK: i64 = 200;
 
 /// Reads the MusicBrainz release tags off every file in the library, once.
 ///
-/// **A backfill for what Picard wrote before this app read it.** Migrations 8
-/// and 9 assumed nothing had written the ids and the type, but a Picard-tagged
-/// file carries all three, and [`scan`] never re-reads a file whose mtime and
-/// size are unchanged - so the lookup pass searches, and overwrites, releases
-/// whose files already name them.
+/// **A backfill for what Picard wrote before this app read it.** A
+/// Picard-tagged file carries both ids and the type, and [`scan`] never
+/// re-reads a file whose mtime and size are unchanged - so the lookup pass
+/// searches, and overwrites, releases whose files already name them.
 ///
 /// **Only empty ids are filled**, so an id the lookup already wrote stays. The
 /// type is filled wherever the row's is not already a primary type: a scan
@@ -933,7 +932,7 @@ mod tests {
 
     #[test]
     fn a_removed_file_is_not_added_back_by_a_rescan() {
-        // The whole point of migration 7: the file is still under a watch
+        // The whole point of the tombstone: the file is still under a watch
         // folder, so without the tombstone this would be an `added`.
         let plan = super::plan(
             &known(&[]),
@@ -1101,8 +1100,8 @@ mod tests {
 
     #[test]
     fn removing_missing_tracks_leaves_no_tombstones() {
-        // A drive coming back should restore what was on it: that is migration
-        // 4's whole purpose, and a tombstone would quietly undo it.
+        // A drive coming back should restore what was on it: that is
+        // `missing_since`'s whole purpose, and a tombstone would quietly undo it.
         let (_dir, db) = library();
         let conn = db.conn().unwrap();
         conn.execute(

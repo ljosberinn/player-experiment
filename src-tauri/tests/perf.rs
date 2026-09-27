@@ -582,7 +582,7 @@ fn a_suggestion_lookup_is_cheap_and_the_rebuild_that_feeds_it_is_affordable() {
 
 /// The genre tree's two fixed costs, which every test in the workspace pays.
 ///
-/// Migration 11 seeds 6,575 genres, 8,200 edges and 8,004 aliases from 871KB of
+/// The schema seeds 6,575 genres, 8,200 edges and 8,004 aliases from 871KB of
 /// generated SQL, so a fresh database is no longer nearly free to create - and
 /// `Db::open` runs in every test that touches one. `Tree::load` is what 84b
 /// pays once per panel refresh. Neither scales with the library; both scale
@@ -593,7 +593,7 @@ fn the_genre_tree_is_cheap_to_seed_and_to_load() {
     let mut conn = Connection::open(dir.path().join("library.sqlite3")).unwrap();
     count_on(&conn);
 
-    // Every migration, of which the genre seed is nearly all. Its INSERTs
+    // The whole schema, of which the genre seed is nearly all. Its INSERTs
     // carry 250 rows each; reshaped into one per genre, the statement count
     // goes from hundreds to over twenty thousand.
     let (work, ()) = work_of(|| apex_lib::db::migrate(&mut conn).unwrap());

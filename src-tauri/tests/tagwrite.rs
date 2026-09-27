@@ -530,8 +530,8 @@ fn a_release_type_picard_wrote_reads_as_its_primary_type() {
     }
 }
 
-/// A scan stored Picard's type raw before the read normalized it, and rows
-/// from before migration 9 have none. The backfill brings both to what the
+/// A scan stored Picard's type raw before the read normalized it, and
+/// older rows have none. The backfill brings both to what the
 /// file names, and leaves a type that is already a primary type alone.
 #[test]
 fn the_backfill_reads_the_release_type_the_files_carry() {

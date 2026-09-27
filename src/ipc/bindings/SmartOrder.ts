@@ -4,10 +4,8 @@ import type { SmartSort } from "./SmartSort";
 /**
  * The ordering and cutoff stored in `playlists.sort_json`.
  *
- * Both parts optional and both defaulting to absent, which is exactly what
- * every smart playlist created before this existed has: a filter, no order,
- * no cutoff. That is why the column has been nullable and unread since
- * migration 1 and why nothing needed a schema change to start using it.
+ * Both parts optional and both defaulting to absent, so a NULL `sort_json`
+ * is a filter with no order and no cutoff.
  */
 export type SmartOrder = { sort: SmartSort | null, 
 /**

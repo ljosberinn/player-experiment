@@ -503,8 +503,6 @@ mod tests {
     #[test]
     fn a_cover_stored_without_a_palette_gains_one_the_next_time_it_is_seen() {
         let (_dir, conn) = conn();
-        // Exactly the shape a database from before migration 5 is in: bytes
-        // present, palette null.
         let art = cover("a", png(&[[10, 20, 30], [200, 210, 220]]));
         conn.execute(
             "INSERT INTO covers (hash, mime, bytes) VALUES ('a', 'image/png', ?1)",

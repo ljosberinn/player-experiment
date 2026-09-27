@@ -9,9 +9,9 @@
 //!
 //! **Wikidata label or alias, then suffix derivation, then the override.**
 //!
-//! The first two come from `scripts/genres.mjs` and migration 11: 6,575 genre
-//! labels with one primary parent each, plus the aliases, so "DSBM" reaches
-//! depressive black metal.
+//! The first two come from `scripts/genres.mjs`, seeded by `db::schema`:
+//! 6,575 genre labels with one primary parent each, plus the aliases, so
+//! "DSBM" reaches depressive black metal.
 //!
 //! Suffix derivation covers what Wikidata lacks, by treating a genre as a child
 //! of any shorter genre its name ends with at a word boundary, longest match
@@ -382,7 +382,7 @@ mod tests {
     /// than about the loader - and the file is what every other test here
     /// stands on.
     #[test]
-    fn the_migration_seeds_the_tree_it_ships() {
+    fn the_schema_seeds_the_tree_it_ships() {
         let (_dir, conn) = open();
         let tree = Tree::load(&conn).unwrap();
 

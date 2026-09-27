@@ -80,9 +80,8 @@ pub const LIBRARY_ROOT: &str = "library.root";
 /// Set once every stored cover has been through `db::covers::normalize`.
 ///
 /// A flag rather than a migration:
-/// re-encoding a library's worth of artwork is half a minute of CPU, and
-/// migration 5 already settled that this must not happen in the transaction
-/// that runs before the window is shown.
+/// re-encoding a library's worth of artwork is half a minute of CPU, which
+/// must not happen in the transaction that runs before the window is shown.
 pub const COVERS_NORMALIZED: &str = "covers.normalized";
 /// The last hash that pass finished, so a run cut short by a quit resumes
 /// instead of re-encoding a generation onto what it already did.
