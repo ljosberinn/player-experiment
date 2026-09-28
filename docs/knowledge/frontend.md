@@ -580,7 +580,10 @@ absences are what nobody notices coming back — hence the guards in
   and Back walks it; the filters are `features/stats/store.ts`, because a range
   change must wake a panel and nothing above it. A second store holding a copy
   of the path would be exactly the drift the `history` field's comment refuses.
-  `App` subscribes to neither: it branches on the `tab` it already reads.
+  `App` subscribes to neither: it branches on the `tab` it already reads. The
+  stored filters are read once, on the view's first opening; a link that sets
+  filters before opening the view (`showLastPlay`) would otherwise be undone
+  by that read.
 - **Navigating inside Statistics issues no library query.** `applyEntry` skips
   its closing `refresh` for a stats entry and `refresh` returns early while the
   view is open, so a donut click does not re-count 150k rows and an import

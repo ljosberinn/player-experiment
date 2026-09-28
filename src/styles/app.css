@@ -493,7 +493,8 @@
 
 /* Links, as Spotify draws them: plain text that underlines under the pointer. */
 button.now-playing-title:hover,
-button.now-playing-subtitle:hover {
+button.now-playing-subtitle:hover,
+.now-playing-last-play:hover {
   text-decoration: underline;
 }
 
@@ -506,6 +507,25 @@ button.now-playing-subtitle:hover {
 .now-playing-subtitle {
   color: var(--label);
   font-size: 12px;
+}
+
+.now-playing-heard {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.now-playing-last-play {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
 }
 
 /* The repeat button's shape. Loved, the accent without the wash: it is a fact

@@ -94,7 +94,7 @@ function nextBucket(start: Date, bucket: TimeBucket): Date {
 }
 
 /** `YYYY-MM-DD` in local time, which is how the backend names a bucket. */
-function dayKey(date: Date): string {
+export function dayKey(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;

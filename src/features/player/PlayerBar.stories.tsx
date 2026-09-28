@@ -37,10 +37,18 @@ const meta = {
 
 export default meta;
 
-/** A loved song, a third of the way in. */
+/** Noon `days` calendar days back, so the player bar reads a fixed distance. */
+function daysAgo(days: number): number {
+  const today = new Date();
+  return Math.floor(
+    new Date(today.getFullYear(), today.getMonth(), today.getDate() - days, 12).getTime() / 1000,
+  );
+}
+
+/** A loved song heard three days ago, a third of the way in. */
 export const Playing: StoryObj<typeof meta> = {
   beforeEach: () => {
-    const track = byId(1);
+    const track = { ...byId(1), play_count: 56, last_played_at: daysAgo(3) };
     playing(track, "playing", Math.round((track.duration_ms ?? 0) / 3));
     useLovedStore.setState({ loved: new Set([track.id]) });
   },
@@ -50,6 +58,13 @@ export const Playing: StoryObj<typeof meta> = {
 export const PausedWithoutCover: StoryObj<typeof meta> = {
   beforeEach: () => {
     playing({ ...byId(201), cover_hash: null }, "paused", 42_000);
+  },
+};
+
+/** A song never heard before, so nothing to link. */
+export const FirstPlay: StoryObj<typeof meta> = {
+  beforeEach: () => {
+    playing({ ...byId(3), play_count: 0, last_played_at: null }, "playing", 30_000);
   },
 };
 

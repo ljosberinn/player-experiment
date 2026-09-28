@@ -13,14 +13,20 @@ import { fileNameOf } from "../../lib/format";
  */
 export function NowPlaying({
   track,
+  heard = null,
   onReveal,
   onShowArtist,
+  onShowLastPlay,
 }: {
   track: Track | null;
+  /** The line under the artist. */
+  heard?: Heard | null;
   /** The cover or the title clicked: "show me where this is". */
   onReveal?: () => void;
   /** The artist clicked. */
   onShowArtist?: () => void;
+  /** The last play clicked. */
+  onShowLastPlay?: () => void;
 }) {
   const title = track === null ? "Nothing playing" : (track.title ?? fileNameOf(track.path));
   const artist = track?.artist ?? null;
@@ -71,7 +77,37 @@ export function NowPlaying({
             {artist}
           </button>
         )}
+        {heard === null ? null : (
+          <div className="now-playing-heard">
+            {heard.plays === 0 ? (
+              "First play"
+            ) : (
+              <>
+                {`${heard.plays.toLocaleString()} ${heard.plays === 1 ? "play" : "plays"}`}
+                {heard.last === null ? null : (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      className="now-playing-last-play"
+                      title={heard.last.title}
+                      onClick={onShowLastPlay}
+                    >
+                      {`last played ${heard.last.words}`}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+/** How often the song was heard before, and when last, in words. */
+export interface Heard {
+  readonly plays: number;
+  readonly last: { readonly words: string; readonly title: string } | null;
 }

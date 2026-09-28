@@ -97,7 +97,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   forgetListenTotals();
   loadMock.mockResolvedValue(null);
-  useStatsStore.setState({ filters: DEFAULT_FILTERS });
+  useStatsStore.setState({ filters: DEFAULT_FILTERS, loaded: false });
   useLibraryStore.setState({
     tab: "stats",
     statsPath: statsRoot("listening"),

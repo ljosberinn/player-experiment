@@ -236,10 +236,12 @@ action reads as a target rather than a line of text".
 - **A 100px player bar at the very bottom**, under the content, only while a
   track is loaded (paused counts, stopped does not, nor five minutes paused
   without a seek). Laid out like
-  Spotify's in three columns at 30 / 40 / 30: cover, title over artist and a
-  heart on the left; prev/play/next with repeat, over the playhead, centred;
-  mute and volume on the right. The cover and title open the track's album, the
-  artist the artist it is filed under, and the heart loves it.
+  Spotify's in three columns at 30 / 40 / 30: cover, title over artist over a
+  muted `56 plays · last played 3 days ago`, and a heart on the left;
+  prev/play/next with repeat, over the playhead, centred; mute and volume on the
+  right. The cover and title open the track's album, the artist the artist it is
+  filed under, the last play that day in Statistics › Listening, and the heart
+  loves it.
 - **Settings is a rail and a pane**, at one size whichever category is open:
   Appearance (Interface Zoom, Theme, Colour From Album Art), Library (Library Folder,
   Music Folders), Online (Look Up Releases Online, last.fm) and About (Activity
