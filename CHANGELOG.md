@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.21.0](https://github.com/ljosberinn/player-experiment/compare/v0.20.1...v0.21.0) (2026-09-28)
+
+
+### Features
+
+* Add to Playlist greys out with no playlist ([#174](https://github.com/ljosberinn/player-experiment/issues/174)) ([#341](https://github.com/ljosberinn/player-experiment/issues/341)) ([bb94675](https://github.com/ljosberinn/player-experiment/commit/bb9467564e8ab99e5170bddcce0bd212b296c0f7))
+* open a song on Last.fm from the row menu ([#175](https://github.com/ljosberinn/player-experiment/issues/175)) ([#343](https://github.com/ljosberinn/player-experiment/issues/343)) ([01687b3](https://github.com/ljosberinn/player-experiment/commit/01687b32866792dd47dac470ac71a9f9611f9857))
+* the player bar hides after five idle minutes ([#176](https://github.com/ljosberinn/player-experiment/issues/176)) ([#344](https://github.com/ljosberinn/player-experiment/issues/344)) ([4992a9c](https://github.com/ljosberinn/player-experiment/commit/4992a9c9a3991becd449784464394dd0dd3cf4d5))
+* the player bar says when you last heard it ([#179](https://github.com/ljosberinn/player-experiment/issues/179)) ([#347](https://github.com/ljosberinn/player-experiment/issues/347)) ([174234c](https://github.com/ljosberinn/player-experiment/commit/174234cf90bdcda955d16928f15dfb5a90055d9c))
+* the row menu goes to the last play ([#180](https://github.com/ljosberinn/player-experiment/issues/180)) ([#348](https://github.com/ljosberinn/player-experiment/issues/348)) ([121f77e](https://github.com/ljosberinn/player-experiment/commit/121f77e4a46aa168a2014cfd38a17a7cdded49f4))
+
+
+### Bug Fixes
+
+* a drill-in fits its columns to its own releases ([#178](https://github.com/ljosberinn/player-experiment/issues/178)) ([#346](https://github.com/ljosberinn/player-experiment/issues/346)) ([1d7a5df](https://github.com/ljosberinn/player-experiment/commit/1d7a5df3d01d1b806d35b48feb0df7021484c032))
+* a release keeps its own height across drill-ins ([#177](https://github.com/ljosberinn/player-experiment/issues/177)) ([#345](https://github.com/ljosberinn/player-experiment/issues/345)) ([2bb2de9](https://github.com/ljosberinn/player-experiment/commit/2bb2de9c6b5eeac81dc8b93944e1e0c1c6a4272c))
+
 ## [0.20.1](https://github.com/ljosberinn/player-experiment/compare/v0.20.0...v0.20.1) (2026-09-27)
 
 
