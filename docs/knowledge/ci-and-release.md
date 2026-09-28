@@ -150,6 +150,9 @@ time anything lands.
 `.githooks/` (wired by the `prepare` script) is a fast-fail convenience, not the
 enforcement: pre-commit runs Biome on staged files and `cargo fmt --check`;
 pre-push adds repo-wide Biome, typecheck and rustfmt on top of a `main` block.
+post-merge deletes local branches whose PR is merged: squash merges defeat
+`git branch --merged`, so it asks `gh`, and keeps any branch whose tip is not
+in the merged head.
 
 ## Releases
 

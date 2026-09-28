@@ -103,10 +103,11 @@ must pass before merge.
 | --- | --- |
 | `pre-commit` | Biome on **staged** files, `cargo fmt --check` if Rust changed |
 | `pre-push` | Blocks pushes to `main`; Biome, typecheck and `cargo fmt --check` repo-wide |
+| `post-merge` | After a pull, deletes local branches whose PR `gh` reports merged |
 
 Tests and clippy are left to CI, which has the build cache for them. Each hook
-skips gracefully if `npx`/`cargo` is not on `PATH`, and `--no-verify` bypasses
-either when you need it.
+skips gracefully if `npx`/`cargo`/`gh` is not on `PATH`, and `--no-verify`
+bypasses the pre-commit and pre-push checks when you need it.
 
 **`main` is protected server-side.** A `no-master-push` ruleset applies four
 rules to the default branch: no deletion, no force-push, changes only through a
