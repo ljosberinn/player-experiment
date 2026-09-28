@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { albumLinks, artistLinks, linkArtist } from "./externalLinks";
+import { albumLinks, artistLinks, linkArtist, songArtist, songLinks } from "./externalLinks";
 
 /** The labels, in order, so a reordering shows up as itself. */
 function labels(links: ReturnType<typeof artistLinks>): string[] {
@@ -55,6 +55,39 @@ describe("albumLinks", () => {
 
     expect(labels(links)).toEqual(["Discogs"]);
     expect(urlOf(links, "Discogs")).toBe("https://www.discogs.com/search/?q=Harbour&type=release");
+  });
+});
+
+describe("songLinks", () => {
+  it("points Last.fm at the song under its artist, and nowhere else", () => {
+    // Discogs has no page per song, and a search for one lands on releases.
+    const links = songLinks("Blue Room", "Low Tide");
+
+    expect(labels(links)).toEqual(["Last.fm"]);
+    expect(urlOf(links, "Last.fm")).toBe("https://www.last.fm/music/Blue%20Room/_/Low%20Tide");
+  });
+
+  it("encodes the characters titles actually contain", () => {
+    // A bare `/` would invent a path segment and `?` would start a query.
+    expect(urlOf(songLinks("AC/DC", "Rock & Roll / Why?"), "Last.fm")).toBe(
+      "https://www.last.fm/music/AC%2FDC/_/Rock%20%26%20Roll%20%2F%20Why%3F",
+    );
+  });
+});
+
+describe("songArtist", () => {
+  it("prefers the track artist, which is who the song is scrobbled under", () => {
+    // On a compilation the album artist names the release, not the performer.
+    expect(songArtist({ artist: "Cascade", album_artist: "Various Artists" })).toBe("Cascade");
+  });
+
+  it("falls back to the album artist", () => {
+    expect(songArtist({ artist: null, album_artist: "Cascade" })).toBe("Cascade");
+  });
+
+  it("treats blank tags as absent", () => {
+    expect(songArtist({ artist: "   ", album_artist: "Cascade" })).toBe("Cascade");
+    expect(songArtist({ artist: null, album_artist: "  " })).toBe("");
   });
 });
 

@@ -125,12 +125,13 @@ describe("the row menu", () => {
     await browser.$("//*[@role='menu']").waitForExist({ timeout: 10_000, reverse: true });
   });
 
-  it("opens on a right-click, offering both lookups", async () => {
+  it("opens on a right-click, offering the lookups", async () => {
     await openRowMenu();
 
     const items = await itemsOf("Song actions");
     expect(items).toContain("Open Artist on…");
     expect(items).toContain("Open Album on…");
+    expect(items).toContain("Open Song on…");
   });
 
   it("opens the artist submenu on the two sites, without following either", async () => {

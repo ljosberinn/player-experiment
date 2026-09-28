@@ -28,6 +28,16 @@ export function linkArtist(track: { artist: string | null; album_artist: string 
   return (track.album_artist ?? "").trim() || (track.artist ?? "").trim();
 }
 
+/**
+ * The name to look the song up under - the reverse of `linkArtist`.
+ *
+ * A compilation's album artist did not perform the song, and scrobbles go out
+ * under the track artist, so that is the page the user's plays are on.
+ */
+export function songArtist(track: { artist: string | null; album_artist: string | null }): string {
+  return (track.artist ?? "").trim() || (track.album_artist ?? "").trim();
+}
+
 export function artistLinks(artist: string): ExternalLink[] {
   return [
     { label: "Last.fm", url: `${LAST_FM}/music/${encodeURIComponent(artist)}` },
@@ -60,4 +70,14 @@ export function albumLinks(artist: string, album: string): ExternalLink[] {
   });
 
   return links;
+}
+
+// No Discogs entry: it catalogues releases, and has no page per song.
+export function songLinks(artist: string, title: string): ExternalLink[] {
+  return [
+    {
+      label: "Last.fm",
+      url: `${LAST_FM}/music/${encodeURIComponent(artist)}/_/${encodeURIComponent(title)}`,
+    },
+  ];
 }
