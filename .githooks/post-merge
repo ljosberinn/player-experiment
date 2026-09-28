@@ -1,0 +1,32 @@
+#!/bin/sh
+# Deletes local branches whose pull request has been merged, after a pull.
+#
+# PRs are squash-merged, so `git branch --merged` never matches; GitHub is asked
+# instead. A branch goes only when its tip is contained in the merged PR's head,
+# so a branch with unpushed commits, or one whose name was reused, survives.
+# Skipped where gh is missing or offline, and never fails the merge: the merge
+# has already happened by the time this runs.
+#
+# Wired up by the `prepare` script in package.json (core.hooksPath=.githooks).
+
+command -v gh >/dev/null 2>&1 || exit 0
+
+current=$(git symbolic-ref --quiet --short HEAD)
+
+# Avoid the API call when there is nothing to clean up.
+git for-each-ref --format='%(refname:short)' refs/heads |
+  grep -qvxE "main|$current" || exit 0
+
+merged=$(gh pr list --state merged --limit 200 \
+  --json headRefName,headRefOid \
+  --jq '.[] | "\(.headRefName) \(.headRefOid)"' 2>/dev/null) || exit 0
+
+echo "$merged" | while read -r branch oid; do
+  case "$branch" in "" | main | "$current") continue ;; esac
+  git show-ref --verify --quiet "refs/heads/$branch" || continue
+  git merge-base --is-ancestor "refs/heads/$branch" "$oid" 2>/dev/null || continue
+  # Fails for a branch checked out in another worktree, which is left alone.
+  git branch -D --quiet "$branch" 2>/dev/null && echo "post-merge: deleted merged branch $branch"
+done
+
+exit 0
