@@ -5,10 +5,12 @@ import { PlayerScrubber } from "./PlayerScrubber";
 import { PlayerTransport } from "./PlayerTransport";
 import { PlayerVolume } from "./PlayerVolume";
 import { usePlayerStore } from "./store";
+import { useIdleHidden } from "./useIdleHidden";
 
 /**
  * The band along the bottom of the window, present only while a track is
- * loaded - paused counts, stopped does not.
+ * loaded - paused counts, stopped does not - and paused for less than
+ * `IDLE_HIDE_MS`.
  *
  * Keyed on `status` rather than `track`: the engine keeps its queue index
  * through a stop so Play can resume from it, which leaves a track in every
@@ -21,8 +23,9 @@ import { usePlayerStore } from "./store";
  */
 export function PlayerBar() {
   const loaded = usePlayerStore((s) => s.status !== "stopped");
+  const idle = useIdleHidden();
 
-  if (!loaded) {
+  if (!loaded || idle) {
     return null;
   }
 
