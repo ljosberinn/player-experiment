@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { albumLinks, artistLinks } from "../features/library/externalLinks";
+import { albumLinks, artistLinks, songLinks } from "../features/library/externalLinks";
 import { REPOSITORY } from "../features/shell/menus";
 
 /**
@@ -115,6 +115,7 @@ describe("Tauri capabilities", () => {
       REPOSITORY,
       ...artistLinks("Blue Room").map((link) => link.url),
       ...albumLinks("Blue Room", "Harbour").map((link) => link.url),
+      ...songLinks("Blue Room", "Low Tide").map((link) => link.url),
     ];
     const prefixes = openerScope.map((pattern) => pattern.replace(/\*$/, ""));
 

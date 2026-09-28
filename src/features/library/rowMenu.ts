@@ -1,9 +1,9 @@
 import type { MenuItem } from "../../components/ui/ContextMenu";
 import type { Playlist, Track } from "../../ipc";
-import { albumLinks, artistLinks, linkArtist } from "./externalLinks";
+import { albumLinks, artistLinks, linkArtist, songArtist, songLinks } from "./externalLinks";
 
 /** What the lookup entries need off a row; the rest of a `Track` is irrelevant. */
-export type LinkableTrack = Pick<Track, "artist" | "album_artist" | "album">;
+export type LinkableTrack = Pick<Track, "artist" | "album_artist" | "album" | "title">;
 
 /** What the Love entry needs to know about the selection. */
 export interface Loving {
@@ -260,6 +260,16 @@ function lookupItems(
       label: "Open Album on…",
       disabled: count !== 1,
       submenu: submenu(albumLinks(artist, album)),
+    });
+  }
+
+  const performer = songArtist(track);
+  const title = (track.title ?? "").trim();
+  if (performer !== "" && title !== "") {
+    items.push({
+      label: "Open Song on…",
+      disabled: count !== 1,
+      submenu: submenu(songLinks(performer, title)),
     });
   }
 

@@ -24,7 +24,7 @@ function items(over: Partial<Parameters<typeof rowMenuItems>[0]> = {}) {
     count: 1,
     playlists: [],
     openPlaylist: null,
-    track: { artist: "Blue Room", album: "Harbour", album_artist: null },
+    track: { artist: "Blue Room", album: "Harbour", album_artist: null, title: "Low Tide" },
     ...handlers,
     ...over,
   });
@@ -209,7 +209,12 @@ describe("rowMenuItems", () => {
   it("opens the artist's page, taking the album artist over the artist", () => {
     const onOpenUrl = vi.fn();
     const menu = items({
-      track: { artist: "Cascade", album: "Terrace", album_artist: "Various Artists" },
+      track: {
+        artist: "Cascade",
+        album: "Terrace",
+        album_artist: "Various Artists",
+        title: "Stairwell",
+      },
       onOpenUrl,
     });
 
@@ -227,14 +232,58 @@ describe("rowMenuItems", () => {
     // Greyed out would be an entry offering to look up an artist that is not
     // there, and unlike the playlist case there is no question it answers.
     const noAlbum = labels(
-      items({ track: { artist: "Blue Room", album: null, album_artist: null } }),
+      items({ track: { artist: "Blue Room", album: null, album_artist: null, title: "Low Tide" } }),
     );
     expect(noAlbum).toContain("Open Artist on…");
     expect(noAlbum).not.toContain("Open Album on…");
 
-    const untagged = labels(items({ track: { artist: null, album: null, album_artist: null } }));
+    const untagged = labels(
+      items({ track: { artist: null, album: null, album_artist: null, title: null } }),
+    );
     expect(untagged).not.toContain("Open Artist on…");
     expect(untagged).not.toContain("Open Album on…");
+    expect(untagged).not.toContain("Open Song on…");
+
+    const noTitle = labels(
+      items({ track: { artist: "Blue Room", album: "Harbour", album_artist: null, title: " " } }),
+    );
+    expect(noTitle).not.toContain("Open Song on…");
+  });
+
+  it("offers the song on Last.fm alone, after the album", () => {
+    const menu = labels(items());
+
+    expect(menu.indexOf("Open Song on…")).toBe(menu.indexOf("Open Album on…") + 1);
+    expect(submenuOf(items(), "Open Song on…").map((one) => one.label)).toEqual(["Last.fm"]);
+  });
+
+  it("opens the song under its performer, not a compilation's album artist", () => {
+    const onOpenUrl = vi.fn();
+    const menu = items({
+      track: {
+        artist: "Cascade",
+        album: "Terrace",
+        album_artist: "Various Artists",
+        title: "Stairwell",
+      },
+      onOpenUrl,
+    });
+
+    submenuOf(menu, "Open Song on…")[0]?.onSelect?.();
+
+    expect(onOpenUrl).toHaveBeenCalledWith("https://www.last.fm/music/Cascade/_/Stairwell");
+  });
+
+  it("names the song under the album artist where the row has no artist", () => {
+    const onOpenUrl = vi.fn();
+    const menu = items({
+      track: { artist: null, album: "Harbour", album_artist: "Blue Room", title: "Low Tide" },
+      onOpenUrl,
+    });
+
+    submenuOf(menu, "Open Song on…")[0]?.onSelect?.();
+
+    expect(onOpenUrl).toHaveBeenCalledWith("https://www.last.fm/music/Blue%20Room/_/Low%20Tide");
   });
 
   it("has no lookups without a row to name", () => {
@@ -247,6 +296,7 @@ describe("rowMenuItems", () => {
     // Two rows are two artists, and picking one would be a guess at which.
     expect(entry(items({ count: 2 }), "Open Artist on…")?.disabled).toBe(true);
     expect(entry(items({ count: 2 }), "Open Album on…")?.disabled).toBe(true);
+    expect(entry(items({ count: 2 }), "Open Song on…")?.disabled).toBe(true);
     expect(entry(items({ count: 1 }), "Open Artist on…")?.disabled).toBe(false);
   });
 
