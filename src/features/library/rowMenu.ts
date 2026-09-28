@@ -125,6 +125,9 @@ export function rowMenuItems({
   onOpenUrl: (url: string) => void;
 }): MenuItem[] {
   const songs = `${count} Song${count === 1 ? "" : "s"}`;
+  // Smart playlists are left out rather than shown disabled: their membership
+  // is their filter, so "add" is not a thing you can do to one.
+  const addable = playlists.filter((playlist) => playlist.kind === "static");
 
   const items: MenuItem[] = [
     { label: "Play", onSelect: onPlay },
@@ -139,15 +142,11 @@ export function rowMenuItems({
     { label: "Get Tags from MusicBrainz…", onSelect: onLookup },
     {
       label: "Add to Playlist",
-      // Smart playlists are excluded rather than shown disabled: their
-      // membership is their filter, so "add" is not a thing you can do to
-      // one, and offering it greyed out invites the question every time.
-      submenu: playlists
-        .filter((playlist) => playlist.kind === "static")
-        .map((playlist) => ({
-          label: playlist.name,
-          onSelect: () => onAddTo(playlist.id),
-        })),
+      disabled: addable.length === 0,
+      submenu: addable.map((playlist) => ({
+        label: playlist.name,
+        onSelect: () => onAddTo(playlist.id),
+      })),
     },
   ];
 

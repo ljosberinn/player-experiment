@@ -150,12 +150,7 @@ export function renderMenuItem(item: MenuItem, index: number) {
         <Base.Portal>
           <Base.Positioner className="menu-positioner">
             <Base.Popup className="menu-popup" aria-label={item.label}>
-              {item.submenu.length === 0 ? (
-                // A submenu that renders nothing looks broken; this explains it.
-                <div className="menu-empty">No playlists yet</div>
-              ) : (
-                item.submenu.map(renderMenuItem)
-              )}
+              {item.submenu.map(renderMenuItem)}
             </Base.Popup>
           </Base.Positioner>
         </Base.Portal>

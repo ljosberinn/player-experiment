@@ -225,14 +225,5 @@ describe("ContextMenu", () => {
       await user.keyboard("{Escape}");
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
-
-    it("says so when there is nothing to add to", async () => {
-      const { user } = await open([{ label: "Add to Playlist", submenu: [] }]);
-
-      await user.keyboard("{ArrowDown}{ArrowRight}");
-
-      // An empty submenu that renders nothing looks broken; this explains it.
-      expect(await screen.findByText("No playlists yet")).toBeInTheDocument();
-    });
   });
 });
