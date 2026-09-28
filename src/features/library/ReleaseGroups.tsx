@@ -118,6 +118,7 @@ export function ReleaseGroups({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const releases = useLibraryStore((s) => s.releases);
+  const laidOut = useLibraryStore((s) => s.releasesToken === s.queryToken);
 
   const offsets = useMemo(() => groupOffsets(releases), [releases]);
 
@@ -151,6 +152,7 @@ export function ReleaseGroups({
   } = useSongTableWiring({
     scrollRef,
     scrollToRow,
+    laidOut,
     // No `onReorder`: a drill-in is ordered by release, which is not an order
     // there is anything to rearrange.
     handlers: { onActivate, onRemove, onRemoveFromLibrary, onExport },
@@ -164,11 +166,11 @@ export function ReleaseGroups({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: queryToken is a cache key, not a value this effect reads - it changes exactly when the cached pages are dropped, which is when the visible range must be fetched again even though the range itself has not moved.
   useEffect(() => {
-    const range = groupRowRange(releases, firstGroup, lastGroup);
+    const range = laidOut ? groupRowRange(releases, firstGroup, lastGroup) : null;
     if (range !== null) {
       void ensureRange(range.start, range.end);
     }
-  }, [ensureRange, releases, firstGroup, lastGroup, queryToken]);
+  }, [ensureRange, laidOut, releases, firstGroup, lastGroup, queryToken]);
 
   /**
    * The one row Tab reaches, which the arrows then move from - `SongTable`'s

@@ -40,11 +40,14 @@ export type SongTableHandlers = {
 export function useSongTableWiring({
   scrollRef,
   scrollToRow,
+  laidOut = true,
   handlers,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   /** Brings a row into view, however the caller places rows. */
   scrollToRow: (rowIndex: number) => void;
+  /** Whether the rows are placed for the current query, and so worth fitting to. */
+  laidOut?: boolean;
   handlers: SongTableHandlers;
 }) {
   const { onActivate, onReorder, onRemove, onRemoveFromLibrary, onExport } = handlers;
@@ -133,11 +136,11 @@ export function useSongTableWiring({
     // the header in one table and each group's rows in another, and measuring
     // the first table alone would fit every column to its heading.
     const measured = scrollRef.current;
-    if (!fitPending || pages.size === 0 || measured === null) {
+    if (!fitPending || !laidOut || pages.size === 0 || measured === null) {
       return;
     }
     fitColumns(measureColumns(measured, columnConfig.ids));
-  }, [fitPending, pages, fitColumns, columnConfig.ids, scrollRef]);
+  }, [fitPending, laidOut, pages, fitColumns, columnConfig.ids, scrollRef]);
 
   /**
    * The keyboard's routes into the rows: the row menu, and the arrows that

@@ -108,6 +108,11 @@ the cascade: a region has to be able to overrule a primitive it wraps, so
   prefixes a drill-in's `ORDER BY` with `drill_in_order`, the row-wise form of
   the ordering `release_groups` returns. **Change either and change both** —
   disagreeing orderings index the wrong rows, silently.
+- **A drill-in's rows wait for its releases.** `releases` outlives a navigation
+  from one drill-in to the next, so `loadGroups` stamps it with `releasesToken`,
+  and until that matches `queryToken` the groups fetch no rows and the fit
+  measures nothing. Otherwise the first page lands in the outgoing release's
+  groups, cut at its track count, and the fit misses the tail (178).
 - **`release_groups` keeps the browse filter that `browse_groups` drops.** The
   grid asks what the tab holds and must not filter itself down to the album
   already open; the drill-in asks what is inside the view that *is* open. Same
