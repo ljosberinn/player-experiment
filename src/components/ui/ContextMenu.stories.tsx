@@ -19,7 +19,7 @@ const region = {
  * The first opens itself: items, separators, the two shortcuts, and submenus
  * that open on hover. The second is a song with no artist or title and no
  * playlist to add it to, so Love is greyed with its hint and Add to Playlist
- * says why it is empty.
+ * is greyed.
  */
 function Regions() {
   return (

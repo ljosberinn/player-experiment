@@ -94,6 +94,15 @@ describe("rowMenuItems", () => {
     ).toEqual(["Evening"]);
   });
 
+  it("greys Add to Playlist with no static playlist to add to", () => {
+    for (const playlists of [[], [playlist(2, "Recent", "smart")]]) {
+      expect(entry(items({ playlists }), "Add to Playlist")?.disabled).toBe(true);
+    }
+    expect(entry(items({ playlists: [playlist(1, "Evening")] }), "Add to Playlist")?.disabled).toBe(
+      false,
+    );
+  });
+
   it("offers removal inside a static playlist", () => {
     const menu = items({ openPlaylist: playlist(1, "Evening"), count: 2 });
 

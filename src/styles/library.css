@@ -1255,12 +1255,6 @@
   font-size: 0.85em;
 }
 
-.menu-empty {
-  padding: 8px 13px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
 /* ---------- 05 · progress and the task line ---------- */
 
 /* The sheet's 4px rail, drawn twice in it - under the task line below and
