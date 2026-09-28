@@ -5,6 +5,7 @@ import { useEditorStore } from "../editor/store";
 import { useLoveEntry } from "../love/loveEntry";
 import { isTypingTarget } from "../player/shortcuts";
 import { usePlaylistsStore } from "../playlists/store";
+import { showLastPlay } from "../stats/lastPlay";
 import { useTagsourceStore } from "../tagsource/store";
 import { measureColumns } from "./columnFit";
 import { displayedColumns, resolveColumns } from "./columns";
@@ -271,6 +272,7 @@ export function useSongTableWiring({
           // One id: the menu disables this entry unless exactly one row is
           // selected, so there is no question of which file to show.
           onReveal: () => void revealTrack(menu.trackIds[0] as number),
+          onShowLastPlay: (at) => void showLastPlay(at),
           // Nothing to report on failure: the browser either opened or it did
           // not, and the user can see which.
           onOpenUrl: (url) => void openUrl(url).catch(() => {}),

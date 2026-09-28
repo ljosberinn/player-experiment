@@ -20,7 +20,7 @@ export type MenuItem =
       /** Shown greyed and skipped by the keyboard, rather than hidden. */
       disabled?: boolean | undefined;
       /**
-       * Why this entry is greyed, in a few words.
+       * Why this entry is greyed, in a few words - or, on Show Last Play, when.
        *
        * Real text in the item rather than a tooltip, so a screen reader reads
        * it with the label and a disabled entry never leaves the user guessing

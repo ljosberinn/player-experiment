@@ -1238,9 +1238,9 @@
 }
 
 /* The trailing column, in the sheet's muted grey: a submenu marker, the
-   keystroke that does the same thing, or why an entry is greyed. Never two at
-   once - a hinted entry is disabled, and a disabled entry has no binding to
-   name. */
+   keystroke that does the same thing, or a hint: why an entry is greyed, or
+   when Show Last Play's song was last played. Never two at once - no hinted
+   entry has a binding or a submenu. */
 .menu-shortcut,
 .menu-arrow,
 .menu-hint {

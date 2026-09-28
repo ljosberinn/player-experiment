@@ -10,6 +10,7 @@ import { useLibraryStore } from "../library/store";
 import { useLoveEntry } from "../love/loveEntry";
 import { usePlayerStore } from "../player/store";
 import { usePlaylistsStore } from "../playlists/store";
+import { showLastPlay } from "../stats/lastPlay";
 import { useTagsourceStore } from "../tagsource/store";
 import { exportSelectionLabel, menus, REPOSITORY } from "./menus";
 import type { SettingsCategory } from "./SettingsDialog";
@@ -119,6 +120,7 @@ export function AppMenus({
                 loving,
                 onExport: () => onExport(exportChoice(selectedIds, null)),
                 onReveal: () => void revealTrack(selectedIds[0] as number),
+                onShowLastPlay: (at) => void showLastPlay(at),
                 onOpenUrl: (url) => void openUrl(url).catch(() => {}),
               }),
         onAddFolder: () => void addFolder(),

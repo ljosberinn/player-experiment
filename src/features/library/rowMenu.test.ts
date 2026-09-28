@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Playlist } from "../../ipc";
 import { type Loving, lovingFor, rowMenuItems } from "./rowMenu";
 
@@ -16,6 +16,7 @@ const handlers = {
   onRemove: vi.fn(),
   onExport: vi.fn(),
   onReveal: vi.fn(),
+  onShowLastPlay: vi.fn(),
   onOpenUrl: vi.fn(),
 };
 
@@ -24,7 +25,13 @@ function items(over: Partial<Parameters<typeof rowMenuItems>[0]> = {}) {
     count: 1,
     playlists: [],
     openPlaylist: null,
-    track: { artist: "Blue Room", album: "Harbour", album_artist: null, title: "Low Tide" },
+    track: {
+      artist: "Blue Room",
+      album: "Harbour",
+      album_artist: null,
+      title: "Low Tide",
+      last_played_at: null,
+    },
     ...handlers,
     ...over,
   });
@@ -214,6 +221,7 @@ describe("rowMenuItems", () => {
         album: "Terrace",
         album_artist: "Various Artists",
         title: "Stairwell",
+        last_played_at: null,
       },
       onOpenUrl,
     });
@@ -232,20 +240,38 @@ describe("rowMenuItems", () => {
     // Greyed out would be an entry offering to look up an artist that is not
     // there, and unlike the playlist case there is no question it answers.
     const noAlbum = labels(
-      items({ track: { artist: "Blue Room", album: null, album_artist: null, title: "Low Tide" } }),
+      items({
+        track: {
+          artist: "Blue Room",
+          album: null,
+          album_artist: null,
+          title: "Low Tide",
+          last_played_at: null,
+        },
+      }),
     );
     expect(noAlbum).toContain("Open Artist on…");
     expect(noAlbum).not.toContain("Open Album on…");
 
     const untagged = labels(
-      items({ track: { artist: null, album: null, album_artist: null, title: null } }),
+      items({
+        track: { artist: null, album: null, album_artist: null, title: null, last_played_at: null },
+      }),
     );
     expect(untagged).not.toContain("Open Artist on…");
     expect(untagged).not.toContain("Open Album on…");
     expect(untagged).not.toContain("Open Song on…");
 
     const noTitle = labels(
-      items({ track: { artist: "Blue Room", album: "Harbour", album_artist: null, title: " " } }),
+      items({
+        track: {
+          artist: "Blue Room",
+          album: "Harbour",
+          album_artist: null,
+          title: " ",
+          last_played_at: null,
+        },
+      }),
     );
     expect(noTitle).not.toContain("Open Song on…");
   });
@@ -265,6 +291,7 @@ describe("rowMenuItems", () => {
         album: "Terrace",
         album_artist: "Various Artists",
         title: "Stairwell",
+        last_played_at: null,
       },
       onOpenUrl,
     });
@@ -277,7 +304,13 @@ describe("rowMenuItems", () => {
   it("names the song under the album artist where the row has no artist", () => {
     const onOpenUrl = vi.fn();
     const menu = items({
-      track: { artist: null, album: "Harbour", album_artist: "Blue Room", title: "Low Tide" },
+      track: {
+        artist: null,
+        album: "Harbour",
+        album_artist: "Blue Room",
+        title: "Low Tide",
+        last_played_at: null,
+      },
       onOpenUrl,
     });
 
@@ -370,6 +403,58 @@ describe("the Love entry", () => {
 
     const several = entry(items({ count: 4, loving: { ...loving, keyed: false } }), "Love 4 Songs");
     expect(several?.hint).toBe("One has no artist and title");
+  });
+});
+
+describe("the Show Last Play entry", () => {
+  const now = new Date(2026, 8, 28, 12);
+  const threeDaysAgo = new Date(2026, 8, 25, 20).getTime() / 1000;
+  const played = {
+    artist: "Blue Room",
+    album: "Harbour",
+    album_artist: null,
+    title: "Low Tide",
+    last_played_at: threeDaysAgo,
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("sits after Show in Explorer and says when", () => {
+    const menu = items({ track: played });
+
+    expect(labels(menu).indexOf("Show Last Play")).toBe(
+      labels(menu).indexOf("Show in Explorer") + 1,
+    );
+    expect(entry(menu, "Show Last Play")?.hint).toBe("3 days ago");
+  });
+
+  it("opens the row's last play", () => {
+    const onShowLastPlay = vi.fn();
+
+    entry(items({ track: played, onShowLastPlay }), "Show Last Play")?.onSelect?.();
+
+    expect(onShowLastPlay).toHaveBeenCalledWith(threeDaysAgo);
+  });
+
+  it("is absent for a row never played, or no row at all", () => {
+    expect(labels(items())).not.toContain("Show Last Play");
+    expect(labels(items({ track: null }))).not.toContain("Show Last Play");
+  });
+
+  it("is greyed without a hint with more than one row selected", () => {
+    // A hint on a greyed entry reads as why it is greyed.
+    const found = entry(items({ count: 2, track: played }), "Show Last Play");
+
+    expect(found?.disabled).toBe(true);
+    expect(found?.hint).toBeUndefined();
+    expect(found?.onSelect).toBeUndefined();
   });
 });
 

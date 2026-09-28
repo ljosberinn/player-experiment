@@ -1,9 +1,13 @@
 import type { MenuItem } from "../../components/ui/ContextMenu";
 import type { Playlist, Track } from "../../ipc";
+import { lastPlayedWords } from "../stats/lastPlay";
 import { albumLinks, artistLinks, linkArtist, songArtist, songLinks } from "./externalLinks";
 
-/** What the lookup entries need off a row; the rest of a `Track` is irrelevant. */
-export type LinkableTrack = Pick<Track, "artist" | "album_artist" | "album" | "title">;
+/** What the entries that name one row need off it; the rest of a `Track` is irrelevant. */
+export type LinkableTrack = Pick<
+  Track,
+  "artist" | "album_artist" | "album" | "title" | "last_played_at"
+>;
 
 /** What the Love entry needs to know about the selection. */
 export interface Loving {
@@ -90,6 +94,7 @@ export function rowMenuItems({
   loving,
   onExport,
   onReveal,
+  onShowLastPlay,
   onOpenUrl,
 }: {
   /** How many rows the action applies to. */
@@ -98,7 +103,7 @@ export function rowMenuItems({
   /** The playlist being viewed, if any. */
   openPlaylist: Playlist | null;
   /**
-   * The row the lookup entries name, or null when there is none to name -
+   * The row the lookup and last-play entries name, or null when there is none to name -
    * several rows selected from the menu bar, or a page that has not arrived.
    */
   track: LinkableTrack | null;
@@ -122,6 +127,8 @@ export function rowMenuItems({
   loving?: Loving | undefined;
   onExport: () => void;
   onReveal: () => void;
+  /** Opens Statistics on the day of `at`, the row's `last_played_at`. */
+  onShowLastPlay: (at: number) => void;
   onOpenUrl: (url: string) => void;
 }): MenuItem[] {
   const songs = `${count} Song${count === 1 ? "" : "s"}`;
@@ -193,6 +200,21 @@ export function rowMenuItems({
       onSelect: onReveal,
     },
   );
+
+  // Absent for a row never played, like a lookup for a tag it does not carry.
+  const lastPlayedAt = track?.last_played_at ?? null;
+  if (lastPlayedAt !== null) {
+    items.push(
+      count === 1
+        ? {
+            label: "Show Last Play",
+            hint: lastPlayedWords(lastPlayedAt, new Date()),
+            onSelect: () => onShowLastPlay(lastPlayedAt),
+          }
+        : // No hint: on a greyed entry it would read as the reason.
+          { label: "Show Last Play", disabled: true },
+    );
+  }
 
   const lookups = lookupItems(track, count, onOpenUrl);
   if (lookups.length > 0) {
