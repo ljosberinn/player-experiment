@@ -444,6 +444,32 @@ describe("NowPlaying", () => {
     expect(screen.getByText("01 Maki.mp3")).toBeInTheDocument();
   });
 
+  it("says how often and when the song was heard, and links the when", async () => {
+    const onShowLastPlay = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <NowPlaying
+        track={track()}
+        heard={{ plays: 56, last: { words: "3 days ago", title: "12 April 2024, 20:15" } }}
+        onShowLastPlay={onShowLastPlay}
+      />,
+    );
+
+    expect(screen.getByText(/^56 plays/)).toBeInTheDocument();
+    const last = screen.getByRole("button", { name: "last played 3 days ago" });
+    expect(last).toHaveAttribute("title", "12 April 2024, 20:15");
+    await user.click(last);
+
+    expect(onShowLastPlay).toHaveBeenCalledOnce();
+  });
+
+  it("links nothing on a first play", () => {
+    render(<NowPlaying track={track()} heard={{ plays: 0, last: null }} />);
+
+    expect(screen.getByText("First play")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /last played/ })).toBeNull();
+  });
+
   it("requests cover art through the protocol helper", () => {
     render(<NowPlaying track={track({ cover_hash: "abc" })} />);
 

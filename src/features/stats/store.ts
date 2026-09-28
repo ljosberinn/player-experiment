@@ -40,7 +40,15 @@ interface StatsState {
    * has to.
    */
   groupVersion: number;
-  /** Reads the stored filters. Called when the view mounts, not at startup. */
+  /** Whether `load` has read the stored filters. */
+  loaded: boolean;
+  /**
+   * Reads the stored filters, once. Called when the view mounts, not at startup.
+   *
+   * Once rather than per mount: every change after it is applied here first,
+   * and a second read racing the write of a change just made - `showLastPlay`
+   * resets the filters and then opens the view - would put the old set back.
+   */
   load: () => Promise<void>;
   /** Applies a change and stores the whole set behind it. */
   setFilters: (change: Partial<StatsFilters>) => void;
@@ -68,10 +76,14 @@ export const useStatsStore = create<StatsState>((set, get) => ({
   filters: DEFAULT_FILTERS,
   genreVersion: 0,
   groupVersion: 0,
+  loaded: false,
 
   load: async () => {
+    if (get().loaded) {
+      return;
+    }
     try {
-      set({ filters: parseFilters(await loadStatsFilters()) });
+      set({ filters: parseFilters(await loadStatsFilters()), loaded: true });
     } catch {
       // The defaults are a working filter bar; a preference that will not read
       // is not worth an error over the view it belongs to.
