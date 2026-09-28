@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReleaseGroup, SortField, Track, TrackQuery } from "../../ipc";
-import { queryTracks } from "../../ipc";
+import type { BrowseGroup, ReleaseGroup, SortField, Track, TrackQuery } from "../../ipc";
+import { libraryStats, queryTracks, releaseGroups } from "../../ipc";
 import { albumIdentity } from "./browse";
 import { ReleaseGroups } from "./ReleaseGroups";
 import { useLibraryStore } from "./store";
@@ -21,6 +21,7 @@ vi.mock("../../ipc", () => ({
   tracksByIds: vi.fn(async () => []),
   loadColumnConfig: vi.fn(async () => null),
   saveColumnConfig: vi.fn(async () => undefined),
+  saveView: vi.fn(async () => undefined),
   coverUrl: (hash: string) => `cover://${hash}`,
 }));
 
@@ -300,6 +301,50 @@ describe("a drill-in drawn as release groups", () => {
     // first row of the first visible group rather than at a row read off a
     // group that has not been drawn.
     expect(asked).toEqual([0]);
+  });
+
+  it("fits a drill-in opened from another to its own releases", async () => {
+    // Ten pixels a character, as in `SongTable`'s fit tests.
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function (this: Range) {
+      return { width: (this.startContainer.textContent ?? "").length * 10 } as DOMRect;
+    });
+    await settled([release("Shields", 3)]);
+    useLibraryStore.setState({ tab: "albums" });
+
+    const long = "Degenhardt feat. Gossenboss mit Zett";
+    vi.mocked(queryTracks).mockImplementation(async (query: TrackQuery) =>
+      Array.from({ length: query.limit }, (_, i) => {
+        const row = track(query.offset + i);
+        return row.id === 5 ? { ...row, title: long } : row;
+      }),
+    );
+    vi.mocked(libraryStats).mockResolvedValue({
+      tracks: 6,
+      durationMs: 0,
+      bytes: 0,
+      missing: 0,
+      removed: 0,
+    });
+    let land: (releases: ReleaseGroup[]) => void = () => {};
+    vi.mocked(releaseGroups).mockImplementation(() => new Promise((resolve) => (land = resolve)));
+
+    let opened: Promise<void> = Promise.resolve();
+    await act(async () => {
+      opened = useLibraryStore
+        .getState()
+        .openGroup({ id: "disko", key: "Disko im Dunkeln" } as BrowseGroup);
+    });
+    await waitFor(() => expect(vi.mocked(releaseGroups)).toHaveBeenCalled());
+    // Room for a page fetched against the outgoing layout to land first.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    await act(async () => {
+      land([release("Disko im Dunkeln", 6)]);
+      await opened;
+    });
+
+    await waitFor(() => expect(useLibraryStore.getState().fitPending).toBe(false));
+    // Row 5 is the sixth row, which the outgoing three-track layout never drew.
+    expect(useLibraryStore.getState().fittedWidths.title).toBe(long.length * 10 + 12);
   });
 
   // The keyboard lives in `useSongTableWiring` rather than in `SongTable` so

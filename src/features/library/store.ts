@@ -165,14 +165,22 @@ interface LibraryState {
    *
    * The opposite question to `groups`: that one is what the tab holds, this
    * one is what the view already open holds, so it keeps the browse filter
-   * `groups` deliberately drops. Also what decides whether the table draws
-   * itself as groups.
+   * `groups` deliberately drops.
    *
    * Loaded beside `groups` and under the same token, because a search that
    * narrows the rows narrows these too and the row counts they carry are what
    * cuts the rows into groups - a stale list would index the wrong rows.
    */
   releases: ReleaseGroup[];
+  /**
+   * The `queryToken` `releases` were loaded under.
+   *
+   * Nothing clears `releases` on the way from one drill-in to the next, and
+   * the new view's rows arrive before its releases do. Until this catches up
+   * the drill-in fetches no rows and fits no columns: laid out in the outgoing
+   * release's groups, they would be cut at its track count.
+   */
+  releasesToken: number;
   /**
    * Which group each browse tab was last looking at.
    *
@@ -529,6 +537,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   groups: [],
   groupsLoading: false,
   releases: [],
+  releasesToken: 0,
   browseOffsets: NO_BROWSE_OFFSETS,
   browseListToken: 0,
   columns: DEFAULT_COLUMN_CONFIG,
@@ -727,20 +736,23 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         groups: reuse(state.groups, []),
         groupsLoading: false,
         releases: reuse(state.releases, []),
+        releasesToken: token,
       }));
       return;
     }
 
     set({ groupsLoading: true });
     try {
-      // Deliberately not the drill-in query: the list of albums must not be
-      // filtered by the album already open, or there would be no way back.
       const query = queryFor(get());
-      const groups = await browseGroups({ ...query, browse: null }, tab);
-      // The drill-in's own list, which keeps the filter the line above drops.
-      // Not asked for outside one: there is no drill-in to describe, and an
-      // empty list is what tells the table to draw flat.
-      const releases = query.browse === null ? [] : await releaseGroups(query);
+      // Side by side, since a drill-in's rows wait on the second.
+      const [groups, releases] = await Promise.all([
+        // Deliberately not the drill-in query: the list of albums must not be
+        // filtered by the album already open, or there would be no way back.
+        browseGroups({ ...query, browse: null }, tab),
+        // The drill-in's own list, which keeps the filter the line above
+        // drops. Not asked for outside one: there is no drill-in to describe.
+        query.browse === null ? [] : releaseGroups(query),
+      ]);
       if (get().queryToken !== token) {
         return;
       }
@@ -748,11 +760,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         groups: reuse(state.groups, groups),
         groupsLoading: false,
         releases: reuse(state.releases, releases),
+        releasesToken: token,
       }));
     } catch (cause) {
       if (get().queryToken !== token) {
         return;
       }
+      // `releasesToken` is left behind: the releases on hand describe another
+      // query, and rows laid out in them would be cut at the wrong counts.
       report(cause);
       set({ groupsLoading: false });
     }
