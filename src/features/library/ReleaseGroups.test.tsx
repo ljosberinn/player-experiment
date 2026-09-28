@@ -263,6 +263,25 @@ describe("a drill-in drawn as release groups", () => {
     });
   });
 
+  it("sizes each group to its own release after a swap to as many releases", async () => {
+    await settled([release("Yellow House", 2, { year: 2006 }), release("Shields", 3)]);
+
+    // One drill-in to another with the same number of releases: the
+    // virtualizer's count does not change, so nothing else prompts a relayout.
+    act(() => {
+      useLibraryStore.setState({
+        releases: [release("Veckatimest", 4), release("Horn of Plenty", 1)],
+        total: 5,
+      });
+    });
+
+    const sections = [...document.querySelectorAll("section.release-group")] as HTMLElement[];
+    expect(sections.map((one) => [one.style.height, one.style.transform])).toEqual([
+      ["187px", "translateY(0px)"],
+      ["94px", "translateY(187px)"],
+    ]);
+  });
+
   it("draws one column header above the groups rather than one per group", async () => {
     await settled([release("Yellow House", 2, { year: 2006 }), release("Shields", 3)]);
 

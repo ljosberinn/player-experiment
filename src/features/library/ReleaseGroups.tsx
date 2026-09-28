@@ -121,10 +121,16 @@ export function ReleaseGroups({
 
   const offsets = useMemo(() => groupOffsets(releases), [releases]);
 
+  // TanStack Virtual lays groups out again when `count` or `getItemKey`
+  // changes, never `estimateSize`, so a new identity per list is what makes a
+  // drill-in with as many releases as the last one take its own sizes.
+  const getItemKey = useCallback((index: number) => releases[index]?.id ?? index, [releases]);
+
   const virtualizer = useVirtualizer({
     count: releases.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => groupHeight(releases[index]?.trackCount ?? 0),
+    getItemKey,
     overscan: OVERSCAN,
   });
 
