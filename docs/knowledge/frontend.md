@@ -900,7 +900,9 @@ absences are what nobody notices coming back — hence the guards in
   words in the trailing column a menu elsewhere gives a shortcut, and the item
   carries an explicit `aria-label` because an accessible name is the plain
   concatenation of its text nodes — without one, Love with a hint is announced
-  as "LoveNo artist and title".
+  as "LoveNo artist and title". The one enabled entry with a hint is Show Last
+  Play (`3 days ago`), and it drops the hint when greyed, where it would read
+  as the reason.
 - **Love is one hook, two menus.** `useLoveEntry` gives the right-click menu and
   the Edit menu the same answer, subscribed rather than read once: a menu opened
   after a love has to say Unlove, and `getState()` would leave the bar one press

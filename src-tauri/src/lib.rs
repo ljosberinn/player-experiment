@@ -700,13 +700,18 @@ fn forward(
             // Written whether or not an account is connected - the scrobbler
             // below is the optional half.
             if let Ok(mut conn) = db.conn() {
-                let _ = log.op("playback.played").add("track", track_id).run(|| {
+                let counted = log.op("playback.played").add("track", track_id).run(|| {
                     let tx = conn.transaction()?;
                     playback::mark_played(&tx, *track_id, now_seconds())?;
                     plays::record(&tx, *track_id, *started_at)?;
                     tx.commit()?;
                     Ok(())
                 });
+                // The row's Plays, Last Played and Show Last Play read the
+                // count, and smart playlists filter on it.
+                if counted.is_ok() {
+                    crate::commands::announce_library_changed(&app);
+                }
             }
             // Handed to a thread of its own rather than sent here: this is the
             // player thread, and it is the one thread in the app that must not
@@ -739,9 +744,7 @@ fn forward(
             // left over from an unplugged drive is stale the moment it plays.
             //
             // The event is emitted on every load and the mark is almost never
-            // there, so the view is only told when something actually changed -
-            // a refresh per track change would drop every cached page for
-            // nothing.
+            // there, so the view is only told when something actually changed.
             if let Ok(conn) = db.conn() {
                 if scan::clear_missing(&conn, *track_id).unwrap_or(false) {
                     crate::commands::announce_library_changed(&app);

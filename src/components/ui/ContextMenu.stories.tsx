@@ -30,7 +30,13 @@ function Regions() {
       <ContextMenu
         items={rowItems({
           playlists: [],
-          track: { artist: null, album_artist: null, album: null, title: null },
+          track: {
+            artist: null,
+            album_artist: null,
+            album: null,
+            title: null,
+            last_played_at: null,
+          },
           loving: { loved: false, keyed: false, onToggle: () => {} },
         })}
         render={<div style={region} />}

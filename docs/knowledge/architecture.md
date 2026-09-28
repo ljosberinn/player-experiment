@@ -311,8 +311,10 @@ days, from the foot of the sidebar, and carries its own label because it has
 more than one producer.
 
 **Every write that commits announces itself on `library://changed`**, through
-`commands::announcing` — a scan, a tag write, the three removal commands, and
-each of the eight playlist commands. A bare ping with no payload:
+`commands::announcing` — a scan, a tag write, the three removal commands,
+each of the eight playlist commands, and a play that counts (`playback.played`,
+which the row's Plays, Last Played and Show Last Play read). A bare ping with
+no payload:
 nearly every write changes both the tracks and the playlists, so a scope would
 say "both" at almost every site while being one more thing two stores have to
 agree on. Only on success, since a rejected write changed nothing. This is the

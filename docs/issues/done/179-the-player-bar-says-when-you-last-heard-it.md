@@ -17,7 +17,7 @@ The date links to Statistics › Listening, drilled into that day.
   an older day to nothing, and *Owned* or *Loved* can hide the song. The
   Library tab's filters stay. `useStatsStore.load` now reads the stored filters
   once per session, so the view's read on opening cannot restore the old set.
-  [180](../upcoming/180-the-row-menu-goes-to-the-last-play.md) links the same
+  [180](180-the-row-menu-goes-to-the-last-play.md) links the same
   way and words its hint with `lastPlayedWords`.
 - `last_played_at` is when a play counted; the log dates it by its start. A
   play that crosses midnight links to the day after.

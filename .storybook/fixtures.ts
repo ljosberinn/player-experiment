@@ -309,6 +309,7 @@ export function rowItems(overrides: Partial<Parameters<typeof rowMenuItems>[0]> 
     loving: { loved: false, keyed: true, onToggle: noop },
     onExport: noop,
     onReveal: noop,
+    onShowLastPlay: noop,
     onOpenUrl: noop,
     ...overrides,
   });
