@@ -2168,12 +2168,22 @@ th.status {
 }
 
 .palette-field {
-  padding: 15px 20px 13px;
   border-bottom: 2px solid var(--rule);
 }
 
-.palette-field input {
+/* The field is the whole band above the rule, not a box inside it: no edge,
+   no fill and no focus edge of `.dialog input`'s, whose selectors this has to
+   outweigh. */
+.dialog .palette-field input,
+.dialog .palette-field input:focus {
   width: 100%;
+  height: 54px;
+  /* The rows' inset, so what is typed lines up with what it matches. */
+  padding: 0 13px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14.5px;
 }
 
 /* Full bleed, as `.menu-popup` is, so the highlight crosses the box. */
