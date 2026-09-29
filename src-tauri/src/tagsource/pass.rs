@@ -152,14 +152,21 @@ pub fn look_up(
         durations_ms: members.iter().map(|member| member.duration_ms).collect(),
     };
 
-    let candidates = retrying(&mut retries, || {
-        tagsource::musicbrainz::search(
-            transport,
-            release.album.as_deref(),
-            release.artist.as_deref(),
-            &local,
-        )
-    })?;
+    // An untagged release is a miss without asking: the search refuses it, and
+    // a refusal left it rowless, so every sweep failed on it again.
+    let named = |value: Option<&str>| value.is_some_and(|value| !value.trim().is_empty());
+    let candidates = if named(release.album.as_deref()) || named(release.artist.as_deref()) {
+        retrying(&mut retries, || {
+            tagsource::musicbrainz::search(
+                transport,
+                release.album.as_deref(),
+                release.artist.as_deref(),
+                &local,
+            )
+        })?
+    } else {
+        Vec::new()
+    };
     let Some(best) = candidates.first() else {
         if !dry_run {
             lookup::record(
@@ -1083,6 +1090,32 @@ pub(crate) mod tests {
             "recorded so it is never searched again, but not put to the user"
         );
         assert_eq!(transport.call_count(), 1, "no candidate, no fetch");
+    }
+
+    #[test]
+    fn an_untagged_release_is_recorded_as_a_miss_without_a_search() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let mut conn = db.conn().unwrap();
+        let transport = FakeTransport::new();
+
+        let verdict = look_up(
+            &mut conn,
+            &transport,
+            &ScanLock::default(),
+            &lookup::Release {
+                album: None,
+                artist: Some("  ".to_owned()),
+            },
+            dir.path(),
+            false,
+            100,
+        )
+        .unwrap();
+
+        assert_eq!(verdict.verdict, Verdict::NotFound);
+        assert_eq!(status(&conn).as_deref(), Some("none"), "not tried again");
+        assert_eq!(transport.call_count(), 0);
     }
 
     #[test]
