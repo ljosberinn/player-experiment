@@ -91,7 +91,8 @@ pub struct Activity {
 fn activity(conn: &Connection, playing: Playing) -> AppResult<Option<Activity>> {
     let row = conn
         .query_row(
-            "SELECT path, title, artist, album, release_mbid FROM tracks WHERE id = ?1",
+            "SELECT path, title, artist, album, release_mbid, release_group_mbid
+             FROM tracks WHERE id = ?1",
             [playing.track_id],
             |row| {
                 Ok((
@@ -100,11 +101,12 @@ fn activity(conn: &Connection, playing: Playing) -> AppResult<Option<Activity>> 
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
                 ))
             },
         )
         .optional()?;
-    let Some((path, title, artist, album, release_mbid)) = row else {
+    let Some((path, title, artist, album, release_mbid, release_group_mbid)) = row else {
         return Ok(None);
     };
 
@@ -117,14 +119,24 @@ fn activity(conn: &Connection, playing: Playing) -> AppResult<Option<Activity>> 
     Ok(Some(Activity {
         details: fit(&title),
         state: present(artist).map(|artist| fit(&artist)),
-        large_image: present(release_mbid).map_or_else(
-            || LOGO.to_owned(),
-            |mbid| format!("https://coverartarchive.org/release/{mbid}/front-500"),
-        ),
+        large_image: cover(release_group_mbid, release_mbid),
         large_text: present(album).map(|album| fit(&album)),
         start_ms: playing.start_ms,
         end_ms: playing.end_ms,
     }))
+}
+
+/// The group before the release: many pressings have no art of their own, and
+/// the archive answers a group with the front it chose from any of them.
+/// Nothing here can tell whether a release has art without asking the archive.
+fn cover(release_group_mbid: Option<String>, release_mbid: Option<String>) -> String {
+    if let Some(mbid) = present(release_group_mbid) {
+        return format!("https://coverartarchive.org/release-group/{mbid}/front-500");
+    }
+    if let Some(mbid) = present(release_mbid) {
+        return format!("https://coverartarchive.org/release/{mbid}/front-500");
+    }
+    LOGO.to_owned()
 }
 
 fn present(value: Option<String>) -> Option<String> {
@@ -689,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn the_cover_is_the_release_when_it_is_known() {
+    fn the_cover_is_the_release_group_then_the_release_then_the_logo() {
         let mut rig = Rig::new();
         rig.db
             .conn()
@@ -701,13 +713,24 @@ mod tests {
         rig.tick(4);
         rig.report(track(2, 0), 10);
         rig.tick(14);
+        rig.db
+            .conn()
+            .unwrap()
+            .execute(
+                "UPDATE tracks SET release_group_mbid = 'rg-1' WHERE id = 2",
+                [],
+            )
+            .unwrap();
+        rig.report(track(2, 60_000), 20);
+        rig.tick(24);
 
         let images: Vec<_> = rig.sets().into_iter().map(|a| a.large_image).collect();
         assert_eq!(
             images,
             [
                 LOGO.to_owned(),
-                "https://coverartarchive.org/release/mb-1/front-500".to_owned()
+                "https://coverartarchive.org/release/mb-1/front-500".to_owned(),
+                "https://coverartarchive.org/release-group/rg-1/front-500".to_owned(),
             ]
         );
     }

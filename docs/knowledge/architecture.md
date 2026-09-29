@@ -102,7 +102,9 @@ pipe; `save_discord_presence` nudges the thread, so turning it off clears and
 closes at once and turning it on sends what is playing. A failed connect or
 broken pipe is logged once per transition, never shown, and retried on the next
 update or after 30 s. Metadata is read from SQLite on the thread; the cover is
-the Cover Art Archive URL for a `release_mbid`, else the `apex` art asset.
+the Cover Art Archive front for the release group, else for the release, else
+the `apex` art asset: many pressings have no art of their own, and the archive
+answers a group with a front from any of them.
 
 One dedicated audio thread owns the `rodio` sink and receives an `mpsc` command
 enum. It emits `player://position` (throttled ~4/s), `player://state`,

@@ -27,7 +27,7 @@ title, the album, a cover and a progress bar — the Spotify card.
 | `status_display_type` | `State`; `Name` ("Listening to Apex") with no artist |
 | `details` | title, else the file name |
 | `state` | artist, omitted when blank |
-| `assets.large_image` | `https://coverartarchive.org/release/{release_mbid}/front-500` when set, else `apex` |
+| `assets.large_image` | `https://coverartarchive.org/release-group/{release_group_mbid}/front-500`, else `…/release/{release_mbid}/front-500`, else `apex` |
 | `assets.large_text` | album, omitted when blank |
 | `timestamps` | `start = now - position_ms`, `end = start + duration_ms` |
 
@@ -53,8 +53,8 @@ Paused or stopped: the activity is cleared.
 
 - Discord running, setting on: play — "Listening to <artist>" in the member
   list; the card has title, artist, album, bar.
-- Cover shows for a looked-up release (CAA redirects to archive.org — does
-  Discord's proxy follow it?); `apex` logo otherwise.
+- Cover shows for a looked-up release, including a pressing with no art of its
+  own (Nocte Obducta – Sequenzen einer Wanderung); `apex` logo otherwise.
 - A track with no artist reads "Listening to Apex"; a one-letter title shows.
 - Pause clears; resume and seek restore the bar at the right point.
 - Skip through ten tracks fast: the card ends on the last one.
