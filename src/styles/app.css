@@ -2160,56 +2160,6 @@ th.status {
   color: var(--faint);
 }
 
-/* Ctrl+K. One height whatever the filter leaves, so typing does not move the
-   field under the caret; the list is the body, the one scroller. */
-.dialog.palette {
-  width: min(560px, 92vw);
-  height: min(440px, 76vh);
-}
-
-.palette-field {
-  border-bottom: 2px solid var(--rule);
-}
-
-/* The field is the whole band above the rule, not a box inside it: no edge,
-   no fill and no focus edge of `.dialog input`'s, whose selectors this has to
-   outweigh. */
-.dialog .palette-field input,
-.dialog .palette-field input:focus {
-  width: 100%;
-  height: 54px;
-  /* The rows' inset, so what is typed lines up with what it matches. */
-  padding: 0 13px;
-  border: 0;
-  outline: none;
-  background: transparent;
-  font-size: 14.5px;
-}
-
-/* Full bleed, as `.menu-popup` is, so the highlight crosses the box. */
-.dialog.palette > .dialog-body {
-  gap: 0;
-  padding: 4px 0;
-  font-size: 13.5px;
-  line-height: 1;
-}
-
-.palette-group-label {
-  padding: 11px 13px 5px;
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.palette-empty {
-  margin: 0;
-  padding: 11px 13px;
-  color: var(--muted);
-}
-
 /* A rail of categories beside a pane that keeps the ~420px column the dialog
    had, which is what the last.fm prose was measured against in phase 10b. A
    grid rather than the paned column, because the rail sits beside the body;
@@ -3339,4 +3289,56 @@ body:not(:focus-within) .sidebar-row.current {
   margin-left: 7px;
   color: var(--label);
   font-size: 12px;
+}
+
+/* ---------- command palette ---------- */
+
+/* Ctrl+K. One height whatever the filter leaves, so typing does not move the
+   field under the caret; the list is the body, the one scroller. */
+.dialog.palette {
+  width: min(560px, 92vw);
+  height: min(440px, 76vh);
+}
+
+.palette-field {
+  border-bottom: 2px solid var(--rule);
+}
+
+/* The field is the whole band above the rule, not a box inside it: no edge,
+   no fill and no focus edge of `.dialog input`'s. Outweighing those is why
+   this section is last - no later `input` rule may be lighter. */
+.dialog .palette-field input,
+.dialog .palette-field input:focus {
+  width: 100%;
+  height: 54px;
+  /* The rows' inset, so what is typed lines up with what it matches. */
+  padding: 0 13px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14.5px;
+}
+
+/* Full bleed, as `.menu-popup` is, so the highlight crosses the box. */
+.dialog.palette > .dialog-body {
+  gap: 0;
+  padding: 4px 0;
+  font-size: 13.5px;
+  line-height: 1;
+}
+
+.palette-group-label {
+  padding: 11px 13px 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: 11px 13px;
+  color: var(--muted);
 }
