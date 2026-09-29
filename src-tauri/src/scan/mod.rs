@@ -358,7 +358,7 @@ pub fn remove_tracks(conn: &mut Connection, ids: &[i64]) -> AppResult<u32> {
 /// whose every copy goes hands nothing on, and its plays stay in the log
 /// unlinked.
 ///
-/// **`max`, never add**, for `lastfm::import::count`'s reason: after an import
+/// **`max`, never add**, for `plays::count`'s reason: after an import
 /// the copy that stays already counts the other copy's plays. The plays the log
 /// links to it once this removal is resolved are the third term, since they
 /// include local plays of the other copy.
@@ -413,7 +413,7 @@ fn delete_handing_on(conn: &Connection, ids: &[i64]) -> AppResult<u32> {
     // file is gone, and that is what a rebuild recomputes.
     crate::db::plays::resolve(conn)?;
 
-    // Guarded for `lastfm::import::count`'s reason: every update of `tracks`
+    // Guarded for `plays::count`'s reason: every update of `tracks`
     // reindexes the row in `tracks_fts`.
     conn.execute_batch(
         "UPDATE tracks
@@ -650,6 +650,7 @@ pub fn scan_roots(
     // the same answer 50 times.
     crate::db::tag_values::rebuild(conn)?;
     crate::db::plays::resolve(conn)?;
+    crate::db::plays::count(conn)?;
 
     on_progress(ScanProgress {
         scanned,
