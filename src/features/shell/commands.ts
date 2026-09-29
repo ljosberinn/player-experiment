@@ -74,6 +74,7 @@ export function commands({
 
   const playback: MenuItem[] = [
     {
+      id: "playback:toggle",
       label: status === "playing" ? "Pause" : "Play",
       shortcut: "Space",
       disabled: !hasTrack,
@@ -90,8 +91,9 @@ export function commands({
     );
   }
   playback.push(
-    { label: muted ? "Unmute" : "Mute", onSelect: () => onPlayback("mute") },
+    { id: "playback:mute", label: muted ? "Unmute" : "Mute", onSelect: () => onPlayback("mute") },
     {
+      id: "playback:repeat",
       label: repeatOne ? "Stop Repeating" : "Repeat One",
       onSelect: () => onPlayback("repeat"),
     },
@@ -152,22 +154,35 @@ export function commands({
     ),
   ];
   if (back !== null) {
-    goTo.push({ label: `Back to ${back}`, shortcut: "Alt+←", onSelect: onBack });
+    goTo.push({ id: "go:back", label: `Back to ${back}`, shortcut: "Alt+←", onSelect: onBack });
   }
   if (forward !== null) {
-    goTo.push({ label: `Forward to ${forward}`, shortcut: "Alt+→", onSelect: onForward });
+    goTo.push({
+      id: "go:forward",
+      label: `Forward to ${forward}`,
+      shortcut: "Alt+→",
+      onSelect: onForward,
+    });
   }
   // Only while the player bar shows the track these name.
   if (loaded && track !== null) {
     const artist = tagged(track.album_artist) ?? tagged(track.artist);
     const album = tagged(track.album);
     if (artist !== null) {
-      goTo.push({ label: `Artist: ${artist}`, onSelect: () => onShowTrackArtist(track) });
+      goTo.push({
+        id: "go:artist",
+        label: `Artist: ${artist}`,
+        onSelect: () => onShowTrackArtist(track),
+      });
     }
     // Without an album `showTrackGroup` lands on the artist, which the entry
     // above already is.
     if (album !== null) {
-      goTo.push({ label: `Release: ${album}`, onSelect: () => onShowTrackGroup(track) });
+      goTo.push({
+        id: "go:release",
+        label: `Release: ${album}`,
+        onSelect: () => onShowTrackGroup(track),
+      });
     }
   }
 

@@ -112,6 +112,15 @@ describe("commands", () => {
     expect(entry(group("Playback", { repeatOne: true }), "Stop Repeating")).toBeDefined();
   });
 
+  it("keeps a toggle's id when its label turns over, so Recent still finds it", () => {
+    const ids = (overrides: Partial<Parameters<typeof commands>[0]>) =>
+      group("Playback", { track: track(), ...overrides }).map((one) => one.id);
+
+    expect(ids({ status: "paused", muted: false, repeatOne: false })).toEqual(
+      ids({ status: "playing", muted: true, repeatOne: true }),
+    );
+  });
+
   it("greys Play with nothing queued, and offers no transport while stopped", () => {
     const playback = group("Playback");
 

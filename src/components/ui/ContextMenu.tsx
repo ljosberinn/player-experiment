@@ -15,7 +15,10 @@ export type MenuItem =
   | { kind: "separator" }
   | {
       kind?: "item";
-      /** Tells apart entries whose labels can collide, as two playlists' names can. */
+      /**
+       * Tells apart entries whose labels can collide, as two playlists' names
+       * can, and names one whose label changes, as the palette's Recent needs.
+       */
       id?: string | undefined;
       label: string;
       onSelect?: (() => void) | undefined;

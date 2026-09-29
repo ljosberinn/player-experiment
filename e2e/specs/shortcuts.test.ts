@@ -653,6 +653,39 @@ describe("the keys bound at the window", () => {
       await browser.$("//button[normalize-space()='Done']").click();
       await settings.waitForExist({ timeout: 10_000, reverse: true });
     });
+
+    // Last in the group, so the photographs above show a palette with no
+    // Recent in it.
+    it("remembers what it ran, in the library", async () => {
+      await dispatchCtrlK("body");
+      const palette = browser.$(PALETTE);
+      await palette.waitForExist({ timeout: 10_000 });
+      await browser.keys(["a", "p", "p", "e", "a", "r", "Enter"]);
+      // Settings' own button: the palette is a dialog too, and may still be closing.
+      const done = browser.$("//button[normalize-space()='Done']");
+      await done.waitForExist({ timeout: 10_000, timeoutMsg: "the entry never ran" });
+      await done.click();
+      await done.waitForExist({ timeout: 10_000, reverse: true });
+
+      await browser.waitUntil(
+        async () =>
+          (await invoke<string | null>("load_palette_recents"))?.includes(
+            "Settings › Appearance",
+          ) === true,
+        { timeout: 10_000, timeoutMsg: "the recent entry never reached the settings table" },
+      );
+
+      await dispatchCtrlK("body");
+      await palette.waitForExist({ timeout: 10_000 });
+      expect(
+        await browser.execute(() =>
+          [...document.querySelectorAll(".palette-group-label")].map((label) => label.textContent),
+        ),
+      ).toContain("Recent");
+      await capture("command-palette-recent");
+      await browser.keys(["Escape"]);
+      await palette.waitForExist({ timeout: 10_000, reverse: true });
+    });
   });
 
   describe("delete, which asks before it removes anything", () => {

@@ -142,7 +142,12 @@ export function rowMenuItems({
     // `useSelectionShortcuts` binds this, so the menu can name it. The two
     // entries below that carry a keystroke are the only two in the app that
     // have one; the sheet's `Ctrl+E` on Show in Explorer names nothing.
-    { label: count === 1 ? "Edit" : `Edit ${songs}`, shortcut: "Ctrl+I", onSelect: onEdit },
+    {
+      id: "row:edit",
+      label: count === 1 ? "Edit" : `Edit ${songs}`,
+      shortcut: "Ctrl+I",
+      onSelect: onEdit,
+    },
     // Beside Edit because it is the same act by another route: the tags of
     // these songs, typed by hand or fetched. Ellipsized - it opens a dialog
     // and writes nothing until that dialog is confirmed.
@@ -151,6 +156,7 @@ export function rowMenuItems({
       label: "Add to Playlist",
       disabled: addable.length === 0,
       submenu: addable.map((playlist) => ({
+        id: `add-to:${playlist.id}`,
         label: playlist.name,
         onSelect: () => onAddTo(playlist.id),
       })),
@@ -165,6 +171,7 @@ export function rowMenuItems({
   // Elsewhere the only thing removal could mean is the entry below it.
   if (openPlaylist?.kind === "static") {
     items.push({
+      id: "row:remove-from-playlist",
       label: count === 1 ? "Remove from Playlist" : `Remove ${songs} from Playlist`,
       // Where Delete lands inside a static playlist - the less destructive
       // reading, which is the rule `useSelectionShortcuts` follows.
@@ -178,6 +185,7 @@ export function rowMenuItems({
   // is. Ellipsized because it asks first, which the playlist one does not.
   if (onRemoveFromLibrary !== undefined) {
     items.push({
+      id: "row:remove-from-library",
       label: count === 1 ? "Remove from Library…" : `Remove ${songs} from Library…`,
       // Delete's other landing place: everywhere but a static playlist, there
       // is nothing to take a song out of but the library. Named only where
@@ -191,7 +199,7 @@ export function rowMenuItems({
 
   items.push(
     { kind: "separator" },
-    { label: `Export ${songs}…`, onSelect: onExport },
+    { id: "row:export", label: `Export ${songs}…`, onSelect: onExport },
     {
       label: "Show in Explorer",
       // Reveals one file. With several selected there is no single thing to
@@ -238,12 +246,13 @@ function loveItem(loving: Loving, count: number, songs: string): MenuItem {
   if (!loving.keyed) {
     // No key to remember the love under. The backend refuses it too.
     return {
+      id: "row:love",
       label,
       disabled: true,
       hint: count === 1 ? "No artist and title" : "One has no artist and title",
     };
   }
-  return { label, onSelect: () => loving.onToggle(!loving.loved) };
+  return { id: "row:love", label, onSelect: () => loving.onToggle(!loving.loved) };
 }
 
 /**

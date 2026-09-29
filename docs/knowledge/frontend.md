@@ -921,6 +921,15 @@ absences are what nobody notices coming back — hence the guards in
   through `showGroup`, which lands on its tab from anywhere and leaves any open
   playlist; `openGroup` drills only within the open tab. A song plays alone. A
   failed search shows no music and no error.
+- **The palette remembers the last eight commands.** With nothing typed they
+  lead as Recent, and are left out of their own groups. `withRecents` keys an
+  entry by its `MenuItem.id`, or by group and label: the Edit menu's Play and
+  the transport's share a label. An entry whose label follows state — a count,
+  a name, Play/Pause — carries an id so it survives the change. Keys are
+  re-resolved on open: one nothing answers to is not listed (a deleted
+  playlist, the open view, Next while stopped), and a greyed one is listed
+  greyed. Found music is not remembered. Stored as `palette.recents`, not
+  exportable: it names playlist ids.
 - **A greyed menu entry says what would un-grey it.** `MenuItem.hint` is a few
   words in the trailing column a menu elsewhere gives a shortcut, and the item
   carries an explicit `aria-label` because an accessible name is the plain

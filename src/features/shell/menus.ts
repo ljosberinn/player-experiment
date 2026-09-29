@@ -95,18 +95,21 @@ export function menus({
   const destructive: MenuItem[] = [];
   if (selectionCount > 0) {
     destructive.push({
+      id: "file:remove-selection",
       label: `Remove ${selectionCount} Song${selectionCount === 1 ? "" : "s"} from Library…`,
       onSelect: onRemoveFromLibrary,
     });
   }
   if (missingCount > 0) {
     destructive.push({
+      id: "file:remove-missing",
       label: `Remove ${missingCount} Missing Song${missingCount === 1 ? "" : "s"}…`,
       onSelect: onRemoveMissing,
     });
   }
   if (removedCount > 0) {
     destructive.push({
+      id: "file:forget-removed",
       label: `Forget ${removedCount} Removed Song${removedCount === 1 ? "" : "s"}…`,
       onSelect: onForgetRemoved,
     });
@@ -134,6 +137,7 @@ export function menus({
       items: [
         { label: "Export All…", onSelect: onExportAll },
         {
+          id: "export:selection",
           label: exportSelectionLabel,
           // Nothing selected and no playlist open means nothing to write. The
           // entry stays, greyed: it is the same action, waiting for a subject.

@@ -1277,6 +1277,21 @@ pub fn save_view(db: State<'_, Db>, view_json: String) -> AppResult<()> {
     settings::set(&conn, settings::VIEW, &view_json)
 }
 
+/// The command palette's recent entries, as the frontend wrote them. Opaque
+/// for the filters' reason: which entries exist is decided in
+/// `features/shell/commands.ts`.
+#[tauri::command]
+pub fn load_palette_recents(db: State<'_, Db>) -> AppResult<Option<String>> {
+    let conn = db.conn()?;
+    settings::get(&conn, settings::PALETTE_RECENTS)
+}
+
+#[tauri::command]
+pub fn save_palette_recents(db: State<'_, Db>, recents_json: String) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(&conn, settings::PALETTE_RECENTS, &recents_json)
+}
+
 /// Whether the cover-coloured background is on.
 ///
 /// A bool rather than the opaque string the sidebar and column layouts use:
