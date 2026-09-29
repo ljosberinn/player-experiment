@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.22.0](https://github.com/ljosberinn/player-experiment/compare/v0.21.1...v0.22.0) (2026-09-29)
+
+
+### Features
+
+* Ctrl+K opens a command palette ([#185](https://github.com/ljosberinn/player-experiment/issues/185)) ([#357](https://github.com/ljosberinn/player-experiment/issues/357)) ([5fbc017](https://github.com/ljosberinn/player-experiment/commit/5fbc017040dcbd8a4e9eb2f0d0dd9c19df673dd3))
+* Discord shows what is playing ([#184](https://github.com/ljosberinn/player-experiment/issues/184)) ([#356](https://github.com/ljosberinn/player-experiment/issues/356)) ([c884643](https://github.com/ljosberinn/player-experiment/commit/c884643ab1b72e6988c6ed4d6ddeb5b60db6a397))
+* one instance per library ([#189](https://github.com/ljosberinn/player-experiment/issues/189)) ([#362](https://github.com/ljosberinn/player-experiment/issues/362)) ([c638cdb](https://github.com/ljosberinn/player-experiment/commit/c638cdb9fba6a3d39fce15e382099c05c5531e7f))
+* the palette finds music ([#187](https://github.com/ljosberinn/player-experiment/issues/187)) ([#360](https://github.com/ljosberinn/player-experiment/issues/360)) ([d7b4aae](https://github.com/ljosberinn/player-experiment/commit/d7b4aae1d26fe3513eb03774992f42dd31dad9fe))
+* the palette goes places ([#186](https://github.com/ljosberinn/player-experiment/issues/186)) ([#359](https://github.com/ljosberinn/player-experiment/issues/359)) ([13b4ee9](https://github.com/ljosberinn/player-experiment/commit/13b4ee97f2e46c98b5cb4eb8d8c2c79e86b7ddb3))
+* the palette remembers ([#188](https://github.com/ljosberinn/player-experiment/issues/188)) ([#361](https://github.com/ljosberinn/player-experiment/issues/361)) ([2445121](https://github.com/ljosberinn/player-experiment/commit/244512150d89fba5e6746ad2dae1413563b5da03))
+
 ## [0.21.1](https://github.com/ljosberinn/player-experiment/compare/v0.21.0...v0.21.1) (2026-09-29)
 
 
