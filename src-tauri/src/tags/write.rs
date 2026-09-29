@@ -645,7 +645,7 @@ fn drop_unsynchronisation(id3: &mut Id3v2Tag) {
 /// Only ID3v2 gets this. An mp3 carrying nothing but an ID3v1 tag has no frame
 /// to put a MusicBrainz id in, and turning it into an ID3v2 file would be a
 /// larger change to make silently than the ids are worth.
-fn save_tag(path: &Path, tag: Tag) -> Result<(), Refused> {
+fn save_tag(path: &Path, mut tag: Tag) -> Result<(), Refused> {
     if tag.tag_type() != TagType::Id3v2 {
         return tag
             .save_to_path(path, WriteOptions::default())
@@ -663,7 +663,19 @@ fn save_tag(path: &Path, tag: Tag) -> Result<(), Refused> {
         })
         .collect();
 
+    // lofty reads `TXXX:WORK` into `ItemKey::Work` but converts it back into a
+    // plain text frame with the id `WORK`, which its own encoder then refuses,
+    // failing the whole save (https://github.com/Serial-ATA/lofty-rs/issues/732).
+    // So the key is taken off before the conversion and written back as the
+    // TXXX frame it came from.
+    let work: Vec<String> = tag.get_strings(ItemKey::Work).map(str::to_owned).collect();
+    tag.remove_key(ItemKey::Work);
+
     let mut id3 = Id3v2Tag::from(tag);
+    if !work.is_empty() {
+        // Null-separated, as ID3v2.4 multi-value text is and as lofty joins it.
+        id3.insert_user_text("WORK".to_owned(), work.join("\0"));
+    }
     repair_languages(&mut id3);
     drop_unsynchronisation(&mut id3);
     for (_, description) in MUSICBRAINZ_TXXX {
