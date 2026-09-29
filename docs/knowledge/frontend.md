@@ -896,6 +896,16 @@ absences are what nobody notices coming back — hence the guards in
   works from inside a text field, and is always `preventDefault`ed — WebView2
   opens its find bar on any Ctrl+F the page leaves alone — but moves no focus
   while a `.dialog` is in the DOM.
+- **Ctrl+K is `AppPalette`'s**, on the same terms as Ctrl+F, except that it
+  closes a palette already open — the palette is a `.dialog` itself. The open
+  flag lives in `AppPalette` rather than `App`, so opening re-renders nothing
+  around it; closed, it subscribes to nothing. Its entries are `commands()`,
+  pure like `menus()`, which takes the bar's menus from the same `useMenus`
+  hook `AppMenus` uses, so the two cannot offer different actions for one
+  selection. A submenu flattens to `Parent › Child`. An entry closes the
+  palette before it runs, so a dialog it opens is not handed focus by a
+  palette still closing. Greyed entries are reachable and inert, as in a menu:
+  Base UI's combobox hard-codes `disabledIndices` empty too.
 - **A greyed menu entry says what would un-grey it.** `MenuItem.hint` is a few
   words in the trailing column a menu elsewhere gives a shortcut, and the item
   carries an explicit `aria-label` because an accessible name is the plain

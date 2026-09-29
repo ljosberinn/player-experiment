@@ -1,6 +1,9 @@
 import { browser, expect } from "@wdio/globals";
 import { LIBRARY } from "../fixtures";
 import { invoke } from "../invoke";
+import { chooseFromMenu } from "../menu";
+import { capture } from "../screenshot";
+import { clearGround, GROUNDS, setGround } from "../theme";
 
 /**
  * Every key the app binds at the window, and the field that stands them down.
@@ -557,6 +560,71 @@ describe("the keys bound at the window", () => {
       expect(taken).toBe(true);
       expect(await selection()).toEqual({ focused: true, start: 0, end: 2 });
       await clearSearch();
+    });
+  });
+
+  /**
+   * Taken from the search box, as Ctrl+F is, and refused over another dialog:
+   * the palette is modal, and opening one over a second leaves that one
+   * unreachable.
+   */
+  describe("ctrl+K, which is the command palette", () => {
+    const PALETTE = "[role='dialog'][aria-label='Command palette']";
+
+    function dispatchCtrlK(selector: string): Promise<boolean> {
+      return browser.execute((target: string) => {
+        const event = new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "k",
+          ctrlKey: true,
+        });
+        document.querySelector(target)?.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, selector);
+    }
+
+    it("opens from the search box, and closes on Escape", async () => {
+      await focusSearch();
+
+      expect(await dispatchCtrlK(SEARCH)).toBe(true);
+
+      const palette = browser.$(PALETTE);
+      await palette.waitForExist({ timeout: 10_000, timeoutMsg: "the palette never opened" });
+      await browser.keys(["Escape"]);
+      await palette.waitForExist({ timeout: 10_000, reverse: true });
+    });
+
+    it("photographs on both grounds", async () => {
+      await row(0).click();
+      await browser.waitUntil(async () => (await selectedCount()) === 1, { timeout: 10_000 });
+      for (const ground of GROUNDS) {
+        await setGround(ground);
+        await dispatchCtrlK("body");
+        const palette = browser.$(PALETTE);
+        await palette.waitForExist({ timeout: 10_000 });
+
+        await capture(`command-palette-${ground}`);
+
+        await browser.keys(["e", "x", "p"]);
+        await capture(`command-palette-filtered-${ground}`);
+        await browser.keys(["Escape"]);
+        await palette.waitForExist({ timeout: 10_000, reverse: true });
+      }
+      await clearGround();
+      await browser.keys(["Escape"]);
+    });
+
+    it("does not open over another dialog", async () => {
+      await chooseFromMenu("Edit", "Settings…");
+      const settings = browser.$("[role='dialog']");
+      await settings.waitForExist({ timeout: 10_000 });
+
+      await dispatchCtrlK("body");
+
+      expect(await browser.$(PALETTE).isExisting()).toBe(false);
+      await browser.$("//button[normalize-space()='Done']").click();
+      await settings.waitForExist({ timeout: 10_000, reverse: true });
     });
   });
 

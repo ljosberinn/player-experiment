@@ -24,7 +24,7 @@ import { useZoomStore } from "./zoomStore";
 
 export type SettingsCategory = "appearance" | "library" | "online" | "about";
 
-const CATEGORIES: { value: SettingsCategory; label: string }[] = [
+export const SETTINGS_CATEGORIES: { value: SettingsCategory; label: string }[] = [
   { value: "appearance", label: "Appearance" },
   { value: "library", label: "Library" },
   { value: "online", label: "Online" },
@@ -112,7 +112,7 @@ export function SettingsDialog({
       <DialogHeader title="Settings" />
 
       <Tabs.List className="settings-rail">
-        {CATEGORIES.map(({ value, label }) => (
+        {SETTINGS_CATEGORIES.map(({ value, label }) => (
           <Tabs.Tab key={value} value={value} className="settings-tab">
             {label}
           </Tabs.Tab>

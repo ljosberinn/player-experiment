@@ -30,6 +30,7 @@ import { usePlayerShortcuts } from "./features/player/usePlayerShortcuts";
 import { PlaylistSidebar } from "./features/playlists/PlaylistSidebar";
 import { usePlaylistsStore } from "./features/playlists/store";
 import { AppMenus } from "./features/shell/AppMenus";
+import { AppPalette } from "./features/shell/AppPalette";
 import { BackgroundTaskProgress } from "./features/shell/BackgroundTaskProgress";
 import { DynamicBackground } from "./features/shell/DynamicBackground";
 import { useDynamicBackgroundStore } from "./features/shell/dynamicBackgroundStore";
@@ -509,6 +510,13 @@ export function App() {
       {settings === null ? null : (
         <SettingsDialog category={settings} onClose={() => setSettings(null)} />
       )}
+
+      {/* Ctrl+K. Holds its own open flag and renders nothing while closed. */}
+      <AppPalette
+        onRemoveMissing={() => setConfirmRemoveMissing(true)}
+        onSettings={(category = "appearance") => setSettings(category)}
+        onExport={(choice) => void runExport(choice)}
+      />
 
       {editing ? (
         <SmartPlaylistEditor
