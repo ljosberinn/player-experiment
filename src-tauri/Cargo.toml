@@ -61,6 +61,9 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 # Output only: `playback` pulls cpal, `mp3` routes decoding through symphonia.
 # The formats we do not ingest are left off so their decoders are not linked.
 rodio = { version = "0.22", default-features = false, features = ["playback", "mp3"] }
+# Discord's local IPC over its named pipe. Synchronous, like
+# `lastfm::transport`, and free of `unsafe`: std's `OpenOptions` opens the pipe.
+discord-rich-presence = "1.1"
 
 # Test-only instrumentation. `tauri-plugin-wdio-webdriver` embeds a WebDriver
 # HTTP server in the binary, so it must never reach a shipped build - hence

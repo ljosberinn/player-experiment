@@ -17,6 +17,7 @@ import {
   libraryStats,
   listPlaylists,
   listWatchFolders,
+  loadDiscordPresence,
   loadDynamicBackground,
   loadUnattendedLookup,
   loadWindowGeometry,
@@ -43,6 +44,7 @@ import {
   removeFromPlaylist,
   renamePlaylist,
   type SmartOrder,
+  saveDiscordPresence,
   saveDynamicBackground,
   saveUnattendedLookup,
   saveWindowGeometry,
@@ -209,6 +211,16 @@ describe("ipc", () => {
       invokeMock.mockResolvedValue(true);
       await expect(loadUnattendedLookup()).resolves.toBe(true);
       expect(invokeMock).toHaveBeenCalledWith("load_unattended_lookup");
+    });
+
+    it("round-trips the Discord presence switch", async () => {
+      invokeMock.mockResolvedValue(undefined);
+      await saveDiscordPresence(true);
+      expect(invokeMock).toHaveBeenCalledWith("save_discord_presence", { enabled: true });
+
+      invokeMock.mockResolvedValue(true);
+      await expect(loadDiscordPresence()).resolves.toBe(true);
+      expect(invokeMock).toHaveBeenCalledWith("load_discord_presence");
     });
   });
 

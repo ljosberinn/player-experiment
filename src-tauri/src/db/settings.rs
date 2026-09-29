@@ -65,6 +65,10 @@ pub const DYNAMIC_BACKGROUND: &str = "appearance.dynamicBackground";
 /// the tag sources are inert unless somebody asks. The ask is this switch,
 /// once, rather than a confirmation per release.
 pub const UNATTENDED_LOOKUP: &str = "lookup.unattended";
+/// Whether Discord is told what is playing. Off unless turned on, and not
+/// exportable, for [`UNATTENDED_LOOKUP`]'s reason: it publishes what somebody
+/// listens to.
+pub const DISCORD_PRESENCE: &str = "discord.presence";
 /// Whether the pass files the library into [`LIBRARY_ROOT`].
 ///
 /// Off unless it has been turned on, for [`UNATTENDED_LOOKUP`]'s reason in the
@@ -294,6 +298,11 @@ pub fn unattended_lookup(conn: &Connection) -> AppResult<bool> {
     Ok(get(conn, UNATTENDED_LOOKUP)?.as_deref() == Some("true"))
 }
 
+/// Whether Discord is told what is playing. Only the explicit "true" is on.
+pub fn discord_presence(conn: &Connection) -> AppResult<bool> {
+    Ok(get(conn, DISCORD_PRESENCE)?.as_deref() == Some("true"))
+}
+
 /// Where the library is filed, if it is filed at all.
 ///
 /// The two keys have four combinations and only three of them mean anything:
@@ -409,6 +418,19 @@ mod tests {
         // a decision about that machine, not a preference an exported library
         // carries to the next one.
         assert!(!is_exportable(UNATTENDED_LOOKUP));
+        assert!(!is_exportable(DISCORD_PRESENCE));
+    }
+
+    #[test]
+    fn discord_presence_is_off_until_it_is_turned_on() {
+        let (_dir, conn) = conn();
+        assert!(!discord_presence(&conn).unwrap());
+
+        set(&conn, DISCORD_PRESENCE, "true").unwrap();
+        assert!(discord_presence(&conn).unwrap());
+
+        set(&conn, DISCORD_PRESENCE, "yes please").unwrap();
+        assert!(!discord_presence(&conn).unwrap());
     }
 
     #[test]

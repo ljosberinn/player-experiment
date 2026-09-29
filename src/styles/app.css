@@ -2353,7 +2353,8 @@ th.status {
 
 /* Prose, so it wraps rather than stretching a row, and quieter than the status
    line above it - it is there to be read once, not on every visit. */
-.settings-lastfm-note {
+.settings-lastfm-note,
+.settings-note {
   margin: 0;
   color: var(--muted);
   font-size: 12.5px;
