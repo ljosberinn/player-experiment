@@ -571,6 +571,15 @@ export function saveUnattendedLookup(enabled: boolean): Promise<void> {
   return invoke<void>("save_unattended_lookup", { enabled });
 }
 
+/** Whether Discord's status shows what is playing. Off until turned on. */
+export function loadDiscordPresence(): Promise<boolean> {
+  return invoke<boolean>("load_discord_presence");
+}
+
+export function saveDiscordPresence(enabled: boolean): Promise<void> {
+  return invoke<void>("save_discord_presence", { enabled });
+}
+
 /**
  * The folder the library is filed into, and whether it is being filed.
  *

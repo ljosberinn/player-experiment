@@ -22,6 +22,8 @@ src-tauri/src/
   export/     JSON export
   lastfm/     scrobbling: the transport seam, api_sig, the rules, the queue,
               the history import, loving a track
+  discord/    the "Listening to" card over Discord's local pipe, behind its
+              own transport seam
   tagsource/  MusicBrainz + Cover Art Archive lookup: transport seam, the
               process-wide rate limiter, candidate scoring, one release's
               lookup in `pass`
@@ -89,6 +91,20 @@ The scrobbler's `RefreshLoved` - at launch and on connecting - flushes, takes
 in the account's loved tracks through `lastfm::love::absorb`, and emits
 `loved://changed`, which the window answers by re-reading the set. See
 [data-model](data-model.md#the-loved-set).
+
+A **presence thread** owns the Discord pipe, fed from `Event::StateChanged`
+with the track and its wall-clock start and end - `NowPlaying` is five seconds
+late and blind to pause and seek. It keeps only the latest state and sends at
+most once per 4 s, trailing, so a skip through the queue is one update; a
+report that moves nothing (a volume change) sends none. Paused or stopped
+clears the card. Off (`discord.presence`, the default) nothing touches the
+pipe; `save_discord_presence` nudges the thread, so turning it off clears and
+closes at once and turning it on sends what is playing. A failed connect or
+broken pipe is logged once per transition, never shown, and retried on the next
+update or after 30 s. Metadata is read from SQLite on the thread; the cover is
+the Cover Art Archive front for the release group, else for the release, else
+the `apex` art asset: many pressings have no art of their own, and the archive
+answers a group with a front from any of them.
 
 One dedicated audio thread owns the `rodio` sink and receives an `mpsc` command
 enum. It emits `player://position` (throttled ~4/s), `player://state`,

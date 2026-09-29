@@ -15,6 +15,7 @@ import { LibraryFolderSettings } from "../library/LibraryFolderSettings";
 import { WatchFolderSettings } from "../library/WatchFolderSettings";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
+import { usePresenceStore } from "./presenceStore";
 import { report } from "./statusStore";
 import { THEME_LABELS, THEME_PREFERENCES } from "./theme";
 import { useThemeStore } from "./themeStore";
@@ -74,17 +75,21 @@ export function SettingsDialog({
   const unattendedLookup = useLookupStore((s) => s.enabled);
   const setUnattendedLookup = useLookupStore((s) => s.set);
   const loadUnattendedLookup = useLookupStore((s) => s.load);
+  const presence = usePresenceStore((s) => s.enabled);
+  const setPresence = usePresenceStore((s) => s.set);
+  const loadPresence = usePresenceStore((s) => s.load);
   const [lockedRoot, setLockedRoot] = useState<string | null>(null);
   // Stable, so the section below does not re-read the folder on every render
   // of this dialog.
   const lock = useCallback((root: string | null) => setLockedRoot(root), []);
 
   // Read here rather than at startup: nothing outside this dialog draws from
-  // it, and the backend reads the setting itself between releases. The dialog
+  // either, and the backend reads both settings itself. The dialog
   // is mounted only while it is open, so this runs each time it is opened.
   useEffect(() => {
     void loadUnattendedLookup();
-  }, [loadUnattendedLookup]);
+    void loadPresence();
+  }, [loadUnattendedLookup, loadPresence]);
 
   // Reported on the status bar rather than in the dialog: the failure is a
   // file manager that would not open, which is neither about the log nor
@@ -195,6 +200,21 @@ export function SettingsDialog({
           />
         </div>
         <LastfmSettings />
+        <section>
+          <h4>Discord</h4>
+          <div className="settings-row">
+            <label htmlFor="discord-presence">Show What's Playing</label>
+            <Checkbox
+              id="discord-presence"
+              checked={presence}
+              onChange={(checked) => void setPresence(checked)}
+            />
+          </div>
+          <p className="settings-note">
+            Your Discord status shows the title, artist, album and cover of what is playing, to
+            anyone who can see your status. Nothing is shown while paused.
+          </p>
+        </section>
       </Tabs.Panel>
 
       {/* The one row that is not a preference: it opens the file every

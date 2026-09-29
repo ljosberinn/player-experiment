@@ -1299,6 +1299,31 @@ pub fn save_unattended_lookup(db: State<'_, Db>, enabled: bool) -> AppResult<()>
     )
 }
 
+/// Whether Discord is told what is playing.
+#[tauri::command]
+pub fn load_discord_presence(db: State<'_, Db>) -> AppResult<bool> {
+    let conn = db.conn()?;
+    settings::discord_presence(&conn)
+}
+
+/// The presence thread is told at once, rather than on the next state change:
+/// a paused player would otherwise keep the card until it played again.
+#[tauri::command]
+pub fn save_discord_presence(
+    db: State<'_, Db>,
+    presence: State<'_, crate::discord::Presence>,
+    enabled: bool,
+) -> AppResult<()> {
+    let conn = db.conn()?;
+    settings::set(
+        &conn,
+        settings::DISCORD_PRESENCE,
+        if enabled { "true" } else { "false" },
+    )?;
+    presence.setting_changed();
+    Ok(())
+}
+
 /// The Library folder as Settings draws it.
 #[tauri::command]
 pub fn load_library_folder(db: State<'_, Db>) -> AppResult<LibraryFolder> {

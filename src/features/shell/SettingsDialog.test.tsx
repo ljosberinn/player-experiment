@@ -6,6 +6,7 @@ import { choose, select, showing } from "../../test/select";
 import { useLastfmStore } from "../lastfm/store";
 import { useDynamicBackgroundStore } from "./dynamicBackgroundStore";
 import { useLookupStore } from "./lookupStore";
+import { usePresenceStore } from "./presenceStore";
 import { type SettingsCategory, SettingsDialog } from "./SettingsDialog";
 import { useStatusStore } from "./statusStore";
 import { useThemeStore } from "./themeStore";
@@ -26,6 +27,8 @@ vi.mock("../../ipc", () => ({
   revealMainLog: vi.fn(async () => undefined),
   loadUnattendedLookup: vi.fn(async () => false),
   saveUnattendedLookup: vi.fn(async () => undefined),
+  loadDiscordPresence: vi.fn(async () => false),
+  saveDiscordPresence: vi.fn(async () => undefined),
   loadLibraryFolder: vi.fn(async () => ({ root: null, organize: false })),
   saveOrganizeLibrary: vi.fn(async () => undefined),
   setLibraryRoot: vi.fn(async () => undefined),
@@ -66,6 +69,7 @@ describe("the Settings dialog", () => {
   beforeEach(() => {
     useDynamicBackgroundStore.setState({ enabled: true });
     useLookupStore.setState({ enabled: false });
+    usePresenceStore.setState({ enabled: false });
     useThemeStore.setState({ preference: "system", ground: "light" });
     useLastfmStore.setState(useLastfmStore.getInitialState());
   });
@@ -252,6 +256,20 @@ describe("the Settings dialog", () => {
 
     expect(useLookupStore.getState().enabled).toBe(true);
     expect(lookup).toBeChecked();
+  });
+
+  it("opts into showing what is playing on Discord, below last.fm", async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialog category="online" onClose={vi.fn()} />);
+    const presence = screen.getByRole("checkbox", { name: "Show What's Playing" });
+
+    const headings = screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
+    expect(headings).toEqual(["last.fm", "Discord"]);
+    expect(presence).not.toBeChecked();
+    await user.click(presence);
+
+    expect(usePresenceStore.getState().enabled).toBe(true);
+    expect(presence).toBeChecked();
   });
 
   // jsdom has no stylesheet, so a class is all this can check. The zoom

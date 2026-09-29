@@ -10,6 +10,7 @@ import { usePlaylistsStore } from "../src/features/playlists/store";
 import { useBackgroundTaskStore } from "../src/features/shell/backgroundTaskStore";
 import { useDynamicBackgroundStore } from "../src/features/shell/dynamicBackgroundStore";
 import { useLookupStore } from "../src/features/shell/lookupStore";
+import { usePresenceStore } from "../src/features/shell/presenceStore";
 import { useStatusStore } from "../src/features/shell/statusStore";
 import { useThemeStore } from "../src/features/shell/themeStore";
 import { useZoomStore } from "../src/features/shell/zoomStore";
@@ -32,6 +33,7 @@ export const STORES = [
   useLovedStore,
   usePlayerStore,
   usePlaylistsStore,
+  usePresenceStore,
   useScanStore,
   useStatsStore,
   useStatusStore,

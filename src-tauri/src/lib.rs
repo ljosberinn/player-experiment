@@ -2,6 +2,7 @@ pub mod audio;
 pub mod commands;
 pub mod crash;
 pub mod db;
+pub mod discord;
 pub mod error;
 pub mod export;
 pub mod lastfm;
@@ -134,16 +135,19 @@ pub fn run() {
                 .conn()
                 .and_then(|conn| Ok((settings::volume(&conn)?, settings::muted(&conn)?)))?;
             let scrobbler = start_scrobbler(app.handle().clone(), db.clone(), log.clone());
+            let presence = discord::Presence::start(db.clone(), log.clone());
             app.manage(start_player(
                 app.handle().clone(),
                 db.clone(),
                 scrobbler.clone(),
+                presence.clone(),
                 volume,
                 muted,
                 log.clone(),
             ));
             resume_playback(app.handle().clone(), db.clone(), log.clone());
             app.manage(scrobbler);
+            app.manage(presence);
             // One lock for everything that rewrites rows from files on disk,
             // so the unattended pass can tell whether it would be racing a
             // scan or a write the user started.
@@ -267,6 +271,8 @@ pub fn run() {
             commands::save_dynamic_background,
             commands::load_unattended_lookup,
             commands::save_unattended_lookup,
+            commands::load_discord_presence,
+            commands::save_discord_presence,
             commands::load_library_folder,
             commands::save_organize_library,
             commands::set_library_root,
@@ -597,6 +603,7 @@ fn start_player(
     app: tauri::AppHandle,
     db: Db,
     scrobbler: Option<lastfm::Scrobbler>,
+    presence: discord::Presence,
     volume: f32,
     muted: bool,
     log: log::Log,
@@ -611,7 +618,7 @@ fn start_player(
             audio::sink::SilentSink::new(),
             volume,
             muted,
-            forward(app, db, scrobbler, log),
+            forward(app, db, scrobbler, presence, log),
         );
     }
 
@@ -621,7 +628,12 @@ fn start_player(
             // watcher needs the same stream-error flag the sink was opened
             // with, and the channel it sends into only exists after `spawn`.
             let faulted = sink.faulted();
-            let player = Player::spawn(sink, volume, muted, forward(app, db, scrobbler, log));
+            let player = Player::spawn(
+                sink,
+                volume,
+                muted,
+                forward(app, db, scrobbler, presence, log),
+            );
             player.watch_output(faulted);
             player
         }
@@ -649,6 +661,7 @@ fn forward(
     // `None` in a build with no last.fm key - no thread, no channel, and
     // nothing on the played path that was not there before.
     scrobbler: Option<lastfm::Scrobbler>,
+    presence: discord::Presence,
     log: log::Log,
 ) -> impl FnMut(&Event, &audio::EngineState) + Send + 'static {
     move |event, state| match event {
@@ -661,6 +674,7 @@ fn forward(
                     let _ = app.emit("player://state", &snapshot);
                 }
             }
+            presence.update(state);
         }
         Event::Position {
             position_ms,

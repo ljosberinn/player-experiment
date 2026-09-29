@@ -244,7 +244,7 @@ action reads as a target rather than a line of text".
   loves it.
 - **Settings is a rail and a pane**, at one size whichever category is open:
   Appearance (Interface Zoom, Theme, Colour From Album Art), Library (Library Folder,
-  Music Folders), Online (Look Up Releases Online, last.fm) and About (Activity
+  Music Folders), Online (Look Up Releases Online, last.fm, Discord) and About (Activity
   Log). The rail items wear the sidebar's navigation look. Issue 91 built it on
   the app's tokens while the design could not be fetched, so the design's own
   settings dialog wants re-fetching and amending to match.
