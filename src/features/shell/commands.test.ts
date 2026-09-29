@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MenuItem } from "../../components/ui/ContextMenu";
+import type { Playlist, Track } from "../../ipc";
 import { commands, flatten } from "./commands";
 import type { Menu } from "./menus";
 
@@ -8,8 +9,13 @@ const noop = () => {};
 function build(overrides: Partial<Parameters<typeof commands>[0]> = {}) {
   return commands({
     menus: [],
+    tab: "songs",
+    playlistId: null,
+    playlists: [],
+    back: null,
+    forward: null,
     status: "stopped",
-    hasTrack: false,
+    track: null,
     muted: false,
     repeatOne: false,
     zoom: 1,
@@ -20,11 +26,50 @@ function build(overrides: Partial<Parameters<typeof commands>[0]> = {}) {
     onSettings: noop,
     onNewPlaylist: noop,
     onNewSmartPlaylist: noop,
+    onShowTab: noop,
+    onShowPlaylist: noop,
+    onBack: noop,
+    onForward: noop,
+    onShowTrackArtist: noop,
+    onShowTrackGroup: noop,
     ...overrides,
   });
 }
 
 type Entry = Exclude<MenuItem, { kind: "separator" }>;
+
+function track(over: Partial<Track> = {}): Track {
+  return {
+    id: 1,
+    path: "D:/Music/Guitar/Tokyo/01 Maki.mp3",
+    duration_ms: 208_000,
+    title: "Maki",
+    artist: "Guitar",
+    album: "Tokyo",
+    album_artist: null,
+    genre: null,
+    year: null,
+    track_no: null,
+    disc_no: null,
+    comment: null,
+    bitrate: null,
+    sample_rate: null,
+    cover_hash: null,
+    added_at: 0,
+    play_count: 0,
+    last_played_at: null,
+    missing_since: null,
+    release_mbid: null,
+    release_group_mbid: null,
+    ...over,
+  };
+}
+
+function playlist(id: number, name: string, over: Partial<Playlist> = {}): Playlist {
+  return { id, name, kind: "static", trackCount: 0, createdAt: 0, builtIn: null, ...over };
+}
+
+const labels = (items: Entry[]) => items.map((one) => one.label);
 
 function group(name: string, overrides: Partial<Parameters<typeof commands>[0]> = {}): Entry[] {
   const found = build(overrides).find((one) => one.group === name);
@@ -51,6 +96,7 @@ describe("commands", () => {
     ];
 
     expect(build({ menus }).map((one) => one.group)).toEqual([
+      "Go to",
       "File",
       "Help",
       "Playback",
@@ -60,8 +106,8 @@ describe("commands", () => {
   });
 
   it("names Play or Pause for what the press does now", () => {
-    expect(entry(group("Playback", { hasTrack: true, status: "paused" }), "Play")).toBeDefined();
-    expect(entry(group("Playback", { hasTrack: true, status: "playing" }), "Pause")).toBeDefined();
+    expect(entry(group("Playback", { track: track(), status: "paused" }), "Play")).toBeDefined();
+    expect(entry(group("Playback", { track: track(), status: "playing" }), "Pause")).toBeDefined();
     expect(entry(group("Playback", { muted: true }), "Unmute")).toBeDefined();
     expect(entry(group("Playback", { repeatOne: true }), "Stop Repeating")).toBeDefined();
   });
@@ -71,7 +117,7 @@ describe("commands", () => {
 
     expect(entry(playback, "Play")).toMatchObject({ disabled: true, hint: "Nothing queued" });
     expect(playback.map((one) => one.label)).toEqual(["Play", "Mute", "Repeat One"]);
-    expect(group("Playback", { hasTrack: true, status: "paused" }).map((one) => one.label)).toEqual(
+    expect(group("Playback", { track: track(), status: "paused" }).map((one) => one.label)).toEqual(
       ["Play", "Next", "Previous", "Stop", "Mute", "Repeat One"],
     );
   });
@@ -79,7 +125,7 @@ describe("commands", () => {
   it("runs the playback command it names", () => {
     const onPlayback = vi.fn();
     entry(
-      group("Playback", { onPlayback, hasTrack: true, status: "playing" }),
+      group("Playback", { onPlayback, track: track(), status: "playing" }),
       "Next",
     ).onSelect?.();
 
@@ -88,7 +134,7 @@ describe("commands", () => {
 
   it("names a keystroke only where one is bound", () => {
     const shortcuts = Object.fromEntries(
-      [...group("Playback", { hasTrack: true, status: "playing" }), ...group("View")].map((one) => [
+      [...group("Playback", { track: track(), status: "playing" }), ...group("View")].map((one) => [
         one.label,
         one.shortcut,
       ]),
@@ -132,6 +178,111 @@ describe("commands", () => {
       "New Playlist",
       "New Smart Playlist…",
     ]);
+  });
+});
+
+describe("Go to", () => {
+  it("offers every view but the open one", () => {
+    expect(labels(group("Go to", { tab: "albums" }))).toEqual([
+      "Songs",
+      "Artists",
+      "Genres",
+      "Statistics",
+    ]);
+  });
+
+  it("offers the open view's tab too while a playlist is showing", () => {
+    expect(labels(group("Go to", { tab: "albums", playlistId: 7 }))).toContain("Releases");
+  });
+
+  it("opens the view it names", () => {
+    const onShowTab = vi.fn();
+    entry(group("Go to", { onShowTab }), "Statistics").onSelect?.();
+
+    expect(onShowTab).toHaveBeenCalledWith("stats");
+  });
+
+  it("files the built-ins with the views and the rest under their sidebar sections", () => {
+    const playlists = [
+      playlist(3, "Mix"),
+      playlist(4, "Unplayed Jazz", { kind: "smart" }),
+      playlist(1, "Recently Added", { kind: "smart", builtIn: "recentlyAdded" }),
+      playlist(2, "Favorites", { kind: "smart", builtIn: "favorites" }),
+    ];
+
+    expect(labels(group("Go to", { playlists })).slice(-2)).toEqual([
+      "Favorites",
+      "Recently Added",
+    ]);
+    expect(labels(group("Smart Playlists", { playlists }))).toEqual(["Unplayed Jazz"]);
+    expect(labels(group("Playlists", { playlists }))).toEqual(["Mix"]);
+    expect(
+      build({ playlists })
+        .map((one) => one.group)
+        .slice(-2),
+    ).toEqual(["Smart Playlists", "Playlists"]);
+  });
+
+  it("leaves out the open playlist and opens the one it names", () => {
+    const onShowPlaylist = vi.fn();
+    const mix = playlist(3, "Mix");
+    const playlists = [mix, playlist(4, "Road Trip")];
+
+    expect(labels(group("Playlists", { playlists, playlistId: 4 }))).toEqual(["Mix"]);
+    entry(group("Playlists", { playlists, onShowPlaylist }), "Mix").onSelect?.();
+    expect(onShowPlaylist).toHaveBeenCalledWith(mix);
+  });
+
+  it("tells apart two playlists with one name", () => {
+    const playlists = [playlist(3, "New Playlist"), playlist(4, "New Playlist")];
+
+    expect(group("Playlists", { playlists }).map((one) => one.id)).toEqual([
+      "playlist:3",
+      "playlist:4",
+    ]);
+  });
+
+  it("offers back and forward only where there is somewhere to go", () => {
+    const onBack = vi.fn();
+    const goTo = labels(group("Go to"));
+
+    expect(goTo.some((label) => label.startsWith("Back"))).toBe(false);
+    expect(goTo.some((label) => label.startsWith("Forward"))).toBe(false);
+
+    const both = group("Go to", { back: "Tokyo", forward: "Mix", onBack });
+    expect(entry(both, "Back to Tokyo").shortcut).toBe("Alt+←");
+    expect(entry(both, "Forward to Mix").shortcut).toBe("Alt+→");
+    entry(both, "Back to Tokyo").onSelect?.();
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it("goes to what is playing only while something is", () => {
+    const playing = track({ album_artist: "Various" });
+    const onShowTrackArtist = vi.fn();
+    const onShowTrackGroup = vi.fn();
+    const goTo = group("Go to", {
+      status: "paused",
+      track: playing,
+      onShowTrackArtist,
+      onShowTrackGroup,
+    });
+
+    entry(goTo, "Artist: Various").onSelect?.();
+    entry(goTo, "Release: Tokyo").onSelect?.();
+    expect(onShowTrackArtist).toHaveBeenCalledWith(playing);
+    expect(onShowTrackGroup).toHaveBeenCalledWith(playing);
+
+    const stopped = labels(group("Go to", { track: playing }));
+    expect(stopped.some((label) => label.startsWith("Artist:"))).toBe(false);
+  });
+
+  it("leaves out a now-playing entry whose tag is empty", () => {
+    const goTo = labels(
+      group("Go to", { status: "playing", track: track({ artist: " ", album: null }) }),
+    );
+
+    expect(goTo.some((label) => label.startsWith("Artist:"))).toBe(false);
+    expect(goTo.some((label) => label.startsWith("Release:"))).toBe(false);
   });
 });
 

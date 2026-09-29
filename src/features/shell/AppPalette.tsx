@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { CommandPalette } from "../../components/ui/CommandPalette";
+import { destinationOf } from "../library/HistoryNav";
+import { backEntry, forwardEntry, type HistoryEntry } from "../library/history";
+import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { NEW_PLAYLIST_NAME, usePlaylistsStore } from "../playlists/store";
 import { commands } from "./commands";
@@ -55,19 +58,31 @@ export function AppPalette(wiring: MenuWiring) {
 
 function OpenPalette({ onClose, ...wiring }: MenuWiring & { onClose: () => void }) {
   const menus = useMenus(wiring);
+  const tab = useLibraryStore((s) => s.tab);
+  const playlistId = useLibraryStore((s) => s.playlistId);
+  const history = useLibraryStore((s) => s.history);
+  const playlists = usePlaylistsStore((s) => s.playlists);
   const status = usePlayerStore((s) => s.status);
-  const hasTrack = usePlayerStore((s) => s.track !== null);
+  const track = usePlayerStore((s) => s.track);
   const muted = usePlayerStore((s) => s.muted);
   const repeatOne = usePlayerStore((s) => s.repeatOne);
   const zoom = useZoomStore((s) => s.factor);
   const theme = useThemeStore((s) => s.preference);
 
+  const name = (entry: HistoryEntry | null) =>
+    entry === null ? null : destinationOf(entry, playlists);
+
   return (
     <CommandPalette
       groups={commands({
         menus,
+        tab,
+        playlistId,
+        playlists,
+        back: name(backEntry(history)),
+        forward: name(forwardEntry(history)),
         status,
-        hasTrack,
+        track,
         muted,
         repeatOne,
         zoom,
@@ -92,6 +107,12 @@ function OpenPalette({ onClose, ...wiring }: MenuWiring & { onClose: () => void 
         onSettings: wiring.onSettings,
         onNewPlaylist: () => void usePlaylistsStore.getState().create(NEW_PLAYLIST_NAME),
         onNewSmartPlaylist: () => void usePlaylistsStore.getState().editSmart(null),
+        onShowTab: (view) => void useLibraryStore.getState().showTab(view),
+        onShowPlaylist: (playlist) => void useLibraryStore.getState().showPlaylist(playlist),
+        onBack: () => void useLibraryStore.getState().back(),
+        onForward: () => void useLibraryStore.getState().forward(),
+        onShowTrackArtist: (playing) => void useLibraryStore.getState().showTrackArtist(playing),
+        onShowTrackGroup: (playing) => void useLibraryStore.getState().showTrackGroup(playing),
       })}
       onClose={onClose}
     />

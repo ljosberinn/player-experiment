@@ -5,13 +5,13 @@ import { backEntry, forwardEntry, type HistoryEntry } from "./history";
 import { useLibraryStore, VIEW_TITLES } from "./store";
 
 /**
- * What a history entry is called, for the tooltip.
+ * What a history entry is called, for the tooltip and the command palette.
  *
  * The most specific thing the entry names: the album that was open, else the
  * playlist, else the view. A back button that says only "Back" is a button you
  * have to press to find out what it does.
  */
-function destinationOf(entry: HistoryEntry, playlists: Playlist[]): string {
+export function destinationOf(entry: HistoryEntry, playlists: Playlist[]): string {
   if (entry.browse !== null) {
     return entry.browseLabel ?? unknownLabel(entry.browse.kind);
   }

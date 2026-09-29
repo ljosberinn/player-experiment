@@ -103,6 +103,35 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Open" })).toHaveFocus());
   });
 
+  it("runs the one of two same-named entries that is highlighted", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { user } = await open([
+      {
+        group: "Playlists",
+        items: [
+          { id: "playlist:3", label: "New Playlist", onSelect: first },
+          { id: "playlist:4", label: "New Playlist", onSelect: second },
+        ],
+      },
+    ]);
+
+    expect(screen.getAllByRole("option", { name: "New Playlist" })).toHaveLength(2);
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    expect(second).toHaveBeenCalledOnce();
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it("announces an arrow chord in ARIA's spelling", async () => {
+    await open([{ group: "Go to", items: [{ label: "Back to Songs", shortcut: "Alt+←" }] }]);
+
+    expect(screen.getByRole("option", { name: "Back to Songs" })).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Alt+ArrowLeft",
+    );
+  });
+
   it("says so when nothing matches", async () => {
     const { user } = await open([{ group: "Help", items: [{ label: "Source Code on GitHub" }] }]);
 
