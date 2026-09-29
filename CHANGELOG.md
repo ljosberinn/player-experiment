@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.21.1](https://github.com/ljosberinn/player-experiment/compare/v0.21.0...v0.21.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* a file carrying a work title can be written again ([#351](https://github.com/ljosberinn/player-experiment/issues/351)) ([6772722](https://github.com/ljosberinn/player-experiment/commit/6772722a998112dd2235f58d91757cb2b09bbdc7))
+* a file that cannot be read says so ([#181](https://github.com/ljosberinn/player-experiment/issues/181)) ([#354](https://github.com/ljosberinn/player-experiment/issues/354)) ([0449701](https://github.com/ljosberinn/player-experiment/commit/0449701765eaf5b0106beeba2687ec41508e14c9))
+* a scan or a retag sets play counts ([#183](https://github.com/ljosberinn/player-experiment/issues/183)) ([#355](https://github.com/ljosberinn/player-experiment/issues/355)) ([3aba6f4](https://github.com/ljosberinn/player-experiment/commit/3aba6f4ccf1a353d0f8f70a9f705a94c3dfd4f16))
+* an untagged release is not looked up ([#182](https://github.com/ljosberinn/player-experiment/issues/182)) ([#353](https://github.com/ljosberinn/player-experiment/issues/353)) ([4214468](https://github.com/ljosberinn/player-experiment/commit/421446882194dbc682f4f26eb12fbee5b44244a8))
+
 ## [0.21.0](https://github.com/ljosberinn/player-experiment/compare/v0.20.1...v0.21.0) (2026-09-28)
 
 
