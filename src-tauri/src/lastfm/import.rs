@@ -120,7 +120,7 @@ impl Import<'_> {
     /// from the top, which is how scrobbles deleted on last.fm leave; local
     /// plays stay.
     ///
-    /// `plays::resolve`, `plays::regroup` and `count` run when the run ends,
+    /// `plays::resolve`, `plays::regroup` and `plays::count` run when the run ends,
     /// finished or not: the pages already committed are plays like any other,
     /// and until those have run they are unlinked, ungrouped and uncounted.
     /// The loved tracks are fetched only once the history is complete.
@@ -155,7 +155,7 @@ impl Import<'_> {
         let tx = conn.transaction()?;
         plays::resolve(&tx)?;
         plays::regroup(&tx)?;
-        count(&tx)?;
+        plays::count(&tx)?;
         tx.commit()?;
 
         let imported = history?;
@@ -306,33 +306,6 @@ impl Import<'_> {
         }
         unreachable!("the last attempt returns either way")
     }
-}
-
-/// Raises each linked track's `play_count` and `last_played_at` to what its
-/// plays say, never lowering either.
-///
-/// **`max`, because adding would count twice** every play from before
-/// migration 13 that was also scrobbled: those are in `play_count` and come
-/// back as `lastfm` rows. A local play since is one on each side, and
-/// `insert` keeps its scrobble out.
-///
-/// The guard is what keeps a second run from writing anything: every update
-/// of `tracks` reindexes the row in `tracks_fts`.
-fn count(conn: &Connection) -> AppResult<()> {
-    conn.execute(
-        "UPDATE tracks
-            SET play_count = max(play_count, n.plays),
-                last_played_at = max(coalesce(last_played_at, 0), n.last)
-           FROM (SELECT track_id, count(*) AS plays, max(started_at) AS last
-                   FROM plays
-                  WHERE track_id IS NOT NULL
-                  GROUP BY track_id) n
-          WHERE n.track_id = tracks.id
-            AND (n.plays > tracks.play_count
-                 OR n.last > coalesce(tracks.last_played_at, 0))",
-        [],
-    )?;
-    Ok(())
 }
 
 fn retryable(error: &Error) -> bool {

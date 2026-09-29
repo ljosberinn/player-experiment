@@ -872,6 +872,7 @@ pub fn apply(
     // Same transaction for the same reason: a play must not point at a tag
     // edit that was rolled back.
     crate::db::plays::resolve(&tx)?;
+    crate::db::plays::count(&tx)?;
     tx.commit()?;
 
     Ok(Written {

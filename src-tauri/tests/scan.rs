@@ -635,3 +635,66 @@ fn watch_folders_are_not_duplicated() {
 
     assert_eq!(scan::watch_folders(&conn).unwrap().len(), 1);
 }
+
+/// `count` imported plays of `artist` and `title`, the newest at `count * 100`.
+fn imported(conn: &Connection, artist: &str, title: &str, count: i64) {
+    for n in 1..=count {
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, match_key)
+             VALUES (?1, 'lastfm', ?2, ?3, ?4)",
+            rusqlite::params![
+                n * 100,
+                artist,
+                title,
+                apex_lib::db::plays::match_key(artist, title)
+            ],
+        )
+        .unwrap();
+    }
+}
+
+fn counted(conn: &Connection, path_end: &str) -> (i64, Option<i64>) {
+    let track = all_tracks(conn)
+        .into_iter()
+        .find(|t| t.path.ends_with(path_end))
+        .unwrap();
+    (track.play_count, track.last_played_at)
+}
+
+#[test]
+fn a_file_added_after_an_import_takes_the_plays_it_links() {
+    let h = harness();
+    imported(&h.db.conn().unwrap(), "Guitar", "Maki", 3);
+    fixture::library(&h.music);
+
+    scan_now(&h.db);
+
+    assert_eq!(
+        counted(&h.db.conn().unwrap(), "01 Maki.mp3"),
+        (3, Some(300))
+    );
+}
+
+/// Written as "the row is not touched" rather than "the value is the same",
+/// because every update of `tracks` reindexes it for search.
+#[test]
+fn rescanning_a_counted_library_touches_no_track() {
+    let h = harness();
+    imported(&h.db.conn().unwrap(), "Guitar", "Maki", 3);
+    fixture::library(&h.music);
+    scan_now(&h.db);
+
+    let mut conn = h.db.conn().unwrap();
+    conn.execute_batch(
+        "CREATE TEMP TABLE touched (id INTEGER);
+         CREATE TEMP TRIGGER touch AFTER UPDATE ON main.tracks
+         BEGIN INSERT INTO touched VALUES (new.id); END;",
+    )
+    .unwrap();
+    scan::scan(&mut conn, |_| {}).expect("scan");
+
+    let touched: i64 = conn
+        .query_row("SELECT count(*) FROM touched", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(touched, 0);
+}

@@ -498,6 +498,9 @@ leaves for the next one's `from=`. It is not exportable.
   that was scrobbled is in the count and comes back as a row. So nothing is
   ever lowered, a deleted scrobble included, and only the copy `resolve` links
   a key to is raised — by the plays of every copy, local ones included.
+  `plays::count` also runs after the `resolve` of a scan and a tag write
+  (183), so a file added or retagged after an import takes its history; a
+  retag out of a song leaves that song's count on the file.
 - **The loved tracks come last**, fetched in full only after the history
   finishes, and taken in by `lastfm::love::absorb` in one transaction, so a
   failed fetch leaves the set as it was.

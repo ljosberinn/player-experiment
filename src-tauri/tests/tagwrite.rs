@@ -1308,3 +1308,41 @@ fn an_edit_that_does_not_mention_the_release_type_leaves_it_alone() {
     assert_eq!(on_disk.title.as_deref(), Some("Renamed"));
     assert_eq!(on_disk.release_type.as_deref(), Some("EP"));
 }
+
+#[test]
+fn a_retag_into_a_song_in_the_log_takes_its_plays() {
+    let h = harness();
+    let mut conn = h.db.conn().unwrap();
+    for started_at in [100, 200] {
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, match_key)
+             VALUES (?1, 'lastfm', 'Guitar', 'Harbour', ?2)",
+            rusqlite::params![
+                started_at,
+                apex_lib::db::plays::match_key("Guitar", "Harbour")
+            ],
+        )
+        .unwrap();
+    }
+    let track = id_of(&h.db, "Maki");
+
+    write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            title: set("Harbour"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    let counted: (i64, Option<i64>) = conn
+        .query_row(
+            "SELECT play_count, last_played_at FROM tracks WHERE id = ?1",
+            [track],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(counted, (2, Some(200)));
+}
