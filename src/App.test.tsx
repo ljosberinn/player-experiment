@@ -1257,6 +1257,70 @@ describe("the browse tabs", () => {
   });
 });
 
+describe("the command palette", () => {
+  const palette = () => screen.queryByRole("dialog", { name: "Command palette" });
+  const ctrlK = () =>
+    fireEvent.keyDown(document.activeElement ?? window, { key: "k", ctrlKey: true });
+
+  it("opens on Ctrl+K from the search box, and closes on it", async () => {
+    render(<App />);
+    const search = await screen.findByRole("searchbox", { name: "Search Library" });
+    search.focus();
+
+    // Claimed from a text field, as Ctrl+F is: WebView2 acts on what is left.
+    expect(ctrlK()).toBe(false);
+    expect(await screen.findByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+
+    ctrlK();
+    await waitFor(() => expect(palette()).toBeNull());
+  });
+
+  it("does not open over another dialog", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await chooseFromMenu(user, "Edit", "Settings…");
+    await screen.findByRole("dialog", { name: "Settings" });
+
+    ctrlK();
+
+    expect(palette()).toBeNull();
+  });
+
+  it("offers Edit's song actions only while a song is selected", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    ctrlK();
+    const field = await screen.findByRole("combobox", { name: "Search commands" });
+    await user.type(field, "edit");
+    expect(screen.queryByRole("option", { name: "Edit" })).toBeNull();
+    ctrlK();
+    await waitFor(() => expect(palette()).toBeNull());
+
+    act(() => {
+      useLibraryStore.setState({ selection: { ids: new Set([11]), anchorIndex: 0 } });
+    });
+    ctrlK();
+    await user.type(await screen.findByRole("combobox", { name: "Search commands" }), "edit");
+    expect(screen.getByRole("option", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("hands the focus to a dialog the entry opens", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    ctrlK();
+    await user.type(
+      await screen.findByRole("combobox", { name: "Search commands" }),
+      "new smart{Enter}",
+    );
+
+    const editor = await screen.findByRole("dialog", { name: "New Smart Playlist" });
+    expect(palette()).toBeNull();
+    await waitFor(() => expect(editor).toContainElement(document.activeElement as HTMLElement));
+  });
+});
+
 describe("the error dialog", () => {
   it("says nothing while nothing is wrong", async () => {
     render(<App />);

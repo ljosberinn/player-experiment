@@ -52,6 +52,7 @@ export function Dialog({
   role = "dialog",
   paned = false,
   variant,
+  label,
   initialFocus,
   onClose,
   onSubmit,
@@ -69,6 +70,8 @@ export function Dialog({
    */
   paned?: boolean;
   variant?: string;
+  /** The accessible name, for a dialog with no `DialogHeader` to take it from. */
+  label?: string;
   initialFocus?: RefObject<HTMLElement | null>;
   onClose: () => void;
   /**
@@ -110,6 +113,7 @@ export function Dialog({
           <Parts.Backdrop className="dialog-backdrop" />
           <Parts.Popup
             className={className}
+            aria-label={label}
             initialFocus={initialFocus}
             render={
               onSubmit === undefined ? (

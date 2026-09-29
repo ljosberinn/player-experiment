@@ -58,6 +58,8 @@ a re-fetch compares against them directly.
   with the two keystrokes that are real — `Ctrl+I` on Edit and `Del` on whichever
   removal Delete performs where the menu was opened. A menu that names a chord
   nothing answers is worse than one that names none.
+- **It has no command palette.** Ctrl+K's is the `Dialog` chrome around rows
+  drawn as a menu's, with the group headings in the table header's uppercase.
 - **It calls the second library item Albums.** Ours says Releases: an EP, a
   single, a split and a compilation all live in that view and none of them is an
   album. A deliberate departure, not a drift to correct on the next re-fetch.

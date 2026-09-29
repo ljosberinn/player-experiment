@@ -47,7 +47,7 @@ export type MenuItem =
  * other keeps the accessible name of an item its label, which is what every
  * test and every screen reader looks it up by.
  */
-function keyshortcuts(shortcut: string): string {
+export function keyshortcuts(shortcut: string): string {
   return shortcut
     .split("+")
     .map((part) => (part === "Ctrl" ? "Control" : part === "Del" ? "Delete" : part))

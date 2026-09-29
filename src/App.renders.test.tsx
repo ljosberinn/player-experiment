@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { useEditorStore } from "./features/editor/store";
@@ -740,5 +740,22 @@ describe("what the backend confirming a love re-renders", () => {
 
     expect(useLovedStore.getState().loved.has(1)).toBe(true);
     expect(renders.menuBar).toBe(1);
+  });
+});
+
+describe("what the command palette re-renders", () => {
+  it("nothing but itself, opening and closing", async () => {
+    // It holds its own open flag, so Ctrl+K does not wake the tree it sits in.
+    await mounted();
+
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(await screen.findByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expectTableMounted();
+    expect(renders.app).toBe(0);
+    expect(renders.songTable).toBe(0);
+    expect(renders.playlistSidebar).toBe(0);
   });
 });
