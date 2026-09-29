@@ -15,6 +15,8 @@ export type MenuItem =
   | { kind: "separator" }
   | {
       kind?: "item";
+      /** Tells apart entries whose labels can collide, as two playlists' names can. */
+      id?: string | undefined;
       label: string;
       onSelect?: (() => void) | undefined;
       /** Shown greyed and skipped by the keyboard, rather than hidden. */
@@ -39,6 +41,13 @@ export type MenuItem =
       submenu?: MenuItem[] | undefined;
     };
 
+const ARIA_KEYS: Record<string, string> = {
+  Ctrl: "Control",
+  Del: "Delete",
+  "←": "ArrowLeft",
+  "→": "ArrowRight",
+};
+
 /**
  * The ARIA spelling of a shortcut, from the one the menu prints.
  *
@@ -50,7 +59,7 @@ export type MenuItem =
 export function keyshortcuts(shortcut: string): string {
   return shortcut
     .split("+")
-    .map((part) => (part === "Ctrl" ? "Control" : part === "Del" ? "Delete" : part))
+    .map((part) => ARIA_KEYS[part] ?? part)
     .join("+");
 }
 

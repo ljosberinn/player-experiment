@@ -71,7 +71,7 @@ export function CommandPalette({
                 <Autocomplete.Collection>
                   {(entry: Entry) => (
                     <Autocomplete.Item
-                      key={entry.label}
+                      key={entry.id ?? entry.label}
                       value={entry}
                       disabled={entry.disabled}
                       className="menu-item"

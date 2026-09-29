@@ -23,11 +23,14 @@ import { ContextMenu } from "./ContextMenu";
 /** The sidebar's icon box, which `.sidebar-icon` sizes to match. */
 const ICON_SIZE = 17;
 
-/** Order only; the words are `VIEW_TITLES`, which the history arrows share. */
-const VIEWS: ViewTab[] = ["songs", "albums", "artists", "genres", "stats"];
+/**
+ * Order only; the words are `VIEW_TITLES`, which the history arrows share.
+ * The command palette's Go to lists them in the same order.
+ */
+export const VIEWS: ViewTab[] = ["songs", "albums", "artists", "genres", "stats"];
 
 /** Order and icon of the built-ins; the names are the rows'. */
-const BUILT_INS: [BuiltIn, IconName][] = [
+export const BUILT_INS: [BuiltIn, IconName][] = [
   ["favorites", "favorites"],
   ["mostPlayed", "most-played"],
   ["recentlyAdded", "recently-added"],

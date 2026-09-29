@@ -902,7 +902,12 @@ absences are what nobody notices coming back — hence the guards in
   around it; closed, it subscribes to nothing. Its entries are `commands()`,
   pure like `menus()`, which takes the bar's menus from the same `useMenus`
   hook `AppMenus` uses, so the two cannot offer different actions for one
-  selection. A submenu flattens to `Parent › Child`. An entry closes the
+  selection. A submenu flattens to `Parent › Child`. Go to leads, with the
+  views in `LibraryNav`'s order and the built-ins, back and forward named by
+  `HistoryNav`'s `destinationOf`, and the playing track's artist and release;
+  the other playlists come last, in their sidebar sections, so a long list
+  cannot push the commands down. Playlist names can repeat, so an entry that
+  can collide carries a `MenuItem.id` the palette keys by. An entry closes the
   palette before it runs, so a dialog it opens is not handed focus by a
   palette still closing. Greyed entries are reachable and inert, as in a menu:
   Base UI's combobox hard-codes `disabledIndices` empty too.

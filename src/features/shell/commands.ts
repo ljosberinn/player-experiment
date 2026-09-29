@@ -1,6 +1,8 @@
 import type { PaletteGroup } from "../../components/ui/CommandPalette";
 import type { MenuItem } from "../../components/ui/ContextMenu";
-import type { PlaybackStatus } from "../../ipc";
+import { BUILT_INS, VIEWS } from "../../components/ui/LibraryNav";
+import type { PlaybackStatus, Playlist, Track } from "../../ipc";
+import { VIEW_TITLES, type ViewTab } from "../library/store";
 import type { Menu } from "./menus";
 import { SETTINGS_CATEGORIES, type SettingsCategory } from "./SettingsDialog";
 import { THEME_LABELS, THEME_PREFERENCES, type ThemePreference } from "./theme";
@@ -16,8 +18,13 @@ export type PlaybackCommand = "toggle" | "next" | "previous" | "stop" | "mute" |
  */
 export function commands({
   menus,
+  tab,
+  playlistId,
+  playlists,
+  back,
+  forward,
   status,
-  hasTrack,
+  track,
   muted,
   repeatOne,
   zoom,
@@ -28,11 +35,23 @@ export function commands({
   onSettings,
   onNewPlaylist,
   onNewSmartPlaylist,
+  onShowTab,
+  onShowPlaylist,
+  onBack,
+  onForward,
+  onShowTrackArtist,
+  onShowTrackGroup,
 }: {
   menus: Menu[];
+  tab: ViewTab;
+  playlistId: number | null;
+  playlists: Playlist[];
+  /** What back would land on, named as the arrow's tooltip names it; null with nothing behind. */
+  back: string | null;
+  forward: string | null;
   status: PlaybackStatus;
-  /** Whether the engine holds a track to resume, which it keeps through a stop. */
-  hasTrack: boolean;
+  /** The engine's track, which it keeps through a stop to resume. */
+  track: Track | null;
   muted: boolean;
   repeatOne: boolean;
   zoom: number;
@@ -43,8 +62,15 @@ export function commands({
   onSettings: (category: SettingsCategory) => void;
   onNewPlaylist: () => void;
   onNewSmartPlaylist: () => void;
+  onShowTab: (tab: ViewTab) => void;
+  onShowPlaylist: (playlist: Playlist) => void;
+  onBack: () => void;
+  onForward: () => void;
+  onShowTrackArtist: (track: Track) => void;
+  onShowTrackGroup: (track: Track) => void;
 }): PaletteGroup[] {
   const loaded = status !== "stopped";
+  const hasTrack = track !== null;
 
   const playback: MenuItem[] = [
     {
@@ -107,12 +133,51 @@ export function commands({
     },
   ];
 
+  // The sidebar's sections, the view already open left out as a click on it
+  // would do nothing.
+  const playlistEntry = (playlist: Playlist): MenuItem => ({
+    id: `playlist:${playlist.id}`,
+    label: playlist.name,
+    onSelect: () => onShowPlaylist(playlist),
+  });
+  const elsewhere = playlists.filter((playlist) => playlist.id !== playlistId);
+  const own = elsewhere.filter((playlist) => playlist.builtIn === null);
+
+  const goTo: MenuItem[] = [
+    ...VIEWS.filter((view) => view !== tab || playlistId !== null).map(
+      (view): MenuItem => ({ label: VIEW_TITLES[view], onSelect: () => onShowTab(view) }),
+    ),
+    ...BUILT_INS.flatMap(([builtIn]) =>
+      elsewhere.filter((playlist) => playlist.builtIn === builtIn).map(playlistEntry),
+    ),
+  ];
+  if (back !== null) {
+    goTo.push({ label: `Back to ${back}`, shortcut: "Alt+←", onSelect: onBack });
+  }
+  if (forward !== null) {
+    goTo.push({ label: `Forward to ${forward}`, shortcut: "Alt+→", onSelect: onForward });
+  }
+  // Only while the player bar shows the track these name.
+  if (loaded && track !== null) {
+    const artist = tagged(track.album_artist) ?? tagged(track.artist);
+    const album = tagged(track.album);
+    if (artist !== null) {
+      goTo.push({ label: `Artist: ${artist}`, onSelect: () => onShowTrackArtist(track) });
+    }
+    // Without an album `showTrackGroup` lands on the artist, which the entry
+    // above already is.
+    if (album !== null) {
+      goTo.push({ label: `Release: ${album}`, onSelect: () => onShowTrackGroup(track) });
+    }
+  }
+
   const library: MenuItem[] = [
     { label: "New Playlist", onSelect: onNewPlaylist },
     { label: "New Smart Playlist…", onSelect: onNewSmartPlaylist },
   ];
 
   return [
+    { group: "Go to", items: goTo },
     // A disabled menu is one the bar cannot open, so it has nothing to offer.
     ...menus
       .filter((menu) => menu.disabled !== true)
@@ -120,6 +185,15 @@ export function commands({
     { group: "Playback", items: playback },
     { group: "View", items: flatten(view) },
     { group: "Library", items: library },
+    // Last, however many there are, so they cannot push the commands down.
+    {
+      group: "Smart Playlists",
+      items: own.filter((playlist) => playlist.kind === "smart").map(playlistEntry),
+    },
+    {
+      group: "Playlists",
+      items: own.filter((playlist) => playlist.kind !== "smart").map(playlistEntry),
+    },
   ].filter((group) => group.items.length > 0);
 }
 
@@ -148,4 +222,8 @@ export function flatten(items: MenuItem[]): MenuItem[] {
           },
     );
   });
+}
+
+function tagged(value: string | null): string | null {
+  return value === null || value.trim() === "" ? null : value;
 }

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { MENUS } from "../../../.storybook/fixtures";
+import { BUILT_INS, LIBRARY, MENUS, PLAYLISTS } from "../../../.storybook/fixtures";
 import { commands } from "../../features/shell/commands";
 import { CommandPalette } from "./CommandPalette";
 
@@ -26,8 +26,13 @@ export const Open: StoryObj<typeof meta> = {
     <CommandPalette
       groups={commands({
         menus: MENUS,
+        tab: "songs",
+        playlistId: null,
+        playlists: [...BUILT_INS, ...PLAYLISTS],
+        back: "Releases",
+        forward: null,
         status: "playing",
-        hasTrack: true,
+        track: LIBRARY[0] ?? null,
         muted: false,
         repeatOne: false,
         zoom: 1,
@@ -38,6 +43,12 @@ export const Open: StoryObj<typeof meta> = {
         onSettings: noop,
         onNewPlaylist: noop,
         onNewSmartPlaylist: noop,
+        onShowTab: noop,
+        onShowPlaylist: noop,
+        onBack: noop,
+        onForward: noop,
+        onShowTrackArtist: noop,
+        onShowTrackGroup: noop,
       })}
       onClose={noop}
     />

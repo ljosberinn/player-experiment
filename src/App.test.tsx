@@ -1305,6 +1305,17 @@ describe("the command palette", () => {
     expect(screen.getByRole("option", { name: "Edit" })).toBeInTheDocument();
   });
 
+  it("goes to the view an entry names", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    ctrlK();
+    await user.type(await screen.findByRole("combobox", { name: "Search commands" }), "rel{Enter}");
+
+    await waitFor(() => expect(useLibraryStore.getState().tab).toBe("albums"));
+    expect(palette()).toBeNull();
+  });
+
   it("hands the focus to a dialog the entry opens", async () => {
     render(<App />);
     const user = userEvent.setup();
