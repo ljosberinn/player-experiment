@@ -691,7 +691,7 @@ fn rescanning_a_counted_library_touches_no_track() {
          BEGIN INSERT INTO touched VALUES (new.id); END;",
     )
     .unwrap();
-    scan::scan(&mut conn, |_| {}).expect("scan");
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("scan");
 
     let touched: i64 = conn
         .query_row("SELECT count(*) FROM touched", [], |row| row.get(0))
