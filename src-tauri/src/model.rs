@@ -1066,6 +1066,11 @@ pub struct ScanSummary {
     /// Marked files that turned up again, and are no longer marked.
     pub returned: u32,
     pub unchanged: u32,
+    /// Files new or changed on disk whose tags would not parse. They keep no
+    /// row, or the row they had, and are read again next time. For the log.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub unreadable: u32,
 }
 
 /// What a drop from the OS did, before the scan behind it runs.

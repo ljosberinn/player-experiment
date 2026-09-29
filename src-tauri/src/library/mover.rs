@@ -908,7 +908,7 @@ mod tests {
         // added under the real spelling, nothing missing under the asked-for
         // one.
         let mut conn = fixture.conn();
-        scan::scan(&mut conn, |_| {}).unwrap();
+        scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
         let (rows, missing): (i64, i64) = conn
             .query_row(
                 "SELECT count(*), count(missing_since) FROM tracks",
@@ -1214,7 +1214,7 @@ mod tests {
 
         fixture.move_it(&OsRename).unwrap();
         let mut conn = fixture.conn();
-        scan::scan(&mut conn, |_| {}).unwrap();
+        scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
 
         let missing: i64 = conn
             .query_row(
@@ -1248,7 +1248,7 @@ mod tests {
 
         fixture.move_it(&OsRename).unwrap();
         let mut conn = fixture.conn();
-        scan::scan(&mut conn, |_| {}).unwrap();
+        scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
 
         let missing: i64 = conn
             .query_row(

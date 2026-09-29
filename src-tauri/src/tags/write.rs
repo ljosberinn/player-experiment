@@ -324,7 +324,7 @@ fn unreachable(error: &std::io::Error) -> Cause {
 /// format and nothing else, so a full disk, a file another process holds open
 /// and a frame it cannot encode all reach the user as "failed to write Mpeg
 /// file", and only the chain underneath tells them apart.
-fn causes(error: &(dyn std::error::Error + 'static)) -> String {
+pub(super) fn causes(error: &(dyn std::error::Error + 'static)) -> String {
     let mut chain = Vec::new();
     let mut current = error.source();
     while let Some(cause) = current {

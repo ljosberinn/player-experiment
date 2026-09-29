@@ -498,12 +498,13 @@ pub fn remove_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
 
 /// Reads tags for `paths` in parallel.
 ///
-/// Files that fail to parse are dropped, not propagated: a corrupt file in a
-/// 50k library should cost that one file, not the scan.
-fn read_tags(paths: &[PathBuf]) -> Vec<(PathBuf, TrackTags)> {
+/// A file that fails to parse comes back as its error rather than stopping the
+/// batch: a corrupt file in a 50k library should cost that one file, not the
+/// scan.
+fn read_tags(paths: &[PathBuf]) -> Vec<(PathBuf, AppResult<TrackTags>)> {
     paths
         .par_iter()
-        .filter_map(|path| tags::read(path).ok().map(|tags| (path.clone(), tags)))
+        .map(|path| (path.clone(), tags::read(path)))
         .collect()
 }
 
@@ -521,6 +522,7 @@ pub fn summary_fields(summary: &ScanSummary) -> crate::log::Fields {
         .add("updated", summary.updated)
         .add("missing", summary.missing)
         .add("returned", summary.returned)
+        .add("unreadable", summary.unreadable)
 }
 
 /// Runs a full incremental scan of every configured watch folder.
@@ -533,12 +535,15 @@ pub fn summary_fields(summary: &ScanSummary) -> crate::log::Fields {
 ///
 /// `on_progress` is called periodically; it is a closure rather than a Tauri
 /// handle so the whole scan can be exercised in tests without a running app.
+/// `on_unreadable` is called with the error of each file whose tags would not
+/// parse, which names the file.
 pub fn scan(
     conn: &mut Connection,
     on_progress: impl FnMut(ScanProgress),
+    on_unreadable: impl FnMut(&AppError),
 ) -> AppResult<ScanSummary> {
     let roots = watch_folders(conn)?;
-    scan_roots(conn, &roots, &[], on_progress)
+    scan_roots(conn, &roots, &[], on_progress, on_unreadable)
 }
 
 /// The scan itself, over the roots it is given.
@@ -550,6 +555,7 @@ pub fn scan_roots(
     roots: &[PathBuf],
     absent: &[PathBuf],
     mut on_progress: impl FnMut(ScanProgress),
+    mut on_unreadable: impl FnMut(&AppError),
 ) -> AppResult<ScanSummary> {
     let on_disk = walk(roots);
     let known = load_known(conn)?;
@@ -587,8 +593,16 @@ pub fn scan_roots(
         let parsed = read_tags(chunk);
         let tx = conn.transaction()?;
         for (path, tags) in &parsed {
-            insert_track(&tx, path, tags)?;
-            summary.added += 1;
+            match tags {
+                Ok(tags) => {
+                    insert_track(&tx, path, tags)?;
+                    summary.added += 1;
+                }
+                Err(error) => {
+                    on_unreadable(error);
+                    summary.unreadable += 1;
+                }
+            }
         }
         tx.commit()?;
 
@@ -607,8 +621,16 @@ pub fn scan_roots(
         let parsed = read_tags(chunk);
         let tx = conn.transaction()?;
         for (path, tags) in &parsed {
-            update_track(&tx, path, tags)?;
-            summary.updated += 1;
+            match tags {
+                Ok(tags) => {
+                    update_track(&tx, path, tags)?;
+                    summary.updated += 1;
+                }
+                Err(error) => {
+                    on_unreadable(error);
+                    summary.unreadable += 1;
+                }
+            }
         }
         tx.commit()?;
 

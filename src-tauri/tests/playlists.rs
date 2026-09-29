@@ -25,7 +25,7 @@ fn harness() -> Harness {
     fixture::library(&music);
 
     let mut conn = db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).expect("scan");
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("scan");
 
     Harness {
         _dir: dir,
@@ -153,7 +153,7 @@ fn a_rescan_that_finds_everything_leaves_playlists_alone() {
     let ids = [id_of(&h.db, "Maki"), id_of(&h.db, "Sleeping Ute")];
     playlists::add_tracks(&mut conn, playlist.id, &ids).unwrap();
 
-    scan::scan(&mut conn, |_| {}).expect("rescan");
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("rescan");
 
     assert_eq!(playlists::track_ids(&conn, playlist.id).unwrap(), ids);
 }
@@ -175,7 +175,7 @@ fn a_file_that_disappears_keeps_its_playlist_entry() {
     .unwrap();
 
     std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
-    let summary = scan::scan(&mut conn, |_| {}).expect("rescan");
+    let summary = scan::scan(&mut conn, |_| {}, |_| {}).expect("rescan");
     assert_eq!(summary.missing, 1);
 
     assert_eq!(view(&h.db, playlist.id), ["Maki", "Sleeping Ute"]);
@@ -196,7 +196,7 @@ fn removing_missing_tracks_takes_their_playlist_entries_with_them() {
     .unwrap();
 
     std::fs::remove_file(h.music.join("Guitar/Tokyo/01 Maki.mp3")).unwrap();
-    scan::scan(&mut conn, |_| {}).expect("rescan");
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("rescan");
     assert_eq!(scan::remove_missing(&mut conn).unwrap(), 1);
 
     assert_eq!(view(&h.db, playlist.id), ["Sleeping Ute"]);

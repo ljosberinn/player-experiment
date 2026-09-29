@@ -195,6 +195,7 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
         let lock = app.state::<ScanLock>();
         let _guard = lock.acquire();
         let mut conn = db.conn()?;
+        let log = app.state::<Log>();
         // Announced once at the end rather than per file: `scan://progress`
         // already drives the bar, and a ping per file would put one re-query
         // per file behind it.
@@ -202,10 +203,16 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
             &app,
             op(&app, "scan"),
             || {
-                scan::scan(&mut conn, |progress| {
-                    // A dropped progress event is not worth failing a scan over.
-                    let _ = app.emit(SCAN_PROGRESS, &progress);
-                })
+                scan::scan(
+                    &mut conn,
+                    |progress| {
+                        // A dropped progress event is not worth failing a scan over.
+                        let _ = app.emit(SCAN_PROGRESS, &progress);
+                    },
+                    |error| {
+                        log.problem("scan.unreadable", Fields::new().add("error", error));
+                    },
+                )
             },
             scan::summary_fields,
         )

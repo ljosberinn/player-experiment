@@ -34,7 +34,7 @@ fn harness() -> Harness {
 
 fn scan_now(db: &Db) -> apex_lib::model::ScanSummary {
     let mut conn = db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).expect("scan")
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("scan")
 }
 
 fn all_tracks(conn: &Connection) -> Vec<apex_lib::model::Track> {
@@ -396,7 +396,7 @@ fn progress_reports_reach_completion() {
 
     let mut events = Vec::new();
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |progress| events.push(progress)).unwrap();
+    scan::scan(&mut conn, |progress| events.push(progress), |_| {}).unwrap();
 
     assert!(
         events.len() >= 2,
@@ -429,6 +429,36 @@ fn a_corrupt_file_does_not_abort_the_scan() {
             .any(|t| t.path.ends_with("broken.mp3")),
         "the unreadable file must not produce a row"
     );
+}
+
+#[test]
+fn a_file_whose_tags_will_not_parse_is_counted_and_named() {
+    let h = harness();
+    fixture::library(&h.music);
+    fixture::write_mp3_with_bare_url(
+        &h.music.join("bare url.mp3"),
+        4,
+        "https://www.discogs.com/release/1",
+    );
+    let mut conn = h.db.conn().unwrap();
+
+    for pass in 0..2 {
+        let mut errors = Vec::new();
+        let summary =
+            scan::scan(&mut conn, |_| {}, |error| errors.push(error.to_string())).unwrap();
+
+        assert_eq!(
+            summary.unreadable, 1,
+            "pass {pass}: it has no row to skip it by"
+        );
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("bare url.mp3"), "{}", errors[0]);
+        assert!(
+            errors[0].contains("'WXXX'"),
+            "the frame that broke is named: {}",
+            errors[0]
+        );
+    }
 }
 
 /// One unattended pass, collecting whatever progress it reported.

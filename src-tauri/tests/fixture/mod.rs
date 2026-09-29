@@ -291,6 +291,13 @@ pub fn user_text(path: &Path, description: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// An mp3 whose `WXXX` frame is the URL alone, with no encoding byte or
+/// description ahead of it, as some taggers write it. lofty reads the URL's
+/// first letter as the encoding and refuses the whole file.
+pub fn write_mp3_with_bare_url(path: &Path, frames: usize, url: &str) {
+    write_hand_built_mp3(path, frames, &[raw_frame("WXXX", url.as_bytes())]);
+}
+
 /// The language declared by the first `COMM` frame of the mp3 at `path`.
 pub fn comment_language(path: &Path) -> [u8; 3] {
     let mut file = std::fs::File::open(path).expect("open mp3");

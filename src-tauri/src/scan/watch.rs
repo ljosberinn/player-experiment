@@ -57,11 +57,20 @@ pub fn pass(
         .into_iter()
         .partition(|root| root.is_dir());
 
-    super::scan_roots(conn, &present, &absent, |progress| {
-        if progress.total > 0 {
-            on_progress(progress);
-        }
-    })
+    // Unreadable files are counted on the `scan.watch` line but not named: a
+    // file stays unreadable, and is read again, on every pass, and a line per
+    // file per pass would bury the rest of the log.
+    super::scan_roots(
+        conn,
+        &present,
+        &absent,
+        |progress| {
+            if progress.total > 0 {
+                on_progress(progress);
+            }
+        },
+        |_| {},
+    )
 }
 
 /// Starts the `library-watch` thread.

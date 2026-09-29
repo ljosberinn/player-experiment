@@ -34,7 +34,7 @@ fn harness_with_bulk(bulk: usize) -> Harness {
     fixture::bulk(&music, bulk);
 
     let mut conn = db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).expect("scan");
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("scan");
 
     Harness {
         _dir: dir,
@@ -382,7 +382,7 @@ fn both_musicbrainz_ids_round_trip_into_the_file_and_the_row() {
     );
 
     // And they come back off the file, so a rescan cannot blank the columns.
-    let summary = scan::scan(&mut conn, |_| {}).unwrap();
+    let summary = scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     assert_eq!((summary.added, summary.updated), (0, 0));
     assert_eq!(
         mbids(&h.db, track),
@@ -748,7 +748,7 @@ fn a_date_that_cannot_be_written_back_is_named_rather_than_hidden() {
         "2012-13",
     );
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Bad Date");
 
     let written = write::apply_to_each(
@@ -795,7 +795,7 @@ fn a_comment_language_that_cannot_be_written_back_is_replaced_rather_than_fatal(
         "ripped by me",
     );
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Bad Language");
 
     let written = write::apply_to_each(
@@ -824,7 +824,7 @@ fn a_comment_language_that_can_be_written_back_is_left_alone() {
     let path = h.music.join("loose/german.mp3");
     fixture::write_mp3_with_comment_language(&path, 10, "German", *b"deu", "aufgenommen von mir");
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "German");
 
     write::apply_to_each(
@@ -847,7 +847,7 @@ fn a_file_carrying_a_work_title_can_still_be_written() {
     let path = h.music.join("loose/work.mp3");
     fixture::write_mp3_with_work(&path, 10, "Krieg", "Krieg (Werk)");
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Krieg");
 
     let written = write::apply_to_each(
@@ -886,7 +886,7 @@ fn a_file_with_a_large_second_tag_saves_as_one_tag() {
         2048,
     );
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Two Tags");
 
     let written = write::apply_to_each(
@@ -922,7 +922,7 @@ fn an_edit_is_not_undone_by_a_small_second_tag_holding_the_same_field() {
         0,
     );
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Shown");
 
     let written = write::apply_to_each(
@@ -954,7 +954,7 @@ fn a_cover_written_to_an_unsynchronised_file_reads_back_intact() {
     let path = h.music.join("loose/unsynchronised.mp3");
     fixture::write_unsynchronised_mp3(&path, 10, "Unsynchronised", None);
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Unsynchronised");
     assert!(fixture::claims_unsynchronisation(&path));
 
@@ -984,7 +984,7 @@ fn an_edit_that_leaves_the_cover_alone_keeps_it_intact_on_an_unsynchronised_file
     let path = h.music.join("loose/unsynchronised.mp3");
     fixture::write_unsynchronised_mp3(&path, 10, "Unsynchronised", Some(ESCAPED_JPEG));
     let mut conn = h.db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     let track = id_of(&h.db, "Unsynchronised");
     // The fixture has to be read the way the file claims, or the test below
     // proves nothing.
@@ -1080,7 +1080,7 @@ fn a_rescan_after_an_edit_finds_nothing_to_do() {
         |_| {},
     )
     .unwrap();
-    let summary = scan::scan(&mut conn, |_| {}).unwrap();
+    let summary = scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
 
     // The row was updated in step with the file, including mtime and size, so
     // the incremental scan has no reason to reparse it.
@@ -1272,7 +1272,7 @@ fn the_release_type_round_trips_into_the_file_and_the_row() {
     assert_eq!(on_disk.release_type.as_deref(), Some("Album"));
     assert_eq!(release_type(&h.db, track).as_deref(), Some("Album"));
 
-    let summary = scan::scan(&mut conn, |_| {}).unwrap();
+    let summary = scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
     assert_eq!((summary.added, summary.updated), (0, 0));
     assert_eq!(release_type(&h.db, track).as_deref(), Some("Album"));
 }
