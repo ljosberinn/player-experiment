@@ -50,6 +50,10 @@ pub const STATS_FILTERS: &str = "stats.filters";
 /// not exportable, for [`STATS_FILTERS`]' reasons - and it names playlist ids
 /// that mean nothing in another library.
 pub const VIEW: &str = "library.view";
+/// The command palette's recent entries, newest first, as a JSON array of the
+/// keys the palette gives them. Opaque and not exportable, for [`VIEW`]'s
+/// reasons.
+pub const PALETTE_RECENTS: &str = "palette.recents";
 /// Unix seconds of the most recent crash the user has dismissed. Deliberately
 /// not exportable: it describes this machine's history, not the library.
 pub const CRASH_SEEN: &str = "crash.seen";
@@ -410,6 +414,7 @@ mod tests {
         assert!(!is_exportable(COLUMNS));
         assert!(!is_exportable(STATS_FILTERS));
         assert!(!is_exportable(VIEW));
+        assert!(!is_exportable(PALETTE_RECENTS));
         // Taste rather than geometry, and so on the other side of that line -
         // both travel with the library the way the volume and the zoom do.
         assert!(is_exportable(DYNAMIC_BACKGROUND));

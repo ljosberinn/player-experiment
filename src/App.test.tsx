@@ -7,6 +7,7 @@ import { albumIdentity } from "./features/library/browse";
 import { useLibraryStore } from "./features/library/store";
 import { usePlayerStore } from "./features/player/store";
 import { usePlaylistsStore } from "./features/playlists/store";
+import { usePaletteRecentsStore } from "./features/shell/paletteRecentsStore";
 import { useStatusStore } from "./features/shell/statusStore";
 import { useUpdaterStore } from "./features/updater/store";
 import {
@@ -21,6 +22,7 @@ import {
   getAppInfo,
   libraryStats,
   listPlaylists,
+  loadPaletteRecents,
   loadWindowGeometry,
   moveInPlaylist,
   onLibraryChanged,
@@ -33,6 +35,7 @@ import {
   removeFromPlaylist,
   removeMissingTracks,
   removeTracks,
+  savePaletteRecents,
   scanLibrary,
   setLoved,
   type Track,
@@ -120,6 +123,8 @@ vi.mock("./ipc", () => ({
   loadColumnConfig: vi.fn(async () => null),
   loadView: vi.fn(async () => null),
   saveView: vi.fn(async () => undefined),
+  loadPaletteRecents: vi.fn(async () => null),
+  savePaletteRecents: vi.fn(async () => undefined),
   saveColumnConfig: vi.fn(async () => undefined),
   loadZoom: vi.fn(async () => null),
   saveZoom: vi.fn(async () => undefined),
@@ -204,6 +209,7 @@ beforeEach(async () => {
     renaming: null,
   });
   useEditorStore.setState({ ...initialEditor, tracks: null });
+  usePaletteRecentsStore.setState({ recent: [], loaded: false });
   useUpdaterStore.setState({ status: "idle", version: null, error: null, update: null });
   vi.mocked(listPlaylists).mockResolvedValue([]);
   // Restated rather than left to the factory: `clearAllMocks` clears calls but
@@ -1317,6 +1323,46 @@ describe("the command palette", () => {
 
     await waitFor(() => expect(useLibraryStore.getState().tab).toBe("albums"));
     expect(palette()).toBeNull();
+  });
+
+  it("leads with what a previous run stored", async () => {
+    vi.mocked(loadPaletteRecents).mockResolvedValueOnce('["Go to/Releases","playlist:9"]');
+    render(<App />);
+    await waitFor(() => expect(usePaletteRecentsStore.getState().loaded).toBe(true));
+
+    ctrlK();
+
+    // Playlist 9 is not in this library, so it is not offered.
+    const recent = await screen.findByRole("group", { name: "Recent" });
+    expect(
+      within(recent)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Releases"]);
+  });
+
+  it("leads with what was run last, and stores it", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    for (const typed of ["art", "rel", "son"]) {
+      ctrlK();
+      await user.type(await screen.findByRole("combobox", { name: "Search commands" }), typed);
+      await user.keyboard("{Enter}");
+      await waitFor(() => expect(palette()).toBeNull());
+    }
+    ctrlK();
+
+    // Songs is open, so Go to does not offer it, and neither does Recent.
+    const recent = await screen.findByRole("group", { name: "Recent" });
+    expect(
+      within(recent)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Releases", "Artists"]);
+    expect(savePaletteRecents).toHaveBeenLastCalledWith(
+      '["Go to/Songs","Go to/Releases","Go to/Artists"]',
+    );
   });
 
   it("drills into an artist it finds", async () => {

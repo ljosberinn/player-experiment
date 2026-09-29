@@ -268,6 +268,8 @@ pub fn run() {
             commands::save_stats_filters,
             commands::load_view,
             commands::save_view,
+            commands::load_palette_recents,
+            commands::save_palette_recents,
             commands::load_dynamic_background,
             commands::save_dynamic_background,
             commands::load_unattended_lookup,

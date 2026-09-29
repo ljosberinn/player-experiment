@@ -385,6 +385,15 @@ export function saveView(viewJson: string): Promise<void> {
   return invoke<void>("save_view", { viewJson });
 }
 
+/** The command palette's recent entries, or null before one has been run. */
+export function loadPaletteRecents(): Promise<string | null> {
+  return invoke<string | null>("load_palette_recents");
+}
+
+export function savePaletteRecents(recentsJson: string): Promise<void> {
+  return invoke<void>("save_palette_recents", { recentsJson });
+}
+
 /** The Listening tab's tiles: one scan of `plays` under the open filters. */
 export function statsListenTotals(query: ListenQuery): Promise<ListenTotals> {
   return invoke<ListenTotals>("stats_listen_totals", { query });
