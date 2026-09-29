@@ -5,6 +5,7 @@ pub mod db;
 pub mod discord;
 pub mod error;
 pub mod export;
+pub mod instance;
 pub mod lastfm;
 pub mod library;
 pub mod log;
@@ -29,8 +30,8 @@ use crate::db::{playback, plays, settings, Db};
 #[cfg(feature = "wdio")]
 mod e2e {
     /// Directory the library database lives in, replacing the OS app-data one.
-    /// Gives each spec file its own library, so a spec that seeds one does not
-    /// leave rows behind for the spec that asserts on an empty one.
+    /// Keeps a run out of the developer's own library, and out of the way of
+    /// the installed app's instance lock.
     pub const DATA_DIR: &str = "PLAYER_E2E_DATA_DIR";
 
     /// Selects a sink that accepts every load and plays silence. A CI runner
@@ -116,6 +117,23 @@ pub fn run() {
                 app.package_info().version.to_string(),
             );
             let log = log::Log::to(log::log_path(&dir));
+            // Before the database is opened, so a second launch touches none
+            // of the library. Its `main` window was never shown.
+            match instance::acquire(&dir) {
+                Ok(Some(held)) => {
+                    let handle = app.handle().clone();
+                    if let Err(error) = held.listen(move || raise(&handle)) {
+                        log.op("instance.listen").failed(&error);
+                    }
+                    app.manage(held);
+                }
+                Ok(None) => {
+                    let _ = instance::hand_off(&dir);
+                    std::process::exit(0);
+                }
+                // Better two instances than an app that will not start.
+                Err(error) => log.op("instance.lock").failed(&error),
+            }
             // Before anything that can announce, so no write has to fall back
             // to an uncoalesced ping.
             app.manage(commands::Invalidations::default());
@@ -329,6 +347,25 @@ pub fn run() {
                 remember_on_exit(app);
             }
         });
+}
+
+/// Brings the window forward for a later launch that handed off to this one.
+///
+/// Not while the window has yet to be shown: `useWindowGeometry` shows it once
+/// it is in place, and showing it sooner is the jump from the default size the
+/// hidden start exists to avoid. After that nothing hides it, so visible is
+/// every case but that one.
+fn raise(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    // In this order: tao only forces the foreground onto a window that is not
+    // minimised, which is what gets past Windows refusing a background process.
+    let _ = window.unminimize();
+    let _ = window.set_focus();
 }
 
 /// Puts back what the last session left loaded, off the setup path: the queue
