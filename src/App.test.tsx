@@ -25,6 +25,7 @@ import {
   moveInPlaylist,
   onLibraryChanged,
   type Playlist,
+  paletteSearch,
   playerPlay,
   playerSnapshot,
   playerToggle,
@@ -34,6 +35,7 @@ import {
   removeTracks,
   scanLibrary,
   setLoved,
+  type Track,
   tracksByIds,
   writeTags,
 } from "./ipc";
@@ -97,6 +99,7 @@ vi.mock("./ipc", () => ({
   forgetRemovedTracks: vi.fn(async () => 0),
   moveInPlaylist: vi.fn(),
   browseGroups: vi.fn(async () => []),
+  paletteSearch: vi.fn(async () => ({ artists: [], releases: [], tracks: [] })),
   // One release holding the three rows `renderWithLibrary` lands, so a
   // drill-in draws exactly the rows the flat table used to - a drill-in is
   // drawn as its releases since phase 120, and an empty release list is a
@@ -1314,6 +1317,61 @@ describe("the command palette", () => {
 
     await waitFor(() => expect(useLibraryStore.getState().tab).toBe("albums"));
     expect(palette()).toBeNull();
+  });
+
+  it("drills into an artist it finds", async () => {
+    vi.mocked(paletteSearch).mockResolvedValueOnce({
+      artists: [
+        {
+          id: "Grizzly Bear",
+          key: "Grizzly Bear",
+          secondary: null,
+          artistCount: 0,
+          trackCount: 3,
+          durationMs: 0,
+          coverHash: null,
+          year: null,
+        },
+      ],
+      releases: [],
+      tracks: [],
+    });
+    // Not empty, or the drill-in backs out as soon as it lands.
+    statsMock.mockResolvedValue(stats(3));
+    render(<App />);
+    const user = userEvent.setup();
+
+    ctrlK();
+    await user.type(await screen.findByRole("combobox", { name: "Search commands" }), "grizz");
+    await screen.findByRole("option", { name: "Grizzly Bear" });
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(useLibraryStore.getState()).toMatchObject({
+        tab: "artists",
+        browse: { kind: "artists", id: "Grizzly Bear" },
+      }),
+    );
+    expect(palette()).toBeNull();
+  });
+
+  it("plays a song it finds", async () => {
+    vi.mocked(paletteSearch).mockResolvedValueOnce({
+      artists: [],
+      releases: [],
+      tracks: [
+        { id: 42, path: "/m/ute.mp3", title: "Sleeping Ute", artist: "Grizzly Bear" } as Track,
+      ],
+    });
+    render(<App />);
+    const user = userEvent.setup();
+
+    ctrlK();
+    await user.type(await screen.findByRole("combobox", { name: "Search commands" }), "sleep");
+    await screen.findByRole("option", { name: "Sleeping Ute. Grizzly Bear" });
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(playerPlay).toHaveBeenCalledWith([42], 0));
   });
 
   it("hands the focus to a dialog the entry opens", async () => {

@@ -7,7 +7,8 @@ use rusqlite::{Connection, OptionalExtension, Row};
 
 use crate::error::AppResult;
 use crate::model::{
-    BrowseGroup, BrowseKind, LibraryStats, PlaylistKind, ReleaseGroup, SortField, Track, TrackQuery,
+    BrowseGroup, BrowseKind, LibraryStats, PaletteResults, PlaylistKind, ReleaseGroup, SortField,
+    Track, TrackQuery,
 };
 use crate::scan::AUDIO_EXTENSIONS;
 
@@ -208,14 +209,18 @@ pub(crate) fn row_to_track(row: &Row<'_>) -> rusqlite::Result<Track> {
 /// Returns `None` when nothing searchable remains - punctuation-only input
 /// tokenizes to nothing, which FTS5 rejects outright - and the caller then
 /// treats the query as unfiltered.
-fn to_fts_query(search: &str) -> Option<String> {
+///
+/// `columns` holds every term to those columns, as an FTS5 column filter's
+/// contents: `artist album_artist`. Each term may match any of them.
+fn to_fts_query(search: &str, columns: Option<&str>) -> Option<String> {
+    let filter = columns.map_or_else(String::new, |columns| format!("{{{columns}}} : "));
     let terms: Vec<String> = search
         .split_whitespace()
         .map(|term| term.replace('"', ""))
         // The tokenizer discards punctuation, so a term with no alphanumeric
         // character would become an empty token and error.
         .filter(|term| term.chars().any(char::is_alphanumeric))
-        .map(|term| format!("\"{term}\"*"))
+        .map(|term| format!("{filter}\"{term}\"*"))
         .collect();
 
     (!terms.is_empty()).then(|| terms.join(" AND "))
@@ -243,7 +248,10 @@ pub(crate) struct Scope {
 /// filter. Resolving it here rather than in the caller keeps every query - page,
 /// count and id list - agreeing about what the view contains.
 pub(crate) fn scope(conn: &Connection, query: &TrackQuery) -> AppResult<Scope> {
-    let fts = query.search.as_deref().and_then(to_fts_query);
+    let fts = query
+        .search
+        .as_deref()
+        .and_then(|search| to_fts_query(search, None));
     let mut from_where = String::from("FROM tracks");
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     let mut conditions: Vec<String> = Vec::new();
@@ -603,9 +611,54 @@ pub fn browse_groups(
         },
     )?;
 
+    // `group_id` last in the ordering, so it is total: two releases of one name
+    // by one artist - which is exactly what this identity exists to keep apart -
+    // agree on every term before it, and the grid would otherwise reorder two
+    // identical-looking tiles between calls.
+    let sql = format!(
+        "{} {} \
+         GROUP BY {} COLLATE NOCASE \
+         ORDER BY group_key IS NULL, group_key COLLATE NOCASE ASC, \
+                  group_secondary COLLATE NOCASE ASC, group_id COLLATE NOCASE ASC",
+        group_select(kind),
+        scope.from_where,
+        kind.identity_sql(),
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let groups = stmt
+        .query_map(
+            rusqlite::params_from_iter(scope.params.iter()),
+            row_to_group,
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(groups)
+}
+
+/// The `SELECT` list of a statement grouped by `kind`'s identity, which
+/// [`row_to_group`] reads.
+///
+/// Grouping is by identity alone, so `key` and `secondary` are labels over the
+/// group rather than the columns it is cut on: a release merged by its MBID can
+/// span two spellings of its title and twelve artists.
+///
+/// `COLLATE NOCASE` in the `GROUP BY` the caller writes: a release tagged `A
+/// Sense Of Purpose` on one file and `A Sense of Purpose` on the next is one
+/// release and was two tiles. Grouping on a folded key leaves no row of the
+/// group carrying the label, so `min()` picks it - a binary comparison, so the
+/// uppercase variant, arbitrary but the same one every time. `min()` of an
+/// all-NULL group is still NULL, so the untagged group keeps its key.
+///
+/// `min(identity)` for the same reason: the expression is per row, and two rows
+/// of one folded group can carry differently-cased identities. Which one it
+/// picked does not matter, because the drill-in compares `COLLATE NOCASE` too.
+///
+/// `min(year)` rather than any year: a remaster tagged a year later should not
+/// move an album to the wrong end of a chronological sort.
+fn group_select(kind: BrowseKind) -> String {
     let key = kind.key_sql();
     let identity = kind.identity_sql();
-
     // Albums carry their artist so the grid can label them. The other two have
     // no second label - their key is the artist, or a genre has no artist.
     let secondary = if kind == BrowseKind::Albums {
@@ -613,56 +666,135 @@ pub fn browse_groups(
     } else {
         "NULL"
     };
-
-    // Grouping is by identity alone, so `key` and `secondary` are labels over
-    // the group rather than the columns it is cut on: a release merged by its
-    // MBID can span two spellings of its title and twelve artists.
-    //
-    // `COLLATE NOCASE`: a release tagged `A Sense Of Purpose` on one file and
-    // `A Sense of Purpose` on the next is one release and was two tiles.
-    // Grouping on a folded key leaves no row of the group carrying the label,
-    // so `min()` picks it - a binary comparison, so the uppercase variant,
-    // arbitrary but the same one every time. `min()` of an all-NULL group is
-    // still NULL, so the untagged group keeps its key and its place last.
-    //
-    // `min(identity)` for the same reason: the expression is per row, and two
-    // rows of one folded group can carry differently-cased identities. Which
-    // one it picked does not matter, because the drill-in compares `COLLATE
-    // NOCASE` too.
-    //
-    // `min(year)` rather than any year: a remaster tagged a year later should
-    // not move an album to the wrong end of a chronological sort.
-    //
-    // `group_id` last in the ordering, so it is total: two releases of one name
-    // by one artist - which is exactly what this identity exists to keep apart -
-    // agree on every term before it, and the grid would otherwise reorder two
-    // identical-looking tiles between calls.
-    let sql = format!(
+    format!(
         "SELECT min({identity}) AS group_id, min({key}) AS group_key, \
          min({secondary}) AS group_secondary, count(DISTINCT lower({secondary})), count(*), \
-         coalesce(sum(tracks.duration_ms), 0), min(tracks.cover_hash), min(tracks.year) {} \
-         GROUP BY {identity} COLLATE NOCASE \
-         ORDER BY group_key IS NULL, group_key COLLATE NOCASE ASC, \
-                  group_secondary COLLATE NOCASE ASC, group_id COLLATE NOCASE ASC",
-        scope.from_where
-    );
+         coalesce(sum(tracks.duration_ms), 0), min(tracks.cover_hash), min(tracks.year)"
+    )
+}
 
-    let mut stmt = conn.prepare(&sql)?;
-    let groups = stmt
-        .query_map(rusqlite::params_from_iter(scope.params.iter()), |row| {
-            Ok(BrowseGroup {
-                id: row.get(0)?,
-                key: row.get(1)?,
-                secondary: row.get(2)?,
-                artist_count: row.get::<_, i64>(3)? as u32,
-                track_count: row.get::<_, i64>(4)? as u32,
-                duration_ms: row.get(5)?,
-                cover_hash: row.get(6)?,
-                year: row.get(7)?,
-            })
-        })?
+fn row_to_group(row: &Row<'_>) -> rusqlite::Result<BrowseGroup> {
+    Ok(BrowseGroup {
+        id: row.get(0)?,
+        key: row.get(1)?,
+        secondary: row.get(2)?,
+        artist_count: row.get::<_, i64>(3)? as u32,
+        track_count: row.get::<_, i64>(4)? as u32,
+        duration_ms: row.get(5)?,
+        cover_hash: row.get(6)?,
+        year: row.get(7)?,
+    })
+}
+
+/// The most the palette may ask for of each kind.
+const MAX_PALETTE_LIMIT: u32 = 50;
+
+/// Artists, releases and songs for what has been typed into the command
+/// palette, `limit` of each, most played first and then by name.
+///
+/// Each kind matches on its own columns of the search box's index. Across all
+/// of them, an artist with one song called `Sunday` would be a hit for `sun`,
+/// and ranked by plays could bury the artist actually named that. Releases
+/// match their artist too, so an artist's name brings up their releases below
+/// them. Songs match as the search box does.
+///
+/// Library-wide, whatever view is open: the palette goes to what it finds.
+pub fn palette_search(conn: &Connection, search: &str, limit: u32) -> AppResult<PaletteResults> {
+    let limit = limit.min(MAX_PALETTE_LIMIT);
+    // Punctuation alone leaves nothing to match, which the search box reads as
+    // no filter. Here that would offer the most played of everything.
+    let Some(any) = to_fts_query(search, None) else {
+        return Ok(PaletteResults::default());
+    };
+    let columns = |columns| to_fts_query(search, Some(columns)).unwrap_or_default();
+
+    let sql = format!(
+        "SELECT {COLUMNS} FROM tracks JOIN tracks_fts ON tracks_fts.rowid = tracks.id \
+         WHERE tracks_fts MATCH ?1 \
+         ORDER BY tracks.play_count DESC, tracks.title COLLATE NOCASE ASC NULLS LAST, \
+                  tracks.id ASC \
+         LIMIT ?2"
+    );
+    let tracks = conn
+        .prepare(&sql)?
+        .query_map(rusqlite::params![any, limit], row_to_track)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
+    // The artist matches as `GROUP_ARTIST` picks it. A song's own artist on a
+    // compilation would otherwise find `Various Artists`, whose plays put it
+    // first for every name that appears on one.
+    let artists = palette_groups(
+        conn,
+        BrowseKind::Artists,
+        &[
+            (columns("album_artist"), ""),
+            (
+                columns("artist"),
+                "AND nullif(tracks.album_artist, '') IS NULL",
+            ),
+        ],
+        limit,
+    )?;
+    let releases = palette_groups(
+        conn,
+        BrowseKind::Albums,
+        &[(columns("album artist album_artist"), "")],
+        limit,
+    )?;
+
+    Ok(PaletteResults {
+        artists,
+        releases,
+        tracks,
+    })
+}
+
+/// The groups of `kind` holding a track one of `hits` finds, untagged ones
+/// left out.
+///
+/// Each hit is an FTS match and a condition on the row it matched. The matched
+/// tracks pick the groups and every track of a group is then read, so a
+/// compilation found through one of its artists counts all its songs and ranks
+/// by all its plays. The lookup is the drill-in's, through migration 20's
+/// index.
+fn palette_groups(
+    conn: &Connection,
+    kind: BrowseKind,
+    hits: &[(String, &str)],
+    limit: u32,
+) -> AppResult<Vec<BrowseGroup>> {
+    let identity = kind.identity_sql();
+    // The inner `tracks` is not aliased, for the reason `scope`'s cutoff gives:
+    // unqualified, the identity binds to the innermost table.
+    let found = hits
+        .iter()
+        .map(|(_, condition)| {
+            format!(
+                "SELECT {identity} FROM tracks JOIN tracks_fts ON tracks_fts.rowid = tracks.id \
+                 WHERE tracks_fts MATCH ? {condition}"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ");
+    let sql = format!(
+        "{} FROM tracks \
+         WHERE {identity} COLLATE NOCASE IN ({found}) \
+         GROUP BY {identity} COLLATE NOCASE \
+         HAVING group_key IS NOT NULL \
+         ORDER BY sum(tracks.play_count) DESC, group_key COLLATE NOCASE ASC, \
+                  group_secondary COLLATE NOCASE ASC, group_id COLLATE NOCASE ASC \
+         LIMIT ?",
+        group_select(kind),
+    );
+    let mut params: Vec<&dyn rusqlite::ToSql> = hits
+        .iter()
+        .map(|(match_expr, _)| match_expr as &dyn rusqlite::ToSql)
+        .collect();
+    params.push(&limit);
+    let groups = conn
+        .prepare(&sql)?
+        .query_map(params.as_slice(), row_to_group)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(groups)
 }
 
@@ -1290,7 +1422,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(to_fts_query("***"), None);
+        assert_eq!(to_fts_query("***", None), None);
         assert_eq!(count_tracks(&conn, &query).unwrap(), 5);
     }
 
@@ -3534,5 +3666,196 @@ mod tests {
         assert_eq!(drill(RG_TWO), ["/r/3.mp3"]);
         // A fallback group is reached through the same one condition.
         assert_eq!(drill(&album_id("Alone", "Frank")), ["/r/6.mp3", "/r/7.mp3"]);
+    }
+
+    /// Artists named for the sun beside songs that only mention it, a
+    /// compilation, and files missing the tags a group is cut on.
+    fn palette_library() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(dir.path().join("library.sqlite3")).unwrap();
+        let conn = db.conn().unwrap();
+        let rows = [
+            (
+                "/p/1.mp3",
+                "Sunday Morning",
+                Some("Velvet"),
+                None,
+                Some("Banana"),
+                50,
+            ),
+            (
+                "/p/2.mp3",
+                "Heroin",
+                Some("Velvet"),
+                None,
+                Some("Banana"),
+                40,
+            ),
+            (
+                "/p/3.mp3",
+                "Dopesmoker",
+                Some("Sunn"),
+                None,
+                Some("Monoliths"),
+                1,
+            ),
+            (
+                "/p/4.mp3",
+                "Aghartha",
+                Some("Sunn"),
+                None,
+                Some("Monoliths"),
+                2,
+            ),
+            (
+                "/p/5.mp3",
+                "Solstice",
+                Some("Sunset Club"),
+                None,
+                Some("Dusk"),
+                5,
+            ),
+            (
+                "/p/6.mp3",
+                "Rise",
+                Some("Sunny Day"),
+                Some("Various Artists"),
+                Some("Comp"),
+                0,
+            ),
+            (
+                "/p/7.mp3",
+                "Fall",
+                Some("Other"),
+                Some("Various Artists"),
+                Some("Comp"),
+                90,
+            ),
+            // No artist and no album: neither group may be offered.
+            ("/p/8.mp3", "Sun Song", None, None, None, 100),
+            ("/p/9.mp3", "Sun Loose", Some("Sunn"), None, None, 0),
+        ];
+        for (path, title, artist, album_artist, album, plays) in rows {
+            conn.execute(
+                "INSERT INTO tracks (path, mtime, size, title, artist, album_artist, album,
+                                     play_count, added_at)
+                 VALUES (?1, 1, 1, ?2, ?3, ?4, ?5, ?6, 0)",
+                rusqlite::params![path, title, artist, album_artist, album, plays],
+            )
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    fn palette(db: &Db, search: &str, limit: u32) -> PaletteResults {
+        palette_search(&db.conn().unwrap(), search, limit).unwrap()
+    }
+
+    #[test]
+    fn the_palette_finds_artists_by_name_most_played_first() {
+        let (_dir, db) = palette_library();
+        let found = palette(&db, "sun", 5);
+
+        // Velvet's `Sunday Morning` is a song hit, not an artist one, and
+        // `Sunny Day` is filed under the compilation's album artist, which is
+        // not what was typed.
+        assert_eq!(keys(&found.artists), [Some("Sunset Club"), Some("Sunn")]);
+    }
+
+    #[test]
+    fn the_palette_finds_releases_by_title_or_by_artist() {
+        let (_dir, db) = palette_library();
+
+        let by_artist = palette(&db, "velvet", 5);
+        assert_eq!(keys(&by_artist.releases), [Some("Banana")]);
+
+        // Found through one of its artists, the compilation ranks by the plays
+        // of all its songs and counts them all.
+        let found = palette(&db, "sun", 5);
+        assert_eq!(
+            keys(&found.releases),
+            [Some("Comp"), Some("Dusk"), Some("Monoliths")]
+        );
+        assert_eq!(found.releases[0].track_count, 2);
+    }
+
+    #[test]
+    fn the_palette_finds_songs_as_the_search_box_does() {
+        let (_dir, db) = palette_library();
+        let conn = db.conn().unwrap();
+
+        for search in ["sun", "velvet", "banana", "sun loose"] {
+            let found = palette(&db, search, MAX_PALETTE_LIMIT);
+            let boxed = query_tracks(
+                &conn,
+                &TrackQuery {
+                    search: Some(search.to_owned()),
+                    limit: MAX_PALETTE_LIMIT,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let mut palette_ids: Vec<i64> = found.tracks.iter().map(|t| t.id).collect();
+            let mut box_ids: Vec<i64> = boxed.iter().map(|t| t.id).collect();
+            palette_ids.sort_unstable();
+            box_ids.sort_unstable();
+            assert_eq!(palette_ids, box_ids, "{search:?}");
+        }
+
+        let titles: Vec<_> = palette(&db, "sun", 7)
+            .tracks
+            .into_iter()
+            .map(|t| t.title.unwrap())
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                "Sun Song",
+                "Sunday Morning",
+                "Solstice",
+                "Aghartha",
+                "Dopesmoker",
+                "Rise",
+                "Sun Loose"
+            ],
+            "most played first, then by title"
+        );
+    }
+
+    #[test]
+    fn each_kind_the_palette_finds_is_capped() {
+        let (_dir, db) = palette_library();
+
+        let found = palette(&db, "sun", 1);
+        assert_eq!(keys(&found.artists), [Some("Sunset Club")]);
+        assert_eq!(keys(&found.releases), [Some("Comp")]);
+        assert_eq!(found.tracks.len(), 1);
+
+        let asked_too_much = palette(&db, "s", u32::MAX);
+        assert!(asked_too_much.tracks.len() <= MAX_PALETTE_LIMIT as usize);
+    }
+
+    #[test]
+    fn the_palette_leaves_out_untagged_groups() {
+        let (_dir, db) = palette_library();
+        // `Sun Song` has neither tag, and `Sun Loose` has an artist but no
+        // album: that artist's group is real, the album's is not.
+        let found = palette(&db, "sun", 50);
+
+        assert!(found.artists.iter().all(|group| group.key.is_some()));
+        assert!(found.releases.iter().all(|group| group.key.is_some()));
+    }
+
+    #[test]
+    fn nothing_searchable_finds_nothing() {
+        let (_dir, db) = palette_library();
+
+        for search in ["", "   ", "***", "\""] {
+            assert_eq!(
+                palette(&db, search, 5),
+                PaletteResults::default(),
+                "{search:?}"
+            );
+        }
     }
 }

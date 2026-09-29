@@ -615,6 +615,33 @@ describe("the keys bound at the window", () => {
       await browser.keys(["Escape"]);
     });
 
+    it("photographs the music it finds on both grounds", async () => {
+      for (const ground of GROUNDS) {
+        await setGround(ground);
+        await dispatchCtrlK("body");
+        const palette = browser.$(PALETTE);
+        await palette.waitForExist({ timeout: 10_000 });
+
+        // The fixture's Blue Room: an artist, a release and two songs.
+        await browser.keys(["b", "l", "u", "e"]);
+        await browser.waitUntil(
+          async () =>
+            (
+              await browser.execute(() =>
+                [...document.querySelectorAll(".palette-group-label")].map(
+                  (label) => label.textContent,
+                ),
+              )
+            ).includes("Songs"),
+          { timeout: 10_000, timeoutMsg: "the palette found no music" },
+        );
+        await capture(`command-palette-music-${ground}`);
+        await browser.keys(["Escape"]);
+        await palette.waitForExist({ timeout: 10_000, reverse: true });
+      }
+      await clearGround();
+    });
+
     it("does not open over another dialog", async () => {
       await chooseFromMenu("Edit", "Settings…");
       const settings = browser.$("[role='dialog']");

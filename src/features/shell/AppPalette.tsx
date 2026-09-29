@@ -6,6 +6,7 @@ import { useLibraryStore } from "../library/store";
 import { usePlayerStore } from "../player/store";
 import { NEW_PLAYLIST_NAME, usePlaylistsStore } from "../playlists/store";
 import { commands } from "./commands";
+import { foundGroups, usePaletteSearch } from "./paletteSearch";
 import { useThemeStore } from "./themeStore";
 import { type MenuWiring, useMenus } from "./useMenus";
 import { useZoomStore } from "./zoomStore";
@@ -68,52 +69,64 @@ function OpenPalette({ onClose, ...wiring }: MenuWiring & { onClose: () => void 
   const repeatOne = usePlayerStore((s) => s.repeatOne);
   const zoom = useZoomStore((s) => s.factor);
   const theme = useThemeStore((s) => s.preference);
+  const [query, setQuery] = useState("");
+  const { found, searching } = usePaletteSearch(query);
 
   const name = (entry: HistoryEntry | null) =>
     entry === null ? null : destinationOf(entry, playlists);
 
   return (
     <CommandPalette
-      groups={commands({
-        menus,
-        tab,
-        playlistId,
-        playlists,
-        back: name(backEntry(history)),
-        forward: name(forwardEntry(history)),
-        status,
-        track,
-        muted,
-        repeatOne,
-        zoom,
-        theme,
-        onPlayback: (command) => {
-          const player = usePlayerStore.getState();
-          const run = {
-            toggle: player.toggle,
-            next: player.next,
-            previous: player.previous,
-            stop: player.stop,
-            mute: player.toggleMute,
-            repeat: player.toggleRepeatOne,
-          }[command];
-          void run();
-        },
-        onZoom: (action) => {
-          const store = useZoomStore.getState();
-          void (action === "reset" ? store.reset() : store.step(action === "in" ? 1 : -1));
-        },
-        onTheme: (preference) => void useThemeStore.getState().set(preference),
-        onSettings: wiring.onSettings,
-        onNewPlaylist: () => void usePlaylistsStore.getState().create(NEW_PLAYLIST_NAME),
-        onNewSmartPlaylist: () => void usePlaylistsStore.getState().editSmart(null),
-        onShowTab: (view) => void useLibraryStore.getState().showTab(view),
-        onShowPlaylist: (playlist) => void useLibraryStore.getState().showPlaylist(playlist),
-        onBack: () => void useLibraryStore.getState().back(),
-        onForward: () => void useLibraryStore.getState().forward(),
-        onShowTrackArtist: (playing) => void useLibraryStore.getState().showTrackArtist(playing),
-        onShowTrackGroup: (playing) => void useLibraryStore.getState().showTrackGroup(playing),
-      })}
+      groups={[
+        ...commands({
+          menus,
+          tab,
+          playlistId,
+          playlists,
+          back: name(backEntry(history)),
+          forward: name(forwardEntry(history)),
+          status,
+          track,
+          muted,
+          repeatOne,
+          zoom,
+          theme,
+          onPlayback: (command) => {
+            const player = usePlayerStore.getState();
+            const run = {
+              toggle: player.toggle,
+              next: player.next,
+              previous: player.previous,
+              stop: player.stop,
+              mute: player.toggleMute,
+              repeat: player.toggleRepeatOne,
+            }[command];
+            void run();
+          },
+          onZoom: (action) => {
+            const store = useZoomStore.getState();
+            void (action === "reset" ? store.reset() : store.step(action === "in" ? 1 : -1));
+          },
+          onTheme: (preference) => void useThemeStore.getState().set(preference),
+          onSettings: wiring.onSettings,
+          onNewPlaylist: () => void usePlaylistsStore.getState().create(NEW_PLAYLIST_NAME),
+          onNewSmartPlaylist: () => void usePlaylistsStore.getState().editSmart(null),
+          onShowTab: (view) => void useLibraryStore.getState().showTab(view),
+          onShowPlaylist: (playlist) => void useLibraryStore.getState().showPlaylist(playlist),
+          onBack: () => void useLibraryStore.getState().back(),
+          onForward: () => void useLibraryStore.getState().forward(),
+          onShowTrackArtist: (playing) => void useLibraryStore.getState().showTrackArtist(playing),
+          onShowTrackGroup: (playing) => void useLibraryStore.getState().showTrackGroup(playing),
+        }),
+        ...(found === null
+          ? []
+          : foundGroups(found, {
+              onShowGroup: (kind, group) => void useLibraryStore.getState().showGroup(kind, group),
+              onPlay: (hit) => void usePlayerStore.getState().play([hit.id], 0),
+            })),
+      ]}
+      searching={searching}
+      onQueryChange={setQuery}
       onClose={onClose}
     />
   );

@@ -19,10 +19,10 @@ use crate::export::{self, ExportScope};
 use crate::log::{Fields, Log, Op};
 use crate::model::{
     AppInfo, BrowseGroup, BrowseKind, CoverEdit, CrashReport, DropSummary, FilterGroup,
-    LastfmConnection, LastfmImported, LastfmStatus, LibraryFolder, LibraryStats, PlayerSnapshot,
-    Playlist, ReleaseCandidate, ReleaseDetail, ReleaseGroup, ReleaseIdentity, ReleaseSelection,
-    ReviewCounts, ReviewEntry, ScanSummary, SmartOrder, TagEdit, TagValueField, TagWriteSummary,
-    Track, TrackEdit, TrackQuery,
+    LastfmConnection, LastfmImported, LastfmStatus, LibraryFolder, LibraryStats, PaletteResults,
+    PlayerSnapshot, Playlist, ReleaseCandidate, ReleaseDetail, ReleaseGroup, ReleaseIdentity,
+    ReleaseSelection, ReviewCounts, ReviewEntry, ScanSummary, SmartOrder, TagEdit, TagValueField,
+    TagWriteSummary, Track, TrackEdit, TrackQuery,
 };
 use crate::scan::ScanLock;
 use crate::{crash, lastfm, scan, tags, tagsource};
@@ -333,6 +333,24 @@ pub fn browse_groups(
         let conn = db.conn()?;
         query::browse_groups(&conn, &query, kind)
     })
+}
+
+/// Artists, releases and songs for what has been typed into the command
+/// palette.
+///
+/// Off the IPC thread: it runs on keystrokes that survive the debounce, and a
+/// two-letter prefix matches a good part of the library.
+#[tauri::command]
+pub async fn palette_search(
+    app: tauri::AppHandle,
+    query: String,
+    limit: u32,
+) -> AppResult<PaletteResults> {
+    let op = op(&app, "tracks.palette").quiet();
+    blocking("palette search", move || {
+        op.run(|| query::palette_search(&app.state::<Db>().conn()?, &query, limit))
+    })
+    .await
 }
 
 /// The releases inside the open drill-in, in the order its rows are grouped.

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { BUILT_INS, LIBRARY, MENUS, PLAYLISTS } from "../../../.storybook/fixtures";
+import { BUILT_INS, browseGroup, LIBRARY, MENUS, PLAYLISTS } from "../../../.storybook/fixtures";
 import { commands } from "../../features/shell/commands";
+import { foundGroups } from "../../features/shell/paletteSearch";
 import { CommandPalette } from "./CommandPalette";
 
 /**
@@ -53,4 +54,28 @@ export const Open: StoryObj<typeof meta> = {
       onClose={noop}
     />
   ),
+};
+
+/** What a search for an artist finds: them, their releases, their most played. */
+export const FindsMusic: StoryObj<typeof meta> = {
+  render: () => {
+    const artist = LIBRARY[0]?.artist ?? "";
+    const songs = LIBRARY.filter((track) => track.artist === artist);
+    const albums = [...new Set(songs.map((track) => track.album ?? ""))];
+    return (
+      <CommandPalette
+        groups={foundGroups(
+          {
+            artists: [browseGroup({ id: artist, key: artist, secondary: null, artistCount: 0 })],
+            releases: albums.map((album) =>
+              browseGroup({ id: `${album}${artist}`, key: album, secondary: artist }),
+            ),
+            tracks: songs.slice(0, 5),
+          },
+          { onShowGroup: noop, onPlay: noop },
+        )}
+        onClose={noop}
+      />
+    );
+  },
 };

@@ -1027,6 +1027,19 @@ describe("revealing the playing track in the library", () => {
 
     expect(useLibraryStore.getState().browse).toEqual(before);
   });
+
+  it("opens a group of any kind from the Songs tab, leaving the open playlist", async () => {
+    useLibraryStore.setState({ tab: "songs", playlistId: 4 });
+
+    await useLibraryStore.getState().showGroup("albums", browseGroup());
+
+    expect(useLibraryStore.getState()).toMatchObject({
+      tab: "albums",
+      browse: { kind: "albums", id: albumIdentity("Shields", "Grizzly Bear") },
+      browseLabel: "Shields",
+      playlistId: null,
+    });
+  });
 });
 
 describe("leaving a drill-in that has emptied", () => {

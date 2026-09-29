@@ -911,6 +911,16 @@ absences are what nobody notices coming back — hence the guards in
   palette before it runs, so a dialog it opens is not handed focus by a
   palette still closing. Greyed entries are reachable and inert, as in a menu:
   Base UI's combobox hard-codes `disabledIndices` empty too.
+- **The palette finds music below its commands.** From two characters,
+  `usePaletteSearch` asks `palette_search` for five artists, releases and songs,
+  debounced and late-answer-guarded as the tag suggestions are, and keeps the
+  last answer up while the next is coming. The palette runs `mode="none"` and
+  filters its commands itself: a `found` group is drawn as given, since a
+  song matched on its artist would fail a filter on its title. While an answer
+  is still coming it does not say nothing matches. An artist or release opens
+  through `showGroup`, which lands on its tab from anywhere and leaves any open
+  playlist; `openGroup` drills only within the open tab. A song plays alone. A
+  failed search shows no music and no error.
 - **A greyed menu entry says what would un-grey it.** `MenuItem.hint` is a few
   words in the trailing column a menu elsewhere gives a shortcut, and the item
   carries an explicit `aria-label` because an accessible name is the plain
