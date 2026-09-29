@@ -34,6 +34,7 @@ src-tauri/src/
               both steps; `ingest` is what an OS drop leaves behind
   commands/   #[tauri::command] surface
   crash.rs    panic hook, bounded log
+  instance.rs one running app per library
   log.rs      every operation, one line each, rotated
   palette.rs  dominant colours from cover bytes
 src/
@@ -63,6 +64,17 @@ e2e/          WebdriverIO specs plus the harness (fixtures, contrast, screenshot
   The plugin would arrive with a capability and an fs scope over whatever path
   the save dialog returned, which is a permission surface the app does not
   otherwise have.
+
+## One instance per library
+
+`setup` takes `instance.lock` beside the database (`File::try_lock`) before
+`Db::open`. A launch that finds it held reads the holder's loopback port from
+`instance.port`, connects, and exits with its `main` window never shown and the
+library never opened. The holder answers each connection by unminimizing and
+focusing `main` - but only once the frontend has shown it, so a double-launch
+cannot show it before its geometry is restored. The OS drops the lock with the
+process, so a crash leaves nothing stale. Std only: `tauri-plugin-single-instance`
+is `unsafe` on Windows.
 
 ## Threading and events
 

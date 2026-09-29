@@ -51,6 +51,10 @@ Each of these cost real time once. They are here so they cost it once.
   and wraps `/select,C:\My Music\a.mp3` as one argument; Explorer parses its own
   command line, cannot read that, and answers by opening Documents. Verify by
   running both forms through `cmd /c echo`, not by asserting on the arg vector.
+- **`tauri dev` exits while the installed app runs.** Both use the same
+  identifier, so the same app-data directory and the same instance lock: dev
+  brings the installed window forward and quits. Close the installed app first.
+  e2e builds are unaffected - `PLAYER_E2E_DATA_DIR` gives them a lock of their own.
 
 ## SQLite
 

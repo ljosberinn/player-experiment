@@ -269,9 +269,10 @@ overlay, so a release build ships neither. External drivers (`tauri-driver`,
   `import '@wdio/tauri-plugin'` in the frontend entry, plus
   `app.withGlobalTauri`. Missing the frontend half costs 5s per WebDriver
   command and warns rather than failing.
-- Each spec file gets its own data directory via `PLAYER_E2E_DATA_DIR`, set in
-  `beforeSession`; the seeded spec asserts the empty state before writing, so a
-  silently-ignored override fails as itself.
+- One app process serves the whole run, on a data directory of its own via
+  `PLAYER_E2E_DATA_DIR`, set at module scope in `wdio.conf.ts`; the seeded spec
+  asserts the empty state before writing, so a silently-ignored override fails
+  as itself.
 - A runner has no audio device, so `SilentSink` (env-selected, `wdio` builds
   only) accepts every load and advances position on a wall clock — `NullSink`
   fails every load by design and no row could ever be marked playing.
