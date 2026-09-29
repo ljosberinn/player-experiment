@@ -352,6 +352,11 @@ interface LibraryState {
   /** Drills into one album, artist or genre from the open browse tab. */
   openGroup: (group: BrowseGroup) => Promise<void>;
   /**
+   * Drills into a group of `kind` from anywhere, leaving any playlist that is
+   * open: the command palette finds groups across the whole library.
+   */
+  showGroup: (kind: BrowseKind, group: BrowseGroup) => Promise<void>;
+  /**
    * Opens the album a track belongs to, its artist if it has no album, and
    * Songs if it has neither.
    *
@@ -918,6 +923,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       browse: { kind: tab, id: group.id },
       browseLabel: group.key,
       playlistId,
+      stats: null,
+    });
+  },
+
+  showGroup: async (kind, group) => {
+    await pushEntry({
+      tab: kind,
+      browse: { kind, id: group.id },
+      browseLabel: group.key,
+      playlistId: null,
       stats: null,
     });
   },

@@ -328,6 +328,30 @@ fn ranking_a_search_stays_cheap() {
 }
 
 #[test]
+fn the_palette_search_reads_its_groups_through_the_index() {
+    let (_dir, db) = seeded_library();
+    let conn = counted(&db);
+
+    let (work, found) = work_of(|| query::palette_search(&conn, "Artist042", 5).unwrap());
+    assert_eq!(found.artists.len(), 1);
+    assert_eq!(found.releases.len(), 5);
+    assert_eq!(found.tracks.len(), 5);
+    // Three searches, each sorting only what it matched. A group read by a
+    // scan of the library rather than migration 20's index moves `scanned`.
+    assert_within(
+        "palette search",
+        Work {
+            statements: 90,
+            steps: 20_000,
+            scanned: 0,
+            sorts: 6,
+            commits: 0,
+        },
+        work,
+    );
+}
+
+#[test]
 fn the_sorted_page_query_plan_reads_an_index_in_order_rather_than_sorting_everything() {
     let (_dir, db) = seeded_library();
     let conn = db.conn().unwrap();

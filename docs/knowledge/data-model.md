@@ -100,6 +100,16 @@ is why paging, sorting, search-within, "select all", the play queue, export and
   through `tracks_fts.rank`, configured by `rank MATCH 'bm25(…)'`, never called
   directly: a drill-in's window functions push the FTS table into a subquery,
   where an auxiliary function call can no longer reach it.
+- **The palette's search (`palette_search`) matches each kind on its own
+  columns** of the same index, through FTS5 column filters: an artist on its
+  album artist, or its artist where there is none, as `GROUP_ARTIST` files it;
+  a release on its title and either artist; a song on every column, as the
+  search box does. Across every column, `sun` would find each artist with a
+  song called `Sunday`, and ranked by plays bury the one named Sunn. Most played
+  first, then by name. The matched tracks pick the groups, which are then read
+  whole through migration 20's index, so a compilation found through one of its
+  artists ranks by all its plays. Untagged groups and punctuation-only input
+  find nothing.
 - **Row count is a separate `COUNT(*)`**, so the scrollbar is right without
   loading rows. `count_tracks` is a thin wrapper over `library_stats`, so the
   view summary and the scrollbar cannot describe different views.

@@ -65,7 +65,7 @@ attempts left `tauri-driver` hung and needing a manual kill.
 | ↑ / ↓ | Move the selection, in the song list or the sidebar |
 | Enter (on a row) | Play the view from that row |
 | Double-click (a row) | Play the view from that row |
-| Ctrl+K | Command palette: every menu entry, shortcut, view and playlist, typed |
+| Ctrl+K | Command palette: every menu entry, shortcut, view and playlist, typed, and the artists, releases and songs that match |
 
 Media keys (play/pause, next, previous) work while the window has focus.
 Shortcuts stand down whenever focus is in a text field.

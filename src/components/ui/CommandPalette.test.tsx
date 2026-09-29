@@ -5,21 +5,39 @@ import { describe, expect, it, vi } from "vitest";
 import { CommandPalette, matches, type PaletteGroup } from "./CommandPalette";
 
 /** A button that opens the palette, so there is somewhere for focus to go back to. */
-function Harness({ groups }: { groups: PaletteGroup[] }) {
+function Harness({
+  groups,
+  searching,
+  onQueryChange,
+}: {
+  groups: PaletteGroup[];
+  searching?: boolean;
+  onQueryChange?: (query: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button type="button" onClick={() => setOpen(true)}>
         Open
       </button>
-      {open ? <CommandPalette groups={groups} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <CommandPalette
+          groups={groups}
+          searching={searching}
+          onQueryChange={onQueryChange}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
 
-async function open(groups: PaletteGroup[]) {
+async function open(
+  groups: PaletteGroup[],
+  props: { searching?: boolean; onQueryChange?: (query: string) => void } = {},
+) {
   const user = userEvent.setup();
-  render(<Harness groups={groups} />);
+  render(<Harness groups={groups} {...props} />);
   await user.click(screen.getByRole("button", { name: "Open" }));
   const field = await screen.findByRole("combobox", { name: "Search commands" });
   await waitFor(() => expect(field).toHaveFocus());
@@ -130,6 +148,68 @@ describe("CommandPalette", () => {
       "aria-keyshortcuts",
       "Alt+ArrowLeft",
     );
+  });
+
+  it("draws a found group as given, below the commands it still filters", async () => {
+    const onQueryChange = vi.fn();
+    const { user } = await open(
+      [
+        {
+          group: "View",
+          items: [
+            { label: "Zoom In", onSelect: vi.fn() },
+            { label: "Dark Theme", onSelect: vi.fn() },
+          ],
+        },
+        // Matched on a column the label does not show.
+        { group: "Songs", found: true, items: [{ label: "Sleeping Ute", hint: "Grizzly Bear" }] },
+      ],
+      { onQueryChange },
+    );
+
+    await user.keyboard("zoom");
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Zoom In",
+      "Sleeping UteGrizzly Bear",
+    ]);
+    expect(onQueryChange).toHaveBeenLastCalledWith("zoom");
+  });
+
+  it("runs a found entry that arrives after the typing", async () => {
+    const play = vi.fn();
+    const commands = { group: "Help", items: [{ label: "Source Code on GitHub" }] };
+    const user = userEvent.setup();
+    const { rerender } = render(<Harness groups={[commands]} searching />);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Search commands" })).toHaveFocus(),
+    );
+    await user.keyboard("sleep");
+
+    rerender(
+      <Harness
+        groups={[
+          commands,
+          { group: "Songs", found: true, items: [{ label: "Sleeping Ute", onSelect: play }] },
+        ]}
+      />,
+    );
+    await screen.findByRole("option", { name: "Sleeping Ute" });
+    await user.keyboard("{Enter}");
+
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  it("does not say nothing matches while a search is still coming", async () => {
+    const { user } = await open([{ group: "Help", items: [{ label: "Source Code on GitHub" }] }], {
+      searching: true,
+    });
+
+    await user.keyboard("grizzly");
+
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.queryByText("No matching command.")).toBeNull();
   });
 
   it("says so when nothing matches", async () => {

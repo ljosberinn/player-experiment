@@ -39,6 +39,7 @@ import type { ListenDimension } from "./bindings/ListenDimension";
 import type { ListenQuery } from "./bindings/ListenQuery";
 import type { ListenTotals } from "./bindings/ListenTotals";
 import type { NewArtist } from "./bindings/NewArtist";
+import type { PaletteResults } from "./bindings/PaletteResults";
 import type { Play } from "./bindings/Play";
 import type { PlaybackStatus } from "./bindings/PlaybackStatus";
 import type { PlayerPosition } from "./bindings/PlayerPosition";
@@ -112,6 +113,7 @@ export type {
   ListenQuery,
   ListenTotals,
   NewArtist,
+  PaletteResults,
   Play,
   PlaybackStatus,
   PlayerPosition,
@@ -255,6 +257,15 @@ export function libraryStats(query: TrackQuery): Promise<LibraryStats> {
  */
 export function browseGroups(query: TrackQuery, kind: BrowseKind): Promise<BrowseGroup[]> {
   return invoke<BrowseGroup[]>("browse_groups", { query, kind });
+}
+
+/**
+ * Artists, releases and songs for what has been typed into the command
+ * palette, `limit` of each, most played first. Library-wide, whatever view is
+ * open.
+ */
+export function paletteSearch(query: string, limit: number): Promise<PaletteResults> {
+  return invoke<PaletteResults>("palette_search", { query, limit });
 }
 
 /**

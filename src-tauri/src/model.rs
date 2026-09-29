@@ -236,6 +236,16 @@ pub struct BrowseGroup {
     pub year: Option<i64>,
 }
 
+/// What the command palette found for what has been typed, most played first.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PaletteResults {
+    pub artists: Vec<BrowseGroup>,
+    pub releases: Vec<BrowseGroup>,
+    pub tracks: Vec<Track>,
+}
+
 /// One release inside a drill-in, and the rows it owns.
 ///
 /// Not a [`BrowseGroup`]: that is the grid's list and answers "what does this
