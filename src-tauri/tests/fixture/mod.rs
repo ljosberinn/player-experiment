@@ -265,6 +265,32 @@ pub fn write_mp3_with_comment_language(
     );
 }
 
+/// An mp3 carrying a `TXXX:WORK` frame, as Picard writes the MusicBrainz work
+/// title.
+pub fn write_mp3_with_work(path: &Path, frames: usize, title: &str, work: &str) {
+    // Encoding, the description terminated by its null, then the value.
+    let mut body = vec![3u8];
+    body.extend_from_slice(b"WORK\0");
+    body.extend_from_slice(work.as_bytes());
+
+    write_hand_built_mp3(
+        path,
+        frames,
+        &[text_frame("TIT2", title), raw_frame("TXXX", &body)],
+    );
+}
+
+/// The value of the `TXXX` frame described as `description` in the mp3 at
+/// `path`.
+pub fn user_text(path: &Path, description: &str) -> Option<String> {
+    let mut file = std::fs::File::open(path).expect("open mp3");
+    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).expect("read mp3");
+    mpeg.id3v2()
+        .expect("an ID3v2 tag")
+        .get_user_text(description)
+        .map(str::to_owned)
+}
+
 /// The language declared by the first `COMM` frame of the mp3 at `path`.
 pub fn comment_language(path: &Path) -> [u8; 3] {
     let mut file = std::fs::File::open(path).expect("open mp3");

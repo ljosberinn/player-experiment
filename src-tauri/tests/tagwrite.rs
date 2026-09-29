@@ -841,6 +841,37 @@ fn a_comment_language_that_can_be_written_back_is_left_alone() {
     assert_eq!(&fixture::comment_language(&path), b"deu");
 }
 
+#[test]
+fn a_file_carrying_a_work_title_can_still_be_written() {
+    let h = harness();
+    let path = h.music.join("loose/work.mp3");
+    fixture::write_mp3_with_work(&path, 10, "Krieg", "Krieg (Werk)");
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}).unwrap();
+    let track = id_of(&h.db, "Krieg");
+
+    let written = write::apply_to_each(
+        &mut conn,
+        &[track],
+        &TagEdit {
+            genre: set("Industrial"),
+            ..edit()
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+    assert_eq!(
+        tags::read(&path).unwrap().genre.as_deref(),
+        Some("Industrial")
+    );
+    assert_eq!(
+        fixture::user_text(&path, "WORK").as_deref(),
+        Some("Krieg (Werk)")
+    );
+}
+
 /// Past the 1,024 bytes lofty searches beyond the first tag for audio, a save
 /// could not tell what kind of file it was writing to.
 #[test]
