@@ -66,7 +66,7 @@ describe("the file every operation is written down in", () => {
     // Timestamp, outcome, operation, then `key=value` - the shape the whole
     // file is meant to be readable as.
     expect(scanned).toMatch(
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z ok {2}scan +added=\d+ updated=\d+ missing=\d+ returned=\d+ ms=\d+$/,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z ok {2}scan +added=\d+ updated=\d+ missing=\d+ returned=\d+ unreadable=\d+ ms=\d+$/,
     );
   });
 

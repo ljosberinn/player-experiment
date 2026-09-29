@@ -498,7 +498,7 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
     // the design - FTS5 adds several of its own to each - inside the one
     // transaction; an UPDATE that cannot use the primary key reads the table
     // once per row, which is `scanned` squared.
-    let (work, summary) = work_of(|| scan::scan(&mut conn, |_| {}).unwrap());
+    let (work, summary) = work_of(|| scan::scan(&mut conn, |_| {}, |_| {}).unwrap());
     assert_eq!(summary.missing, ROWS as u32);
     assert_within(
         "marking every row missing",
@@ -514,7 +514,7 @@ fn marking_a_vanished_library_is_no_dearer_than_deleting_it_was() {
 
     // And the second scan, which has nothing new to say, must not pay for the
     // rows again: already-marked files are skipped before any write.
-    let (work, again) = work_of(|| scan::scan(&mut conn, |_| {}).unwrap());
+    let (work, again) = work_of(|| scan::scan(&mut conn, |_| {}, |_| {}).unwrap());
     assert_eq!(again.missing, 0);
     assert_within(
         "a rescan over already-marked rows",

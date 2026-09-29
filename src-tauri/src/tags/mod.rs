@@ -57,9 +57,9 @@ pub struct TrackTags {
 /// Reads tags, audio properties and cover art from one file.
 pub fn read(path: &Path) -> AppResult<TrackTags> {
     let tagged = Probe::open(path)
-        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?
+        .map_err(|e| unreadable(path, &e))?
         .read()
-        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
+        .map_err(|e| unreadable(path, &e))?;
 
     let properties = tagged.properties();
     let mut tags = TrackTags {
@@ -106,6 +106,17 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     Ok(tags)
 }
 
+/// A read lofty refused, with the chain under it: lofty's own message names the
+/// format and nothing else, and which frame or item broke is what tells a
+/// corrupt file from a tag another program wrote loosely.
+fn unreadable(path: &Path, error: &lofty::error::FileParseError) -> AppError {
+    AppError::Internal(format!(
+        "{}: {error} <- {}",
+        path.display(),
+        write::causes(error)
+    ))
+}
+
 /// The MusicBrainz release a file names, for `scan::read_musicbrainz_tags`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MusicBrainzTags {
@@ -123,10 +134,10 @@ pub fn musicbrainz_tags(path: &Path) -> AppResult<MusicBrainzTags> {
         .read_properties(false)
         .read_cover_art(false);
     let tagged = Probe::open(path)
-        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?
+        .map_err(|e| unreadable(path, &e))?
         .options(options)
         .read()
-        .map_err(|e| AppError::Internal(format!("{}: {e}", path.display())))?;
+        .map_err(|e| unreadable(path, &e))?;
 
     let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
         return Ok(MusicBrainzTags::default());

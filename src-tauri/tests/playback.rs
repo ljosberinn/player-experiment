@@ -84,7 +84,7 @@ fn harness() -> Harness {
     drop(conn);
 
     let mut conn = db.conn().unwrap();
-    scan::scan(&mut conn, |_| {}).expect("scan");
+    scan::scan(&mut conn, |_| {}, |_| {}).expect("scan");
 
     Harness { _dir: dir, db }
 }
