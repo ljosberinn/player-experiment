@@ -177,6 +177,23 @@ which `toBeDisabled` does not read.
   vanish into their background and boxes in the wrong place; it would not catch
   a misaligned column.
 
+## Tauri in Vitest
+
+Component and store tests mock `src/ipc`: that seam is typed, and command names
+stay asserted in one file. `src/ipc/index.test.ts` runs the real `invoke`,
+`listen` and `convertFileSrc` over `mockIPC` with `shouldMockEvents`, so an
+`on*` wrapper is asserted by what `emit` delivers to its handler.
+
+**Whatever reaches `__TAURI_INTERNALS__` unanswered fails the test** as
+`unmocked IPC: <cmd>`, from `src/test/setup.ts`. It fails in `afterEach` rather
+than at the call: most callers swallow the rejection, as the updater and the
+media keys do. A call that settles after its test ended is blamed on the next.
+
+**A lazily imported plugin is imported once.** Vitest 5 hands concurrent
+`import()`s of a `vi.mock`ed module the real one, so `tauriGlobalShortcuts` and
+`tauriUpdater` share a single promise. A new lazy plugin import does the same,
+or its tests flake on the fallback above.
+
 ## Storybook is not a third suite
 
 `*.stories.tsx` under `src/`, config in `.storybook/`, `npm run storybook` to

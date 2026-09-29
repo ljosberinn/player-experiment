@@ -172,6 +172,10 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 // that is not there, and lands the store in `failed` at an unpredictable
 // moment - which would overwrite whatever state a test had just set.
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) }));
+vi.mock("@tauri-apps/plugin-global-shortcut", () => ({
+  register: vi.fn(async () => {}),
+  unregister: vi.fn(async () => {}),
+}));
 
 const statsMock = vi.mocked(libraryStats);
 /** A `LibraryStats` with the count set; the summary's other totals are not

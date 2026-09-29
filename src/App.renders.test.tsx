@@ -155,6 +155,10 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) }));
+vi.mock("@tauri-apps/plugin-global-shortcut", () => ({
+  register: vi.fn(async () => {}),
+  unregister: vi.fn(async () => {}),
+}));
 
 /**
  * The expensive subtrees, replaced by counters.

@@ -1,6 +1,7 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { describe, expect, it, vi } from "vitest";
+import type { InvokeArgs } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { mockConvertFileSrc, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addToPlaylist,
   addWatchFolder,
@@ -23,11 +24,19 @@ import {
   loadWindowGeometry,
   moveInPlaylist,
   onExportProgress,
+  onFileDrop,
+  onLastfmDisconnected,
+  onLastfmImport,
+  onLastfmLovesQueued,
+  onLastfmQueued,
+  onLibraryChanged,
+  onLovedChanged,
   onPlayerError,
   onPlayerPosition,
   onPlayerState,
   onScanProgress,
   onTagWriteProgress,
+  onTaskProgress,
   playerNext,
   playerPause,
   playerPlay,
@@ -57,180 +66,142 @@ import {
   writeTags,
 } from "./index";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: vi.fn() }));
-vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+/** Every command, as `invoke` hands it to the runtime: `{}` when it has no arguments. */
+const ipc = vi.fn<(cmd: string, payload?: InvokeArgs) => unknown>();
 
-const invokeMock = vi.mocked(invoke);
-const listenMock = vi.mocked(listen);
-const convertFileSrcMock = vi.mocked(convertFileSrc);
+beforeEach(() => {
+  // Events go through the real `listen` and `emit`, so a subscription is
+  // asserted by what reaches its handler rather than by how it was set up.
+  mockIPC(ipc, { shouldMockEvents: true });
+  mockWindows("main");
+  mockConvertFileSrc("windows");
+});
 
 describe("ipc", () => {
   it("invokes get_app_info and returns its payload", async () => {
-    invokeMock.mockResolvedValue({ name: "apex", version: "0.1.0" });
+    ipc.mockResolvedValue({ name: "apex", version: "0.1.0" });
 
     await expect(getAppInfo()).resolves.toEqual({ name: "apex", version: "0.1.0" });
-    expect(invokeMock).toHaveBeenCalledWith("get_app_info");
+    expect(ipc).toHaveBeenCalledWith("get_app_info", {});
   });
 
   it("passes the folder path through to add_watch_folder", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    ipc.mockResolvedValue(undefined);
 
     await addWatchFolder("D:/Music");
 
-    expect(invokeMock).toHaveBeenCalledWith("add_watch_folder", { path: "D:/Music" });
+    expect(ipc).toHaveBeenCalledWith("add_watch_folder", { path: "D:/Music" });
   });
 
   it("returns the configured watch folders", async () => {
-    invokeMock.mockResolvedValue(["D:/Music"]);
+    ipc.mockResolvedValue(["D:/Music"]);
 
     await expect(listWatchFolders()).resolves.toEqual(["D:/Music"]);
-    expect(invokeMock).toHaveBeenCalledWith("list_watch_folders");
+    expect(ipc).toHaveBeenCalledWith("list_watch_folders", {});
   });
 
   it("returns the summary from a scan", async () => {
     const summary = { added: 5, updated: 0, removed: 0, unchanged: 0 };
-    invokeMock.mockResolvedValue(summary);
+    ipc.mockResolvedValue(summary);
 
     await expect(scanLibrary()).resolves.toEqual(summary);
-    expect(invokeMock).toHaveBeenCalledWith("scan_library");
+    expect(ipc).toHaveBeenCalledWith("scan_library", {});
   });
 
   it("sends the query object under the argument name the command expects", async () => {
-    invokeMock.mockResolvedValue([]);
+    ipc.mockResolvedValue([]);
 
     await queryTracks(defaultTrackQuery);
 
-    expect(invokeMock).toHaveBeenCalledWith("query_tracks", { query: defaultTrackQuery });
+    expect(ipc).toHaveBeenCalledWith("query_tracks", { query: defaultTrackQuery });
   });
 
   it("counts tracks for the same query shape", async () => {
-    invokeMock.mockResolvedValue(42);
+    ipc.mockResolvedValue(42);
 
     await expect(countTracks(defaultTrackQuery)).resolves.toBe(42);
-    expect(invokeMock).toHaveBeenCalledWith("count_tracks", { query: defaultTrackQuery });
+    expect(ipc).toHaveBeenCalledWith("count_tracks", { query: defaultTrackQuery });
   });
 
   it("asks for the view's totals in one call", async () => {
     const stats = { tracks: 5, durationMs: 3_000_000, bytes: 214_000_000 };
-    invokeMock.mockResolvedValue(stats);
+    ipc.mockResolvedValue(stats);
 
     await expect(libraryStats(defaultTrackQuery)).resolves.toEqual(stats);
-    expect(invokeMock).toHaveBeenCalledWith("library_stats", { query: defaultTrackQuery });
-  });
-
-  it("unwraps the event payload for scan progress subscribers", async () => {
-    const handler = vi.fn();
-    const progress = {
-      scanned: 10,
-      total: 20,
-      added: 10,
-      updated: 0,
-      removed: 0,
-      done: false,
-    };
-    listenMock.mockImplementation(async (_event, callback) => {
-      // biome-ignore lint/suspicious/noExplicitAny: exercising the listener the way Tauri calls it
-      (callback as any)({ payload: progress });
-      return () => {};
-    });
-
-    await onScanProgress(handler);
-
-    expect(listenMock).toHaveBeenCalledWith("scan://progress", expect.any(Function));
-    expect(handler).toHaveBeenCalledWith(progress);
-  });
-
-  it("subscribes the two long writes to their own channels", async () => {
-    const handler = vi.fn();
-    const progress = { done: 25, total: 500 };
-    listenMock.mockImplementation(async (_event, callback) => {
-      // biome-ignore lint/suspicious/noExplicitAny: exercising the listener the way Tauri calls it
-      (callback as any)({ payload: progress });
-      return () => {};
-    });
-
-    await onTagWriteProgress(handler);
-    await onExportProgress(handler);
-
-    // Separate channels because they are separate operations: a tag write and
-    // an export can be watched by different parts of the UI.
-    expect(listenMock).toHaveBeenCalledWith("tags://progress", expect.any(Function));
-    expect(listenMock).toHaveBeenCalledWith("export://progress", expect.any(Function));
-    expect(handler).toHaveBeenNthCalledWith(1, progress);
-    expect(handler).toHaveBeenNthCalledWith(2, progress);
+    expect(ipc).toHaveBeenCalledWith("library_stats", { query: defaultTrackQuery });
   });
 
   it("asks for every matching id when selecting or queueing the whole view", async () => {
-    invokeMock.mockResolvedValue([1, 2, 3]);
+    ipc.mockResolvedValue([1, 2, 3]);
 
     await expect(allTrackIds(defaultTrackQuery)).resolves.toEqual([1, 2, 3]);
-    expect(invokeMock).toHaveBeenCalledWith("all_track_ids", { query: defaultTrackQuery });
+    expect(ipc).toHaveBeenCalledWith("all_track_ids", { query: defaultTrackQuery });
   });
 
   describe("export and settings", () => {
     it("sends the path and the scope, and reports the count back", async () => {
-      invokeMock.mockResolvedValue(42);
+      ipc.mockResolvedValue(42);
 
       await expect(
         exportLibrary("D:/out.json", { kind: "selection", trackIds: [1, 2] }),
       ).resolves.toBe(42);
-      expect(invokeMock).toHaveBeenCalledWith("export_library", {
+      expect(ipc).toHaveBeenCalledWith("export_library", {
         path: "D:/out.json",
         scope: { kind: "selection", trackIds: [1, 2] },
       });
     });
 
     it("round-trips window geometry as an opaque string", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
       await saveWindowGeometry('{"x":1}');
-      expect(invokeMock).toHaveBeenCalledWith("save_window_geometry", { geometry: '{"x":1}' });
+      expect(ipc).toHaveBeenCalledWith("save_window_geometry", { geometry: '{"x":1}' });
 
-      invokeMock.mockResolvedValue(null);
+      ipc.mockResolvedValue(null);
       await expect(loadWindowGeometry()).resolves.toBeNull();
-      expect(invokeMock).toHaveBeenCalledWith("load_window_geometry");
+      expect(ipc).toHaveBeenCalledWith("load_window_geometry", {});
     });
 
     it("round-trips the dynamic background as a bool, not a string", async () => {
       // Unlike the geometry above, Rust reads this one: it is on the export
       // allowlist. A "false" that arrived as the string would be truthy on
       // the way back and the checkbox would refuse to stay off.
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
       await saveDynamicBackground(false);
-      expect(invokeMock).toHaveBeenCalledWith("save_dynamic_background", { enabled: false });
+      expect(ipc).toHaveBeenCalledWith("save_dynamic_background", { enabled: false });
 
-      invokeMock.mockResolvedValue(false);
+      ipc.mockResolvedValue(false);
       await expect(loadDynamicBackground()).resolves.toBe(false);
-      expect(invokeMock).toHaveBeenCalledWith("load_dynamic_background");
+      expect(ipc).toHaveBeenCalledWith("load_dynamic_background", {});
     });
 
     it("round-trips the unattended lookup switch", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
       await saveUnattendedLookup(true);
-      expect(invokeMock).toHaveBeenCalledWith("save_unattended_lookup", { enabled: true });
+      expect(ipc).toHaveBeenCalledWith("save_unattended_lookup", { enabled: true });
 
-      invokeMock.mockResolvedValue(true);
+      ipc.mockResolvedValue(true);
       await expect(loadUnattendedLookup()).resolves.toBe(true);
-      expect(invokeMock).toHaveBeenCalledWith("load_unattended_lookup");
+      expect(ipc).toHaveBeenCalledWith("load_unattended_lookup", {});
     });
 
     it("round-trips the Discord presence switch", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
       await saveDiscordPresence(true);
-      expect(invokeMock).toHaveBeenCalledWith("save_discord_presence", { enabled: true });
+      expect(ipc).toHaveBeenCalledWith("save_discord_presence", { enabled: true });
 
-      invokeMock.mockResolvedValue(true);
+      ipc.mockResolvedValue(true);
       await expect(loadDiscordPresence()).resolves.toBe(true);
-      expect(invokeMock).toHaveBeenCalledWith("load_discord_presence");
+      expect(ipc).toHaveBeenCalledWith("load_discord_presence", {});
     });
   });
 
   describe("tags", () => {
     it("loads the rows behind a selection by id", async () => {
-      invokeMock.mockResolvedValue([]);
+      ipc.mockResolvedValue([]);
 
       await tracksByIds([1, 2]);
 
-      expect(invokeMock).toHaveBeenCalledWith("tracks_by_ids", { trackIds: [1, 2] });
+      expect(ipc).toHaveBeenCalledWith("tracks_by_ids", { trackIds: [1, 2] });
     });
 
     it("sends the edit alongside the tracks it applies to", async () => {
@@ -249,24 +220,24 @@ describe("ipc", () => {
         releaseType: null,
         cover: { kind: "remove" },
       };
-      invokeMock.mockResolvedValue({ written: 2, failed: 0, errors: [] });
+      ipc.mockResolvedValue({ written: 2, failed: 0, errors: [] });
 
       await expect(writeTags([1, 2], edit)).resolves.toEqual({
         written: 2,
         failed: 0,
         errors: [],
       });
-      expect(invokeMock).toHaveBeenCalledWith("write_tags", { trackIds: [1, 2], edit });
+      expect(ipc).toHaveBeenCalledWith("write_tags", { trackIds: [1, 2], edit });
     });
 
     it("stages a chosen image by path, since the backend can read that itself", async () => {
-      invokeMock.mockResolvedValue("C:/cache/chosen-cover.jpg");
+      ipc.mockResolvedValue("C:/cache/chosen-cover.jpg");
 
       await expect(stagePickedCover("C:/art/sleeve.jpg")).resolves.toBe(
         "C:/cache/chosen-cover.jpg",
       );
 
-      expect(invokeMock).toHaveBeenCalledWith("stage_picked_cover", {
+      expect(ipc).toHaveBeenCalledWith("stage_picked_cover", {
         path: "C:/art/sleeve.jpg",
       });
     });
@@ -275,43 +246,43 @@ describe("ipc", () => {
   describe("playlists", () => {
     it("lists and creates", async () => {
       const playlist = { id: 1, name: "Evening", kind: "static", trackCount: 0, createdAt: 0 };
-      invokeMock.mockResolvedValue([playlist]);
+      ipc.mockResolvedValue([playlist]);
       await expect(listPlaylists()).resolves.toEqual([playlist]);
-      expect(invokeMock).toHaveBeenCalledWith("list_playlists");
+      expect(ipc).toHaveBeenCalledWith("list_playlists", {});
 
-      invokeMock.mockResolvedValue(playlist);
+      ipc.mockResolvedValue(playlist);
       await expect(createPlaylist("Evening")).resolves.toEqual(playlist);
-      expect(invokeMock).toHaveBeenCalledWith("create_playlist", { name: "Evening" });
+      expect(ipc).toHaveBeenCalledWith("create_playlist", { name: "Evening" });
     });
 
     it("renames and deletes by id", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
 
       await renamePlaylist(1, "Late Night");
-      expect(invokeMock).toHaveBeenCalledWith("rename_playlist", {
+      expect(ipc).toHaveBeenCalledWith("rename_playlist", {
         playlistId: 1,
         name: "Late Night",
       });
 
       await deletePlaylist(1);
-      expect(invokeMock).toHaveBeenCalledWith("delete_playlist", { playlistId: 1 });
+      expect(ipc).toHaveBeenCalledWith("delete_playlist", { playlistId: 1 });
     });
 
     it("reports how many of an add actually landed", async () => {
-      invokeMock.mockResolvedValue(2);
+      ipc.mockResolvedValue(2);
 
       await expect(addToPlaylist(1, [10, 11, 12])).resolves.toBe(2);
-      expect(invokeMock).toHaveBeenCalledWith("add_to_playlist", {
+      expect(ipc).toHaveBeenCalledWith("add_to_playlist", {
         playlistId: 1,
         trackIds: [10, 11, 12],
       });
     });
 
     it("reports how many of a removal actually went", async () => {
-      invokeMock.mockResolvedValue(1);
+      ipc.mockResolvedValue(1);
 
       await expect(removeFromPlaylist(1, [10, 99])).resolves.toBe(1);
-      expect(invokeMock).toHaveBeenCalledWith("remove_from_playlist", {
+      expect(ipc).toHaveBeenCalledWith("remove_from_playlist", {
         playlistId: 1,
         trackIds: [10, 99],
       });
@@ -327,37 +298,37 @@ describe("ipc", () => {
       const playlist = { id: 4, name: "Recent", kind: "smart", trackCount: 9, createdAt: 0 };
       const order: SmartOrder = { sort: { field: "playCount", direction: "desc" }, limit: 100 };
 
-      invokeMock.mockResolvedValue(playlist);
+      ipc.mockResolvedValue(playlist);
       await expect(createSmartPlaylist("Recent", filter, order)).resolves.toEqual(playlist);
-      expect(invokeMock).toHaveBeenCalledWith("create_smart_playlist", {
+      expect(ipc).toHaveBeenCalledWith("create_smart_playlist", {
         name: "Recent",
         filter,
         order,
       });
 
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
       await setPlaylistFilter(4, filter, order);
-      expect(invokeMock).toHaveBeenCalledWith("set_playlist_filter", {
+      expect(ipc).toHaveBeenCalledWith("set_playlist_filter", {
         playlistId: 4,
         filter,
         order,
       });
 
-      invokeMock.mockResolvedValue(filter);
+      ipc.mockResolvedValue(filter);
       await expect(playlistFilter(4)).resolves.toEqual(filter);
-      expect(invokeMock).toHaveBeenCalledWith("playlist_filter", { playlistId: 4 });
+      expect(ipc).toHaveBeenCalledWith("playlist_filter", { playlistId: 4 });
 
-      invokeMock.mockResolvedValue(order);
+      ipc.mockResolvedValue(order);
       await expect(playlistOrder(4)).resolves.toEqual(order);
-      expect(invokeMock).toHaveBeenCalledWith("playlist_order", { playlistId: 4 });
+      expect(ipc).toHaveBeenCalledWith("playlist_order", { playlistId: 4 });
     });
 
     it("names the reorder arguments the way the command expects", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
 
       await moveInPlaylist(1, [10, 11], 4);
 
-      expect(invokeMock).toHaveBeenCalledWith("move_in_playlist", {
+      expect(ipc).toHaveBeenCalledWith("move_in_playlist", {
         playlistId: 1,
         trackIds: [10, 11],
         targetIndex: 4,
@@ -366,30 +337,24 @@ describe("ipc", () => {
   });
 
   it("resolves a cover url through Tauri so the shape stays platform-correct", () => {
-    // Windows serves this as http://cover.localhost/..., other platforms as
-    // cover://localhost/... - asserting a literal here would bake in one.
-    convertFileSrcMock.mockReturnValue("http://cover.localhost/abc123");
-
+    // The Windows shape, from `mockConvertFileSrc`; other platforms serve
+    // cover://localhost/..., which is why the app never builds this itself.
     expect(coverUrl("abc123")).toBe("http://cover.localhost/abc123");
-    expect(convertFileSrcMock).toHaveBeenCalledWith("abc123", "cover");
   });
 
   it("points the staged url at the one path that is not a hash, and versions it", () => {
-    convertFileSrcMock.mockReturnValue("http://cover.localhost/staged");
-
     // The staging file's name never changes, so the query string is the only
     // thing that can tell the webview this is a different image.
     expect(stagedCoverUrl(2)).toBe("http://cover.localhost/staged?v=2");
-    expect(convertFileSrcMock).toHaveBeenCalledWith("staged", "cover");
   });
 
   describe("player", () => {
     it("sends the queue and the starting index", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
 
       await playerPlay([1, 2, 3], 2);
 
-      expect(invokeMock).toHaveBeenCalledWith("player_play", { trackIds: [1, 2, 3], index: 2 });
+      expect(ipc).toHaveBeenCalledWith("player_play", { trackIds: [1, 2, 3], index: 2 });
     });
 
     it.each([
@@ -400,21 +365,21 @@ describe("ipc", () => {
       ["player_next", playerNext],
       ["player_previous", playerPrevious],
     ])("invokes %s with no arguments", async (command, wrapper) => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
 
       await wrapper();
 
-      expect(invokeMock).toHaveBeenCalledWith(command);
+      expect(ipc).toHaveBeenCalledWith(command, {});
     });
 
     it("names the seek and volume arguments the way the commands expect", async () => {
-      invokeMock.mockResolvedValue(undefined);
+      ipc.mockResolvedValue(undefined);
 
       await playerSeek(90_000);
-      expect(invokeMock).toHaveBeenCalledWith("player_seek", { positionMs: 90_000 });
+      expect(ipc).toHaveBeenCalledWith("player_seek", { positionMs: 90_000 });
 
       await playerSetVolume(0.25);
-      expect(invokeMock).toHaveBeenCalledWith("player_set_volume", { volume: 0.25 });
+      expect(ipc).toHaveBeenCalledWith("player_set_volume", { volume: 0.25 });
     });
 
     it("returns the current snapshot", async () => {
@@ -427,29 +392,63 @@ describe("ipc", () => {
         durationMs: 1000,
         volume: 0.8,
       };
-      invokeMock.mockResolvedValue(snapshot);
+      ipc.mockResolvedValue(snapshot);
 
       await expect(playerSnapshot()).resolves.toEqual(snapshot);
-      expect(invokeMock).toHaveBeenCalledWith("player_snapshot");
+      expect(ipc).toHaveBeenCalledWith("player_snapshot", {});
     });
+  });
 
+  describe("events", () => {
     it.each([
+      [
+        "scan://progress",
+        onScanProgress,
+        { scanned: 10, total: 20, added: 10, updated: 0, removed: 0, done: false },
+      ],
+      // Separate channels because they are separate operations: a tag write and
+      // an export can be watched by different parts of the UI.
+      ["tags://progress", onTagWriteProgress, { done: 25, total: 500 }],
+      ["export://progress", onExportProgress, { done: 25, total: 500 }],
+      ["lastfm://import", onLastfmImport, { done: 25, total: 500 }],
+      ["lastfm://queued", onLastfmQueued, 3],
+      ["lastfm://loves-queued", onLastfmLovesQueued, 0],
+      ["task://progress", onTaskProgress, null],
       ["player://state", onPlayerState, { status: "stopped" }],
       ["player://position", onPlayerPosition, { positionMs: 1, durationMs: 2 }],
       ["player://error", onPlayerError, "no audio output device"],
-    ])("unwraps the payload of %s", async (event, subscribe, payload) => {
+    ])("hands %s subscribers the payload", async (event, subscribe, payload) => {
       const handler = vi.fn();
-      listenMock.mockImplementation(async (_event, callback) => {
-        // biome-ignore lint/suspicious/noExplicitAny: exercising the listener the way Tauri calls it
-        (callback as any)({ payload });
-        return () => {};
-      });
 
-      // biome-ignore lint/suspicious/noExplicitAny: one table covers three payload shapes
+      // biome-ignore lint/suspicious/noExplicitAny: one table covers every payload shape
       await (subscribe as any)(handler);
+      await emit(event, payload);
 
-      expect(listenMock).toHaveBeenCalledWith(event, expect.any(Function));
-      expect(handler).toHaveBeenCalledWith(payload);
+      expect(handler).toHaveBeenCalledExactlyOnceWith(payload);
+    });
+
+    it.each([
+      ["lastfm://disconnected", onLastfmDisconnected],
+      ["loved://changed", onLovedChanged],
+      ["library://changed", onLibraryChanged],
+    ])("tells %s subscribers, with nothing attached", async (event, subscribe) => {
+      const handler = vi.fn();
+
+      await subscribe(handler);
+      await emit(event);
+
+      expect(handler).toHaveBeenCalledExactlyOnceWith();
+    });
+
+    it("hands file-drop subscribers the drop rather than the event around it", async () => {
+      const handler = vi.fn();
+
+      await onFileDrop(handler);
+      await emit("tauri://drag-drop", { paths: ["D:/a.mp3"], position: { x: 1, y: 2 } });
+
+      expect(handler).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ type: "drop", paths: ["D:/a.mp3"] }),
+      );
     });
   });
 });

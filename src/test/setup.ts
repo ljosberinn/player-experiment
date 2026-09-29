@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { cleanup } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 /**
  * jsdom implements no `PointerEvent`.
@@ -85,7 +86,35 @@ if (typeof window !== "undefined") {
     }) as DOMRect;
 }
 
+/**
+ * A Tauri that fails the test instead of being absent.
+ *
+ * It sits below the module mocks and answers only what gets as far as
+ * `__TAURI_INTERNALS__`. The rejection alone is not enough: most callers catch
+ * it - the updater lands in `failed`, the media keys go unregistered - so the
+ * command is recorded and the test fails in `afterEach`, after `cleanup` has
+ * run the unmount effects that call out too. A call that settles after its
+ * test ended is blamed on the next one.
+ */
+let unmocked: string[] = [];
+
+beforeEach(() => {
+  unmocked = [];
+  if (typeof window !== "undefined") {
+    mockIPC((cmd) => {
+      unmocked.push(cmd);
+      throw new Error(`unmocked IPC: ${cmd}`);
+    });
+  }
+});
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  if (typeof window !== "undefined") {
+    clearMocks();
+  }
+  if (unmocked.length > 0) {
+    throw new Error(`unmocked IPC: ${[...new Set(unmocked)].join(", ")}`);
+  }
 });

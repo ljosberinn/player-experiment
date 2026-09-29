@@ -7,6 +7,15 @@ import {
 } from "./globalKeys";
 import { usePlayerStore } from "./store";
 
+let plugin: Promise<typeof import("@tauri-apps/plugin-global-shortcut")> | undefined;
+
+/**
+ * One `import()` shared by every call. Vitest hands concurrent imports of a
+ * `vi.mock`ed module the real one, and a remount's `register` can overlap the
+ * previous `unregister`.
+ */
+const loadPlugin = () => (plugin ??= import("@tauri-apps/plugin-global-shortcut"));
+
 /**
  * The real plugin, imported lazily.
  *
@@ -16,7 +25,7 @@ import { usePlayerStore } from "./store";
  */
 export const tauriGlobalShortcuts: GlobalShortcutPorts = {
   register: async (accelerator, handler) => {
-    const { register } = await import("@tauri-apps/plugin-global-shortcut");
+    const { register } = await loadPlugin();
     await register(accelerator, (event) => {
       // The plugin fires on press *and* release; acting on both would toggle
       // playback twice per tap and leave it exactly where it started.
@@ -26,7 +35,7 @@ export const tauriGlobalShortcuts: GlobalShortcutPorts = {
     });
   },
   unregister: async (accelerator) => {
-    const { unregister } = await import("@tauri-apps/plugin-global-shortcut");
+    const { unregister } = await loadPlugin();
     await unregister(accelerator);
   },
 };
