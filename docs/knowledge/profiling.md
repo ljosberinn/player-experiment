@@ -69,7 +69,8 @@ file on 65k files is fine, a span per SQL row is not.
 What is instrumented: the scan (`scan.walk`, `scan.load_known`, `scan.plan`,
 `scan.read_tags` with a `tags.read` per file, `scan.write`,
 `scan.mark_missing`), the three whole-library passes a scan and a tag write
-both end with (`tag_values.rebuild`, `plays.resolve`, `plays.count`), a tag
+both end with (`tag_values.rebuild`, `plays.count`, and `plays.resolve` with
+one child per tier: `keys`, `albums`, `near`, `update`), a tag
 write (`tags.write`, `tags.write_file`, `tags.sync`), a move
 (`library.move_release`), and every wait on the scan lock.
 
@@ -86,6 +87,8 @@ write (`tags.write`, `tags.write_file`, `tags.sync`), a move
 | `scan.read_tags` (141 unreadable files) | 2 warm, 1270 cold |
 
 `plays.resolve` relinks all 237k plays whether or not a track changed, and a
-tag write pays it too. The 141 unreadable files have no row, so every scan
+tag write pays it too. Building the keys from 66k tracks is ~400ms of it; the
+album and near-title tiers ~440ms together, spent on the 59k plays that never
+link. The 141 unreadable files have no row, so every scan
 plans them as new and parses them again; cold, a single one takes over a
 second.
