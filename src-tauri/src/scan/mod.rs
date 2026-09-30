@@ -51,6 +51,7 @@ impl ScanLock {
     /// What a user-asked scan does: a Rescan that silently did nothing would
     /// be worse than one that starts its walk a little late.
     pub fn acquire(&self) -> MutexGuard<'_, ()> {
+        span!("scan_lock.wait");
         self.0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -112,6 +113,7 @@ pub fn is_audio_file(path: &Path) -> bool {
 /// Unreadable entries are skipped rather than aborting the walk: a permission
 /// error on one directory must not cost the user the rest of the scan.
 pub fn walk(roots: &[PathBuf]) -> Vec<(PathBuf, i64, i64)> {
+    span!("scan.walk");
     let mut found = Vec::new();
     for root in roots {
         for entry in WalkDir::new(root)
@@ -170,6 +172,7 @@ pub fn plan(
     removed: &HashSet<Vec<u8>>,
     absent: &[PathBuf],
 ) -> ScanPlan {
+    span!("scan.plan");
     let mut plan = ScanPlan::default();
     let mut seen = HashSet::with_capacity(on_disk.len());
 
@@ -217,6 +220,7 @@ fn is_under(path: &str, roots: &[PathBuf]) -> bool {
 }
 
 fn load_known(conn: &Connection) -> AppResult<HashMap<Vec<u8>, Known>> {
+    span!("scan.load_known");
     let mut stmt = conn.prepare("SELECT id, path, mtime, size, missing_since FROM tracks")?;
     let rows = stmt.query_map([], |row| {
         let path: String = row.get(1)?;
@@ -502,9 +506,13 @@ pub fn remove_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
 /// batch: a corrupt file in a 50k library should cost that one file, not the
 /// scan.
 fn read_tags(paths: &[PathBuf]) -> Vec<(PathBuf, AppResult<TrackTags>)> {
+    span!("scan.read_tags", files = paths.len());
     paths
         .par_iter()
-        .map(|path| (path.clone(), tags::read(path)))
+        .map(|path| {
+            span!("tags.read", path = %path.display());
+            (path.clone(), tags::read(path))
+        })
         .collect()
 }
 
@@ -557,6 +565,7 @@ pub fn scan_roots(
     mut on_progress: impl FnMut(ScanProgress),
     mut on_unreadable: impl FnMut(&AppError),
 ) -> AppResult<ScanSummary> {
+    span!("scan");
     let on_disk = walk(roots);
     let known = load_known(conn)?;
     let plan = plan(&known, &on_disk, &load_removed(conn)?, absent);
@@ -577,6 +586,7 @@ pub fn scan_roots(
     });
 
     if !plan.missing.is_empty() || !plan.returned.is_empty() {
+        span!("scan.mark_missing");
         let tx = conn.transaction()?;
         set_missing(&tx, &plan.missing, Some(now_secs()))?;
         set_missing(&tx, &plan.returned, None)?;
@@ -591,6 +601,7 @@ pub fn scan_roots(
     // rather than all at the end.
     for chunk in plan.added.chunks(PROGRESS_INTERVAL) {
         let parsed = read_tags(chunk);
+        span!("scan.write", files = chunk.len());
         let tx = conn.transaction()?;
         for (path, tags) in &parsed {
             match tags {
@@ -619,6 +630,7 @@ pub fn scan_roots(
 
     for chunk in plan.updated.chunks(PROGRESS_INTERVAL) {
         let parsed = read_tags(chunk);
+        span!("scan.write", files = chunk.len());
         let tx = conn.transaction()?;
         for (path, tags) in &parsed {
             match tags {

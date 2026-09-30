@@ -406,6 +406,7 @@ fn shape(id3: &Id3v2Tag) -> Fields {
 /// one, never a truncated mp3 - and the copy is in the same directory so the
 /// rename stays on one filesystem and stays atomic.
 fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
+    span!("tags.write_file", path = %path.display());
     let temp = temp_beside(path);
     let size = std::fs::metadata(path).map_or(0, |meta| meta.len());
     // `stage` is not derivable after the fact: the copy, the read-back and the
@@ -811,6 +812,7 @@ pub fn apply(
     edits: &[(i64, TagEdit)],
     mut on_progress: impl FnMut(WriteProgress),
 ) -> AppResult<Written> {
+    span!("tags.write", tracks = edits.len());
     // Every edit is resolved before any file is opened, so an unparseable
     // number in the last one refuses the batch rather than half-writing it.
     let mut covers: HashMap<String, Arc<Cover>> = HashMap::new();
@@ -862,6 +864,7 @@ pub fn apply(
         }
     }
 
+    span!("tags.sync", tracks = written.len());
     let tx = conn.transaction()?;
     for (track_id, path) in &written {
         sync_row(&tx, *track_id, path)?;

@@ -610,6 +610,7 @@ pub fn mbid(value: &str) -> Option<String> {
 /// length. The count is what the tests assert idempotence with; no caller
 /// needs it.
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
+    span!("plays.resolve");
     // One transaction rather than a commit per key, which is what the
     // temporary table's inserts cost where a scan or a removal calls this
     // bare (issue 166). A savepoint for `regroup`'s reason.
@@ -642,6 +643,7 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
 /// The guard is what keeps a second run from writing anything: every update
 /// of `tracks` reindexes the row in `tracks_fts`.
 pub fn count(conn: &Connection) -> AppResult<()> {
+    span!("plays.count");
     conn.execute(
         "UPDATE tracks
             SET play_count = max(play_count, n.plays),
@@ -684,6 +686,7 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // Each album spelling is folded once: a log repeats them by the thousand.
     let mut folds: HashMap<String, String> = HashMap::new();
     {
+        span!("plays.resolve.keys");
         // **Which track wins a key is fixed rather than incidental.** The same
         // song on its album and on a compilation is two rows and one key, and
         // a library has hundreds of those. Present beats unplugged and the
@@ -767,6 +770,7 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // library artist's copy of it is the evidence; one title alone links a
     // cover or a title track to a song that was never heard (issue 145).
     {
+        span!("plays.resolve.albums");
         type Hit<'a> = (i64, String, i64, &'a HashSet<String>);
         let mut groups: HashMap<(String, String), Vec<Hit>> = HashMap::new();
         let mut plays = conn.prepare(
@@ -815,6 +819,7 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // songs together. The album narrows the field to a dozen titles, and
     // [`nearest`] links only one that stands out from the rest (issue 173).
     {
+        span!("plays.resolve.near");
         let mut plays = conn.prepare(
             "SELECT id, artist, title, album FROM plays
               WHERE match_key <> '' AND album <> ''
@@ -863,6 +868,7 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     //
     // One assignment for every tier: a second `UPDATE` for the album links
     // would find each of them nulled by this one and write it back, every run.
+    span!("plays.resolve.update");
     let moved = conn.execute(
         "UPDATE plays
             SET track_id = coalesce(

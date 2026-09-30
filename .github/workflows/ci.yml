@@ -184,6 +184,11 @@ jobs:
       - name: Clippy
         if: needs.changes.outputs.code == 'true'
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Clippy (profile)
+        if: needs.changes.outputs.code == 'true'
+        # Nothing else builds the `profile` feature, so without this its spans
+        # and the `profile_scan` example rot unnoticed.
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features profile -- -D warnings
       - name: Tests
         if: needs.changes.outputs.code == 'true'
         # The runner is on UTC, where local-time bucketing and UTC bucketing
