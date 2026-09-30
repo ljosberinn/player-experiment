@@ -14,10 +14,15 @@ export const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
  * The `Update` the plugin returns already has `download` and `install` as
  * separate methods, so it satisfies `UpdateHandle` as it stands; the point of
  * the port is that a test can hand back something that does neither.
+ *
+ * The one `import()` is shared for the reason `tauriGlobalShortcuts` gives.
  */
+let plugin: Promise<typeof import("@tauri-apps/plugin-updater")> | undefined;
+
 export const tauriUpdater: UpdaterPorts = {
   check: async () => {
-    const { check } = await import("@tauri-apps/plugin-updater");
+    plugin ??= import("@tauri-apps/plugin-updater");
+    const { check } = await plugin;
     return await check();
   },
 };
