@@ -92,6 +92,10 @@ pub struct Moved {
     /// Rows marked missing: there is no file to move, and the row's path is
     /// the last place it was seen.
     pub skipped: u32,
+    /// Copies from outside the library left where they are - see [`settle`].
+    pub held: u32,
+    /// Copies in the library a better one from outside replaced.
+    pub swapped: u32,
 }
 
 /// Moves every file of `release` under `root`, rows and all.
@@ -122,6 +126,14 @@ pub fn move_release(
     }
 
     let _guard = lock.acquire();
+
+    let settled = settle(conn, fs, root, release, &files)?;
+    // Rows went, and the year and disc count are counted over the ones left.
+    let files = if settled.held + settled.swapped > 0 {
+        query::release_files(conn, release.album.as_deref(), release.artist.as_deref())?
+    } else {
+        files
+    };
 
     let shape = shape(release, &files);
     let targets: Vec<(&query::ReleaseFile, PathBuf, PathBuf)> = files
@@ -203,7 +215,141 @@ pub fn move_release(
         files: moves.len() as u32,
         covers: covers.len() as u32,
         skipped,
+        held: settled.held,
+        swapped: settled.swapped,
     }))
+}
+
+/// What [`settle`] did.
+#[derive(Default)]
+struct Settled {
+    held: u32,
+    swapped: u32,
+}
+
+/// Decides between a copy from outside the library and the row of the same
+/// song already at its target:
+/// [195](../../../docs/issues/done/195-a-second-copy-stays-out-of-the-library.md).
+///
+/// The best copy outside swaps places with the one inside if its bitrate is
+/// higher, and every other one stays where it is. Whichever file ends up
+/// outside leaves the library with a tombstone, so no scan adds it back.
+///
+/// Only outside the root. A drop lands at the root's top level, and a copy
+/// held there would sit in the library with no row.
+///
+/// Committed before the ordinary moves are computed, so that a swapped-out
+/// target is free by then. The rename runs inside the transaction: one that
+/// fails rolls the rows back with nothing moved, and a crash after it leaves a
+/// file where no row expects it rather than a row on a file something
+/// overwrote.
+fn settle(
+    conn: &mut Connection,
+    fs: &dyn Rename,
+    root: &Path,
+    release: &lookup::Release,
+    files: &[query::ReleaseFile],
+) -> AppResult<Settled> {
+    let shape = shape(release, files);
+    // Per incumbent: its target, and the files outside that would take it.
+    let mut rivals: std::collections::BTreeMap<i64, (PathBuf, Vec<&query::ReleaseFile>)> =
+        std::collections::BTreeMap::new();
+    for file in files.iter().filter(|file| !file.missing) {
+        if Path::new(&file.path).starts_with(root) {
+            continue;
+        }
+        let ideal = root.join(layout::relative_path(root, &shape, &track(file)));
+        let incumbent = files.iter().find(|other| {
+            other.id != file.id && !other.missing && layout::same(Path::new(&other.path), &ideal)
+        });
+        if let Some(incumbent) = incumbent.filter(|_| ideal.exists()) {
+            rivals
+                .entry(incumbent.id)
+                .or_insert_with(|| (ideal, Vec::new()))
+                .1
+                .push(file);
+        }
+    }
+
+    let mut held = Vec::new();
+    let mut swaps = Vec::new();
+    for (incumbent, (ideal, newcomers)) in rivals {
+        let (held_song, bitrate) = song(conn, incumbent)?;
+        if held_song.is_none() {
+            continue;
+        }
+        let mut copies = Vec::new();
+        for newcomer in newcomers {
+            let (their_song, rate) = song(conn, newcomer.id)?;
+            if their_song == held_song {
+                copies.push((rate, newcomer));
+            }
+        }
+        // Stable, so equal copies keep the tracklist order.
+        copies.sort_by_key(|(rate, _)| std::cmp::Reverse(*rate));
+        let mut copies = copies.into_iter();
+        if let Some((rate, best)) = copies.next() {
+            if rate > bitrate {
+                swaps.push((incumbent, ideal, PathBuf::from(&best.path)));
+            } else {
+                held.push(best.id);
+            }
+        }
+        held.extend(copies.map(|(_, newcomer)| newcomer.id));
+    }
+
+    if held.is_empty() && swaps.is_empty() {
+        return Ok(Settled::default());
+    }
+    let tx = conn.transaction()?;
+    {
+        let mut set_path = tx.prepare("UPDATE tracks SET path = ?2 WHERE id = ?1")?;
+        for (incumbent, ideal, newcomer) in &swaps {
+            let target = vacant(
+                &tx,
+                *incumbent,
+                &newcomer.with_file_name(ideal.file_name().unwrap_or_default()),
+            )?;
+            place_file(fs, ideal, &target)?;
+            set_path.execute(rusqlite::params![incumbent, key(&target)])?;
+        }
+    }
+    let leaving: Vec<i64> = held
+        .iter()
+        .copied()
+        .chain(swaps.iter().map(|(incumbent, ..)| *incumbent))
+        .collect();
+    scan::remove_within(&tx, &leaving)?;
+    tx.commit()?;
+
+    Ok(Settled {
+        held: held.len() as u32,
+        swapped: swaps.len() as u32,
+    })
+}
+
+/// Which song a row is, and at what bitrate - none counting as the lowest.
+fn song(conn: &Connection, id: i64) -> AppResult<(Option<String>, i64)> {
+    Ok(conn.query_row(
+        "SELECT match_key, coalesce(bitrate, 0) FROM tracks WHERE id = ?1",
+        [id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?)
+}
+
+/// `wanted`, or the first ` (n)` beside it that nothing on disk and no row
+/// holds.
+///
+/// On disk as well, unlike [`free_target`]: outside the library a file with no
+/// row is the user's, not a partial copy.
+fn vacant(conn: &Connection, id: i64, wanted: &Path) -> AppResult<PathBuf> {
+    let mut candidate = wanted.to_path_buf();
+    let mut nth = 2;
+    while candidate.exists() || owned_by_other(conn, id, &candidate)? {
+        candidate = layout::suffixed(wanted, nth);
+        nth += 1;
+    }
+    Ok(candidate)
 }
 
 /// Moves one file to `target`, creating the folders above it.
@@ -579,6 +725,7 @@ mod tests {
         disc_no: Option<i64>,
         year: Option<i64>,
         release_type: Option<&'a str>,
+        bitrate: Option<i64>,
         missing: bool,
     }
 
@@ -593,6 +740,7 @@ mod tests {
                 disc_no: None,
                 year: Some(1991),
                 release_type: None,
+                bitrate: Some(320),
                 missing: false,
             }
         }
@@ -631,22 +779,26 @@ mod tests {
             let path = self.write(relative, relative);
             let meta = std::fs::metadata(&path).unwrap();
             let conn = self.conn();
+            let artist = row.track_artist.unwrap_or(row.artist);
             conn.execute(
                 "INSERT INTO tracks (path, mtime, size, album, album_artist, artist, title,
-                                     track_no, disc_no, year, release_type, missing_since, added_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0)",
+                                     track_no, disc_no, year, release_type, bitrate,
+                                     match_key, missing_since, added_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0)",
                 rusqlite::params![
                     key(&path),
                     scan::mtime_secs(&meta),
                     meta.len() as i64,
                     row.album,
                     row.artist,
-                    row.track_artist.unwrap_or(row.artist),
+                    artist,
                     row.title,
                     row.track_no,
                     row.disc_no,
                     row.year,
                     row.release_type,
+                    row.bitrate,
+                    crate::db::plays::track_key(Some(artist), Some(row.title)),
                     row.missing.then_some(1_i64),
                 ],
             )
@@ -747,7 +899,205 @@ mod tests {
             files,
             covers,
             skipped,
+            ..Moved::default()
         })
+    }
+
+    /// Whether a scan would pass over `relative` rather than add it.
+    fn tombstoned(fixture: &Fixture, relative: &str) -> bool {
+        fixture
+            .conn()
+            .query_row(
+                "SELECT count(*) FROM removed_paths WHERE path = ?1",
+                [key(&fixture.at(relative))],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap()
+            > 0
+    }
+
+    fn contents(fixture: &Fixture, relative: &str) -> String {
+        std::fs::read_to_string(fixture.at(relative)).unwrap()
+    }
+
+    /// 195: a second download of a release the library already holds.
+    #[test]
+    fn an_equal_copy_from_outside_the_library_is_held_where_it_is() {
+        let fixture = Fixture::new();
+        fixture.watch("Incoming");
+        fixture.watch("Library");
+        let placed = fixture.track(FIRST, Row::default());
+        fixture.track("Incoming\\mbv\\a.mp3", Row::default());
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            outcome,
+            Outcome::Done(Moved {
+                held: 1,
+                ..Moved::default()
+            })
+        );
+        assert_eq!(fixture.paths(), [FIRST]);
+        assert_eq!(contents(&fixture, FIRST), FIRST);
+        assert_eq!(
+            contents(&fixture, "Incoming\\mbv\\a.mp3"),
+            "Incoming\\mbv\\a.mp3"
+        );
+        assert!(tombstoned(&fixture, "Incoming\\mbv\\a.mp3"));
+
+        assert_eq!(fixture.move_it(&OsRename).unwrap(), moved(0, 0, 0));
+        let mut conn = fixture.conn();
+        scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
+        let ids: Vec<i64> = conn
+            .prepare("SELECT id FROM tracks")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(ids, [placed]);
+    }
+
+    #[test]
+    fn a_lower_bitrate_copy_is_held_too() {
+        let fixture = Fixture::new();
+        fixture.track(FIRST, Row::default());
+        fixture.track(
+            "Incoming\\mbv\\a.mp3",
+            Row {
+                bitrate: Some(192),
+                ..Row::default()
+            },
+        );
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            outcome,
+            Outcome::Done(Moved {
+                held: 1,
+                ..Moved::default()
+            })
+        );
+        assert_eq!(fixture.paths(), [FIRST]);
+    }
+
+    #[test]
+    fn a_better_copy_takes_the_name_and_the_plays_and_the_old_one_leaves() {
+        let fixture = Fixture::new();
+        fixture.watch("Incoming");
+        fixture.watch("Library");
+        let placed = fixture.track(
+            FIRST,
+            Row {
+                bitrate: Some(192),
+                ..Row::default()
+            },
+        );
+        let better = fixture.track("Incoming\\mbv\\a.mp3", Row::default());
+        let conn = fixture.conn();
+        conn.execute("UPDATE tracks SET play_count = 7 WHERE id = ?1", [placed])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO playlists (name, kind, created_at) VALUES ('Mix', 'static', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, 3)",
+            rusqlite::params![conn.last_insert_rowid(), placed],
+        )
+        .unwrap();
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(
+            outcome,
+            Outcome::Done(Moved {
+                files: 1,
+                swapped: 1,
+                ..Moved::default()
+            })
+        );
+        assert_eq!(fixture.paths(), [FIRST]);
+        assert_eq!(contents(&fixture, FIRST), "Incoming\\mbv\\a.mp3");
+        let displaced = "Incoming\\mbv\\01 - Only Shallow.mp3";
+        assert_eq!(contents(&fixture, displaced), FIRST);
+        assert!(tombstoned(&fixture, displaced));
+        let (id, count, entry): (i64, i64, i64) = conn
+            .query_row(
+                "SELECT id, play_count, (SELECT track_id FROM playlist_tracks) FROM tracks",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((id, count, entry), (better, 7, better));
+
+        let mut conn = fixture.conn();
+        scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
+        assert_eq!(fixture.paths(), [FIRST]);
+    }
+
+    #[test]
+    fn a_swapped_out_file_steps_around_a_name_taken_in_the_newcomers_folder() {
+        let fixture = Fixture::new();
+        fixture.track(
+            FIRST,
+            Row {
+                bitrate: Some(192),
+                ..Row::default()
+            },
+        );
+        fixture.track("Incoming\\mbv\\01 - Only Shallow.mp3", Row::default());
+
+        fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(fixture.paths(), [FIRST]);
+        assert_eq!(
+            contents(&fixture, "Incoming\\mbv\\01 - Only Shallow (2).mp3"),
+            FIRST
+        );
+    }
+
+    /// Two songs whose names sanitize to one file name.
+    #[test]
+    fn a_different_song_at_the_target_is_still_numbered() {
+        let fixture = Fixture::new();
+        let placed = fixture.track(FIRST, Row::default());
+        fixture.track("Incoming\\mbv\\a.mp3", Row::default());
+        fixture
+            .conn()
+            .execute(
+                "UPDATE tracks SET match_key = 'other' WHERE id = ?1",
+                [placed],
+            )
+            .unwrap();
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(outcome, moved(1, 0, 0));
+        assert_eq!(
+            fixture.paths(),
+            [FIRST.to_owned(), FIRST.replace(".mp3", " (2).mp3")]
+        );
+    }
+
+    /// A drop lands at the root's top level. Held there, it would sit inside
+    /// the library with no row.
+    #[test]
+    fn a_copy_already_inside_the_library_folder_is_numbered_as_before() {
+        let fixture = Fixture::new();
+        fixture.track(FIRST, Row::default());
+        fixture.track("Library\\a.mp3", Row::default());
+
+        let outcome = fixture.move_it(&OsRename).unwrap();
+
+        assert_eq!(outcome, moved(1, 0, 0));
+        assert_eq!(
+            fixture.paths(),
+            [FIRST.to_owned(), FIRST.replace(".mp3", " (2).mp3")]
+        );
     }
 
     /// Two tracks of one release, in a folder of their own.

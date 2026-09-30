@@ -321,6 +321,14 @@ pub fn remove_tracks(conn: &mut Connection, ids: &[i64]) -> AppResult<u32> {
     }
 
     let tx = conn.transaction()?;
+    let removed = remove_within(&tx, ids)?;
+    tx.commit()?;
+    Ok(removed)
+}
+
+/// [`remove_tracks`] inside a transaction the caller holds, for
+/// `library::mover`, which renames a file in the same one.
+pub(crate) fn remove_within(tx: &Connection, ids: &[i64]) -> AppResult<u32> {
     let mut present = Vec::with_capacity(ids.len());
     {
         // The path is read back rather than taken from the caller: the caller
@@ -340,13 +348,12 @@ pub fn remove_tracks(conn: &mut Connection, ids: &[i64]) -> AppResult<u32> {
             present.push(*id);
         }
     }
-    let removed = delete_handing_on(&tx, &present)?;
+    let removed = delete_handing_on(tx, &present)?;
 
     // Five whole-table aggregates per gesture, rather than per-value decrements
     // across five fields. The rebuild is the cheaper thing to be sure of, and
     // it is what `remove_missing` already does.
-    crate::db::tag_values::rebuild(&tx)?;
-    tx.commit()?;
+    crate::db::tag_values::rebuild(tx)?;
     Ok(removed)
 }
 

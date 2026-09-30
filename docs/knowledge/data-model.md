@@ -208,6 +208,14 @@ holds the name too: `owned_by_other` counts it because `UPDATE tracks SET path`
 would otherwise collide with it when the drive comes back, so those markers
 stay until the user removes the rows.
 
+**A copy from outside the Library folder does not earn a marker** (195). When
+the row at its target is the same song (`match_key`), `mover::settle` keeps
+whichever copy has the higher bitrate, with a tie going to the one already
+inside. The other file ends up outside the Library folder, in the newcomer's
+folder, and its row is removed and tombstoned with 169's hand-on. A file
+already inside the root, such as a dropped file at its top level, is still
+numbered.
+
 **A path is compared with case folded, everywhere it is compared.** NTFS
 treats `The Corpse of Rebirth` and `The Corpse Of Rebirth` as one directory;
 the ideal path is built from the tags and the actual one is what the directory
