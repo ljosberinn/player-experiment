@@ -770,13 +770,16 @@ fn visit(
                 Ok(mover::Outcome::Done(moved)) => {
                     summary.placed += 1;
                     attempted = true;
-                    changed |= moved.files > 0 || moved.covers > 0;
+                    changed |=
+                        moved.files > 0 || moved.covers > 0 || moved.held > 0 || moved.swapped > 0;
                     op.succeeded(
                         Fields::new()
                             .add("status", "moved")
                             .add("files", moved.files)
                             .add("covers", moved.covers)
-                            .add("skipped", moved.skipped),
+                            .add("skipped", moved.skipped)
+                            .add("held", moved.held)
+                            .add("swapped", moved.swapped),
                     );
                 }
                 Ok(mover::Outcome::Deferred) => {
