@@ -36,6 +36,7 @@ src-tauri/src/
   crash.rs    panic hook, bounded log
   instance.rs one running app per library
   log.rs      every operation, one line each, rotated
+  profile.rs  Chrome traces of `span!` sites, `profile` builds only
   palette.rs  dominant colours from cover bytes
 src/
   features/   library, playlists, player, editor, tagsource, smart, shell,
@@ -379,7 +380,8 @@ a screenshot and the log line agree. A `Mutex<Option<File>>` in Tauri state and
 one whole line per lock, because the `rayon` pool, the player thread and the
 scrobbler thread all write into it. No `log` or `tracing` crate: what those buy
 is levels and filtering, and the set of operations is a product decision rather
-than a runtime knob. `format` and `rotate` are pure functions over a path, so
+than a runtime knob. `tracing` exists only behind the `profile` feature, for
+[traces](profiling.md), and never writes here. `format` and `rotate` are pure functions over a path, so
 both are tested against a `tempfile` like `crash::format`.
 
 **Rotation is checked before each write.** Current size plus the line over 5MB

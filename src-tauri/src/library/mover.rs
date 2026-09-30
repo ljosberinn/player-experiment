@@ -113,6 +113,7 @@ pub fn move_release(
     release: &lookup::Release,
     open: &HashSet<i64>,
 ) -> AppResult<Outcome> {
+    span!("library.move_release", album = ?release.album);
     let files = query::release_files(conn, release.album.as_deref(), release.artist.as_deref())?;
     if files.is_empty() {
         return Ok(Outcome::Absent);

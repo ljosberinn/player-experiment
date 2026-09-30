@@ -80,6 +80,14 @@ tauri-plugin-updater = "2.10.1"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-opener = "2.5.4"
 
+# Profiling only, behind the `profile` feature: wall-clock spans written as a
+# Chrome trace, so time spent waiting on a disk shows up, which a CPU sampler
+# does not see. `main.log` stays the one log a shipped build writes. See
+# docs/knowledge/profiling.md.
+tracing = { version = "0.1.44", default-features = false, features = ["std"], optional = true }
+tracing-chrome = { version = "0.7.2", optional = true }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"], optional = true }
+
 [dev-dependencies]
 tempfile = "3"
 # `tests/perf.rs` counts the work SQLite does, through the trace and commit
@@ -96,6 +104,11 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [features]
 wdio = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+profile = ["dep:tracing", "dep:tracing-chrome", "dep:tracing-subscriber"]
+
+[[example]]
+name = "profile_scan"
+required-features = ["profile"]
 
 [lints.rust]
 unsafe_code = "forbid"

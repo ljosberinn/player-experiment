@@ -78,6 +78,7 @@ impl TagValueField {
 /// part of what the library says, so an unplugged drive should not quietly
 /// change which spelling of a band ranks first.
 pub fn rebuild(conn: &Connection) -> AppResult<()> {
+    span!("tag_values.rebuild");
     conn.execute("DELETE FROM tag_values", [])?;
     for field in TagValueField::ALL {
         let column = field.as_sql();

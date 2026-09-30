@@ -610,6 +610,7 @@ pub fn mbid(value: &str) -> Option<String> {
 /// length. The count is what the tests assert idempotence with; no caller
 /// needs it.
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
+    span!("plays.resolve");
     // One transaction rather than a commit per key, which is what the
     // temporary table's inserts cost where a scan or a removal calls this
     // bare (issue 166). A savepoint for `regroup`'s reason.
@@ -642,6 +643,7 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
 /// The guard is what keeps a second run from writing anything: every update
 /// of `tracks` reindexes the row in `tracks_fts`.
 pub fn count(conn: &Connection) -> AppResult<()> {
+    span!("plays.count");
     conn.execute(
         "UPDATE tracks
             SET play_count = max(play_count, n.plays),

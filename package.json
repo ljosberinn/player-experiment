@@ -8,6 +8,7 @@
     "prepare": "git config core.hooksPath .githooks",
     "dev": "vite",
     "dev:scan": "tauri dev --config src-tauri/tauri.scan.conf.json",
+    "dev:profile": "tauri dev --release --features profile",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

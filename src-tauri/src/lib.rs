@@ -1,3 +1,17 @@
+/// Opens a span that lasts to the end of the enclosing block, in a `profile`
+/// build only.
+///
+/// A statement rather than a guard value, so that every other build has no
+/// call, no type and no `tracing` to name: the `cfg` takes the whole `let`.
+/// Defined ahead of the modules because a `macro_rules!` is only in scope
+/// below it.
+macro_rules! span {
+    ($($span:tt)*) => {
+        #[cfg(feature = "profile")]
+        let _span = tracing::info_span!($($span)*).entered();
+    };
+}
+
 pub mod audio;
 pub mod commands;
 pub mod crash;
@@ -11,6 +25,8 @@ pub mod library;
 pub mod log;
 pub mod model;
 pub mod palette;
+#[cfg(feature = "profile")]
+pub mod profile;
 pub mod reveal;
 pub mod scan;
 pub mod smart;
@@ -134,6 +150,9 @@ pub fn run() {
                 // Better two instances than an app that will not start.
                 Err(error) => log.op("instance.lock").failed(&error),
             }
+            // After the lock, so a launch that hands off leaves no empty trace.
+            #[cfg(feature = "profile")]
+            app.manage(profile::Session::start(&dir));
             // Before anything that can announce, so no write has to fall back
             // to an uncoalesced ping.
             app.manage(commands::Invalidations::default());
@@ -345,6 +364,8 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 remember_on_exit(app);
+                #[cfg(feature = "profile")]
+                app.state::<profile::Session>().finish();
             }
         });
 }
