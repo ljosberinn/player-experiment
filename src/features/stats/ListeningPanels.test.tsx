@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type ListenQuery,
   type ListenTotals,
   saveTextFile,
   statsFirsts,
@@ -10,6 +11,7 @@ import {
   statsPlaysOverTime,
   statsTop,
   statsWeekClock,
+  type TopEntry,
 } from "../../ipc";
 import { historyAt } from "../library/history";
 import { useLibraryStore } from "../library/store";
@@ -19,7 +21,7 @@ import { forgetListenTotals } from "./listenTotals";
 import { statsRoot } from "./path";
 import { useStatsStore } from "./store";
 
-const { TOTALS } = vi.hoisted(() => ({
+const { TOTALS, TOP } = vi.hoisted(() => ({
   TOTALS: {
     plays: 1000,
     artists: 40,
@@ -34,6 +36,29 @@ const { TOTALS } = vi.hoisted(() => ({
     firstAt: 1_400_000_000,
     lastAt: 1_700_000_000,
   } satisfies ListenTotals,
+  // Boards of Canada is owned at five minutes a play; Aphex Twin was only
+  // ever scrobbled, so has no time at all.
+  TOP: async (_query: ListenQuery, dimension: string): Promise<TopEntry[]> =>
+    dimension === "track"
+      ? [
+          {
+            key: "Roygbiv",
+            secondary: "Boards of Canada",
+            plays: 31,
+            durationMs: 0,
+            timed: 0,
+          },
+        ]
+      : [
+          {
+            key: "Boards of Canada",
+            secondary: null,
+            plays: 412,
+            durationMs: 123_600_000,
+            timed: 412,
+          },
+          { key: "Aphex Twin", secondary: null, plays: 206, durationMs: 0, timed: 0 },
+        ],
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn(async () => "C:/out/heard.csv") }));
@@ -68,14 +93,7 @@ vi.mock("../../ipc", () => ({
     // The three the current run is made of, plus one before the gap.
     lastSeven: [true, false, false, false, true, true, true],
   })),
-  statsTop: vi.fn(async (_query, dimension: string) =>
-    dimension === "track"
-      ? [{ key: "Roygbiv", secondary: "Boards of Canada", plays: 31 }]
-      : [
-          { key: "Boards of Canada", secondary: null, plays: 412 },
-          { key: "Aphex Twin", secondary: null, plays: 206 },
-        ],
-  ),
+  statsTop: vi.fn(TOP),
 }));
 
 const topMock = vi.mocked(statsTop);
@@ -97,6 +115,7 @@ function panel(title: string): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  topMock.mockImplementation(TOP);
   forgetListenTotals();
   useStatsStore.setState({ filters: DEFAULT_FILTERS });
   useLibraryStore.setState({
@@ -154,6 +173,41 @@ describe("ListeningPanels", () => {
     // 840 of 1000: a genre is knowable for a matched play alone, and
     // reporting the matched subset as the whole is the failure mode.
     expect(await within(panel("Top genres")).findByText(/84% of plays/)).toBeInTheDocument();
+  });
+
+  it("says how long a row was heard for, where any of its plays are timed", async () => {
+    render(<ListeningPanels />);
+    const [owned, scrobbled] = await within(panel("Top artists")).findAllByRole("listitem");
+
+    expect(within(owned as HTMLElement).getByText("34.3 hours")).toBeInTheDocument();
+    expect((scrobbled as HTMLElement).querySelector(".bar-list-detail")).toBeNull();
+  });
+
+  it("says what share of the rows' plays the times cover", async () => {
+    render(<ListeningPanels />);
+
+    // 412 of 618, counted over the rows drawn rather than the whole range.
+    expect(
+      await within(panel("Top artists")).findByText("Time known for 66% of these plays."),
+    ).toBeInTheDocument();
+    expect(
+      await within(panel("Top genres")).findByText(
+        "Genre known for 84% of plays. Time known for 66% of these plays.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing of time where every play in the rows has one", async () => {
+    topMock.mockImplementation(async () => [
+      { key: "Boards of Canada", secondary: null, plays: 412, durationMs: 123_600_000, timed: 412 },
+    ]);
+    render(<ListeningPanels />);
+
+    expect(await within(panel("Top artists")).findByText("34.3 hours")).toBeInTheDocument();
+    expect(within(panel("Top artists")).queryByText(/Time known/)).toBeNull();
+    expect(
+      await within(panel("Top genres")).findByText("Genre known for 84% of plays."),
+    ).toBeInTheDocument();
   });
 
   it("drills into the artist a bar names", async () => {

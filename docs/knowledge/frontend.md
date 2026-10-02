@@ -234,7 +234,11 @@ screen is ours, which is what the design and `e2e/contrast.ts` both require.
   does — 33px rows 3px apart, the fill spanning the row's whole height, the
   name at 600 against a tabular muted count. **4e's numbered list did not
   ship.** The sheet draws the same five rows twice, so it is a choice rather
-  than a second form, and the bar is the one four panels already call.
+  than a second form, and the bar is the one four panels already call. A row's
+  `detail` (the top lists' play time, 198) is 4e-less too: `--muted` at 12px
+  before the count, because `--faint` is near 2:1 on `--accent-fade`. Its
+  coverage caption counts the drawn rows, not `listen_totals` — the range's
+  share is the Time spent tile's, and a genre row is always a matched play.
 - **`Bar` is a categorical axis, never a numeric one.** The domain is the
   array's order: a histogram with an empty bin and a sparse time series both
   want the gap the caller left, and a scale over the values would close it. So

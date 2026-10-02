@@ -76,6 +76,23 @@ describe("BarList", () => {
     expect(onSelect).toHaveBeenCalledWith(entries[1]);
   });
 
+  it("draws a detail only on the rows that have one", () => {
+    const { container } = render(
+      <BarList
+        entries={[
+          { key: "Boards of Canada", value: 412, detail: "1.2 days" },
+          { key: "Aphex Twin", value: 206 },
+        ]}
+        format={count}
+        empty="Nothing"
+      />,
+    );
+
+    const details = [...container.querySelectorAll(".bar-list-detail")];
+    expect(details.map((detail) => detail.textContent)).toEqual(["1.2 days"]);
+    expect(details[0]?.closest("li")).toBe(screen.getAllByRole("listitem")[0]);
+  });
+
   it("keeps two same-named rows apart by what they belong to", () => {
     // Two albums called Untitled by different artists are two rows, and a key
     // on the label alone would collapse them into a React key collision.

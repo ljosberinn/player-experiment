@@ -1142,6 +1142,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The time behind a count, which 4e does not draw. Smaller rather than
+   `--faint`: the sheet's disabled text falls near 2:1 on `--accent-fade`. It
+   never shrinks, so a long name gives way first. */
+.bar-list-detail {
+  position: relative;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .bar-list-caption {
   margin: 7px 0 0;
   color: var(--muted);

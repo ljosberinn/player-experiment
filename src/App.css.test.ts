@@ -1366,6 +1366,7 @@ describe("the stylesheet", () => {
       ".stat-row dd",
       ".stat-tile-value",
       ".bar-list-value",
+      ".bar-list-detail",
       ".count",
     ]) {
       const rule = all.find((one) => one.selector.trim().endsWith(selector));

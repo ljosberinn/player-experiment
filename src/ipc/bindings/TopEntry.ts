@@ -11,4 +11,12 @@ key: string,
 /**
  * The artist, for an album or a track. `None` for the other two.
  */
-secondary: string | null, plays: number, };
+secondary: string | null, plays: number, 
+/**
+ * Summed over the plays whose duration is known - see `timed`.
+ */
+durationMs: number, 
+/**
+ * Plays with a known duration, as on [`ListenTotals`].
+ */
+timed: number, };

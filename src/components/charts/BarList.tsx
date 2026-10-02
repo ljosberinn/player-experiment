@@ -6,6 +6,8 @@ export interface BarListEntry {
   /** The artist behind an album or a track. Absent for artists and genres. */
   readonly secondary?: string | null;
   readonly value: number;
+  /** A second measure beside the value, such as the time behind a count. */
+  readonly detail?: string;
 }
 
 export interface BarListProps {
@@ -76,6 +78,9 @@ export function BarList({
                   <span className="bar-list-secondary">{entry.secondary}</span>
                 )}
               </span>
+              {entry.detail !== undefined && (
+                <span className="bar-list-detail">{entry.detail}</span>
+              )}
               <span className="bar-list-value">{format(entry.value)}</span>
             </>
           );

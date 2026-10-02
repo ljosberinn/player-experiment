@@ -296,7 +296,9 @@ pub fn top(
 
     let plays = Plays::new(conn, query)?;
     let sql = format!(
-        "SELECT {key} AS entry, {secondary}, count(*) AS heard {} GROUP BY {group}
+        "SELECT {key} AS entry, {secondary}, count(*) AS heard,
+                coalesce(sum({DURATION}), 0), count({DURATION})
+         {} GROUP BY {group}
          ORDER BY heard DESC, entry COLLATE NOCASE ASC LIMIT ?",
         plays.clause(&[present])
     );
@@ -308,6 +310,8 @@ pub fn top(
                 key: row.get(0)?,
                 secondary: row.get(1)?,
                 plays: row.get::<_, i64>(2)? as u32,
+                duration_ms: row.get(3)?,
+                timed: row.get::<_, i64>(4)? as u32,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -320,27 +324,31 @@ pub fn top(
 fn top_genres(conn: &Connection, query: &ListenQuery, limit: u32) -> AppResult<Vec<TopEntry>> {
     let plays = Plays::new(conn, query)?;
     let sql = format!(
-        "SELECT tracks.genre, count(*) {} GROUP BY tracks.genre",
+        "SELECT tracks.genre, count(*), coalesce(sum({DURATION}), 0), count({DURATION})
+         {} GROUP BY tracks.genre",
         plays.clause(&["tracks.genre <> ''"])
     );
 
     let tree = Tree::load(conn)?;
-    let mut heard: HashMap<String, u32> = HashMap::new();
+    let mut heard: HashMap<String, TopEntry> = HashMap::new();
     let mut statement = conn.prepare(&sql)?;
     let mut rows = statement.query(plays.params(&[]).as_slice())?;
     while let Some(row) = rows.next()? {
         let raw: String = row.get(0)?;
-        *heard.entry(tree.resolve(&raw).label).or_default() += row.get::<_, i64>(1)? as u32;
+        let label = tree.resolve(&raw).label;
+        let entry = heard.entry(label.clone()).or_insert_with(|| TopEntry {
+            key: label,
+            secondary: None,
+            plays: 0,
+            duration_ms: 0,
+            timed: 0,
+        });
+        entry.plays += row.get::<_, i64>(1)? as u32;
+        entry.duration_ms += row.get::<_, i64>(2)?;
+        entry.timed += row.get::<_, i64>(3)? as u32;
     }
 
-    let mut entries: Vec<TopEntry> = heard
-        .into_iter()
-        .map(|(key, plays)| TopEntry {
-            key,
-            secondary: None,
-            plays,
-        })
-        .collect();
+    let mut entries: Vec<TopEntry> = heard.into_values().collect();
     entries.sort_by(|a, b| b.plays.cmp(&a.plays).then_with(|| a.key.cmp(&b.key)));
     entries.truncate(limit as usize);
     Ok(entries)
@@ -1251,6 +1259,61 @@ mod tests {
             keys(&top(&conn, &all(), ListenDimension::Artist, 1).unwrap()),
             [("BLUE ROOM", 3)],
             "the limit applies"
+        );
+    }
+
+    /// An unmatched scrobble has no length, so its row has plays and no time.
+    #[test]
+    fn top_lists_sum_the_time_their_plays_are_known_for() {
+        let (_dir, conn) = open();
+        let dsbm = add_file(
+            &conn,
+            File {
+                artist: Some("Blue Room"),
+                title: Some("Harbour"),
+                genre: Some("DSBM"),
+                duration_ms: 200_000,
+                ..File::default()
+            },
+        );
+        let spelled_out = add_file(
+            &conn,
+            File {
+                artist: Some("Blue Room"),
+                title: Some("Tide"),
+                genre: Some("Depressive Black Metal"),
+                duration_ms: 300_000,
+                ..File::default()
+            },
+        );
+        add_play(&conn, 1, ("Blue Room", "Harbour", Some("Tide")), Some(dsbm));
+        add_play(&conn, 2, ("Blue Room", "Harbour", Some("Tide")), Some(dsbm));
+        add_play(
+            &conn,
+            3,
+            ("Blue Room", "Tide", Some("Tide")),
+            Some(spelled_out),
+        );
+        add_play(&conn, 4, ("Blue Room", "Lost", Some("Tide")), None);
+        add_play(&conn, 5, ("Nobody", "Nothing", None), None);
+
+        let timed = |dimension| {
+            top(&conn, &all(), dimension, 10)
+                .unwrap()
+                .into_iter()
+                .map(|entry| (entry.key, entry.plays, entry.duration_ms, entry.timed))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            timed(ListenDimension::Artist),
+            [
+                ("Blue Room".to_owned(), 4, 700_000, 3),
+                ("Nobody".to_owned(), 1, 0, 0),
+            ]
+        );
+        assert_eq!(
+            timed(ListenDimension::Genre),
+            [("depressive black metal".to_owned(), 3, 700_000, 3)]
         );
     }
 
