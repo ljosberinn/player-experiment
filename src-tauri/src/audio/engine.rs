@@ -103,6 +103,13 @@ pub enum Event {
     /// marks it missing - a failed play is a cheaper signal than a scan, and
     /// arrives at the moment the user finds out anyway.
     LoadFailed(i64),
+    /// A restore would not open its track. Not a [`Self::LoadFailed`]: at
+    /// launch the drive holding it may not have mounted yet, so the next watch
+    /// pass decides whether the file is missing.
+    RestoreFailed {
+        track_id: i64,
+        message: String,
+    },
     /// This track opened. The mirror of `LoadFailed`: a file that plays is a
     /// file that is there, so any mark on it is stale and the owner clears it
     /// without waiting for a scan.
@@ -413,10 +420,13 @@ impl<S: AudioSink> Engine<S> {
         let Some(entry) = entries.get(index).cloned() else {
             return Vec::new();
         };
-        if self.sink.load(Path::new(&entry.path)).is_err() {
+        if let Err(message) = self.sink.load(Path::new(&entry.path)) {
             // No `Error`: nobody asked for this, and a dialog about yesterday's
             // song must not be the first thing the app says.
-            return vec![Event::LoadFailed(entry.track_id)];
+            return vec![Event::RestoreFailed {
+                track_id: entry.track_id,
+                message,
+            }];
         }
 
         let position_ms = position_ms.clamp(0, entry.duration_ms.max(0));
@@ -1748,11 +1758,17 @@ mod tests {
     }
 
     #[test]
-    fn a_restore_that_will_not_open_says_so_to_the_log_only() {
+    fn a_restore_that_will_not_open_says_why_and_does_not_mark_it_missing() {
         let mut engine = Engine::new(FakeSink::default(), 1.0, false);
         engine.sink.fail_load = true;
 
-        assert_eq!(engine.handle(restore(3_000)), vec![Event::LoadFailed(2)]);
+        assert_eq!(
+            engine.handle(restore(3_000)),
+            vec![Event::RestoreFailed {
+                track_id: 2,
+                message: format!("{}: cannot decode", track_path(2).display()),
+            }]
+        );
         assert_eq!(engine.state().status, PlaybackStatus::Stopped);
         assert_eq!(engine.state().queue_len, 0);
     }

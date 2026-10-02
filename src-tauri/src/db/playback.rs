@@ -93,13 +93,11 @@ pub fn queue_entries(conn: &Connection, ids: &[i64]) -> AppResult<Vec<QueueEntry
 
 /// What the last session left loaded, as the command that puts it back.
 ///
-/// Takes the resume point rather than reading it: a restore that does not load
-/// writes nothing back, so a file that has gone is not tried again every
-/// launch. One that loads writes it again through [`remember`].
-pub fn take_restore(conn: &Connection) -> AppResult<Option<Command>> {
-    let resume = settings::resume_point(conn)?;
-    settings::remove(conn, settings::RESUME)?;
-    let Some((queue, point)) = resume else {
+/// Reads the resume point and leaves it, so a restore that fails because the
+/// drive had not mounted yet is tried again next launch. It is dropped only
+/// once its track has left the library or a scan has marked it missing.
+pub fn restore(conn: &Connection) -> AppResult<Option<Command>> {
+    let Some((queue, point)) = settings::resume_point(conn)? else {
         return Ok(None);
     };
 
@@ -108,7 +106,14 @@ pub fn take_restore(conn: &Connection) -> AppResult<Option<Command>> {
     let index = point.index as usize;
     let mut entries = queue_entries(conn, &queue[..index])?;
     let rest = queue_entries(conn, &queue[index..])?;
-    if rest.first().map(|entry| entry.track_id) != Some(queue[index]) {
+    let present = rest.first().map(|entry| entry.track_id) == Some(queue[index])
+        && conn.query_row(
+            "SELECT missing_since IS NULL FROM tracks WHERE id = ?1",
+            [queue[index]],
+            |row| row.get::<_, bool>(0),
+        )?;
+    if !present {
+        settings::remove(conn, settings::RESUME)?;
         return Ok(None);
     }
     let index = entries.len();
@@ -122,7 +127,14 @@ pub fn take_restore(conn: &Connection) -> AppResult<Option<Command>> {
 
 /// Keeps the resume point in step with the engine: where it stands while a
 /// track is loaded, and nothing once it stops.
+///
+/// Left alone while the engine has no queue, which is a session where neither
+/// a restore nor a Play has reached it: the point is still the last session's,
+/// and a restore waiting on its drive has yet to use it.
 pub fn remember(conn: &Connection, state: &EngineState) -> AppResult<()> {
+    if state.queue_len == 0 {
+        return Ok(());
+    }
     match (state.status, state.queue_index) {
         (PlaybackStatus::Stopped, _) | (_, None) => settings::remove(conn, settings::RESUME),
         (_, Some(index)) => settings::save_resume_point(
@@ -221,7 +233,7 @@ mod tests {
     }
 
     fn restores(conn: &Connection) -> Option<(Vec<i64>, usize, i64)> {
-        take_restore(conn).unwrap().map(|command| match command {
+        restore(conn).unwrap().map(|command| match command {
             Command::Restore {
                 entries,
                 index,
@@ -261,6 +273,47 @@ mod tests {
 
         assert_eq!(restores(&conn), None);
         assert_eq!(settings::get(&conn, settings::RESUME).unwrap(), None);
+    }
+
+    #[test]
+    fn a_restore_leaves_the_resume_point_for_a_launch_where_the_drive_is_late() {
+        let (_dir, conn) = seeded();
+        left_at(&conn, &[3, 1, 2], 1, 400);
+
+        assert_eq!(restores(&conn), Some((vec![3, 1, 2], 1, 400)));
+        assert_eq!(restores(&conn), Some((vec![3, 1, 2], 1, 400)));
+    }
+
+    #[test]
+    fn a_track_marked_missing_restores_nothing_and_is_forgotten() {
+        let (_dir, conn) = seeded();
+        left_at(&conn, &[1, 2, 3], 1, 400);
+        crate::scan::mark_missing(&conn, 2).unwrap();
+
+        assert_eq!(restores(&conn), None);
+        assert_eq!(settings::get(&conn, settings::RESUME).unwrap(), None);
+    }
+
+    #[test]
+    fn nothing_is_remembered_before_the_engine_has_a_queue() {
+        // A volume change or the exit write in a session whose restore failed.
+        let (_dir, conn) = seeded();
+        left_at(&conn, &[1, 2], 1, 400);
+        let empty = EngineState {
+            status: PlaybackStatus::Stopped,
+            track_id: None,
+            next_track_id: None,
+            queue_index: None,
+            queue_len: 0,
+            position_ms: 0,
+            duration_ms: 0,
+            volume: 0.5,
+            muted: false,
+            repeat_one: false,
+        };
+
+        remember(&conn, &empty).unwrap();
+        assert_eq!(restores(&conn), Some((vec![1, 2], 1, 400)));
     }
 
     #[test]

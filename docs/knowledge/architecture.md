@@ -455,11 +455,15 @@ beside `reveal_crash_log`: a log nobody can find is not one.
   ids `player_play` queued, written per Play because it can be the library;
   `player.resume` holds the index and position, written on every
   `StateChanged` and on `RunEvent::Exit`, and deleted on a stop - so a launch
-  after Stop or a queue running out loads nothing. `playback::take_restore`
-  deletes it as it reads, off the setup path, and `Command::Restore` writes it
-  back only by loading: a file that has gone is tried once, marked missing,
-  and never reported. A restore is not a new play - past halfway it is already
-  counted, and `started_at` is taken at the first resume.
+  after Stop or a queue running out loads nothing. Neither write touches it
+  while the engine has no queue, so a restore that fails leaves it for the
+  next launch; `playback::restore` drops it only once its track has left the
+  library or is marked missing. Off the setup path, a track whose file and
+  watch folder are both absent waits up to 60s for the drive to mount, then
+  restores anyway, and gives up if a Play saved a queue meanwhile. A failed
+  restore is `Event::RestoreFailed`: logged, not shown, and left for the watch
+  pass to mark missing. A restore is not a new play - past halfway it is
+  already counted, and `started_at` is taken at the first resume.
 - **"Played" means 50% of the track.** One constant (`PLAYED_FRACTION`) behind
   play counts and scrobbling alike. A repeat loop counts as a play, and
   `Event::Played` carries the wall-clock second the track *started* — derived

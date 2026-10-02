@@ -368,21 +368,57 @@ fn raise(app: &tauri::AppHandle) {
     let _ = window.set_focus();
 }
 
+/// How long a restore waits for the drive holding its track to mount. A USB
+/// disk has been seen to take seven seconds.
+const DRIVE_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+const DRIVE_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+
 /// Puts back what the last session left loaded, off the setup path: the queue
 /// can be the whole library, and looking it up is not worth holding the window
 /// for. A Play that lands first wins; see `Engine::restore`.
 fn resume_playback(app: tauri::AppHandle, db: Db, log: log::Log) {
     let _ = std::thread::Builder::new()
         .name("playback-restore".to_owned())
-        .spawn(
-            move || match db.conn().and_then(|conn| playback::take_restore(&conn)) {
-                Ok(Some(command)) => {
-                    let _ = app.state::<Player>().send(command);
-                }
-                Ok(None) => {}
-                Err(error) => log.op("playback.restore").failed(&error),
-            },
-        );
+        .spawn(move || {
+            let read = || db.conn().and_then(|conn| playback::restore(&conn));
+            let command = match read() {
+                Ok(Some(command)) => command,
+                Ok(None) => return,
+                Err(error) => return log.op("playback.restore").failed(&error),
+            };
+            // Read again after a wait: a Play during it saved a queue of its
+            // own, and the engine's `Stopped` check cannot see one whose loads
+            // all failed.
+            if wait_for_drive(&db, &command, &log)
+                && !matches!(read(), Ok(Some(ref again)) if *again == command)
+            {
+                return;
+            }
+            let _ = app.state::<Player>().send(command);
+        });
+}
+
+/// Waits for the watch folder holding the restore's track, if the track and
+/// the folder are both absent. Resolves to whether it waited.
+fn wait_for_drive(db: &Db, command: &audio::Command, log: &log::Log) -> bool {
+    let audio::Command::Restore { entries, index, .. } = command else {
+        return false;
+    };
+    let path = std::path::Path::new(&entries[*index].path);
+    let Ok(roots) = db.conn().and_then(|conn| scan::watch_folders(&conn)) else {
+        return false;
+    };
+    let Some(root) = scan::watch::unmounted_root(path, &roots) else {
+        return false;
+    };
+
+    let op = log.op("playback.wait").add("folder", root.display());
+    let started = std::time::Instant::now();
+    while !root.is_dir() && started.elapsed() < DRIVE_WAIT {
+        std::thread::sleep(DRIVE_POLL);
+    }
+    op.succeeded(log::Fields::new().add("mounted", root.is_dir()));
+    true
 }
 
 /// Writes where the player stands as the app goes.
@@ -791,6 +827,11 @@ fn forward(
             if let Ok(conn) = db.conn() {
                 let _ = scan::mark_missing(&conn, *track_id);
             }
+        }
+        Event::RestoreFailed { track_id, message } => {
+            log.op("playback.restore")
+                .add("track", track_id)
+                .failed(message);
         }
         Event::Loaded(track_id) => {
             log.note("playback.load", log::Fields::new().add("track", track_id));
