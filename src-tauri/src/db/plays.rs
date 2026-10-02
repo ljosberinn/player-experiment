@@ -19,7 +19,7 @@
 //! library on every rebuild, which costs more than the thing it was meant to
 //! make cheap. [`resolve`] materializes it in a temporary table instead.
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 
 use crate::error::AppResult;
 
@@ -614,19 +614,40 @@ pub fn mbid(value: &str) -> Option<String> {
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
     // One transaction rather than a commit per key, which is what the
     // temporary table's inserts cost where a scan or a removal calls this
-    // bare (issue 166). A savepoint for `regroup`'s reason.
-    conn.execute_batch("SAVEPOINT resolve")?;
-    let resolved = resolve_within(conn, false).and_then(|moved| {
+    // bare (issue 166).
+    atomically(conn, "resolve", || {
+        let moved = resolve_within(conn, false)?;
         crate::db::settings::set(conn, crate::db::settings::PLAYS_RESOLVED, "1")?;
         Ok(moved)
-    });
-    match resolved {
-        Ok(moved) => {
-            conn.execute_batch("RELEASE resolve")?;
-            Ok(moved)
+    })
+}
+
+/// Runs `work` in a savepoint of the caller's transaction, or in an
+/// IMMEDIATE transaction of its own when called bare.
+///
+/// A savepoint because the import runs these inside its own transaction, and
+/// startup, a scan and a pin run them bare. Not a bare `SAVEPOINT` then: that
+/// begins deferred, and every pass here reads the log before it writes - the
+/// upgrade [`crate::db::Db::conn`] says fails at once (issue 203).
+fn atomically<T>(
+    conn: &Connection,
+    name: &str,
+    work: impl FnOnce() -> AppResult<T>,
+) -> AppResult<T> {
+    if conn.is_autocommit() {
+        let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+        let done = work()?;
+        tx.commit()?;
+        return Ok(done);
+    }
+    conn.execute_batch(&format!("SAVEPOINT {name}"))?;
+    match work() {
+        Ok(done) => {
+            conn.execute_batch(&format!("RELEASE {name}"))?;
+            Ok(done)
         }
         Err(error) => {
-            conn.execute_batch("ROLLBACK TO resolve; RELEASE resolve")?;
+            conn.execute_batch(&format!("ROLLBACK TO {name}; RELEASE {name}"))?;
             Err(error)
         }
     }
@@ -739,9 +760,8 @@ pub fn relink(conn: &Connection, before: &[(i64, LinkTags)]) -> AppResult<u32> {
         return Ok(0);
     }
 
-    // A savepoint for `resolve`'s reason.
-    conn.execute_batch("SAVEPOINT relink")?;
-    let relinked = scope(conn, &changed).and_then(|()| {
+    atomically(conn, "relink", || {
+        scope(conn, &changed)?;
         let moved = resolve_within(conn, true)?;
         count_within(conn, true)?;
         conn.execute_batch(
@@ -749,17 +769,7 @@ pub fn relink(conn: &Connection, before: &[(i64, LinkTags)]) -> AppResult<u32> {
              DROP TABLE temp.scope_tracks;",
         )?;
         Ok(moved)
-    });
-    match relinked {
-        Ok(moved) => {
-            conn.execute_batch("RELEASE relink")?;
-            Ok(moved)
-        }
-        Err(error) => {
-            conn.execute_batch("ROLLBACK TO relink; RELEASE relink")?;
-            Err(error)
-        }
-    }
+    })
 }
 
 /// Fills `temp.scope_plays` with every play whose link can follow from these
@@ -1419,19 +1429,7 @@ fn adds_a_version(a: &str, b: &str) -> bool {
 ///   must not follow it out - they name themselves after their own biggest
 ///   instead.
 pub fn regroup(conn: &Connection) -> AppResult<u32> {
-    // A savepoint rather than a transaction because the import calls this
-    // inside its own, and startup and a pin call it bare.
-    conn.execute_batch("SAVEPOINT regroup")?;
-    match regroup_within(conn) {
-        Ok(moved) => {
-            conn.execute_batch("RELEASE regroup")?;
-            Ok(moved)
-        }
-        Err(error) => {
-            conn.execute_batch("ROLLBACK TO regroup; RELEASE regroup")?;
-            Err(error)
-        }
-    }
+    atomically(conn, "regroup", || regroup_within(conn))
 }
 
 fn regroup_within(conn: &Connection) -> AppResult<u32> {
@@ -2779,6 +2777,51 @@ mod tests {
         assert!(refold_if_stale(&mut conn).unwrap().is_some());
         assert_eq!([linked(&conn, 10), linked(&conn, 11)], [Some(1), Some(2)]);
         assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once");
+    }
+
+    /// Another connection writes and holds the lock for 300ms, as `remember`
+    /// or a watch pass does when it lands on a pass that reads first.
+    fn held_elsewhere(dir: &tempfile::TempDir) -> std::thread::JoinHandle<()> {
+        let path = dir.path().join("library.sqlite3");
+        let (taken, wait) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let conn = Connection::open(path).unwrap();
+            conn.execute_batch("BEGIN IMMEDIATE; DELETE FROM settings WHERE key = 'elsewhere';")
+                .unwrap();
+            taken.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            conn.execute_batch("COMMIT").unwrap();
+        });
+        wait.recv().unwrap();
+        holder
+    }
+
+    #[test]
+    fn the_fold_waits_for_a_write_elsewhere() {
+        let (dir, mut conn) = open();
+        played(&conn, 10, "Blue Room", "Harbour");
+        conn.execute("UPDATE plays SET match_key = 'stale'", [])
+            .unwrap();
+        crate::db::settings::set(&conn, crate::db::settings::MATCH_FOLD, "8").unwrap();
+
+        let holder = held_elsewhere(&dir);
+        let refolded = refold_if_stale(&mut conn);
+        holder.join().unwrap();
+
+        assert_eq!(refolded.unwrap().map(|r| r.moved), Some(1));
+    }
+
+    #[test]
+    fn a_bare_resolve_waits_for_a_write_elsewhere() {
+        let (dir, conn) = open();
+        played(&conn, 10, "Blue Room", "Harbour");
+
+        let holder = held_elsewhere(&dir);
+        let resolved = resolve(&conn);
+        holder.join().unwrap();
+
+        resolved.unwrap();
+        assert!(is_resolved(&conn).unwrap());
     }
 
     fn industrial_silence(conn: &Connection) {

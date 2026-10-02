@@ -71,6 +71,11 @@ Each of these cost real time once. They are here so they cost it once.
   one casing only.
 - `NULL <> 'x'` is NULL, so every exclusion operator needs `(col IS NULL OR …)`.
 - Escape `%`, `_` and the escape character in `LIKE` patterns.
+- **A transaction that reads before it writes fails at once when busy.** The
+  upgrade to a write lock gets no busy handler, whatever `busy_timeout` says.
+  `Db::conn` makes `conn.transaction()` IMMEDIATE; a hand-written `BEGIN` or a
+  bare `SAVEPOINT` is still deferred. `plays::atomically` is the savepoint
+  that nests or begins IMMEDIATE.
 
 ## jsdom and component tests
 

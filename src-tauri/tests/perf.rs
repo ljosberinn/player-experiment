@@ -821,9 +821,12 @@ fn grouping_the_album_spellings_is_affordable_cold_and_cheap_warm() {
     );
 
     // Warm: nothing moved, so nothing is written - which is what keeps the
-    // pass after every import from rewriting the whole table.
+    // pass after every import from rewriting the whole table. The commit is
+    // the IMMEDIATE transaction a bare call takes, empty.
+    let changes = conn.total_changes();
     let (work, written) = work_of(|| plays::regroup(&conn).unwrap());
     assert_eq!(written, 0);
+    assert_eq!(conn.total_changes(), changes, "a warm regroup wrote rows");
     assert_within(
         "regroup over an unchanged log",
         Work {
@@ -831,7 +834,7 @@ fn grouping_the_album_spellings_is_affordable_cold_and_cheap_warm() {
             steps: 50 * P,
             scanned: 2 * P,
             sorts: 5,
-            commits: 0,
+            commits: 1,
         },
         work,
     );

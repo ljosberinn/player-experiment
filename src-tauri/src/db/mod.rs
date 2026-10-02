@@ -14,7 +14,7 @@ pub mod tag_values;
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 
 use crate::error::{AppError, AppResult};
 
@@ -47,15 +47,23 @@ impl Db {
     }
 
     /// A fresh connection with the pragmas every caller depends on.
+    ///
+    /// **Every transaction takes the write lock when it begins.** A deferred
+    /// one that reads first upgrades at its first write, and SQLite gives an
+    /// upgrade no busy handler: it fails at once if another connection holds
+    /// the lock or has committed since the read (issue 203). Nothing here
+    /// opens a transaction only to read.
     pub fn conn(&self) -> AppResult<Connection> {
-        let conn = Connection::open(&self.path)?;
+        let mut conn = Connection::open(&self.path)?;
+        // First, so a busy `journal_mode` waits too.
+        conn.busy_timeout(std::time::Duration::from_secs(30))?;
+        conn.set_transaction_behavior(TransactionBehavior::Immediate);
         conn.pragma_update(None, "journal_mode", "WAL")?;
         // NORMAL is the documented-safe pairing with WAL: a crash can lose the
         // tail of the last transaction but cannot corrupt the database, and it
         // avoids an fsync per commit while ingesting tens of thousands of rows.
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.busy_timeout(std::time::Duration::from_secs(30))?;
         Ok(conn)
     }
 }
