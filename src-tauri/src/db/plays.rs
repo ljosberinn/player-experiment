@@ -538,7 +538,8 @@ fn without_bare_credit(value: &str) -> std::borrow::Cow<'_, str> {
 /// will compute for it unless the library holds the same song twice - the
 /// album copy and the compilation copy - in which case the next rebuild moves
 /// the play to whichever of them that function picks. `resolve` is
-/// authoritative; this is what keeps the row linked until one runs.
+/// authoritative; this is what keeps the row linked until one runs, and
+/// [`mark_unresolved`] is what makes the next scan run one.
 pub fn record(conn: &Connection, track_id: i64, started_at: i64) -> AppResult<()> {
     let snapshot = conn
         .query_row(
@@ -571,6 +572,7 @@ pub fn record(conn: &Connection, track_id: i64, started_at: i64) -> AppResult<()
          VALUES (?1, 'local', ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![started_at, artist, title, album, duration_ms, key, link],
     )?;
+    mark_unresolved(conn)?;
 
     // A spelling [`regroup`] has not seen yet, so that the play reads under a
     // heading now rather than after the next import. `OR IGNORE`, so a pinned
@@ -605,16 +607,20 @@ pub fn mbid(value: &str) -> Option<String> {
 /// Recomputes `plays.track_id` for the whole log, returning how many links
 /// moved.
 ///
-/// Runs wherever [`crate::db::tag_values::rebuild`] runs - the end of a scan,
-/// a tag write, and both removals - for the reason that module gives at
-/// length. The count is what the tests assert idempotence with; no caller
-/// needs it.
+/// Runs at the end of a tag write, both removals, and a scan that changed
+/// something or finds [`is_resolved`] false, for the reason
+/// [`crate::db::tag_values`] gives at length. The count is what the tests
+/// assert idempotence with; no caller needs it.
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
     // One transaction rather than a commit per key, which is what the
     // temporary table's inserts cost where a scan or a removal calls this
     // bare (issue 166). A savepoint for `regroup`'s reason.
     conn.execute_batch("SAVEPOINT resolve")?;
-    match resolve_within(conn) {
+    let resolved = resolve_within(conn).and_then(|moved| {
+        crate::db::settings::set(conn, crate::db::settings::PLAYS_RESOLVED, "1")?;
+        Ok(moved)
+    });
+    match resolved {
         Ok(moved) => {
             conn.execute_batch("RELEASE resolve")?;
             Ok(moved)
@@ -624,6 +630,17 @@ pub fn resolve(conn: &Connection) -> AppResult<u32> {
             Err(error)
         }
     }
+}
+
+/// Whether every play still links where [`resolve`] last put it.
+pub fn is_resolved(conn: &Connection) -> AppResult<bool> {
+    Ok(crate::db::settings::get(conn, crate::db::settings::PLAYS_RESOLVED)?.is_some())
+}
+
+/// Notes a write that can move a link without running [`resolve`], so the
+/// next scan runs it even if it changed nothing itself.
+pub fn mark_unresolved(conn: &Connection) -> AppResult<()> {
+    crate::db::settings::remove(conn, crate::db::settings::PLAYS_RESOLVED)
 }
 
 /// Raises each linked track's `play_count` and `last_played_at` to what its

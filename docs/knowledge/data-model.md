@@ -409,6 +409,12 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   — so the winner is fixed rather than incidental: present before unplugged,
   then the lower id, which is migration 12's tiebreak. Without it the function
   is not idempotent and its guarded `UPDATE` rewrites the log on every run.
+- **A scan that wrote nothing skips `resolve` and `count`** (193) while
+  `plays.resolved` is in `settings`, and one that read no file skips
+  `tag_values::rebuild`.
+  `resolve` sets it. The writes that can move a link without running one - a
+  local play, the player marking a file missing or back - remove it, and a
+  library that predates it resolves on its next scan.
 - **A removed row hands its count to the copy that stays** (169), in both
   removals' transaction: the copy `resolve` would pick by `tracks.match_key`
   takes the max of its own `play_count`, the removed row's and its linked plays
