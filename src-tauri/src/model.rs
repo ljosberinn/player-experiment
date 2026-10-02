@@ -1081,6 +1081,11 @@ pub struct ScanSummary {
     #[serde(skip)]
     #[ts(skip)]
     pub unreadable: u32,
+    /// Tombstones dropped because their file is gone. Changes only Forget
+    /// Removed Songs' count, which reads it off `LibraryStats`.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub lapsed: u32,
 }
 
 /// What a drop from the OS did, before the scan behind it runs.
@@ -1112,7 +1117,7 @@ impl ScanSummary {
     /// were looked at and left alone, which is what a pass that did nothing
     /// looks like. What the unattended pass consults before announcing.
     pub fn changed(&self) -> bool {
-        self.added + self.updated + self.missing + self.returned > 0
+        self.added + self.updated + self.missing + self.returned + self.lapsed > 0
     }
 }
 
