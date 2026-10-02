@@ -404,9 +404,8 @@ What gets a line:
   break the failure runs the file appears to hold, which is why the run itself
   is on the sweep line and is not counted off `lookup.release`.
 - **One line per file a scan cannot read** (`scan.unreadable`, with lofty's
-  whole error chain), from a scan somebody asked for. The watch pass only counts
-  them (`unreadable=` on `scan.watch`): such a file has no row, so every pass
-  reads it again, and a line per file per pass would bury the rest.
+  whole error chain), from either kind of scan. Each is read once per change
+  to the file or the app (migration 21), so `unreadable=` counts new failures.
 - **Every `Err`, reads included.** A read is `Op::quiet`: a `query_tracks` that
   fails leaves a trace, and the thousands that succeed do not — a line per page
   the table asks for would rotate the file past whatever is being investigated.

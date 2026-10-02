@@ -18,8 +18,8 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 use crate::db::{settings, Db};
-use crate::error::AppResult;
-use crate::log::Log;
+use crate::error::{AppError, AppResult};
+use crate::log::{Fields, Log};
 use crate::model::{ScanProgress, ScanSummary};
 
 use super::ScanLock;
@@ -52,14 +52,12 @@ const FIRST_PASS: Duration = Duration::from_secs(15);
 pub fn pass(
     conn: &mut Connection,
     mut on_progress: impl FnMut(ScanProgress),
+    on_unreadable: impl FnMut(&AppError),
 ) -> AppResult<ScanSummary> {
     let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) = super::watch_folders(conn)?
         .into_iter()
         .partition(|root| root.is_dir());
 
-    // Unreadable files are counted on the `scan.watch` line but not named: a
-    // file stays unreadable, and is read again, on every pass, and a line per
-    // file per pass would bury the rest of the log.
     super::scan_roots(
         conn,
         &present,
@@ -69,7 +67,7 @@ pub fn pass(
                 on_progress(progress);
             }
         },
-        |_| {},
+        on_unreadable,
     )
 }
 
@@ -135,9 +133,11 @@ pub fn spawn(
                 // running and finds nothing" and "the timer stopped" look the
                 // same from outside.
                 let op = log.op("scan.watch");
-                let summary = db
-                    .conn()
-                    .and_then(|mut conn| pass(&mut conn, &mut on_progress));
+                let summary = db.conn().and_then(|mut conn| {
+                    pass(&mut conn, &mut on_progress, |error| {
+                        log.problem("scan.unreadable", Fields::new().add("error", error));
+                    })
+                });
 
                 match &summary {
                     Ok(summary) => op.succeeded(super::summary_fields(summary)),

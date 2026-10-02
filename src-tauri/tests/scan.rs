@@ -432,7 +432,7 @@ fn a_corrupt_file_does_not_abort_the_scan() {
 }
 
 #[test]
-fn a_file_whose_tags_will_not_parse_is_counted_and_named() {
+fn a_file_whose_tags_will_not_parse_is_counted_and_named_once() {
     let h = harness();
     fixture::library(&h.music);
     fixture::write_mp3_with_bare_url(
@@ -441,24 +441,114 @@ fn a_file_whose_tags_will_not_parse_is_counted_and_named() {
         "https://www.discogs.com/release/1",
     );
     let mut conn = h.db.conn().unwrap();
+    let mut errors = Vec::new();
 
-    for pass in 0..2 {
-        let mut errors = Vec::new();
-        let summary =
-            scan::scan(&mut conn, |_| {}, |error| errors.push(error.to_string())).unwrap();
+    let summary = scan::scan(&mut conn, |_| {}, |error| errors.push(error.to_string())).unwrap();
 
-        assert_eq!(
-            summary.unreadable, 1,
-            "pass {pass}: it has no row to skip it by"
-        );
-        assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("bare url.mp3"), "{}", errors[0]);
-        assert!(
-            errors[0].contains("'WXXX'"),
-            "the frame that broke is named: {}",
-            errors[0]
-        );
-    }
+    assert_eq!(summary.unreadable, 1);
+    assert_eq!(errors.len(), 1);
+    assert!(errors[0].contains("bare url.mp3"), "{}", errors[0]);
+    assert!(
+        errors[0].contains("'WXXX'"),
+        "the frame that broke is named: {}",
+        errors[0]
+    );
+
+    let summary = scan::scan(&mut conn, |_| {}, |error| errors.push(error.to_string())).unwrap();
+
+    assert_eq!(summary.unreadable, 0, "it is not read again");
+    assert_eq!(summary.unchanged, 6);
+    assert_eq!(errors.len(), 1);
+}
+
+fn unreadable_records(conn: &Connection) -> i64 {
+    conn.query_row("SELECT count(*) FROM unreadable_files", [], |row| {
+        row.get(0)
+    })
+    .unwrap()
+}
+
+#[test]
+fn an_unreadable_file_is_read_again_once_it_changes() {
+    let h = harness();
+    let path = h.music.join("broken.mp3");
+    fixture::write_mp3_with_bare_url(&path, 4, "https://www.discogs.com/release/1");
+    scan_now(&h.db);
+
+    fixture::write_mp3_with_bare_url(&path, 8, "https://www.discogs.com/release/1");
+    assert_eq!(scan_now(&h.db).unreadable, 1, "a different size");
+
+    fixture::write_mp3(&path, 4, &fixture::Meta::default());
+    assert_eq!(
+        scan_now(&h.db).added,
+        1,
+        "and once it parses, it is a track"
+    );
+    let conn = h.db.conn().unwrap();
+    assert_eq!(unreadable_records(&conn), 0);
+}
+
+#[test]
+fn a_file_an_edit_broke_keeps_its_row_and_is_read_once() {
+    let h = harness();
+    let path = h.music.join("song.mp3");
+    fixture::write_mp3(
+        &path,
+        4,
+        &fixture::Meta {
+            title: Some("Song"),
+            ..Default::default()
+        },
+    );
+    scan_now(&h.db);
+    fixture::write_mp3_with_bare_url(&path, 8, "https://www.discogs.com/release/1");
+
+    assert_eq!(scan_now(&h.db).unreadable, 1);
+    let summary = scan_now(&h.db);
+
+    assert_eq!(summary.unreadable, 0);
+    assert_eq!(summary.unchanged, 1);
+    let conn = h.db.conn().unwrap();
+    let tracks = all_tracks(&conn);
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].title.as_deref(), Some("Song"));
+}
+
+#[test]
+fn another_version_of_the_app_reads_an_unreadable_file_again() {
+    // It may carry a `lofty` that can.
+    let h = harness();
+    fixture::write_mp3_with_bare_url(
+        &h.music.join("broken.mp3"),
+        4,
+        "https://www.discogs.com/release/1",
+    );
+    scan_now(&h.db);
+    let conn = h.db.conn().unwrap();
+    conn.execute("UPDATE unreadable_files SET read_by = '0.0.0'", [])
+        .unwrap();
+
+    assert_eq!(scan_now(&h.db).unreadable, 1);
+}
+
+#[test]
+fn an_unreadable_file_that_goes_is_forgotten() {
+    let h = harness();
+    let path = h.music.join("broken.mp3");
+    std::fs::write(&path, b"definitely not an mp3").unwrap();
+    scan_now(&h.db);
+    let conn = h.db.conn().unwrap();
+    assert_eq!(unreadable_records(&conn), 1);
+
+    // Not while its root is unplugged: it has not gone.
+    std::fs::rename(&h.music, h.music.with_extension("away")).unwrap();
+    watch_pass(&h.db);
+    assert_eq!(unreadable_records(&conn), 1);
+
+    std::fs::rename(h.music.with_extension("away"), &h.music).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    scan_now(&h.db);
+    assert_eq!(unreadable_records(&conn), 0);
 }
 
 /// One unattended pass, collecting whatever progress it reported.
@@ -470,7 +560,8 @@ fn watch_pass(
 ) {
     let mut conn = db.conn().unwrap();
     let mut events = Vec::new();
-    let summary = scan::watch::pass(&mut conn, |progress| events.push(progress)).expect("pass");
+    let summary =
+        scan::watch::pass(&mut conn, |progress| events.push(progress), |_| {}).expect("pass");
     (summary, events)
 }
 

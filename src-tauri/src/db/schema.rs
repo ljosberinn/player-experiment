@@ -823,6 +823,20 @@ CREATE INDEX idx_tracks_group_release ON tracks(
 );
 CREATE INDEX idx_tracks_group_genre ON tracks(nullif(genre, '') COLLATE NOCASE);
 "#,
+    // 21 - files whose tags would not parse
+    //
+    // Such a file gets no row, or keeps the one it had, so without a record
+    // `scan::plan` reads it again on every pass - over a second each on a cold
+    // disk. Keyed like `tracks.path`. `read_by` is the app version that failed
+    // to read it: a newer `lofty` may not.
+    r#"
+CREATE TABLE unreadable_files (
+    path    TEXT PRIMARY KEY COLLATE NOCASE,
+    mtime   INTEGER NOT NULL,
+    size    INTEGER NOT NULL,
+    read_by TEXT NOT NULL
+);
+"#,
 ];
 
 #[cfg(test)]
