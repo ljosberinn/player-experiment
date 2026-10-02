@@ -399,7 +399,8 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   Version 4 is the same for the album link. Version 5 is the spelled-out
   letters, and moves `ALBUM_FOLD` to 2 with it. Version 6 is the remaster
   marker. Version 7 is `&` and the bare credit. Version 8 rewrites no key
-  and exists for the near-title link below.
+  and exists for the near-title link below, and version 9 for the copy on the
+  play's album. The pass runs `count` too, since the scan after it skips one.
 - **`tracks.match_key` is written wherever artist or title is** - the scan's
   insert and update, and `tags::write::sync_row` - as `plays::track_key`,
   which is NULL rather than empty for an untagged file.
@@ -409,6 +410,19 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   — so the winner is fixed rather than incidental: present before unplugged,
   then the lower id, which is migration 12's tiebreak. Without it the function
   is not idempotent and its guarded `UPDATE` rewrites the log on every run.
+- **A play links to the copy on the album it was heard on** (195): the first
+  of the key's tracks, in tiebreak order, whose folded album is the play's.
+  A blank album or one no copy is on falls to the winner. The key's tracks
+  are its artist-key tracks, or its album-artist-key ones when it has none, so
+  the fallback never outvotes an artist key. The link is per play, in its own
+  temporary table ahead of the key's in the one `UPDATE`.
+- **`resolve` takes moved plays off the count they left**, since `count`
+  only raises and both copies would count them. A track that loses a play to
+  another track, and whose `play_count` (or `last_played_at`) equals its links
+  (or their latest), is set to what it links afterwards, plus the plays that
+  now link nowhere: a retag that unlinks plays keeps their count, as before. A
+  count above its links holds local history from before migration 13 and
+  stays.
 - **A scan that wrote nothing skips `resolve` and `count`** (193) while
   `plays.resolved` is in `settings`, and one that read no file skips
   `tag_values::rebuild`.
@@ -417,6 +431,7 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   library that predates it resolves on its next scan.
 - **A removed row hands its count to the copy that stays** (169), in both
   removals' transaction: the copy `resolve` would pick by `tracks.match_key`
+  for a play on the removed row's album
   takes the max of its own `play_count`, the removed row's and its linked plays
   after `resolve`, the same for `last_played_at`, and the removed row's
   playlist places where it has none of its own. `max` for the import's reason.
@@ -455,7 +470,8 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   id. Most of last.fm's are pre-NGS ids MusicBrainz has since retired, and
   probing a sample of them returned 404 for every entity type. So the columns
   stay as part of what a play was, and `resolve` is the key - the artist's,
-  then the album artist's - then the album, then a near title on it.
+  then the album artist's, its copy on the play's album first - then the album,
+  then a near title on it.
 
 ## Album groups
 

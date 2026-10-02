@@ -120,7 +120,7 @@ const EDITIONS: &[&str] = &[
 const FORMATS: &[&str] = &["ep", "single"];
 
 /// The album side of [`album_key`].
-fn fold_album(album: &str) -> String {
+pub(crate) fn fold_album(album: &str) -> String {
     let mut folded = decompose(album);
     // Alternating rather than one pass each: `White Pony (Deluxe) - Remastered
     // 2020` carries both, and stripping either uncovers the other. Both
@@ -535,9 +535,9 @@ fn without_bare_credit(value: &str) -> std::borrow::Cow<'_, str> {
 /// increment with it, trading a missing log row for a wrong play count.
 ///
 /// The initial `track_id` is the track that played, which is what [`resolve`]
-/// will compute for it unless the library holds the same song twice - the
-/// album copy and the compilation copy - in which case the next rebuild moves
-/// the play to whichever of them that function picks. `resolve` is
+/// will compute for it unless the library holds the same song twice on one
+/// album, or the album is blank, in which case the next rebuild moves the play
+/// to whichever copy that function picks. `resolve` is
 /// authoritative; this is what keeps the row linked until one runs, and
 /// [`mark_unresolved`] is what makes the next scan run one.
 pub fn record(conn: &Connection, track_id: i64, started_at: i64) -> AppResult<()> {
@@ -605,7 +605,7 @@ pub fn mbid(value: &str) -> Option<String> {
 }
 
 /// Recomputes `plays.track_id` for the whole log, returning how many links
-/// moved.
+/// moved, and takes the plays that moved off the counts they left.
 ///
 /// Runs at the end of a tag write, both removals, and a scan that changed
 /// something or finds [`is_resolved`] false, for the reason
@@ -654,7 +654,8 @@ pub fn mark_unresolved(conn: &Connection) -> AppResult<()> {
 /// migration 13 that was also scrobbled: those are in `play_count` and come
 /// back as `lastfm` rows. A local play since is one on each side, and the
 /// import keeps its scrobble out. The cost is that a retag that takes a file
-/// out of a song leaves that song's count on it.
+/// out of a song leaves that song's count on it. [`resolve`] lowers a count
+/// only for plays that move to another track.
 ///
 /// The guard is what keeps a second run from writing anything: every update
 /// of `tracks` reindexes the row in `tracks_fts`.
@@ -688,6 +689,25 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
          CREATE TEMP TABLE album_links (
              play_id  INTEGER PRIMARY KEY,
              track_id INTEGER NOT NULL
+         );
+         DROP TABLE IF EXISTS temp.copy_keys;
+         CREATE TEMP TABLE copy_keys (key TEXT PRIMARY KEY) WITHOUT ROWID;
+         DROP TABLE IF EXISTS temp.copy_links;
+         CREATE TEMP TABLE copy_links (
+             play_id  INTEGER PRIMARY KEY,
+             track_id INTEGER NOT NULL
+         );
+         DROP TABLE IF EXISTS temp.moved;
+         CREATE TEMP TABLE moved (
+             play_id INTEGER PRIMARY KEY,
+             old     INTEGER,
+             new     INTEGER
+         );
+         DROP TABLE IF EXISTS temp.losing;
+         CREATE TEMP TABLE losing (
+             id    INTEGER PRIMARY KEY,
+             plays INTEGER NOT NULL,
+             last  INTEGER NOT NULL
          );",
     )?;
 
@@ -700,6 +720,9 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     let mut shelves: HashMap<(String, String), Vec<(String, i64)>> = HashMap::new();
     // Each album spelling is folded once: a log repeats them by the thousand.
     let mut folds: HashMap<String, String> = HashMap::new();
+    // Each key's tracks in tiebreak order with their folded albums: its
+    // artist-key tracks, or its album-artist-key tracks when it has none.
+    let mut copies: HashMap<String, Vec<(i64, String)>> = HashMap::new();
     {
         // **Which track wins a key is fixed rather than incidental.** The same
         // song on its album and on a compilation is two rows and one key, and
@@ -721,7 +744,7 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         // and the album artist is the one field that says so. Going second
         // lets an artist key win any key both produce, so no link that is
         // right today moves (issue 135).
-        let mut fallbacks: Vec<(String, i64)> = Vec::new();
+        let mut fallbacks: Vec<(String, i64, String)> = Vec::new();
         let mut rows = tracks.query([])?;
         while let Some(row) = rows.next()? {
             let id: i64 = row.get(0)?;
@@ -729,24 +752,28 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
             let title: Option<String> = row.get(2)?;
             let album_artist: Option<String> = row.get(3)?;
             let album: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
+            let album = folds
+                .entry(album)
+                .or_insert_with_key(|album| fold_album(album))
+                .clone();
             let artist = artist.as_deref().unwrap_or_default();
             let album_artist = album_artist.as_deref().unwrap_or_default();
             let title = title.as_deref().unwrap_or_default();
             let key = match_key(artist, title);
             if !key.is_empty() {
                 insert.execute(rusqlite::params![key, id])?;
+                copies
+                    .entry(key.clone())
+                    .or_default()
+                    .push((id, album.clone()));
             }
             let fallback = match_key(album_artist, title);
             if !fallback.is_empty() && fallback != key {
-                fallbacks.push((fallback, id));
+                fallbacks.push((fallback, id, album.clone()));
             }
 
             let artist = normalize(artist);
             let album_artist = normalize(album_artist);
-            let album = folds
-                .entry(album)
-                .or_insert_with_key(|album| fold_album(album))
-                .clone();
             let title = normalize(title);
             if album.is_empty() || title.is_empty() {
                 continue;
@@ -772,8 +799,59 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
                     .insert(owner);
             }
         }
-        for (key, id) in &fallbacks {
+        let mut by_album_artist: HashMap<String, Vec<(i64, String)>> = HashMap::new();
+        for (key, id, album) in fallbacks {
             insert.execute(rusqlite::params![key, id])?;
+            if !copies.contains_key(&key) {
+                by_album_artist.entry(key).or_default().push((id, album));
+            }
+        }
+        copies.extend(by_album_artist);
+    }
+
+    // **A song on several albums links each play to the copy on the album it
+    // was heard on**, and only then to the key's winner: `Cleansing` on *Two
+    // Hunters* and on *Live at Roadburn 2008* is one key, and the older live
+    // copy took every play of the studio one (issue 195). A play whose album
+    // is blank or matches no copy keeps the winner. The order is the
+    // tiebreak's, so two copies on one album still go present, then older.
+    {
+        copies.retain(|_, held| {
+            let first = &held[0].1;
+            held[1..]
+                .iter()
+                .any(|(_, album)| !album.is_empty() && album != first)
+        });
+        let mut insert = conn.prepare("INSERT INTO temp.copy_keys (key) VALUES (?1)")?;
+        for key in copies.keys() {
+            insert.execute([key])?;
+        }
+
+        let mut plays = conn.prepare(
+            "SELECT id, match_key, album FROM plays
+              WHERE album <> '' AND match_key IN (SELECT key FROM temp.copy_keys)",
+        )?;
+        let mut links: Vec<(i64, i64)> = Vec::new();
+        let mut rows = plays.query([])?;
+        while let Some(row) = rows.next()? {
+            let album: &str = folds
+                .entry(row.get(2)?)
+                .or_insert_with_key(|album| fold_album(album));
+            let Some(copies) = copies.get(&row.get::<_, String>(1)?) else {
+                continue;
+            };
+            let copy = copies
+                .iter()
+                .find(|(_, held)| !album.is_empty() && held == album);
+            if let Some(&(track_id, _)) = copy.filter(|(id, _)| *id != copies[0].0) {
+                links.push((row.get(0)?, track_id));
+            }
+        }
+
+        let mut link =
+            conn.prepare("INSERT INTO temp.copy_links (play_id, track_id) VALUES (?1, ?2)")?;
+        for (play_id, track_id) in &links {
+            link.execute([play_id, track_id])?;
         }
     }
 
@@ -880,19 +958,59 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     //
     // One assignment for every tier: a second `UPDATE` for the album links
     // would find each of them nulled by this one and write it back, every run.
+    conn.execute_batch(
+        "INSERT INTO temp.moved (play_id, old, new)
+         SELECT id, track_id, link FROM (
+             SELECT id, track_id, coalesce(
+                 (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
+                 (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                 (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id)) AS link
+               FROM plays
+              WHERE match_key <> '')
+          WHERE track_id IS NOT link;
+
+         INSERT INTO temp.losing (id, plays, last)
+         SELECT track_id, count(*), max(started_at) FROM plays
+          WHERE track_id IN (SELECT old FROM temp.moved WHERE new IS NOT NULL)
+          GROUP BY track_id;",
+    )?;
     let moved = conn.execute(
-        "UPDATE plays
-            SET track_id = coalesce(
-                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
-                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))
-          WHERE match_key <> ''
-            AND track_id IS NOT coalesce(
-                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
-                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))",
+        "UPDATE plays SET track_id = m.new FROM temp.moved m WHERE m.play_id = plays.id",
         [],
     )?;
 
-    conn.execute_batch("DROP TABLE temp.play_keys; DROP TABLE temp.album_links;")?;
+    // **A track that loses plays to another track gives up their count**, or
+    // both copies count them: `count` only raises (issue 195). Only where the
+    // count and the last play are its links' own - a count above them holds
+    // local history from before migration 13. A play that now links nowhere
+    // stays counted, so a retag that takes a file out of a song keeps the
+    // song's count on it, as `count` documents.
+    conn.execute_batch(
+        "UPDATE tracks
+            SET play_count = CASE WHEN tracks.play_count = l.plays
+                                  THEN coalesce(k.plays, 0) ELSE tracks.play_count END,
+                last_played_at = CASE WHEN tracks.last_played_at = l.last
+                                      THEN k.last ELSE tracks.last_played_at END
+           FROM temp.losing l
+           LEFT JOIN (SELECT owner, count(*) AS plays, max(started_at) AS last FROM (
+                          SELECT track_id AS owner, started_at FROM plays
+                           WHERE track_id IN (SELECT id FROM temp.losing)
+                          UNION ALL
+                          SELECT m.old, p.started_at FROM temp.moved m
+                            JOIN plays p ON p.id = m.play_id
+                           WHERE m.new IS NULL AND m.old IN (SELECT id FROM temp.losing))
+                       GROUP BY owner) k ON k.owner = l.id
+          WHERE tracks.id = l.id
+            AND ((tracks.play_count = l.plays AND tracks.play_count <> coalesce(k.plays, 0))
+                 OR (tracks.last_played_at = l.last AND tracks.last_played_at IS NOT k.last));
+
+         DROP TABLE temp.play_keys;
+         DROP TABLE temp.album_links;
+         DROP TABLE temp.copy_keys;
+         DROP TABLE temp.copy_links;
+         DROP TABLE temp.moved;
+         DROP TABLE temp.losing;",
+    )?;
     Ok(moved as u32)
 }
 
@@ -1191,10 +1309,10 @@ pub fn regroup_if_stale(conn: &Connection) -> AppResult<bool> {
 /// reason [`FOLD_VERSION`] gives - and more sharply, because this key is
 /// stored rather than derived on read. A library whose keys predate the fold
 /// does not half-link; it does not link at all. Bump it too when `resolve`
-/// gives a track another key, as 3 did for the album artist, 4 for the album
-/// and 8 for a near title: the stored keys stay put, but nothing else resolves
-/// at launch.
-const MATCH_FOLD_VERSION: &str = "8";
+/// gives a track another key, as 3 did for the album artist, 4 for the album,
+/// 8 for a near title and 9 for the copy on the play's album: the stored keys
+/// stay put, but nothing else resolves at launch.
+const MATCH_FOLD_VERSION: &str = "9";
 
 /// Rewrites every stored `match_key` with the current fold, returning how many
 /// rows moved.
@@ -1346,11 +1464,12 @@ pub struct Refolded {
 /// A marker rather than a migration, in [`regroup_if_stale`]'s shape and for
 /// its reason.
 ///
-/// **It runs [`resolve`] itself.** Nothing else resolves at launch - the
-/// callers are the scan, the import and a tag write - so a pass that stopped
-/// at the keys would leave every newly foldable play unlinked until the user
-/// next scanned or imported. Before the marker, so a failure in either is
-/// retried on the next launch.
+/// **It runs [`resolve`] and [`count`] itself.** Nothing else resolves at
+/// launch - the callers are the scan, the import and a tag write - so a pass
+/// that stopped at the keys would leave every newly foldable play unlinked
+/// until the user next scanned or imported, and the scan after it skips both
+/// (issue 193). Before the marker, so a failure in either is retried on the
+/// next launch.
 pub fn refold_if_stale(conn: &mut Connection) -> AppResult<Option<Refolded>> {
     use crate::db::settings;
 
@@ -1359,6 +1478,7 @@ pub fn refold_if_stale(conn: &mut Connection) -> AppResult<Option<Refolded>> {
     }
     let refolded = refold(conn)?;
     resolve(conn)?;
+    count(conn)?;
     settings::set(conn, settings::MATCH_FOLD, MATCH_FOLD_VERSION)?;
     Ok(Some(refolded))
 }
@@ -2160,6 +2280,209 @@ mod tests {
 
         resolve(&conn).unwrap();
         assert_eq!([linked(&conn, 10), linked(&conn, 11)], [None, Some(3)]);
+    }
+
+    /// The live copy is the older id, so the key's tiebreak picks it.
+    fn two_hunters(conn: &Connection) {
+        on_album(
+            conn,
+            1,
+            "Wolves in the Throne Room",
+            "Live at Roadburn 2008",
+            "Cleansing",
+        );
+        on_album(
+            conn,
+            2,
+            "Wolves in the Throne Room",
+            "Two Hunters",
+            "Cleansing",
+        );
+    }
+
+    fn cleansing(conn: &Connection, started_at: i64, album: &str) {
+        played_on(
+            conn,
+            started_at,
+            "Wolves in the Throne Room",
+            album,
+            "Cleansing",
+        );
+    }
+
+    fn counted(conn: &Connection, id: i64) -> (i64, Option<i64>) {
+        conn.query_row(
+            "SELECT play_count, last_played_at FROM tracks WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_play_links_to_the_copy_on_its_album() {
+        let (_dir, conn) = open();
+        two_hunters(&conn);
+        cleansing(&conn, 10, "Two Hunters");
+        cleansing(&conn, 11, "Live at Roadburn 2008");
+        cleansing(&conn, 12, "Two Hunters (Deluxe Edition)");
+
+        resolve(&conn).unwrap();
+        assert_eq!(
+            [linked(&conn, 10), linked(&conn, 11), linked(&conn, 12)],
+            [Some(2), Some(1), Some(2)]
+        );
+        assert_eq!(resolve(&conn).unwrap(), 0, "a second pass moves nothing");
+    }
+
+    #[test]
+    fn a_play_on_no_copys_album_links_to_the_tiebreak() {
+        let (_dir, conn) = open();
+        two_hunters(&conn);
+        cleansing(&conn, 10, "Two Hunters - Vinyl");
+        played(&conn, 11, "Wolves in the Throne Room", "Cleansing");
+
+        resolve(&conn).unwrap();
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [Some(1), Some(1)]);
+    }
+
+    #[test]
+    fn two_copies_on_the_plays_album_go_to_the_tiebreak() {
+        let (_dir, conn) = open();
+        two_hunters(&conn);
+        on_album(
+            &conn,
+            3,
+            "Wolves in the Throne Room",
+            "Two Hunters",
+            "Cleansing",
+        );
+        cleansing(&conn, 10, "Two Hunters");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(2), "the older id");
+
+        conn.execute("UPDATE tracks SET missing_since = 1 WHERE id = 2", [])
+            .unwrap();
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(3), "the present file");
+    }
+
+    /// Track 1 is the play's key only through its album artist, so it is no
+    /// copy while an artist key names another track.
+    #[test]
+    fn an_album_artist_copy_on_the_plays_album_does_not_take_it() {
+        let (_dir, conn) = open();
+        prometheus(&conn, 1);
+        conn.execute("UPDATE tracks SET album = 'Kenning' WHERE id = 1", [])
+            .unwrap();
+        on_album(&conn, 2, "Prezident", "Limbus", "Prometheus");
+        played_on(&conn, 10, "Prezident", "Kenning", "Prometheus");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(2));
+    }
+
+    #[test]
+    fn album_artist_copies_link_by_album_when_no_artist_key_does() {
+        let (_dir, conn) = open();
+        prometheus(&conn, 1);
+        prometheus(&conn, 2);
+        conn.execute_batch(
+            "UPDATE tracks SET album = 'Limbus' WHERE id = 1;
+             UPDATE tracks SET album = 'Kenning' WHERE id = 2;",
+        )
+        .unwrap();
+        played_on(&conn, 10, "Prezident", "Kenning", "Prometheus");
+
+        resolve(&conn).unwrap();
+        assert_eq!(linked(&conn, 10), Some(2));
+    }
+
+    #[test]
+    fn a_copy_that_loses_plays_to_another_gives_up_their_count() {
+        let (_dir, conn) = open();
+        two_hunters(&conn);
+        cleansing(&conn, 10, "Two Hunters");
+        cleansing(&conn, 11, "Two Hunters");
+        cleansing(&conn, 12, "Two Hunters - Vinyl");
+        // What `count` left after a resolve that sent every play to the live
+        // copy.
+        conn.execute_batch(
+            "UPDATE plays SET track_id = 1;
+             UPDATE tracks SET play_count = 3, last_played_at = 12 WHERE id = 1;",
+        )
+        .unwrap();
+
+        resolve(&conn).unwrap();
+        count(&conn).unwrap();
+        assert_eq!(counted(&conn, 1), (1, Some(12)));
+        assert_eq!(counted(&conn, 2), (2, Some(11)));
+
+        conn.execute("DELETE FROM plays WHERE started_at = 12", [])
+            .unwrap();
+        conn.execute("UPDATE plays SET track_id = 1", []).unwrap();
+        conn.execute(
+            "UPDATE tracks SET play_count = 2, last_played_at = 11 WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        resolve(&conn).unwrap();
+        assert_eq!(counted(&conn, 1), (0, None), "nothing left linked");
+    }
+
+    #[test]
+    fn a_count_above_its_links_keeps_what_it_held() {
+        let (_dir, conn) = open();
+        two_hunters(&conn);
+        cleansing(&conn, 10, "Two Hunters");
+        cleansing(&conn, 11, "Live at Roadburn 2008");
+        conn.execute_batch(
+            "UPDATE plays SET track_id = 1;
+             UPDATE tracks SET play_count = 40, last_played_at = 900 WHERE id = 1;",
+        )
+        .unwrap();
+
+        resolve(&conn).unwrap();
+        assert_eq!(counted(&conn, 1), (40, Some(900)));
+    }
+
+    #[test]
+    fn a_retag_that_unlinks_plays_keeps_their_count() {
+        let (_dir, conn) = open();
+        add_track(&conn, 1, Some("Blue Room"), Some("Harbour"));
+        played(&conn, 10, "Blue Room", "Harbour");
+        resolve(&conn).unwrap();
+        count(&conn).unwrap();
+
+        conn.execute("UPDATE tracks SET title = 'Harbor' WHERE id = 1", [])
+            .unwrap();
+        resolve(&conn).unwrap();
+
+        assert_eq!(linked(&conn, 10), None);
+        assert_eq!(counted(&conn, 1), (1, Some(10)));
+    }
+
+    #[test]
+    fn a_library_on_the_previous_fold_links_by_album_and_counts_once() {
+        let (_dir, mut conn) = open();
+        two_hunters(&conn);
+        cleansing(&conn, 10, "Two Hunters");
+        cleansing(&conn, 11, "Two Hunters");
+        resolve(&conn).unwrap();
+        conn.execute_batch(
+            "UPDATE plays SET track_id = 1;
+             UPDATE tracks SET play_count = 2, last_played_at = 11 WHERE id = 1;
+             UPDATE tracks SET play_count = 5, last_played_at = 3 WHERE id = 2;",
+        )
+        .unwrap();
+        crate::db::settings::set(&conn, crate::db::settings::MATCH_FOLD, "8").unwrap();
+
+        assert!(refold_if_stale(&mut conn).unwrap().is_some());
+        assert_eq!([linked(&conn, 10), linked(&conn, 11)], [Some(2), Some(2)]);
+        assert_eq!(counted(&conn, 1), (0, None));
+        assert_eq!(counted(&conn, 2), (5, Some(11)), "and counts");
+        assert_eq!(refold_if_stale(&mut conn).unwrap(), None, "once");
     }
 
     #[test]
