@@ -706,6 +706,47 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
     assert_within("resolve over an unchanged library", budget, work);
 }
 
+/// A resolve that moves many plays settles their counts in a pass over what
+/// moved, not a pass over it per track that lost one (issue 199).
+///
+/// Every fifth track is replaced by a present copy of itself, so its plays
+/// move to the copy: some thirteen thousand, which is what the release
+/// carrying 195 moved on the real library.
+#[test]
+fn a_resolve_that_moves_many_plays_is_one_pass_over_them() {
+    let (_dir, db) = seeded_library();
+    let mut conn = db.conn().unwrap();
+    synthetic::seed_plays(&mut conn, PLAYS).unwrap();
+    plays::resolve(&conn).unwrap();
+    plays::count(&conn).unwrap();
+    conn.execute_batch(
+        "INSERT INTO tracks (path, mtime, size, duration_ms, title, artist, album, album_artist,
+                             added_at)
+         SELECT path || '.copy', mtime, size, duration_ms, title, artist, album, album_artist,
+                added_at
+           FROM tracks WHERE id % 5 = 0;
+         UPDATE tracks SET missing_since = 1 WHERE id % 5 = 0 AND path NOT LIKE '%.copy';",
+    )
+    .unwrap();
+    count_on(&conn);
+
+    let (work, moved) = work_of(|| plays::resolve(&conn).unwrap());
+    assert!(moved > 10_000, "only {moved} plays moved");
+    // The log is read three times, as on any resolve; a fourth read is
+    // another `P`, which this does not allow.
+    assert_within(
+        "a resolve that moved many plays",
+        Work {
+            statements: 2 * R,
+            steps: 150 * (P + R),
+            scanned: 3 * P + 7 * R,
+            sorts: 5,
+            commits: 1,
+        },
+        work,
+    );
+}
+
 /// `plays::relink` after one retag reads the log through its indexes: once
 /// over `idx_plays_album` for the spellings, and by seek for the rest. A
 /// dropped index is a scan of the log and a sort per read.
