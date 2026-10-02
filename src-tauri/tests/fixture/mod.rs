@@ -200,6 +200,37 @@ pub fn write_mp3_with_two_tags(
     std::fs::write(path, bytes).expect("write fixture mp3");
 }
 
+/// An mp3 whose first ID3v2 tag is followed by `junk` bytes of ASCII and then
+/// a second tag before the audio, as an mp3 joiner leaves behind.
+pub fn write_mp3_with_junk_and_second_tag(
+    path: &Path,
+    frames: usize,
+    first: &[(&str, &str)],
+    junk: usize,
+    second: &[(&str, &str)],
+) {
+    let mut bytes = text_tag(first, 0);
+    bytes.extend(b"01. A Track Listing\r\n".iter().cycle().take(junk));
+    bytes.extend_from_slice(&text_tag(second, 0));
+    bytes.extend_from_slice(&silent_mp3(frames));
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixture dir");
+    }
+    std::fs::write(path, bytes).expect("write fixture mp3");
+}
+
+/// The bytes of the mp3 at `path` after its first ID3v2 tag.
+pub fn after_first_tag(path: &Path) -> Vec<u8> {
+    let bytes = std::fs::read(path).expect("read mp3");
+    assert!(bytes.starts_with(b"ID3"), "no leading tag");
+    let size = bytes[6..10]
+        .iter()
+        .fold(0usize, |size, &byte| (size << 7) | usize::from(byte));
+    let footer = if bytes[5] & 0x10 != 0 { 10 } else { 0 };
+    bytes[10 + size + footer..].to_vec()
+}
+
 /// How many ID3v2 tags sit back to back at the start of the mp3 at `path`,
 /// counted off the disk because lofty merges them into one on read.
 pub fn leading_tags(path: &Path) -> usize {

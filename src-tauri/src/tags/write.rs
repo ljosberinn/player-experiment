@@ -9,7 +9,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use lofty::config::WriteOptions;
+use lofty::config::{ParseOptions, WriteOptions};
 use lofty::file::TaggedFileExt;
 use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::picture::{MimeType, Picture, PictureType};
@@ -53,6 +53,15 @@ const MUSICBRAINZ_TXXX: [(ItemKey, &str); 2] = [
 /// for a bulk edit: per file over 65k tracks would be thousands of events on
 /// the IPC channel to move the bar by less than a pixel each.
 const PROGRESS_STEPS: usize = 100;
+
+/// How far past the first ID3v2 tag a save looks for the audio.
+///
+/// A save sniffs the format from the content rather than the extension, and
+/// gives up at lofty's default of 1,024 bytes, so junk an mp3 joiner left
+/// before the first frame refuses every save of the file. Bounded because lofty
+/// scans the window a byte per read on the unbuffered file, all of it on an
+/// untagged one, and takes an `ID3` it finds there for the tag to replace.
+const MAX_JUNK_BYTES: usize = 16 * 1024;
 
 /// The frames lofty stores as a timestamp rather than as text.
 ///
@@ -552,8 +561,9 @@ fn tag_len(header: &[u8; 10]) -> Option<u64> {
 ///
 /// lofty replaces only the first on save, and on read lets a later tag's
 /// frames win over the first's, so an edit to a field both hold is undone by
-/// the next read. A second tag over 1,024 bytes also hides the audio from the
-/// format sniff every save starts with, and the save is refused. The tag about
+/// the next read. A second tag larger than [`MAX_JUNK_BYTES`] also hides the
+/// audio from the format sniff every save starts with, and the save is
+/// refused. The tag about
 /// to be saved was read with all of them merged, so dropping them loses
 /// nothing it holds.
 fn drop_stacked_tags(path: &Path) -> std::io::Result<()> {
@@ -646,13 +656,13 @@ fn drop_unsynchronisation(id3: &mut Id3v2Tag) {
 /// to put a MusicBrainz id in, and turning it into an ID3v2 file would be a
 /// larger change to make silently than the ids are worth.
 fn save_tag(path: &Path, mut tag: Tag) -> Result<(), Refused> {
+    let options =
+        WriteOptions::default().parse_options(ParseOptions::new().max_junk_bytes(MAX_JUNK_BYTES));
     if tag.tag_type() != TagType::Id3v2 {
-        return tag
-            .save_to_path(path, WriteOptions::default())
-            .map_err(|error| Refused {
-                error,
-                shape: Fields::new(),
-            });
+        return tag.save_to_path(path, options).map_err(|error| Refused {
+            error,
+            shape: Fields::new(),
+        });
     }
 
     let carried: Vec<(&str, String)> = MUSICBRAINZ_TXXX
@@ -684,11 +694,10 @@ fn save_tag(path: &Path, mut tag: Tag) -> Result<(), Refused> {
     for (description, value) in carried {
         id3.insert_user_text(description.to_owned(), value);
     }
-    id3.save_to_path(path, WriteOptions::default())
-        .map_err(|error| Refused {
-            error,
-            shape: shape(&id3),
-        })
+    id3.save_to_path(path, options).map_err(|error| Refused {
+        error,
+        shape: shape(&id3),
+    })
 }
 
 /// A save lofty would not perform, and the tag it would not perform it on.
@@ -703,9 +712,10 @@ struct Refused {
 
 /// A sibling of `path`, so the rename never crosses a filesystem boundary.
 ///
-/// The marker is a *prefix*: lofty picks its writer from the file extension,
-/// so a temp file called `01 Maki.mp3.player-tmp` is not something it will
-/// write mp3 tags into. Keeping `.mp3` on the end keeps it one.
+/// The marker is a *prefix*: the probe that reads the copy back takes its
+/// format from the extension, so a temp file called `01 Maki.mp3.player-tmp`
+/// is not something it will read as an mp3. Keeping `.mp3` on the end keeps
+/// it one.
 fn temp_beside(path: &Path) -> PathBuf {
     let name = path
         .file_name()
@@ -922,8 +932,8 @@ mod tests {
 
         assert_eq!(temp.parent(), path.parent());
         assert_ne!(temp.file_name(), path.file_name());
-        // lofty chooses its writer by extension, so the temp file has to keep
-        // the original one or nothing can be written into it.
+        // The read-back probe takes the format from the extension, so the temp
+        // file has to keep the original one or it cannot be read.
         assert_eq!(temp.extension(), path.extension());
     }
 
