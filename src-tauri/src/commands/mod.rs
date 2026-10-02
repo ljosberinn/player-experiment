@@ -1520,13 +1520,13 @@ pub fn e2e_end_track(player: State<'_, Player>) -> AppResult<()> {
 ///
 /// A spec cannot restart the app it drives, and the player thread outlives a
 /// reload, so this is the route to what the next launch does: the same
-/// `take_restore`, read before the stop that would clear it.
+/// `playback::restore`, read before the stop that would clear it.
 #[tauri::command]
 pub fn e2e_restore_playback(db: State<'_, Db>, player: State<'_, Player>) -> AppResult<()> {
     crate::e2e_only("e2e_restore_playback")?;
 
     let conn = db.conn()?;
-    let restore = playback::take_restore(&conn)?;
+    let restore = playback::restore(&conn)?;
     player.send(Command::Stop)?;
     if let Some(command) = restore {
         player.send(command)?;

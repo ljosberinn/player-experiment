@@ -12,7 +12,7 @@
 //! Not a webview `setInterval` either: WebView2 throttles timers in a hidden
 //! window, which is exactly when a background pass is wanted.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -69,6 +69,19 @@ pub fn pass(
         },
         on_unreadable,
     )
+}
+
+/// The watch folder holding `path`, when the file and the folder are both not
+/// there: a drive that has yet to mount, by the same test [`pass`] uses.
+pub fn unmounted_root<'a>(path: &Path, roots: &'a [PathBuf]) -> Option<&'a Path> {
+    if path.exists() {
+        return None;
+    }
+    roots
+        .iter()
+        .find(|root| path.starts_with(root))
+        .filter(|root| !root.is_dir())
+        .map(PathBuf::as_path)
 }
 
 /// Starts the `library-watch` thread.
@@ -150,4 +163,33 @@ pub fn spawn(
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_file_under_an_absent_watch_folder_waits() {
+        let dir = tempfile::tempdir().unwrap();
+        let mounted = dir.path().join("Music");
+        std::fs::create_dir(&mounted).unwrap();
+        std::fs::write(mounted.join("here.mp3"), b"").unwrap();
+        let unmounted = dir.path().join("Asleep");
+        let roots = [mounted.clone(), unmounted.clone()];
+
+        let sleeping = unmounted.join("Album").join("01.mp3");
+        assert_eq!(unmounted_root(&sleeping, &roots), Some(unmounted.as_path()));
+        assert_eq!(unmounted_root(&mounted.join("here.mp3"), &roots), None);
+        assert_eq!(
+            unmounted_root(&mounted.join("gone.mp3"), &roots),
+            None,
+            "a file gone from a folder that is there"
+        );
+        assert_eq!(
+            unmounted_root(&dir.path().join("Elsewhere").join("01.mp3"), &roots),
+            None,
+            "no watch folder holds it"
+        );
+    }
 }
