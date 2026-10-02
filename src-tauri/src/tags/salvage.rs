@@ -283,7 +283,11 @@ fn year_past_nul(id: &str, content: &[u8]) -> Option<Vec<u8>> {
     }
     let (&encoding, text) = content.split_first()?;
     let cut = if matches!(encoding, 1 | 2) {
-        text.chunks_exact(2).position(|unit| unit == [0, 0])? * 2
+        text.as_chunks::<2>()
+            .0
+            .iter()
+            .position(|unit| unit == &[0, 0])?
+            * 2
     } else {
         text.iter().position(|&byte| byte == 0)?
     };
