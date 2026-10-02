@@ -14,7 +14,6 @@ use lofty::file::TaggedFileExt;
 use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::{Accessor, ItemKey, TagExt};
-use lofty::probe::Probe;
 use lofty::tag::items::UNKNOWN_LANGUAGE;
 use lofty::tag::{Tag, TagType};
 use rusqlite::{Connection, OptionalExtension};
@@ -440,8 +439,8 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
     }
 
     let result = (|| -> Result<(), Failure> {
-        let tagged = match Probe::open(&temp).and_then(|probe| probe.read()) {
-            Ok(tagged) => tagged,
+        let (tagged, salvage) = match crate::tags::open(&temp, ParseOptions::new()) {
+            Ok(read) => read,
             Err(error) => {
                 let fields = here("probe")
                     .add("cause", causes(&error))
@@ -475,8 +474,13 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
             // A file with no tag at all still has to be editable.
             .unwrap_or_else(|| Tag::new(TagType::Id3v2));
 
+        let before = salvage.as_ref().map(|_| tag.clone());
         mutate(&mut tag, resolved);
         let kind = tag.tag_type();
+        let kept = match (salvage, before) {
+            (Some(salvage), Some(before)) => untouched(salvage.kept, &before, &tag),
+            _ => Vec::new(),
+        };
 
         if let Err(error) = drop_stacked_tags(&temp) {
             let fields = here("strip")
@@ -489,7 +493,7 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
             });
         }
 
-        save_tag(&temp, tag).map_err(|refused| {
+        save_tag(&temp, tag, kept).map_err(|refused| {
             let fields = here("save")
                 .add("tag", format!("{kind:?}/{source}"))
                 .add("cause", causes(&refused.error))
@@ -534,9 +538,32 @@ fn write_file(path: &Path, resolved: &Resolved) -> Result<(), Failure> {
     Ok(())
 }
 
+/// The frames a salvaged read hid, less those whose id the edit rewrote.
+///
+/// Decided per id by comparing the tag's frames before and after the edit, not
+/// by whether the saved tag holds the id: a file can carry a COMM lofty reads
+/// beside one it refuses, and an edit that cleared a field must not have the
+/// refused frame come back in its place.
+fn untouched(kept: Vec<Frame<'static>>, before: &Tag, after: &Tag) -> Vec<Frame<'static>> {
+    if kept.is_empty() {
+        return kept;
+    }
+    let before = Id3v2Tag::from(before.clone());
+    let after = Id3v2Tag::from(after.clone());
+    kept.into_iter()
+        .filter(|frame| {
+            let id = frame.id();
+            before
+                .iter()
+                .filter(|other| other.id() == id)
+                .eq(after.iter().filter(|other| other.id() == id))
+        })
+        .collect()
+}
+
 /// The length of the ID3v2 tag whose 10-byte header is `header`, footer
 /// included, or `None` if it is not one.
-fn tag_len(header: &[u8; 10]) -> Option<u64> {
+pub(super) fn tag_len(header: &[u8; 10]) -> Option<u64> {
     if &header[..3] != b"ID3" || !(2..=4).contains(&header[3]) {
         return None;
     }
@@ -655,7 +682,9 @@ fn drop_unsynchronisation(id3: &mut Id3v2Tag) {
 /// Only ID3v2 gets this. An mp3 carrying nothing but an ID3v1 tag has no frame
 /// to put a MusicBrainz id in, and turning it into an ID3v2 file would be a
 /// larger change to make silently than the ids are worth.
-fn save_tag(path: &Path, mut tag: Tag) -> Result<(), Refused> {
+///
+/// `kept` are frames a salvaged read hid, written back as they were read.
+fn save_tag(path: &Path, mut tag: Tag, kept: Vec<Frame<'static>>) -> Result<(), Refused> {
     let options =
         WriteOptions::default().parse_options(ParseOptions::new().max_junk_bytes(MAX_JUNK_BYTES));
     if tag.tag_type() != TagType::Id3v2 {
@@ -693,6 +722,9 @@ fn save_tag(path: &Path, mut tag: Tag) -> Result<(), Refused> {
     }
     for (description, value) in carried {
         id3.insert_user_text(description.to_owned(), value);
+    }
+    for frame in kept {
+        id3.insert(frame);
     }
     id3.save_to_path(path, options).map_err(|error| Refused {
         error,

@@ -16,7 +16,7 @@ above them knows HTTP exists.
 src-tauri/src/
   db/         rusqlite: schema, queries, playlists, settings, covers, tag values
   scan/       walkdir + rayon ingest, incremental by (mtime, size)
-  tags/       lofty read/write, atomic writer
+  tags/       lofty read/write, atomic writer, salvage view
   audio/      symphonia + rodio player thread, command/event channels
   smart/      filter tree -> parameterized SQL
   export/     JSON export
@@ -411,6 +411,8 @@ What gets a line:
 - **One line per file a scan cannot read** (`scan.unreadable`, with lofty's
   whole error chain), from either kind of scan. Each is read once per change
   to the file or the app (migration 21), so `unreadable=` counts new failures.
+  A file read only through the salvage view gets a `tags.salvaged` line
+  instead, naming what the view left out (`ape=1 frames=TALB fixed=TYER`).
 - **Every `Err`, reads included.** A read is `Op::quiet`: a `query_tracks` that
   fails leaves a trace, and the thousands that succeed do not — a line per page
   the table asks for would rotate the file past whatever is being investigated.

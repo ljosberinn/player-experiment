@@ -435,7 +435,7 @@ fn a_corrupt_file_does_not_abort_the_scan() {
 fn a_file_whose_tags_will_not_parse_is_counted_and_named_once() {
     let h = harness();
     fixture::library(&h.music);
-    fixture::write_mp3_with_bare_url(
+    fixture::write_unreadable_mp3(
         &h.music.join("bare url.mp3"),
         4,
         "https://www.discogs.com/release/1",
@@ -443,7 +443,16 @@ fn a_file_whose_tags_will_not_parse_is_counted_and_named_once() {
     let mut conn = h.db.conn().unwrap();
     let mut errors = Vec::new();
 
-    let summary = scan::scan(&mut conn, |_| {}, |error| errors.push(error.to_string())).unwrap();
+    let summary = scan::scan(
+        &mut conn,
+        |_| {},
+        |remark| {
+            if let scan::Remark::Unreadable(error) = remark {
+                errors.push(error.to_string());
+            }
+        },
+    )
+    .unwrap();
 
     assert_eq!(summary.unreadable, 1);
     assert_eq!(errors.len(), 1);
@@ -454,7 +463,16 @@ fn a_file_whose_tags_will_not_parse_is_counted_and_named_once() {
         errors[0]
     );
 
-    let summary = scan::scan(&mut conn, |_| {}, |error| errors.push(error.to_string())).unwrap();
+    let summary = scan::scan(
+        &mut conn,
+        |_| {},
+        |remark| {
+            if let scan::Remark::Unreadable(error) = remark {
+                errors.push(error.to_string());
+            }
+        },
+    )
+    .unwrap();
 
     assert_eq!(summary.unreadable, 0, "it is not read again");
     assert_eq!(summary.unchanged, 6);
@@ -472,10 +490,10 @@ fn unreadable_records(conn: &Connection) -> i64 {
 fn an_unreadable_file_is_read_again_once_it_changes() {
     let h = harness();
     let path = h.music.join("broken.mp3");
-    fixture::write_mp3_with_bare_url(&path, 4, "https://www.discogs.com/release/1");
+    fixture::write_unreadable_mp3(&path, 4, "https://www.discogs.com/release/1");
     scan_now(&h.db);
 
-    fixture::write_mp3_with_bare_url(&path, 8, "https://www.discogs.com/release/1");
+    fixture::write_unreadable_mp3(&path, 8, "https://www.discogs.com/release/1");
     assert_eq!(scan_now(&h.db).unreadable, 1, "a different size");
 
     fixture::write_mp3(&path, 4, &fixture::Meta::default());
@@ -501,7 +519,7 @@ fn a_file_an_edit_broke_keeps_its_row_and_is_read_once() {
         },
     );
     scan_now(&h.db);
-    fixture::write_mp3_with_bare_url(&path, 8, "https://www.discogs.com/release/1");
+    fixture::write_unreadable_mp3(&path, 8, "https://www.discogs.com/release/1");
 
     assert_eq!(scan_now(&h.db).unreadable, 1);
     let summary = scan_now(&h.db);
@@ -518,7 +536,7 @@ fn a_file_an_edit_broke_keeps_its_row_and_is_read_once() {
 fn another_version_of_the_app_reads_an_unreadable_file_again() {
     // It may carry a `lofty` that can.
     let h = harness();
-    fixture::write_mp3_with_bare_url(
+    fixture::write_unreadable_mp3(
         &h.music.join("broken.mp3"),
         4,
         "https://www.discogs.com/release/1",
