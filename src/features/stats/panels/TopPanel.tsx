@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BarList } from "../../../components/charts/BarList";
 import { type ListenDimension, statsTop } from "../../../ipc";
+import { formatSpan } from "../../../lib/format";
 import { useLibraryStore } from "../../library/store";
 import { deepestCrumb } from "../filters";
 import { listenTotalsOnce } from "../listenTotals";
@@ -65,6 +66,16 @@ export function TopPanel({ dimension }: TopPanelProps) {
     [...deps, dimension],
   );
 
+  const rows = data ?? [];
+  const caption = [
+    coverage.data !== null && coverage.data.plays > 0
+      ? `Genre known for ${Math.round((coverage.data.withGenre / coverage.data.plays) * 100)}% of plays.`
+      : null,
+    timing(rows),
+  ]
+    .filter((sentence) => sentence !== null)
+    .join(" ");
+
   const kind = DRILLS[dimension];
   // Opened on the drilled album rather than on a row, the way `GenreDonut`
   // opens on the drilled genre: a grouping that reads wrong is noticed from
@@ -86,20 +97,20 @@ export function TopPanel({ dimension }: TopPanelProps) {
         : {})}
     >
       <BarList
-        entries={(data ?? []).map((entry) => ({ ...entry, value: entry.plays }))}
+        entries={rows.map((entry) => ({
+          ...entry,
+          value: entry.plays,
+          // A row heard only through last.fm has plays and no time, which is
+          // not "0 minutes".
+          ...(entry.timed > 0 ? { detail: formatSpan(entry.durationMs) } : {}),
+        }))}
         format={(plays) => plays.toLocaleString()}
         empty="Nothing in this range."
         loading={loading}
         {...(kind !== undefined && path !== null
           ? { onSelect: (entry) => void showStatsPath(drill(path, { kind, key: entry.key })) }
           : {})}
-        {...(coverage.data !== null && coverage.data.plays > 0
-          ? {
-              caption: `Genre known for ${Math.round(
-                (coverage.data.withGenre / coverage.data.plays) * 100,
-              )}% of plays.`,
-            }
-          : {})}
+        {...(caption !== "" ? { caption } : {})}
       />
       {fixing && album !== null && (
         <AlbumLinkDialog
@@ -121,6 +132,21 @@ export function TopPanel({ dimension }: TopPanelProps) {
       )}
     </StatsPanel>
   );
+}
+
+/**
+ * What share of the drawn rows' plays their times cover, where that is not all.
+ *
+ * Over the rows rather than `listen_totals`: the range's share is the tile's,
+ * and genre rows are matched plays, so nearly always fully timed whatever the
+ * range is. Floored so that a row short by one play never reads 100%.
+ */
+function timing(rows: readonly { plays: number; timed: number }[]): string | null {
+  const plays = rows.reduce((sum, row) => sum + row.plays, 0);
+  const timed = rows.reduce((sum, row) => sum + row.timed, 0);
+  return timed < plays
+    ? `Time known for ${Math.floor((timed / plays) * 100)}% of these plays.`
+    : null;
 }
 
 /** Where the album crumb sits, so the path can be rebuilt without it. */

@@ -1286,6 +1286,11 @@ pub struct TopEntry {
     /// The artist, for an album or a track. `None` for the other two.
     pub secondary: Option<String>,
     pub plays: u32,
+    /// Summed over the plays whose duration is known - see `timed`.
+    #[ts(type = "number")]
+    pub duration_ms: i64,
+    /// Plays with a known duration, as on [`ListenTotals`].
+    pub timed: u32,
 }
 
 /// The Listening tab's tiles, and the denominators its panels are honest with.

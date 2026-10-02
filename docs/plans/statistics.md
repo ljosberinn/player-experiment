@@ -355,7 +355,7 @@ than reading a ref during render.
 
 **Listening.** Tiles: plays, distinct artists / albums / tracks, listening days,
 time spent, share owned. Then recent plays; top artists, albums, tracks and
-genres as bar lists with share; plays over time, bucket chosen from the range;
+genres as bar lists with share and play time; plays over time, bucket chosen from the range;
 hour-of-day bars; a weekday-by-hour heatmap; a calendar year heatmap; new
 artists per month; current and longest streak; and **heard, never owned**,
 exportable. An artist bar drills to that artist's page — first heard, total

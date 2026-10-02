@@ -370,10 +370,13 @@ export function top({
     const row = TOP_KEYS[dimension](play);
     if (row !== null) {
       const entry = entries.get(row.group);
+      const duration = play.track?.duration_ms ?? null;
       entries.set(row.group, {
         key: row.key,
         secondary: row.secondary,
         plays: (entry?.plays ?? 0) + 1,
+        durationMs: (entry?.durationMs ?? 0) + (duration ?? 0),
+        timed: (entry?.timed ?? 0) + (duration === null ? 0 : 1),
       });
     }
   }

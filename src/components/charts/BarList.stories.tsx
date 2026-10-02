@@ -3,8 +3,8 @@ import { StatsPanel } from "../../features/stats/panels/StatsPanel";
 import { BarList } from "./BarList";
 
 const ARTISTS = [
-  { key: "Boards of Canada", value: 842 },
-  { key: "Aphex Twin", value: 611 },
+  { key: "Boards of Canada", value: 842, detail: "2.9 days" },
+  { key: "Aphex Twin", value: 611, detail: "41.2 hours" },
   { key: "Burial", value: 397 },
 ];
 
@@ -17,6 +17,7 @@ const ALBUMS = [
     key: "The Disintegration Loops I–IV (Remastered and Expanded Edition)",
     secondary: "William Basinski",
     value: 256,
+    detail: "3.1 weeks",
   },
   { key: "Geogaddi", secondary: "Boards of Canada", value: 190 },
   {
