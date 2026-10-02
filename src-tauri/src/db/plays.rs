@@ -948,6 +948,9 @@ fn resolve_within(conn: &Connection, scoped: bool) -> AppResult<u32> {
              old     INTEGER,
              new     INTEGER
          );
+         -- The losing pass looks each track up on both sides (issue 199).
+         CREATE INDEX temp.moved_old ON moved (old, new);
+         CREATE INDEX temp.moved_new ON moved (new);
          DROP TABLE IF EXISTS temp.losing;
          CREATE TEMP TABLE losing (
              id        INTEGER PRIMARY KEY,
@@ -1239,14 +1242,17 @@ fn resolve_within(conn: &Connection, scoped: bool) -> AppResult<u32> {
     // arrived from nowhere is not in it, so a track that also gained one reads
     // as having held more than its count and keeps it.
     conn.execute_batch(
-        "INSERT INTO temp.losing (id, plays, last, kept, kept_last)
+        "-- A moved play that links to t now moved to t, so the exclusion
+         -- needs no `new = t`, and without it is one lookup rather than a
+         -- subquery per play.
+         INSERT INTO temp.losing (id, plays, last, kept, kept_last)
          SELECT t,
                 (SELECT count(*) FROM plays WHERE track_id = t)
                   + (SELECT count(*) FROM temp.moved WHERE old = t)
                   - (SELECT count(*) FROM temp.moved WHERE new = t),
                 max(coalesce((SELECT max(started_at) FROM plays
                                WHERE track_id = t
-                                 AND id NOT IN (SELECT play_id FROM temp.moved WHERE new = t)), 0),
+                                 AND id NOT IN (SELECT play_id FROM temp.moved)), 0),
                     (SELECT max(p.started_at) FROM temp.moved m JOIN plays p ON p.id = m.play_id
                       WHERE m.old = t)),
                 (SELECT count(*) FROM plays WHERE track_id = t)
@@ -1257,12 +1263,14 @@ fn resolve_within(conn: &Connection, scoped: bool) -> AppResult<u32> {
                                       WHERE m.old = t AND m.new IS NULL), 0)), 0)
            FROM (SELECT DISTINCT old AS t FROM temp.moved WHERE new IS NOT NULL);
 
+         -- `+` so the planner reads `losing` and seeks `tracks`, rather than
+         -- scanning `tracks` when nothing moved.
          UPDATE tracks
             SET play_count = CASE WHEN play_count = l.plays THEN l.kept ELSE play_count END,
                 last_played_at = CASE WHEN last_played_at = l.last
                                       THEN l.kept_last ELSE last_played_at END
            FROM temp.losing l
-          WHERE tracks.id = l.id
+          WHERE tracks.id = +l.id
             AND ((play_count = l.plays AND play_count <> l.kept)
                  OR (last_played_at = l.last AND last_played_at IS NOT l.kept_last));
 
