@@ -380,7 +380,10 @@ a folder, a tag write half-landed or a scrobble never arrived.
 
 One line per operation: `timestamp outcome operation key=value…`, with the
 `AppError` display string on a failure — the same string the user was shown, so
-a screenshot and the log line agree. A `Mutex<Option<File>>` in Tauri state and
+a screenshot and the log line agree. Values are written as they are, except
+control characters: a line break becomes a space and the rest are spelled
+`\u{N}`, so a NUL from a tag neither reads as a space nor makes grep call the
+file binary. A `Mutex<Option<File>>` in Tauri state and
 one whole line per lock, because the `rayon` pool, the player thread and the
 scrobbler thread all write into it. No `log` or `tracing` crate: what those buy
 is levels and filtering, and the set of operations is a product decision rather
