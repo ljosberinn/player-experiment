@@ -26,6 +26,7 @@ edit a shipped one.
 | 18 | `lastfm_loved` renamed `loved`, with `remote` (last.fm reported the key; every existing row is set); `tracks.match_key`, indexed, filled by `plays::refold`; `love_queue`; and `loved.syncedWith` seeded from the import's username |
 | 19 | `playlists.built_in`, under a partial unique index. Claims each old seed whose name, filter and order are still the seed's, and deletes `playlists.seeded` |
 | 20 | three `NOCASE` expression indexes, one per `BrowseKind::identity_sql`, so a drill-in seeks its group rather than scanning `tracks` |
+| 21 | `unreadable_files` — files whose tags would not parse, by (mtime, size) and the app version that tried, so a scan reads one again only once it changes or the app does |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure

@@ -94,6 +94,19 @@ pub struct ScanPlan {
     /// Marked files that turned up again - an external drive plugged back in.
     pub returned: Vec<i64>,
     pub unchanged: u32,
+    /// Records of unreadable files that are no longer where they were read.
+    pub forgotten: Vec<String>,
+}
+
+/// A file whose tags would not parse, as it was when they did not. See
+/// migration 21.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unreadable {
+    path: String,
+    mtime: i64,
+    size: i64,
+    /// Whether this version of the app is the one that failed to read it.
+    current: bool,
 }
 
 pub fn is_audio_file(path: &Path) -> bool {
@@ -158,6 +171,10 @@ pub fn now_secs() -> i64 {
 /// `known` either - the row went with it - so the missing loop below never sees
 /// one.
 ///
+/// `unreadable` is what migration 21 records. A file that failed to parse, by
+/// this version, as it is on disk now, is left alone like an unchanged one -
+/// whether it has no row or a stale one.
+///
 /// `absent` is the roots that were not on disk when the walk started, and is
 /// empty for every scan the user asked for. A track underneath one of them is
 /// neither found nor lost by this pass: `walk` yields nothing for a root that
@@ -168,6 +185,7 @@ pub fn plan(
     known: &HashMap<Vec<u8>, Known>,
     on_disk: &[(PathBuf, i64, i64)],
     removed: &HashSet<Vec<u8>>,
+    unreadable: &HashMap<Vec<u8>, Unreadable>,
     absent: &[PathBuf],
 ) -> ScanPlan {
     let mut plan = ScanPlan::default();
@@ -180,12 +198,14 @@ pub fn plan(
         }
         seen.insert(key.clone());
 
+        let failed = unreadable
+            .get(&key)
+            .is_some_and(|entry| entry.current && entry.mtime == *mtime && entry.size == *size);
         match known.get(&key) {
+            Some(entry) if entry.mtime == *mtime && entry.size == *size => plan.unchanged += 1,
+            _ if failed => plan.unchanged += 1,
             None => plan.added.push(path.clone()),
-            Some(entry) if entry.mtime != *mtime || entry.size != *size => {
-                plan.updated.push(path.clone());
-            }
-            Some(_) => plan.unchanged += 1,
+            Some(_) => plan.updated.push(path.clone()),
         }
 
         // Independent of the branch above: a file that came back unchanged is
@@ -201,6 +221,12 @@ pub fn plan(
     for (key, entry) in known {
         if !seen.contains(key) && !entry.missing && !is_under(&entry.path, absent) {
             plan.missing.push(entry.id);
+        }
+    }
+
+    for (key, entry) in unreadable {
+        if !seen.contains(key) && !is_under(&entry.path, absent) {
+            plan.forgotten.push(entry.path.clone());
         }
     }
 
@@ -242,6 +268,48 @@ fn load_removed(conn: &Connection) -> AppResult<HashSet<Vec<u8>>> {
         Ok(layout::fold(Path::new(&path)))
     })?;
     Ok(rows.collect::<rusqlite::Result<HashSet<_>>>()?)
+}
+
+fn load_unreadable(conn: &Connection) -> AppResult<HashMap<Vec<u8>, Unreadable>> {
+    let mut stmt = conn.prepare("SELECT path, mtime, size, read_by FROM unreadable_files")?;
+    let rows = stmt.query_map([], |row| {
+        let path: String = row.get(0)?;
+        Ok((
+            layout::fold(Path::new(&path)),
+            Unreadable {
+                path,
+                mtime: row.get(1)?,
+                size: row.get(2)?,
+                current: row.get::<_, String>(3)? == env!("CARGO_PKG_VERSION"),
+            },
+        ))
+    })?;
+    Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
+}
+
+/// Records the outcome of reading `path`: a failure as the file is now, a
+/// success as no record at all.
+fn note_read(conn: &Connection, path: &Path, failed: bool) -> AppResult<()> {
+    if failed {
+        let (mtime, size) = file_stats(path);
+        conn.execute(
+            "INSERT INTO unreadable_files (path, mtime, size, read_by) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(path) DO UPDATE SET
+                 mtime = excluded.mtime, size = excluded.size, read_by = excluded.read_by",
+            rusqlite::params![
+                path.to_string_lossy(),
+                mtime,
+                size,
+                env!("CARGO_PKG_VERSION")
+            ],
+        )?;
+    } else {
+        conn.execute(
+            "DELETE FROM unreadable_files WHERE path = ?1",
+            [path.to_string_lossy()],
+        )?;
+    }
+    Ok(())
 }
 
 /// Marks `ids` as no longer on disk, or clears the mark when `at` is `None`.
@@ -574,7 +642,13 @@ pub fn scan_roots(
 ) -> AppResult<ScanSummary> {
     let on_disk = walk(roots);
     let known = load_known(conn)?;
-    let plan = plan(&known, &on_disk, &load_removed(conn)?, absent);
+    let plan = plan(
+        &known,
+        &on_disk,
+        &load_removed(conn)?,
+        &load_unreadable(conn)?,
+        absent,
+    );
 
     let total = (plan.added.len() + plan.updated.len()) as u32;
     let mut summary = ScanSummary {
@@ -590,6 +664,13 @@ pub fn scan_roots(
         missing: 0,
         done: false,
     });
+
+    if !plan.forgotten.is_empty() {
+        let mut stmt = conn.prepare("DELETE FROM unreadable_files WHERE path = ?1")?;
+        for path in &plan.forgotten {
+            stmt.execute([path])?;
+        }
+    }
 
     if !plan.missing.is_empty() || !plan.returned.is_empty() {
         let tx = conn.transaction()?;
@@ -618,6 +699,7 @@ pub fn scan_roots(
                     summary.unreadable += 1;
                 }
             }
+            note_read(&tx, path, tags.is_err())?;
         }
         tx.commit()?;
 
@@ -646,6 +728,7 @@ pub fn scan_roots(
                     summary.unreadable += 1;
                 }
             }
+            note_read(&tx, path, tags.is_err())?;
         }
         tx.commit()?;
 
@@ -666,9 +749,8 @@ pub fn scan_roots(
     //
     // And only when something changed: most passes change nothing, and
     // relinking the log is most of what they would cost (193). The summary
-    // rather than the plan, because a file that will not parse is planned on
-    // every pass and writes nothing. A missing file's tags stay in the
-    // vocabulary.
+    // rather than the plan, because a file that will not parse is planned and
+    // writes no row. A missing file's tags stay in the vocabulary.
     if summary.added + summary.updated > 0 {
         crate::db::tag_values::rebuild(conn)?;
     }
@@ -917,7 +999,7 @@ mod tests {
 
     /// `plan` as a scan the user asked for: no tombstones, every root walked.
     fn plan(known: &HashMap<Vec<u8>, Known>, on_disk: &[(PathBuf, i64, i64)]) -> ScanPlan {
-        super::plan(known, on_disk, &HashSet::new(), &[])
+        super::plan(known, on_disk, &HashSet::new(), &HashMap::new(), &[])
     }
 
     /// The invariant [`plan`] would otherwise break: a library filed into a
@@ -991,6 +1073,7 @@ mod tests {
             &HashMap::new(),
             &on_disk(&[("D:\\M\\The Corpse of Rebirth\\01.mp3", 10, 100)]),
             &tombstones(&["D:\\M\\The Corpse Of Rebirth\\01.mp3"]),
+            &HashMap::new(),
             &[],
         );
 
@@ -1077,6 +1160,7 @@ mod tests {
             &known(&[]),
             &on_disk(&[("/m/unwanted.mp3", 10, 100)]),
             &tombstones(&["/m/unwanted.mp3"]),
+            &HashMap::new(),
             &[],
         );
 
@@ -1091,6 +1175,7 @@ mod tests {
             &known(&[]),
             &on_disk(&[("/m/unwanted.mp3", 10, 100), ("/m/wanted.mp3", 10, 100)]),
             &tombstones(&["/m/unwanted.mp3"]),
+            &HashMap::new(),
             &[],
         );
 
@@ -1106,6 +1191,7 @@ mod tests {
             &known(&[("/drive/a.mp3", 10, 100), ("/m/b.mp3", 10, 100)]),
             &on_disk(&[("/m/b.mp3", 10, 100)]),
             &HashSet::new(),
+            &HashMap::new(),
             &[PathBuf::from("/drive")],
         );
 
@@ -1124,6 +1210,7 @@ mod tests {
             &known(&[("/drive2/a.mp3", 10, 100)]),
             &on_disk(&[]),
             &HashSet::new(),
+            &HashMap::new(),
             &[PathBuf::from("/drive")],
         );
 
