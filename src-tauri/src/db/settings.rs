@@ -116,6 +116,10 @@ pub const ALBUM_FOLD: &str = "plays.albumFold";
 /// is a column on `plays` and `tracks` and the primary key of `loved`, so a
 /// widened fold links nothing at all until `db::plays::refold` rewrites them.
 pub const MATCH_FOLD: &str = "plays.matchFold";
+/// Present while every play links where `db::plays::resolve` last put it, so
+/// a scan that changed nothing can skip it. Absent rather than false on a
+/// library that predates it, which therefore resolves once.
+pub const PLAYS_RESOLVED: &str = "plays.resolved";
 /// Where the last.fm import stands, as `lastfm::import::State` JSON.
 ///
 /// Not exportable: it names an account and describes this library's copy of

@@ -262,10 +262,15 @@ fn set_missing(tx: &rusqlite::Transaction<'_>, ids: &[i64], at: Option<i64>) -> 
 ///
 /// Leaves an existing mark alone so the timestamp keeps its original meaning.
 pub fn mark_missing(conn: &Connection, id: i64) -> AppResult<()> {
-    conn.execute(
+    let changed = conn.execute(
         "UPDATE tracks SET missing_since = ?2 WHERE id = ?1 AND missing_since IS NULL",
         rusqlite::params![id, now_secs()],
     )?;
+    // `plays::resolve` prefers a present copy, and the next scan will not see
+    // this row change.
+    if changed > 0 {
+        crate::db::plays::mark_unresolved(conn)?;
+    }
     Ok(())
 }
 
@@ -279,6 +284,9 @@ pub fn clear_missing(conn: &Connection, id: i64) -> AppResult<bool> {
         "UPDATE tracks SET missing_since = NULL WHERE id = ?1 AND missing_since IS NOT NULL",
         [id],
     )?;
+    if changed > 0 {
+        crate::db::plays::mark_unresolved(conn)?;
+    }
     Ok(changed > 0)
 }
 
@@ -655,9 +663,20 @@ pub fn scan_roots(
     // Once, at the end, rather than per chunk: it is a whole-table aggregate
     // either way, and running it 50 times during a first scan would pay for
     // the same answer 50 times.
-    crate::db::tag_values::rebuild(conn)?;
-    crate::db::plays::resolve(conn)?;
-    crate::db::plays::count(conn)?;
+    //
+    // And only when something changed: most passes change nothing, and
+    // relinking the log is most of what they would cost (193). The summary
+    // rather than the plan, because a file that will not parse is planned on
+    // every pass and writes nothing. A missing file's tags stay in the
+    // vocabulary.
+    if summary.added + summary.updated > 0 {
+        crate::db::tag_values::rebuild(conn)?;
+    }
+    let changed = summary.added + summary.updated + summary.missing + summary.returned > 0;
+    if changed || !crate::db::plays::is_resolved(conn)? {
+        crate::db::plays::resolve(conn)?;
+        crate::db::plays::count(conn)?;
+    }
 
     on_progress(ScanProgress {
         scanned,
@@ -1386,5 +1405,103 @@ mod tests {
 
         assert_eq!(counted(&conn, new), (0, None));
         assert_eq!(places(&conn), [(10, new, 2)]);
+    }
+
+    fn linked(conn: &Connection) -> Vec<Option<i64>> {
+        conn.prepare("SELECT track_id FROM plays ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    /// A pass that changes nothing: every row lies under a root that is not
+    /// there.
+    fn idle_pass(conn: &mut Connection) {
+        let summary = scan_roots(conn, &[], &[PathBuf::from("/m")], |_| {}, |_| {}).unwrap();
+        assert_eq!(
+            summary.added + summary.updated + summary.missing + summary.returned,
+            0
+        );
+    }
+
+    #[test]
+    fn a_pass_that_changed_nothing_relinks_nothing() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        copies(&conn);
+        play(&conn, 100);
+        crate::db::plays::resolve(&conn).unwrap();
+        // A link no write would leave, so a resolve would show.
+        conn.execute("UPDATE plays SET track_id = NULL", [])
+            .unwrap();
+
+        idle_pass(&mut conn);
+
+        assert_eq!(linked(&conn), [None]);
+    }
+
+    #[test]
+    fn a_library_that_predates_the_marker_resolves_once() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, _) = copies(&conn);
+        play(&conn, 100);
+
+        idle_pass(&mut conn);
+
+        assert_eq!(linked(&conn), [Some(old)]);
+    }
+
+    #[test]
+    fn a_local_play_of_the_other_copy_moves_on_the_next_pass() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        crate::db::plays::resolve(&conn).unwrap();
+        crate::db::plays::record(&conn, new, 100).unwrap();
+        assert_eq!(linked(&conn), [Some(new)]);
+
+        idle_pass(&mut conn);
+
+        assert_eq!(linked(&conn), [Some(old)]);
+    }
+
+    #[test]
+    fn the_player_marking_a_copy_missing_or_back_moves_its_plays_on_the_next_pass() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        play(&conn, 100);
+        crate::db::plays::resolve(&conn).unwrap();
+
+        mark_missing(&conn, old).unwrap();
+        idle_pass(&mut conn);
+        assert_eq!(linked(&conn), [Some(new)], "to the copy that is there");
+
+        assert!(clear_missing(&conn, old).unwrap());
+        idle_pass(&mut conn);
+        assert_eq!(linked(&conn), [Some(old)], "and back to the older one");
+    }
+
+    #[test]
+    fn a_file_that_will_not_parse_does_not_make_a_pass_relink() {
+        let (dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        copies(&conn);
+        play(&conn, 100);
+        crate::db::plays::resolve(&conn).unwrap();
+        conn.execute("UPDATE plays SET track_id = NULL", [])
+            .unwrap();
+        let root = dir.path().join("music");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("broken.mp3"), b"not audio").unwrap();
+
+        let summary =
+            scan_roots(&mut conn, &[root], &[PathBuf::from("/m")], |_| {}, |_| {}).unwrap();
+
+        assert_eq!(summary.unreadable, 1);
+        assert_eq!(linked(&conn), [None]);
     }
 }
