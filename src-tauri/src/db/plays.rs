@@ -705,10 +705,21 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
          );
          DROP TABLE IF EXISTS temp.losing;
          CREATE TEMP TABLE losing (
-             id    INTEGER PRIMARY KEY,
-             plays INTEGER NOT NULL,
-             last  INTEGER NOT NULL
-         );",
+             id        INTEGER PRIMARY KEY,
+             plays     INTEGER NOT NULL,
+             last      INTEGER NOT NULL,
+             kept      INTEGER NOT NULL,
+             kept_last INTEGER
+         );
+         -- Only a play that leaves a track, so a first resolve, which links
+         -- the whole log off NULL, fires it for none of them.
+         DROP TRIGGER IF EXISTS temp.resolve_moved;
+         CREATE TEMP TRIGGER resolve_moved AFTER UPDATE OF track_id ON plays
+         WHEN old.track_id IS NOT NULL
+         BEGIN
+             INSERT INTO temp.moved (play_id, old, new)
+             VALUES (old.id, old.track_id, new.track_id);
+         END;",
     )?;
 
     // (album, title) to the track `play_keys`' tiebreak picks, and every
@@ -809,65 +820,33 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         copies.extend(by_album_artist);
     }
 
-    // **A song on several albums links each play to the copy on the album it
-    // was heard on**, and only then to the key's winner: `Cleansing` on *Two
-    // Hunters* and on *Live at Roadburn 2008* is one key, and the older live
-    // copy took every play of the studio one (issue 195). A play whose album
-    // is blank or matches no copy keeps the winner. The order is the
-    // tiebreak's, so two copies on one album still go present, then older.
+    // A key whose later copies sit on no album its winner does needs no
+    // album to choose.
+    copies.retain(|_, held| {
+        let first = &held[0].1;
+        held[1..]
+            .iter()
+            .any(|(_, album)| !album.is_empty() && album != first)
+    });
     {
-        copies.retain(|_, held| {
-            let first = &held[0].1;
-            held[1..]
-                .iter()
-                .any(|(_, album)| !album.is_empty() && album != first)
-        });
         let mut insert = conn.prepare("INSERT INTO temp.copy_keys (key) VALUES (?1)")?;
         for key in copies.keys() {
             insert.execute([key])?;
         }
-
-        let mut plays = conn.prepare(
-            "SELECT id, match_key, album FROM plays
-              WHERE album <> '' AND match_key IN (SELECT key FROM temp.copy_keys)",
-        )?;
-        let mut links: Vec<(i64, i64)> = Vec::new();
-        let mut rows = plays.query([])?;
-        while let Some(row) = rows.next()? {
-            let album: &str = folds
-                .entry(row.get(2)?)
-                .or_insert_with_key(|album| fold_album(album));
-            let Some(copies) = copies.get(&row.get::<_, String>(1)?) else {
-                continue;
-            };
-            let copy = copies
-                .iter()
-                .find(|(_, held)| !album.is_empty() && held == album);
-            if let Some(&(track_id, _)) = copy.filter(|(id, _)| *id != copies[0].0) {
-                links.push((row.get(0)?, track_id));
-            }
-        }
-
-        let mut link =
-            conn.prepare("INSERT INTO temp.copy_links (play_id, track_id) VALUES (?1, ?2)")?;
-        for (play_id, track_id) in &links {
-            link.execute([play_id, track_id])?;
-        }
     }
 
-    // **The album on the play is the last resort, and it has to be
-    // corroborated.** last.fm merges some artists into others - `Disko
-    // Degenhardt` scrobbles as `Franz Josef Degenhardt` - so no key the play
-    // carries names the file. Two titles of one scrobbled album landing on one
-    // library artist's copy of it is the evidence; one title alone links a
-    // cover or a title track to a song that was never heard (issue 145).
+    // One read of the log for two tiers, which want disjoint plays: the copy
+    // tier those whose key names several copies, the album tier those whose
+    // key names nothing.
     {
         type Hit<'a> = (i64, String, i64, &'a HashSet<String>);
         let mut groups: HashMap<(String, String), Vec<Hit>> = HashMap::new();
+        let mut copy_links: Vec<(i64, i64)> = Vec::new();
         let mut plays = conn.prepare(
-            "SELECT id, artist, title, album FROM plays
+            "SELECT id, artist, title, album, match_key FROM plays
               WHERE match_key <> '' AND album <> ''
-                AND match_key NOT IN (SELECT key FROM temp.play_keys)",
+                AND (match_key NOT IN (SELECT key FROM temp.play_keys)
+                     OR match_key IN (SELECT key FROM temp.copy_keys))",
         )?;
         let mut rows = plays.query([])?;
         while let Some(row) = rows.next()? {
@@ -875,6 +854,31 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
                 .entry(row.get(3)?)
                 .or_insert_with_key(|album| fold_album(album))
                 .clone();
+
+            // **A song on several albums links each play to the copy on the
+            // album it was heard on**, and only then to the key's winner:
+            // `Cleansing` on *Two Hunters* and on *Live at Roadburn 2008* is
+            // one key, and the older live copy took every play of the studio
+            // one (issue 195). A play whose album is blank or matches no copy
+            // keeps the winner. The order is the tiebreak's, so two copies on
+            // one album still go present, then older.
+            if let Some(held) = copies.get(&row.get::<_, String>(4)?) {
+                let copy = held
+                    .iter()
+                    .find(|(_, on)| !album.is_empty() && *on == album);
+                if let Some(&(track_id, _)) = copy.filter(|(id, _)| *id != held[0].0) {
+                    copy_links.push((row.get(0)?, track_id));
+                }
+                continue;
+            }
+
+            // **The album on the play is the last resort, and it has to be
+            // corroborated.** last.fm merges some artists into others - `Disko
+            // Degenhardt` scrobbles as `Franz Josef Degenhardt` - so no key the
+            // play carries names the file. Two titles of one scrobbled album
+            // landing on one library artist's copy of it is the evidence; one
+            // title alone links a cover or a title track to a song that was
+            // never heard (issue 145).
             let title = normalize(&row.get::<_, String>(2)?);
             if album.is_empty() || title.is_empty() {
                 continue;
@@ -890,6 +894,11 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
                 .push((row.get(0)?, title, *track_id, owners));
         }
 
+        let mut link =
+            conn.prepare("INSERT INTO temp.copy_links (play_id, track_id) VALUES (?1, ?2)")?;
+        for (play_id, track_id) in &copy_links {
+            link.execute([play_id, track_id])?;
+        }
         let mut link =
             conn.prepare("INSERT INTO temp.album_links (play_id, track_id) VALUES (?1, ?2)")?;
         for hits in groups.values() {
@@ -958,24 +967,17 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     //
     // One assignment for every tier: a second `UPDATE` for the album links
     // would find each of them nulled by this one and write it back, every run.
-    conn.execute_batch(
-        "INSERT INTO temp.moved (play_id, old, new)
-         SELECT id, track_id, link FROM (
-             SELECT id, track_id, coalesce(
-                 (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
-                 (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
-                 (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id)) AS link
-               FROM plays
-              WHERE match_key <> '')
-          WHERE track_id IS NOT link;
-
-         INSERT INTO temp.losing (id, plays, last)
-         SELECT track_id, count(*), max(started_at) FROM plays
-          WHERE track_id IN (SELECT old FROM temp.moved WHERE new IS NOT NULL)
-          GROUP BY track_id;",
-    )?;
     let moved = conn.execute(
-        "UPDATE plays SET track_id = m.new FROM temp.moved m WHERE m.play_id = plays.id",
+        "UPDATE plays
+            SET track_id = coalesce(
+                (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
+                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))
+          WHERE match_key <> ''
+            AND track_id IS NOT coalesce(
+                (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
+                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))",
         [],
     )?;
 
@@ -985,25 +987,39 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // local history from before migration 13. A play that now links nowhere
     // stays counted, so a retag that takes a file out of a song keeps the
     // song's count on it, as `count` documents.
+    //
+    // `moved` holds what the trigger saw: plays that left a track. A play that
+    // arrived from nowhere is not in it, so a track that also gained one reads
+    // as having held more than its count and keeps it.
     conn.execute_batch(
-        "UPDATE tracks
-            SET play_count = CASE WHEN tracks.play_count = l.plays
-                                  THEN coalesce(k.plays, 0) ELSE tracks.play_count END,
-                last_played_at = CASE WHEN tracks.last_played_at = l.last
-                                      THEN k.last ELSE tracks.last_played_at END
-           FROM temp.losing l
-           LEFT JOIN (SELECT owner, count(*) AS plays, max(started_at) AS last FROM (
-                          SELECT track_id AS owner, started_at FROM plays
-                           WHERE track_id IN (SELECT id FROM temp.losing)
-                          UNION ALL
-                          SELECT m.old, p.started_at FROM temp.moved m
-                            JOIN plays p ON p.id = m.play_id
-                           WHERE m.new IS NULL AND m.old IN (SELECT id FROM temp.losing))
-                       GROUP BY owner) k ON k.owner = l.id
-          WHERE tracks.id = l.id
-            AND ((tracks.play_count = l.plays AND tracks.play_count <> coalesce(k.plays, 0))
-                 OR (tracks.last_played_at = l.last AND tracks.last_played_at IS NOT k.last));
+        "INSERT INTO temp.losing (id, plays, last, kept, kept_last)
+         SELECT t,
+                (SELECT count(*) FROM plays WHERE track_id = t)
+                  + (SELECT count(*) FROM temp.moved WHERE old = t)
+                  - (SELECT count(*) FROM temp.moved WHERE new = t),
+                max(coalesce((SELECT max(started_at) FROM plays
+                               WHERE track_id = t
+                                 AND id NOT IN (SELECT play_id FROM temp.moved WHERE new = t)), 0),
+                    (SELECT max(p.started_at) FROM temp.moved m JOIN plays p ON p.id = m.play_id
+                      WHERE m.old = t)),
+                (SELECT count(*) FROM plays WHERE track_id = t)
+                  + (SELECT count(*) FROM temp.moved WHERE old = t AND new IS NULL),
+                nullif(max(coalesce((SELECT max(started_at) FROM plays WHERE track_id = t), 0),
+                           coalesce((SELECT max(p.started_at) FROM temp.moved m
+                                       JOIN plays p ON p.id = m.play_id
+                                      WHERE m.old = t AND m.new IS NULL), 0)), 0)
+           FROM (SELECT DISTINCT old AS t FROM temp.moved WHERE new IS NOT NULL);
 
+         UPDATE tracks
+            SET play_count = CASE WHEN play_count = l.plays THEN l.kept ELSE play_count END,
+                last_played_at = CASE WHEN last_played_at = l.last
+                                      THEN l.kept_last ELSE last_played_at END
+           FROM temp.losing l
+          WHERE tracks.id = l.id
+            AND ((play_count = l.plays AND play_count <> l.kept)
+                 OR (last_played_at = l.last AND last_played_at IS NOT l.kept_last));
+
+         DROP TRIGGER temp.resolve_moved;
          DROP TABLE temp.play_keys;
          DROP TABLE temp.album_links;
          DROP TABLE temp.copy_keys;

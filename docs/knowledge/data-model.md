@@ -422,7 +422,9 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   (or their latest), is set to what it links afterwards, plus the plays that
   now link nowhere: a retag that unlinks plays keeps their count, as before. A
   count above its links holds local history from before migration 13 and
-  stays.
+  stays. A temporary trigger records only plays that leave a track, so a first
+  resolve records nothing; a track that gains a play from nowhere in the same
+  pass keeps its count.
 - **A scan that wrote nothing skips `resolve` and `count`** (193) while
   `plays.resolved` is in `settings`, and one that read no file skips
   `tag_values::rebuild`.
