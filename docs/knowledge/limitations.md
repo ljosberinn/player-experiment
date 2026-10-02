@@ -91,6 +91,8 @@ Known, decided, and not scheduled. Anything with work attached lives in
   lifts the tombstones so a rescan re-adds the files; the rows they had, and
   the ids, play counts and playlist places on them, are gone, or on the copy of
   the same song that stayed.
+- **A removed file renamed away and back between two scans comes back.** The
+  scan in between finds its path empty and drops the tombstone (196).
 - **260 characters is the ceiling for every path this app builds.** There is no
   `longPathAware` manifest in `src-tauri`, and Rust's `std::fs` hands paths to
   the wide Win32 API without adding a `\\?\` prefix of its own. Prefixing one

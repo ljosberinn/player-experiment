@@ -141,8 +141,10 @@ replacement. Two rules make an unattended pass safe to run at all:
   for the answer, and those marks are what feeds Remove Missing.
 - **A pass that changed nothing says nothing.** It emits no `scan://progress`
   while there is no work (which would flash "Scanning 0 of 0"), and announces
-  on `library://changed` only when `added + updated + missing + returned` is
-  non-zero.
+  on `library://changed` only when `added + updated + missing + returned +
+  lapsed` is non-zero. `lapsed` is tombstones dropped because their file is
+  gone — not under a root that is not on disk, in either kind of scan, so an
+  unplugged drive keeps its removals.
 
 **One lock serializes everything that rewrites rows from files on disk.**
 `scan::ScanLock`, managed beside `Db`, taken by `scan_library`,

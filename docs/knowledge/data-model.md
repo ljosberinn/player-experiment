@@ -12,7 +12,7 @@ edit a shipped one.
 | 4 | `tag_values` — the distinct values a library uses, for autocompletion |
 | 5 | `covers.palette` — the dominant colours of a cover |
 | 6 | `scrobble_queue` — plays recorded but not yet accepted by last.fm |
-| 7 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back |
+| 7 | `removed_paths` — files an explicit removal took out, so a rescan does not add them back; a scan drops one whose file is gone (196) |
 | 8 | `tracks.release_mbid` + `tracks.release_group_mbid` — which MusicBrainz release a file belongs to, and which release group across its pressings; the group is indexed because it is what a browse view groups by |
 | 9 | `release_lookup` — what the unattended lookup pass has been through — plus `tracks.release_type`, MusicBrainz's release-group primary type, read off the file the way the two ids above are |
 | 10 | a fourth `release_lookup.status`, `aside` — a queued release the user has said to leave alone. A whole-table rebuild, because the vocabulary is a CHECK constraint and SQLite cannot widen one in place |

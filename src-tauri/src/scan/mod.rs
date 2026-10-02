@@ -96,6 +96,9 @@ pub struct ScanPlan {
     pub unchanged: u32,
     /// Records of unreadable files that are no longer where they were read.
     pub forgotten: Vec<String>,
+    /// Tombstones the walk did not find a file for, as stored. Only those
+    /// whose file is gone are dropped; see [`scan_roots`].
+    pub unseen: Vec<String>,
 }
 
 /// A file whose tags would not parse, as it was when they did not. See
@@ -169,7 +172,8 @@ pub fn now_secs() -> i64 {
 /// library by hand. Such a file is skipped outright rather than added, which is
 /// what stops the next Rescan from undoing the removal. It cannot appear in
 /// `known` either - the row went with it - so the missing loop below never sees
-/// one.
+/// one. Keyed folded, each to the path as stored, which is what a lapsed one is
+/// deleted by.
 ///
 /// `unreadable` is what migration 21 records. A file that failed to parse, by
 /// this version, as it is on disk now, is left alone like an unchanged one -
@@ -184,16 +188,18 @@ pub fn now_secs() -> i64 {
 pub fn plan(
     known: &HashMap<Vec<u8>, Known>,
     on_disk: &[(PathBuf, i64, i64)],
-    removed: &HashSet<Vec<u8>>,
+    removed: &HashMap<Vec<u8>, String>,
     unreadable: &HashMap<Vec<u8>, Unreadable>,
     absent: &[PathBuf],
 ) -> ScanPlan {
     let mut plan = ScanPlan::default();
     let mut seen = HashSet::with_capacity(on_disk.len());
+    let mut held = HashSet::new();
 
     for (path, mtime, size) in on_disk {
         let key = layout::fold(path);
-        if removed.contains(&key) {
+        if removed.contains_key(&key) {
+            held.insert(key);
             continue;
         }
         seen.insert(key.clone());
@@ -230,6 +236,12 @@ pub fn plan(
         }
     }
 
+    for (key, path) in removed {
+        if !held.contains(key) && !is_under(path, absent) {
+            plan.unseen.push(path.clone());
+        }
+    }
+
     plan
 }
 
@@ -261,13 +273,13 @@ fn load_known(conn: &Connection) -> AppResult<HashMap<Vec<u8>, Known>> {
 }
 
 /// The paths a removal has tombstoned. See migration 7.
-fn load_removed(conn: &Connection) -> AppResult<HashSet<Vec<u8>>> {
+fn load_removed(conn: &Connection) -> AppResult<HashMap<Vec<u8>, String>> {
     let mut stmt = conn.prepare("SELECT path FROM removed_paths")?;
     let rows = stmt.query_map([], |row| {
         let path: String = row.get(0)?;
-        Ok(layout::fold(Path::new(&path)))
+        Ok((layout::fold(Path::new(&path)), path))
     })?;
-    Ok(rows.collect::<rusqlite::Result<HashSet<_>>>()?)
+    Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
 }
 
 fn load_unreadable(conn: &Connection) -> AppResult<HashMap<Vec<u8>, Unreadable>> {
@@ -642,6 +654,7 @@ pub fn summary_fields(summary: &ScanSummary) -> crate::log::Fields {
         .add("missing", summary.missing)
         .add("returned", summary.returned)
         .add("unreadable", summary.unreadable)
+        .add("lapsed", summary.lapsed)
 }
 
 /// Runs a full incremental scan of every configured watch folder.
@@ -708,13 +721,37 @@ pub fn scan_roots(
         }
     }
 
-    if !plan.missing.is_empty() || !plan.returned.is_empty() {
+    // A removal outlives its file only to inflate Forget's count (196). Asked
+    // of the disk rather than read off the walk, which skips a folder it
+    // cannot read and never visits a tombstone outside every root. And not
+    // under a root that is not there: a Rescan names none in `absent`, and an
+    // unplugged drive keeps its removals.
+    let offline: Vec<PathBuf> = roots
+        .iter()
+        .filter(|root| !root.is_dir())
+        .cloned()
+        .collect();
+    let lapsed: Vec<&String> = plan
+        .unseen
+        .iter()
+        .filter(|path| !is_under(path, &offline))
+        .filter(|path| matches!(Path::new(path).try_exists(), Ok(false)))
+        .collect();
+
+    if !plan.missing.is_empty() || !plan.returned.is_empty() || !lapsed.is_empty() {
         let tx = conn.transaction()?;
         set_missing(&tx, &plan.missing, Some(now_secs()))?;
         set_missing(&tx, &plan.returned, None)?;
+        {
+            let mut lift = tx.prepare("DELETE FROM removed_paths WHERE path = ?1")?;
+            for path in &lapsed {
+                lift.execute([path])?;
+            }
+        }
         tx.commit()?;
         summary.missing = plan.missing.len() as u32;
         summary.returned = plan.returned.len() as u32;
+        summary.lapsed = lapsed.len() as u32;
     }
 
     let mut scanned = 0_u32;
@@ -1029,13 +1066,16 @@ mod tests {
             .collect()
     }
 
-    fn tombstones(paths: &[&str]) -> HashSet<Vec<u8>> {
-        paths.iter().map(|p| layout::fold(Path::new(p))).collect()
+    fn tombstones(paths: &[&str]) -> HashMap<Vec<u8>, String> {
+        paths
+            .iter()
+            .map(|p| (layout::fold(Path::new(p)), (*p).to_owned()))
+            .collect()
     }
 
     /// `plan` as a scan the user asked for: no tombstones, every root walked.
     fn plan(known: &HashMap<Vec<u8>, Known>, on_disk: &[(PathBuf, i64, i64)]) -> ScanPlan {
-        super::plan(known, on_disk, &HashSet::new(), &HashMap::new(), &[])
+        super::plan(known, on_disk, &HashMap::new(), &HashMap::new(), &[])
     }
 
     /// The invariant [`plan`] would otherwise break: a library filed into a
@@ -1114,6 +1154,36 @@ mod tests {
         );
 
         assert!(plan.added.is_empty());
+        assert!(
+            plan.unseen.is_empty(),
+            "nor taken for one whose file is gone"
+        );
+    }
+
+    #[test]
+    fn a_tombstone_the_walk_did_not_find_is_unseen() {
+        let plan = super::plan(
+            &HashMap::new(),
+            &on_disk(&[("/m/here.mp3", 10, 100)]),
+            &tombstones(&["/m/here.mp3", "/m/gone.mp3"]),
+            &HashMap::new(),
+            &[],
+        );
+
+        assert_eq!(plan.unseen, ["/m/gone.mp3"]);
+    }
+
+    #[test]
+    fn a_tombstone_under_a_root_that_is_not_there_is_not_unseen() {
+        let plan = super::plan(
+            &HashMap::new(),
+            &on_disk(&[]),
+            &tombstones(&["/drive/a.mp3"]),
+            &HashMap::new(),
+            &[PathBuf::from("/drive")],
+        );
+
+        assert!(plan.unseen.is_empty());
     }
 
     #[test]
@@ -1226,7 +1296,7 @@ mod tests {
         let plan = super::plan(
             &known(&[("/drive/a.mp3", 10, 100), ("/m/b.mp3", 10, 100)]),
             &on_disk(&[("/m/b.mp3", 10, 100)]),
-            &HashSet::new(),
+            &HashMap::new(),
             &HashMap::new(),
             &[PathBuf::from("/drive")],
         );
@@ -1245,7 +1315,7 @@ mod tests {
         let plan = super::plan(
             &known(&[("/drive2/a.mp3", 10, 100)]),
             &on_disk(&[]),
-            &HashSet::new(),
+            &HashMap::new(),
             &HashMap::new(),
             &[PathBuf::from("/drive")],
         );
@@ -1661,5 +1731,70 @@ mod tests {
 
         assert_eq!(summary.unreadable, 1);
         assert_eq!(linked(&conn), [None]);
+    }
+
+    fn tombstone(conn: &Connection, path: &Path) {
+        conn.execute(
+            "INSERT INTO removed_paths (path, removed_at) VALUES (?1, 0)",
+            [path.to_string_lossy()],
+        )
+        .unwrap();
+    }
+
+    fn removed_paths(conn: &Connection) -> Vec<String> {
+        let mut paths: Vec<String> = load_removed(conn).unwrap().into_values().collect();
+        paths.sort();
+        paths
+    }
+
+    #[test]
+    fn a_tombstone_whose_file_is_gone_is_dropped() {
+        let (dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let root = dir.path().join("music");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("here.mp3"), b"x").unwrap();
+        tombstone(&conn, &root.join("here.mp3"));
+        tombstone(&conn, &root.join("gone.mp3"));
+
+        let summary =
+            scan_roots(&mut conn, std::slice::from_ref(&root), &[], |_| {}, |_| {}).unwrap();
+
+        assert_eq!(
+            removed_paths(&conn),
+            [root.join("here.mp3").to_string_lossy()]
+        );
+        assert_eq!(summary.lapsed, 1);
+        assert!(summary.changed(), "so the unattended pass announces it");
+    }
+
+    /// What a Rescan passes: every root walked, none named absent.
+    #[test]
+    fn a_tombstone_under_a_root_that_is_not_there_stays_through_a_rescan() {
+        let (dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let drive = dir.path().join("drive");
+        tombstone(&conn, &drive.join("a.mp3"));
+
+        scan_roots(&mut conn, &[drive], &[], |_| {}, |_| {}).unwrap();
+
+        assert_eq!(removed_paths(&conn).len(), 1);
+    }
+
+    /// 195's copies outside the root: never walked, so only the disk can say.
+    #[test]
+    fn a_tombstone_outside_every_root_goes_once_its_file_is_gone() {
+        let (dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let copy = dir.path().join("elsewhere.mp3");
+        std::fs::write(&copy, b"x").unwrap();
+        tombstone(&conn, &copy);
+
+        scan_roots(&mut conn, &[], &[], |_| {}, |_| {}).unwrap();
+        assert_eq!(removed_paths(&conn).len(), 1);
+
+        std::fs::remove_file(&copy).unwrap();
+        scan_roots(&mut conn, &[], &[], |_| {}, |_| {}).unwrap();
+        assert!(removed_paths(&conn).is_empty());
     }
 }
