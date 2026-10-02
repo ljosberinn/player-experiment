@@ -132,15 +132,17 @@ pub fn spawn(
                 if waited < due {
                     continue;
                 }
-                waited = Duration::ZERO;
-                first = false;
 
                 // `try_acquire`, not `acquire`: whatever holds the lock is
                 // already walking the library, and a pass queued behind it
-                // would walk everything again to find the same nothing.
+                // would walk everything again to find the same nothing. The
+                // clock keeps running, so a skipped pass asks again a tick
+                // later rather than an interval later.
                 let Some(_guard) = lock.try_acquire() else {
                     continue;
                 };
+                waited = Duration::ZERO;
+                first = false;
                 // A pass that changed nothing still says nothing to the
                 // window; the log is where it says so, since "the timer is
                 // running and finds nothing" and "the timer stopped" look the
