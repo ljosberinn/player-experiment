@@ -436,10 +436,10 @@ pub(crate) fn remove_within(tx: &Connection, ids: &[i64]) -> AppResult<u32> {
 /// Deletes the rows `ids` names, first handing each one's play count, last
 /// played and playlist places to the copy of its song that stays (issue 169).
 ///
-/// The copy is the one `plays::resolve` links the song's plays to - present
-/// before missing, then the lowest id - over `tracks.match_key` alone. A song
-/// whose every copy goes hands nothing on, and its plays stay in the log
-/// unlinked.
+/// The copy is the one `plays::resolve` links the removed row's album's plays
+/// to - the first on that album, else the first, present before missing and
+/// then the lowest id - over `tracks.match_key` alone. A song whose every copy
+/// goes hands nothing on, and its plays stay in the log unlinked.
 ///
 /// **`max`, never add**, for `plays::count`'s reason: after an import
 /// the copy that stays already counts the other copy's plays. The plays the log
@@ -467,21 +467,57 @@ fn delete_handing_on(conn: &Connection, ids: &[i64]) -> AppResult<u32> {
         }
     }
 
-    conn.execute_batch(
-        "INSERT INTO temp.hand_on (absorbed, keeper, play_count, last_played_at)
-         SELECT id, keeper, play_count, last_played_at FROM (
-             SELECT t.id, t.play_count, t.last_played_at,
-                    (SELECT k.id FROM tracks k
-                      WHERE k.match_key = t.match_key
-                        AND k.id NOT IN (SELECT id FROM temp.removing)
-                      ORDER BY k.missing_since IS NOT NULL, k.id
-                      LIMIT 1) AS keeper
+    {
+        let mut copies = conn.prepare(
+            "SELECT t.id, t.album, t.play_count, t.last_played_at, k.id, k.album
                FROM tracks t
+               JOIN tracks k ON k.match_key = t.match_key
+                            AND k.id NOT IN (SELECT id FROM temp.removing)
               WHERE t.id IN (SELECT id FROM temp.removing)
-                AND t.match_key IS NOT NULL)
-          WHERE keeper IS NOT NULL;
+              ORDER BY t.id, k.missing_since IS NOT NULL, k.id",
+        )?;
+        // (absorbed, keeper, play_count, last_played_at, whether the keeper is
+        // on the absorbed row's album)
+        let mut hand_on: Vec<(i64, i64, i64, Option<i64>, bool)> = Vec::new();
+        let mut album = String::new();
+        let mut rows = copies.query([])?;
+        while let Some(row) = rows.next()? {
+            let absorbed: i64 = row.get(0)?;
+            let copy =
+                crate::db::plays::fold_album(&row.get::<_, Option<String>>(5)?.unwrap_or_default());
+            match hand_on.last_mut() {
+                Some(hand) if hand.0 == absorbed => {
+                    if !hand.4 && !album.is_empty() && copy == album {
+                        hand.1 = row.get(4)?;
+                        hand.4 = true;
+                    }
+                }
+                _ => {
+                    album = crate::db::plays::fold_album(
+                        &row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    );
+                    let matched = !album.is_empty() && copy == album;
+                    hand_on.push((absorbed, row.get(4)?, row.get(2)?, row.get(3)?, matched));
+                }
+            }
+        }
 
-         -- OR IGNORE where the keeper already holds that place, or a second
+        let mut insert = conn.prepare(
+            "INSERT INTO temp.hand_on (absorbed, keeper, play_count, last_played_at)
+             VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (absorbed, keeper, play_count, last_played_at, _) in &hand_on {
+            insert.execute(rusqlite::params![
+                absorbed,
+                keeper,
+                play_count,
+                last_played_at
+            ])?;
+        }
+    }
+
+    conn.execute_batch(
+        "-- OR IGNORE where the keeper already holds that place, or a second
          -- removed copy has just taken it: the entry left behind cascades.
          UPDATE OR IGNORE playlist_tracks
             SET track_id = (SELECT keeper FROM temp.hand_on WHERE absorbed = track_id)
@@ -1492,6 +1528,41 @@ mod tests {
 
         assert_eq!(counted(&conn, new), (0, None));
         assert_eq!(places(&conn), [(10, new, 2)]);
+    }
+
+    #[test]
+    fn removing_a_copy_hands_on_to_the_copy_on_its_album() {
+        let (_dir, db) = empty();
+        let mut conn = db.conn().unwrap();
+        let (old, new) = copies(&conn);
+        conn.execute_batch(&format!(
+            "UPDATE tracks SET album = 'Compilation' WHERE id = {old};
+             UPDATE tracks SET album = 'Album' WHERE id = {new};
+             INSERT INTO tracks (path, mtime, size, title, artist, album, added_at, match_key)
+             SELECT '/m/album.mp3', 1, 1, 'Song', 'Band', 'Album (Remastered)', 0, match_key
+               FROM tracks WHERE id = {old};"
+        ))
+        .unwrap();
+        let stays = id_of(&conn, "/m/album.mp3");
+        conn.execute(
+            "INSERT INTO plays (started_at, source, artist, title, album, match_key)
+             VALUES (100, 'lastfm', 'Band', 'Song', 'Album', ?1)",
+            [crate::db::plays::match_key("Band", "Song")],
+        )
+        .unwrap();
+        crate::db::plays::resolve(&conn).unwrap();
+        conn.execute(
+            "UPDATE tracks SET play_count = 7, last_played_at = 600 WHERE id = ?1",
+            [new],
+        )
+        .unwrap();
+
+        remove_tracks(&mut conn, &[new]).unwrap();
+
+        assert_eq!(linked(&conn), [Some(stays)]);
+        assert_eq!(counted(&conn, stays), (7, Some(600)));
+        assert_eq!(counted(&conn, old), (40, Some(500)));
+        assert_eq!(places(&conn), [(10, old, 1), (10, stays, 2), (11, old, 3)]);
     }
 
     fn linked(conn: &Connection) -> Vec<Option<i64>> {
