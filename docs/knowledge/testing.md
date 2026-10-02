@@ -84,8 +84,8 @@ pass writes the rows it counts - so `ReviewQueue.test.tsx` covers it and no
 spec seeds them.
 
 **The progress readout is photographed against a sent payload.** Its only
-producer is that same pass, which needs the network and runs for the better part
-of two days, so `e2e/specs/task-progress.test.ts` emits `task://progress` from
+producer is that same pass, which needs the network and runs for most of a
+day, so `e2e/specs/task-progress.test.ts` emits `task://progress` from
 the webview: Tauri routes it through the backend and back to the listener, so
 the component hears it exactly as it hears the real thing. What that leaves to
 `invoke.ts`'s `emit` rather than to the app is nothing - no test-only path ships

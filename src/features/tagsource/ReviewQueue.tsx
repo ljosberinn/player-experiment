@@ -27,8 +27,8 @@ const ICON_SIZE = 17;
  * back.
  *
  * It subscribes on its own behalf rather than being handed a count. A pass
- * runs for the better part of two days and moves this number every twenty
- * seconds; read from `App` that would re-render the window each time.
+ * runs for most of a day and moves this number every few seconds; read from
+ * `App` that would re-render the window each time.
  */
 export function ReviewQueue() {
   const review = useTagsourceStore((s) => s.review);
@@ -86,7 +86,7 @@ export function ReviewQueue() {
             type="button"
             className="sidebar-item"
             // Named for the destination rather than its size, like a playlist
-            // row: the count moves every twenty seconds while a pass runs, and
+            // row: the count moves every few seconds while a pass runs, and
             // an item whose announced name keeps changing is worse to use than
             // one that stays put. It stays visible.
             aria-label={label}

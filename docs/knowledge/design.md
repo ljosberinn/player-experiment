@@ -223,7 +223,7 @@ action reads as a target rather than a line of text".
   with a count beside it like a playlist's. It is absent otherwise — a row
   reading nought for the months before the unattended pass has queued anything
   is a permanent reminder of a feature with nothing to say.
-- **At the foot of the sidebar, a line for a task measured in days**, in the
+- **At the foot of the sidebar, a line for a task measured in hours**, in the
   space the design leaves empty. Absent unless one is running.
 - **The Songs view has no title header.** Releases, Artists and Genres keep the
   heading and its accent underline; the view with 150k rows cannot spend a third

@@ -351,7 +351,7 @@ wakes everything reading it even when nothing moved — and several answers
 arrive unasked: `player://state` re-sends the whole track and palette for a
 pause, a seek and every step of a volume drag; `library://changed` re-reads the
 playlists, the view's stats and its groups on every scan batch, import page and
-play count, and every twenty seconds of the lookup pass. `reuse`
+play count, and every few seconds of the lookup pass. `reuse`
 (`src/lib/reuse.ts`) hands back the previous value, or the previous parts of it,
 where the new one is equal, and those stores write through it. The loved set,
 a `Set` rather than JSON, is kept the same way in its own store.

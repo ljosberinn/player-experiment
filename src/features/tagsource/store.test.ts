@@ -263,6 +263,67 @@ describe("failures", () => {
   });
 });
 
+/** A promise the test settles by hand, so two requests can land out of order. */
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  let reject: (cause: unknown) => void = () => {};
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("overlapping requests", () => {
+  beforeEach(async () => {
+    vi.mocked(tagsourceGroups).mockResolvedValue([
+      group("Loveless", "My Bloody Valentine", [1, 2]),
+      group("Shields", "Grizzly Bear", [3]),
+    ]);
+    await useTagsourceStore.getState().open([1, 2, 3]);
+  });
+
+  it("drops a search that failed after a newer one on the same release answered", async () => {
+    const first = deferred<ReleaseCandidate[]>();
+    vi.mocked(tagsourceSearch).mockReturnValueOnce(first.promise);
+    const stale = useTagsourceStore.getState().search();
+    await useTagsourceStore.getState().search();
+
+    first.reject("musicbrainz.org answered with HTTP 503");
+    await stale;
+
+    expect(useTagsourceStore.getState().error).toBeNull();
+    expect(useTagsourceStore.getState().candidates).toHaveLength(1);
+  });
+
+  it("drops a failed search for a release the queue moved off", async () => {
+    const first = deferred<ReleaseCandidate[]>();
+    vi.mocked(tagsourceSearch).mockReturnValueOnce(first.promise);
+    const stale = useTagsourceStore.getState().search();
+    await useTagsourceStore.getState().choose(1);
+
+    first.reject("musicbrainz.org answered with HTTP 503");
+    await stale;
+
+    expect(useTagsourceStore.getState().index).toBe(1);
+    expect(useTagsourceStore.getState().error).toBeNull();
+  });
+
+  it("keeps the candidate picked last, whichever tracklist arrives last", async () => {
+    const first = deferred<ReleaseDetail>();
+    vi.mocked(tagsourceFetch).mockReturnValueOnce(first.promise);
+    const stale = useTagsourceStore.getState().pick("first");
+    const picked = { ...detail, candidate: { ...candidate, mbid: "second" } };
+    vi.mocked(tagsourceFetch).mockResolvedValueOnce(picked);
+    await useTagsourceStore.getState().pick("second");
+
+    first.resolve(detail);
+    await stale;
+
+    expect(useTagsourceStore.getState().detail?.candidate.mbid).toBe("second");
+  });
+});
+
 describe("going back", () => {
   it("returns to the results without fetching again", async () => {
     vi.mocked(tagsourceGroups).mockResolvedValue([
@@ -303,8 +364,8 @@ describe("the review queue", () => {
 
   /**
    * The point of caching the candidates. Searching again at review time is a
-   * rate-limited ten seconds an entry, and four hundred entries is over an
-   * hour of waiting to click.
+   * rate-limited request an entry, and four hundred entries is ten minutes of
+   * waiting to click.
    */
   it("opens a chosen release on the candidates the pass already found", async () => {
     vi.mocked(tagsourceReviewQueue).mockResolvedValue([

@@ -133,6 +133,7 @@ export function ReleaseLookup() {
             assignment={assignment}
             fields={fields}
             busy={busy}
+            failed={error !== null}
             willWrite={willWrite}
             onPick={(mbid) => void pick(mbid)}
             onFields={setFields}
@@ -379,6 +380,7 @@ function Pane({
   assignment,
   fields,
   busy,
+  failed,
   willWrite,
   onPick,
   onFields,
@@ -392,6 +394,8 @@ function Pane({
   assignment: Assignment;
   fields: Fields;
   busy: boolean;
+  /** The footer says what went wrong, and "No match" would pass a 503 off as an answer. */
+  failed: boolean;
   willWrite: number;
   onPick: (mbid: string) => void;
   onFields: (fields: Fields) => void;
@@ -413,6 +417,7 @@ function Pane({
 
       <Source
         stage={stage}
+        failed={failed}
         tracks={tracks}
         candidates={candidates}
         detail={detail}
@@ -433,11 +438,13 @@ function Pane({
       )}
 
       {waiting === null ? (
-        <p className="lookup-note">
-          {detail === null
-            ? "Pick the release these files came from."
-            : `IDs are written to every song; ticked fields to the ${willWrite} mapped.`}
-        </p>
+        detail === null && failed ? null : (
+          <p className="lookup-note">
+            {detail === null
+              ? "Pick the release these files came from."
+              : `IDs are written to every song; ticked fields to the ${willWrite} mapped.`}
+          </p>
+        )
       ) : (
         // A div, not the paragraph beside it: `ProgressBar` is a div, and a
         // div inside a `<p>` is markup no parser keeps in one piece.
@@ -460,6 +467,7 @@ function Pane({
  */
 function Source({
   stage,
+  failed,
   tracks,
   candidates,
   detail,
@@ -468,6 +476,7 @@ function Source({
   onFields,
 }: {
   stage: Stage;
+  failed: boolean;
   tracks: Track[];
   candidates: ReleaseCandidate[];
   detail: ReleaseDetail | null;
@@ -503,7 +512,7 @@ function Source({
         </ul>
       );
     }
-    if (stage === "results") {
+    if (stage === "results" && !failed) {
       return (
         <p className="lookup-note">
           No match on MusicBrainz. Fix the album or artist and search again.

@@ -19,9 +19,10 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 
 use crate::db::{lookup, query};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::model::{CoverEdit, ReleaseDetail, TagEdit};
 use crate::scan::ScanLock;
+use crate::tagsource::retrying;
 use crate::tagsource::score::{lengths_contradict, LocalRelease, UNATTENDED_THRESHOLD};
 use crate::tagsource::transport::Transport;
 use crate::{tags, tagsource};
@@ -36,45 +37,6 @@ pub const DRY_RUN_VAR: &str = "APEX_LOOKUP_DRY_RUN";
 /// Whether this process was started to report rather than to write.
 pub fn dry_run() -> bool {
     std::env::var_os(DRY_RUN_VAR).is_some_and(|value| !value.is_empty())
-}
-
-/// How many times a request that could work later is asked again.
-const RETRIES: usize = 2;
-
-/// Runs `call`, asking again on a failure that could work later, counting the
-/// times it had to into `asked_again`.
-///
-/// No waiting of its own: every attempt goes through
-/// [`crate::tagsource::rate`], which already holds the next request back by
-/// its whole interval, so a second backoff here would only be two things
-/// deciding the same thing and disagreeing. A failure that cannot change - a
-/// query MusicBrainz rejected, a body that would not parse - is given up on at
-/// once, because the second answer would be the first one again a second and
-/// a half later.
-///
-/// The count is the only sign a retry leaves. One that works is invisible
-/// otherwise - the release resolves, and the interval it cost looks like a
-/// slow request rather than a 503 that was absorbed.
-fn retrying<T>(asked_again: &mut usize, mut call: impl FnMut() -> AppResult<T>) -> AppResult<T> {
-    for _ in 0..RETRIES {
-        match call() {
-            Err(error) if error.transient() => *asked_again += 1,
-            result => return result,
-        }
-    }
-    call()
-}
-
-/// What one release came to, and what it cost to find out.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Outcome {
-    pub verdict: Verdict,
-    /// How many requests had to be asked again before one was answered.
-    ///
-    /// Zero for almost every release. A release that failed outright reports
-    /// nothing at all - it returns an error rather than an outcome - but its
-    /// own log line already says it exhausted them.
-    pub retries: usize,
 }
 
 /// What one release came to.
@@ -135,6 +97,12 @@ pub enum Reason {
 /// then `fetch` on the best, because the per-track durations that separate two
 /// pressings do not exist until a tracklist does. The cover rides along with
 /// the fetch, free, because the Cover Art Archive has no rate limit.
+///
+/// Each is asked again on anything [`AppError::transient`]: nobody is waiting
+/// on the pass, and a sweep that gives up on a 502 gives up on the release.
+/// The requests that had to be asked again are counted into `retries` whether
+/// or not the release got anywhere, so a lookup that ran out still says so.
+#[allow(clippy::too_many_arguments)]
 pub fn look_up(
     conn: &mut Connection,
     transport: &(dyn Transport + '_),
@@ -143,8 +111,8 @@ pub fn look_up(
     staging: &Path,
     dry_run: bool,
     now: i64,
-) -> AppResult<Outcome> {
-    let mut retries = 0;
+    retries: &mut usize,
+) -> AppResult<Verdict> {
     let members =
         query::release_members(conn, release.album.as_deref(), release.artist.as_deref())?;
     let local = LocalRelease {
@@ -156,7 +124,7 @@ pub fn look_up(
     // a refusal left it rowless, so every sweep failed on it again.
     let named = |value: Option<&str>| value.is_some_and(|value| !value.trim().is_empty());
     let candidates = if named(release.album.as_deref()) || named(release.artist.as_deref()) {
-        retrying(&mut retries, || {
+        retrying(retries, AppError::transient, || {
             tagsource::musicbrainz::search(
                 transport,
                 release.album.as_deref(),
@@ -179,13 +147,10 @@ pub fn look_up(
                 now,
             )?;
         }
-        return Ok(Outcome {
-            verdict: Verdict::NotFound,
-            retries,
-        });
+        return Ok(Verdict::NotFound);
     };
 
-    let (detail, cover) = retrying(&mut retries, || {
+    let (detail, cover) = retrying(retries, AppError::transient, || {
         tagsource::fetch_release(transport, &best.mbid, &local)
     })?;
     let score = detail.candidate.score;
@@ -237,25 +202,19 @@ pub fn look_up(
                 now,
             )?;
         }
-        return Ok(Outcome {
-            verdict: Verdict::Queued {
-                score,
-                candidates: candidates.len(),
-            },
-            retries,
+        return Ok(Verdict::Queued {
+            score,
+            candidates: candidates.len(),
         });
     };
 
     let tracks = u32::try_from(detail.tracks.len()).unwrap_or(u32::MAX);
     if dry_run {
-        return Ok(Outcome {
-            verdict: Verdict::Written {
-                mbid: detail.candidate.mbid,
-                score,
-                tracks,
-                reason,
-            },
-            retries,
+        return Ok(Verdict::Written {
+            mbid: detail.candidate.mbid,
+            score,
+            tracks,
+            reason,
         });
     }
 
@@ -292,11 +251,8 @@ pub fn look_up(
     // recording each as unwritable would cost the library its whole lookup
     // rather than the evening the drive was out.
     if written.unreachable > 0 {
-        return Ok(Outcome {
-            verdict: Verdict::Unreachable {
-                files: written.unreachable,
-            },
-            retries,
+        return Ok(Verdict::Unreachable {
+            files: written.unreachable,
         });
     }
 
@@ -316,25 +272,19 @@ pub fn look_up(
     )?;
 
     if refused > 0 {
-        return Ok(Outcome {
-            verdict: Verdict::Unwritable {
-                mbid: detail.candidate.mbid,
-                score,
-                refused,
-                written: written.summary.written,
-            },
-            retries,
+        return Ok(Verdict::Unwritable {
+            mbid: detail.candidate.mbid,
+            score,
+            refused,
+            written: written.summary.written,
         });
     }
 
-    Ok(Outcome {
-        verdict: Verdict::Written {
-            mbid: detail.candidate.mbid,
-            score,
-            tracks,
-            reason,
-        },
-        retries,
+    Ok(Verdict::Written {
+        mbid: detail.candidate.mbid,
+        score,
+        tracks,
+        reason,
     })
 }
 
@@ -402,41 +352,9 @@ fn edits_for(
 pub(crate) mod tests {
     use super::*;
     use crate::db::Db;
-    use crate::tagsource::transport::{FakeTransport, Fetched, TransportError};
-
-    /// A transport that refuses the first few requests and then answers.
-    ///
-    /// `FakeTransport` gives the same answer every time, so a retry that
-    /// *works* is a case no fixture can express - and it is the case that
-    /// matters, because it is the one that leaves no other trace.
-    pub(crate) struct Flaky {
-        refusals: std::sync::Mutex<usize>,
-        then: FakeTransport,
-    }
-
-    /// The fixtures behind [`Flaky`], refusing the first `refusals` requests.
-    pub(crate) fn flaky(refusals: usize) -> Flaky {
-        Flaky {
-            refusals: std::sync::Mutex::new(refusals),
-            then: musicbrainz(),
-        }
-    }
-
-    impl Transport for Flaky {
-        fn get(&self, url: &str, params: &[(&str, String)]) -> Fetched {
-            {
-                let mut left = self.refusals.lock().unwrap();
-                if *left > 0 {
-                    *left -= 1;
-                    return Err(TransportError::Server {
-                        host: "musicbrainz.org".to_owned(),
-                        status: 503,
-                    });
-                }
-            }
-            self.then.get(url, params)
-        }
-    }
+    use crate::tagsource::tests::flaky;
+    use crate::tagsource::transport::{FakeTransport, TransportError};
+    use crate::tagsource::RETRIES;
 
     const SEARCH_JSON: &str = include_str!("fixtures/search-loveless.json");
     const SOLE_SEARCH_JSON: &str = include_str!("fixtures/search-loveless-sole.json");
@@ -600,13 +518,14 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
-            matches!(outcome.verdict, Verdict::Written { tracks: 11, .. }),
+            matches!(outcome, Verdict::Written { tracks: 11, .. }),
             "{:?}",
-            outcome.verdict
+            outcome
         );
         assert_eq!(untitled(&conn), 11, "every file of the release, not one");
         assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
@@ -671,13 +590,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(verdict.verdict, Verdict::Written { .. }),
-            "{verdict:?}"
-        );
+        assert!(matches!(verdict, Verdict::Written { .. }), "{verdict:?}");
         assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
 
         let (status, mbid, release_type): (String, String, Option<String>) = conn
@@ -716,11 +633,12 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
-            matches!(verdict.verdict, Verdict::Unreachable { files: 11 }),
+            matches!(verdict, Verdict::Unreachable { files: 11 }),
             "{verdict:?}"
         );
         assert_eq!(
@@ -749,12 +667,13 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
             matches!(
-                verdict.verdict,
+                verdict,
                 Verdict::Unwritable {
                     refused: 11,
                     written: 0,
@@ -784,12 +703,13 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
             matches!(
-                verdict.verdict,
+                verdict,
                 Verdict::Unwritable {
                     refused: 1,
                     written: 10,
@@ -817,13 +737,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(verdict.verdict, Verdict::Queued { .. }),
-            "{verdict:?}"
-        );
+        assert!(matches!(verdict, Verdict::Queued { .. }), "{verdict:?}");
         assert_eq!(untitled(&conn), 0, "below the bar nothing is written");
 
         let (status, candidates): (String, String) = conn
@@ -857,19 +775,20 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
             matches!(
-                outcome.verdict,
+                outcome,
                 Verdict::Written {
                     reason: Reason::Sole,
                     ..
                 }
             ),
             "{:?}",
-            outcome.verdict
+            outcome
         );
         assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
         assert_eq!(
@@ -897,14 +816,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(outcome.verdict, Verdict::Queued { .. }),
-            "{:?}",
-            outcome.verdict
-        );
+        assert!(matches!(outcome, Verdict::Queued { .. }), "{:?}", outcome);
         assert_eq!(untitled(&conn), 0);
     }
 
@@ -924,14 +840,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(outcome.verdict, Verdict::Queued { .. }),
-            "{:?}",
-            outcome.verdict
-        );
+        assert!(matches!(outcome, Verdict::Queued { .. }), "{:?}", outcome);
         assert_eq!(untitled(&conn), 0);
     }
 
@@ -951,19 +864,20 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
             matches!(
-                outcome.verdict,
+                outcome,
                 Verdict::Written {
                     reason: Reason::Scored,
                     ..
                 }
             ),
             "{:?}",
-            outcome.verdict
+            outcome
         );
     }
 
@@ -994,11 +908,12 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        let Verdict::Written { score, reason, .. } = outcome.verdict else {
-            panic!("{:?}", outcome.verdict);
+        let Verdict::Written { score, reason, .. } = outcome else {
+            panic!("{:?}", outcome);
         };
         assert_eq!(reason, Reason::Perfect);
         assert!(
@@ -1025,14 +940,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(outcome.verdict, Verdict::Queued { .. }),
-            "{:?}",
-            outcome.verdict
-        );
+        assert!(matches!(outcome, Verdict::Queued { .. }), "{:?}", outcome);
         assert_eq!(untitled(&conn), 0);
     }
 
@@ -1052,14 +964,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(outcome.verdict, Verdict::Queued { .. }),
-            "{:?}",
-            outcome.verdict
-        );
+        assert!(matches!(outcome, Verdict::Queued { .. }), "{:?}", outcome);
         assert_eq!(untitled(&conn), 0);
     }
 
@@ -1077,10 +986,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert_eq!(verdict.verdict, Verdict::NotFound);
+        assert_eq!(verdict, Verdict::NotFound);
         assert_eq!(untitled(&conn), 0);
         assert_eq!(
             conn.query_row("SELECT status FROM release_lookup", [], |row| row
@@ -1110,10 +1020,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert_eq!(verdict.verdict, Verdict::NotFound);
+        assert_eq!(verdict, Verdict::NotFound);
         assert_eq!(status(&conn).as_deref(), Some("none"), "not tried again");
         assert_eq!(transport.call_count(), 0);
     }
@@ -1149,13 +1060,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
         // Or the assertions below would hold over a pass that wrote nothing.
-        assert!(
-            matches!(verdict.verdict, Verdict::Written { .. }),
-            "{verdict:?}"
-        );
+        assert!(matches!(verdict, Verdict::Written { .. }), "{verdict:?}");
 
         let genres: Vec<Option<String>> = conn
             .prepare("SELECT genre FROM tracks ORDER BY track_no")
@@ -1209,13 +1118,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
         // Or this would hold over a pass that wrote nothing at all.
-        assert!(
-            matches!(verdict.verdict, Verdict::Written { .. }),
-            "{verdict:?}"
-        );
+        assert!(matches!(verdict, Verdict::Written { .. }), "{verdict:?}");
         assert_eq!(titles(&conn)[0].as_deref(), Some("Only Shallow"));
 
         assert_eq!(
@@ -1246,13 +1153,11 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .unwrap();
 
-        assert!(
-            matches!(verdict.verdict, Verdict::Queued { .. }),
-            "{verdict:?}"
-        );
+        assert!(matches!(verdict, Verdict::Queued { .. }), "{verdict:?}");
         assert_eq!(untitled(&conn), 0);
     }
 
@@ -1263,7 +1168,8 @@ pub(crate) mod tests {
     fn a_retry_that_works_is_counted_rather_than_invisible() {
         let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
         let mut conn = db.conn().unwrap();
-        let transport = flaky(1);
+        let transport = flaky(1, musicbrainz());
+        let mut retries = 0;
 
         let outcome = look_up(
             &mut conn,
@@ -1273,20 +1179,16 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut retries,
         )
         .unwrap();
 
-        assert!(
-            matches!(outcome.verdict, Verdict::Written { .. }),
-            "{:?}",
-            outcome.verdict
-        );
-        assert_eq!(outcome.retries, 1, "the 503 the search asked past");
+        assert!(matches!(outcome, Verdict::Written { .. }), "{:?}", outcome);
+        assert_eq!(retries, 1, "the 503 the search asked past");
     }
 
-    /// Six 503s in four minutes is what the pass met on a real library, each
-    /// one ending the sweep where it stood. A 503 is MusicBrainz saying the
-    /// limit was exceeded, which is the definition of worth asking again.
+    /// Wider than the dialog's rule: nobody is waiting on the pass, so a
+    /// gateway's 502 is worth the two intervals it costs to ask past.
     #[test]
     fn a_failure_that_could_work_later_is_asked_again() {
         let (dir, db) = library("Loveless", "My Bloody Valentine", &LOVELESS_DURATIONS);
@@ -1295,9 +1197,10 @@ pub(crate) mod tests {
             "/ws/2/release",
             TransportError::Server {
                 host: "musicbrainz.org".to_owned(),
-                status: 503,
+                status: 502,
             },
         );
+        let mut retries = 0;
 
         let error = look_up(
             &mut conn,
@@ -1307,6 +1210,7 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut retries,
         )
         .expect_err("every attempt failed");
 
@@ -1316,6 +1220,7 @@ pub(crate) mod tests {
             RETRIES + 1,
             "the first attempt and two more"
         );
+        assert_eq!(retries, RETRIES, "a lookup that ran out still counts");
     }
 
     /// The other half of the rule, and the reason it is not simply "retry on
@@ -1335,6 +1240,7 @@ pub(crate) mod tests {
             dir.path(),
             false,
             100,
+            &mut 0,
         )
         .expect_err("an unreadable body is not a release");
 
@@ -1356,11 +1262,12 @@ pub(crate) mod tests {
             dir.path(),
             true,
             100,
+            &mut 0,
         )
         .unwrap();
 
         assert!(
-            matches!(verdict.verdict, Verdict::Written { .. }),
+            matches!(verdict, Verdict::Written { .. }),
             "it reports what it would do: {verdict:?}"
         );
         assert_eq!(untitled(&conn), 0);

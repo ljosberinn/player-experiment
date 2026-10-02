@@ -42,8 +42,12 @@ Known, decided, and not scheduled. Anything with work attached lives in
   fast as the pass goes: a 503 there can mean their global budget is full
   rather than anything about this client, and no interval avoids those. The
   gate is process-wide, so **an open lookup dialog waits behind the pass** —
-  up to a second and a half before its request even goes out. A library already
-  tagged with release MBIDs pays none of it.
+  up to a second and a half before its request even goes out, and a 503 it is
+  asked again past costs another interval each time. A library already tagged
+  with release MBIDs pays none of it.
+- **The lookup dialog asks again only on a 503.** Twice, before it says so. A
+  timeout, a gateway's 5xx or an unreachable host is said at once: three 15s
+  timeouts would hold "Searching…" for most of a minute.
 - **A release a 503 declined three times is asked once more and then waits for
   the next sweep.** The retry comes at the end of the batch that declined it, a
   few hundred releases later; the release keeps no row either way, so nothing is

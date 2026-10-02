@@ -280,13 +280,13 @@ cannot answer it without giving a second answer to where a file goes.
 
 **It also reports where it stands on `task://progress`**, per release attempted
 and `null` when the sweep ends, whatever ended it. Its own channel rather than
-one of the per-write ones: this is a task measured in days, drawn at the foot of
+one of the per-write ones: this is a task measured in hours, drawn at the foot of
 the sidebar for its whole life, and the payload carries a label because that
 label names which steps are switched on. The total is what the survey found left
 to do, which is the number the fraction reaches. The estimate comes from the last
 hundred releases rather than from the whole pass — one whose files already carry
 an MBID costs nothing and a searched one costs two rate-limited requests, and a
-sub-second move beside a ten-second lookup is only more of that, so an average
+sub-second move beside a three-second lookup is only more of that, so an average
 over the run describes a pass that is not the one running.
 
 **Waking and sweeping are two cadences.** The switches are answered every fifteen
@@ -313,11 +313,14 @@ the documented rate plus headroom, and the declines it cannot prevent are the
 retry's problem — what it buys is a pass measured in hours rather than days,
 which is the only number the interval controls. The gate is held for the whole request rather than
 only the gap before it, so the interval is measured from when an answer came
-back; a request that could work later is asked again twice, with the limiter
-rather than the caller deciding how long that takes — and the count of those goes
-in the log, on the release line and totalled on the sweep line, because a retry
-that works leaves no other trace and the interval it costs reads as a slow
-request.
+back. `tagsource::retrying` asks a failed request again twice, with the limiter
+rather than the caller deciding how long that takes, and the caller saying what
+is worth asking again: the pass anything transient, the lookup dialog only a
+503, because a person is watching it and three timeouts are most of a minute.
+The count of those goes in the log — on the release line and totalled on the
+sweep line, on the dialog's `tagsource.search` and `tagsource.fetch` lines, and
+on a failure line as well as a success — because a retry that works leaves no
+other trace and the interval it costs reads as a slow request.
 
 `APEX_LOOKUP_DRY_RUN` runs the whole thing and writes neither files nor rows,
 which is how the threshold is tuned against a real library. **The library is the

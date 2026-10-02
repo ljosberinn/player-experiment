@@ -81,7 +81,7 @@ export async function invoke<T>(
  *
  * For a channel whose producer a spec cannot start. The unattended lookup pass
  * is the only thing that reports on `task://progress`, it needs the network and
- * it runs for the better part of two days - so the readout it feeds is
+ * it runs for most of a day - so the readout it feeds is
  * photographed against a payload rather than against a real pass. What is under
  * test is the subscription, the formatting and the layout, which is all of it
  * bar the arithmetic the Rust tests cover.

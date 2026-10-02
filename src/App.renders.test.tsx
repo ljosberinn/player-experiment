@@ -28,7 +28,7 @@ import { libraryStats, listPlaylists, onPlayerState } from "./ipc";
  * - the search field, which updates on every keystroke;
  * - the selection, which changes on every click, shift-range and Ctrl+A;
  * - the unattended lookup pass, which moves a percentage and a queue count
- *   every twenty seconds for the better part of two days;
+ *   every few seconds for most of a day;
  * - `player://state`, which re-sends the whole track for a pause, a seek and
  *   every step of a volume drag;
  * - `library://changed`, which re-reads the playlists and the view's totals
@@ -312,7 +312,7 @@ beforeEach(() => {
 
 describe("what the unattended pass re-renders", () => {
   /**
-   * The pass runs for the better part of two days and reports per release. Read
+   * The pass runs for most of a day and reports per release. Read
    * from `App`, each of those would re-render the window and its table.
    */
   it("nothing, when the progress readout moves", async () => {

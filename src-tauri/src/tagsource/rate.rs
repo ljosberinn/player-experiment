@@ -33,10 +33,9 @@ use std::time::{Duration, Instant};
 /// dying all the same.
 ///
 /// So the interval is back to what the documented rate asks for, and the 503s
-/// it cannot prevent are left to the retry in
-/// [`crate::tagsource::pass`]. What that buys is not a sweep that fails less
-/// often but a pass measured in hours rather than days, which is the only
-/// number the interval actually controls.
+/// it cannot prevent are left to [`crate::tagsource::retrying`]. What that
+/// buys is not a sweep that fails less often but a pass measured in hours
+/// rather than days, which is the only number the interval actually controls.
 const INTERVAL: Duration = Duration::from_millis(1_500);
 
 /// The interval the shared limiter runs at in this build.
