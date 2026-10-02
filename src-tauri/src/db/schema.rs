@@ -837,6 +837,15 @@ CREATE TABLE unreadable_files (
     read_by TEXT NOT NULL
 );
 "#,
+    // 22 - a tag write finds the plays it can move through an index
+    //
+    // `plays::relink` reads the plays under a key and the spellings of an
+    // album; without these, each is a scan of the log on every tag write
+    // (issue 197).
+    r#"
+CREATE INDEX idx_plays_key   ON plays(match_key);
+CREATE INDEX idx_plays_album ON plays(album);
+"#,
 ];
 
 #[cfg(test)]

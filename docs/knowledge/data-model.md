@@ -27,6 +27,7 @@ edit a shipped one.
 | 19 | `playlists.built_in`, under a partial unique index. Claims each old seed whose name, filter and order are still the seed's, and deletes `playlists.seeded` |
 | 20 | three `NOCASE` expression indexes, one per `BrowseKind::identity_sql`, so a drill-in seeks its group rather than scanning `tracks` |
 | 21 | `unreadable_files` — files whose tags would not parse, by (mtime, size) and the app version that tried, so a scan reads one again only once it changes or the app does |
+| 22 | `idx_plays_key` and `idx_plays_album`, so `plays::relink` reads the plays a tag write can move without scanning the log |
 
 **Migrations run with `PRAGMA foreign_keys=OFF`.** `db::migrate` sets it
 around the whole run and back on afterwards, which is SQLite's own procedure
@@ -406,7 +407,8 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   insert and update, and `tags::write::sync_row` - as `plays::track_key`,
   which is NULL rather than empty for an untagged file.
 - **`plays::resolve` rebuilds `track_id` for the whole log**, wherever
-  `tag_values::rebuild` runs, for the reason that module gives at length. One
+  `tag_values::rebuild` runs but a tag write, for the reason that module gives
+  at length. One
   key names several tracks routinely — the album copy and the compilation copy
   — so the winner is fixed rather than incidental: present before unplugged,
   then the lower id, which is migration 12's tiebreak. Without it the function
@@ -432,6 +434,17 @@ foreign key — `ON DELETE SET NULL` forgets the link and keeps the play.
   `resolve` sets it. The writes that can move a link without running one - a
   local play, the player marking a file missing or back - remove it, and a
   library that predates it resolves on its next scan.
+- **A tag write runs `plays::relink`** (197): `resolve` and `count` over
+  only the plays the retag can move, given each file's artist, title, album
+  and album artist from before it. A write that changed none of the four
+  relinks nothing. The plays are those under a key the old or new tags make,
+  and every play on those tags' folded albums or on the albums of the plays
+  under those keys: a play that gains or leaves a key leaves or joins its
+  album group, which moves the rest of that group. The tracks are those on the
+  same albums and those whose artist or album artist folds to a key's artist
+  side. It matches a full pass only over a resolved log, so it leaves
+  `plays.resolved` as it found it. 1.06s over the real library is ~0.1s for
+  one file.
 - **A removed row hands its count to the copy that stays** (169), in both
   removals' transaction: the copy `resolve` would pick by `tracks.match_key`
   for a play on the removed row's album
@@ -541,9 +554,9 @@ leaves for the next one's `from=`. It is not exportable.
   that was scrobbled is in the count and comes back as a row. So nothing is
   ever lowered, a deleted scrobble included, and only the copy `resolve` links
   a key to is raised — by the plays of every copy, local ones included.
-  `plays::count` also runs after the `resolve` of a scan and a tag write
-  (183), so a file added or retagged after an import takes its history; a
-  retag out of a song leaves that song's count on the file.
+  `plays::count` also runs after the `resolve` of a scan and in a tag write's
+  `relink` (183), so a file added or retagged after an import takes its
+  history; a retag out of a song leaves that song's count on the file.
 - **The loved tracks come last**, fetched in full only after the history
   finishes, and taken in by `lastfm::love::absorb` in one transaction, so a
   failed fetch leaves the set as it was.

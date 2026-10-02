@@ -665,9 +665,9 @@ const PLAYS: u32 = 100_000;
 const P: u64 = PLAYS as u64;
 
 /// `plays::resolve` reads every play on every run, which is the one perf risk
-/// the play log takes on, and it is taken on purpose: the alternative is
-/// re-resolving only the keys a write touched, which is correct but owes an
-/// ordering dependency to every caller.
+/// the play log takes on, and it is taken on purpose everywhere but a tag
+/// write: re-resolving only what a write touched is correct but owes the
+/// caller the tags from before it, which only the tag writer has.
 ///
 /// It inserts a key per track into a temporary table, a statement each, then
 /// reads the log twice: once for the plays no key names, once in the guarded
@@ -699,11 +699,55 @@ fn resolving_the_play_log_is_affordable_cold_and_cheap_warm() {
     );
     assert_within("a first resolve", budget, work);
 
-    // Warm: the shape of every tag edit and every removal. The statement still
-    // reads the whole log; the guard is what keeps it from writing it.
+    // Warm: the shape of every removal. The statement still reads the whole
+    // log; the guard is what keeps it from writing it.
     let (work, moved) = work_of(|| plays::resolve(&conn).unwrap());
     assert_eq!(moved, 0);
     assert_within("resolve over an unchanged library", budget, work);
+}
+
+/// `plays::relink` after one retag reads the log through its indexes: once
+/// over `idx_plays_album` for the spellings, and by seek for the rest. A
+/// dropped index is a scan of the log and a sort per read.
+#[test]
+fn relinking_one_retag_reads_the_log_once() {
+    let (_dir, db) = seeded_library();
+    let mut conn = db.conn().unwrap();
+    synthetic::seed_plays(&mut conn, PLAYS).unwrap();
+    plays::resolve(&conn).unwrap();
+    plays::count(&conn).unwrap();
+    count_on(&conn);
+
+    let track: i64 = conn
+        .query_row(
+            "SELECT track_id FROM plays WHERE track_id IS NOT NULL
+              GROUP BY track_id ORDER BY count(*) DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let before = plays::link_tags(&conn, track).unwrap().unwrap();
+    conn.execute(
+        "UPDATE tracks SET title = title || ' (Demo)' WHERE id = ?1",
+        [track],
+    )
+    .unwrap();
+
+    let (work, moved) = work_of(|| plays::relink(&conn, &[(track, before)]).unwrap());
+    assert!(moved > 0, "a relink that moved nothing measured nothing");
+    // The tracks are read a handful of times, which is what the `R`s are; a
+    // second read of the log is another `P`, which this does not allow.
+    assert_within(
+        "relinking one retag",
+        Work {
+            statements: 1_000,
+            steps: 2_000_000,
+            scanned: P + 10 * R,
+            sorts: 3,
+            commits: 1,
+        },
+        work,
+    );
 }
 
 /// `plays::regroup` reads the whole log too, and the claim the design rests

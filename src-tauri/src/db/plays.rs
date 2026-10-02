@@ -607,16 +607,16 @@ pub fn mbid(value: &str) -> Option<String> {
 /// Recomputes `plays.track_id` for the whole log, returning how many links
 /// moved, and takes the plays that moved off the counts they left.
 ///
-/// Runs at the end of a tag write, both removals, and a scan that changed
-/// something or finds [`is_resolved`] false, for the reason
-/// [`crate::db::tag_values`] gives at length. The count is what the tests
-/// assert idempotence with; no caller needs it.
+/// Runs at the end of both removals and a scan that changed something or finds
+/// [`is_resolved`] false, for the reason [`crate::db::tag_values`] gives at
+/// length; a tag write runs [`relink`]. The count is what the tests assert
+/// idempotence with; no caller needs it.
 pub fn resolve(conn: &Connection) -> AppResult<u32> {
     // One transaction rather than a commit per key, which is what the
     // temporary table's inserts cost where a scan or a removal calls this
     // bare (issue 166). A savepoint for `regroup`'s reason.
     conn.execute_batch("SAVEPOINT resolve")?;
-    let resolved = resolve_within(conn).and_then(|moved| {
+    let resolved = resolve_within(conn, false).and_then(|moved| {
         crate::db::settings::set(conn, crate::db::settings::PLAYS_RESOLVED, "1")?;
         Ok(moved)
     });
@@ -646,9 +646,10 @@ pub fn mark_unresolved(conn: &Connection) -> AppResult<()> {
 /// Raises each linked track's `play_count` and `last_played_at` to what its
 /// plays say, never lowering either.
 ///
-/// Runs after [`resolve`] at the end of an import, a scan and a tag write, so
-/// a file added or retagged after an import shows the history it now links
-/// (issue 183). Not after a removal, which hands counts on itself.
+/// Runs after [`resolve`] at the end of an import and a scan, and inside
+/// [`relink`] at the end of a tag write, so a file added or retagged after an
+/// import shows the history it now links (issue 183). Not after a removal,
+/// which hands counts on itself.
 ///
 /// **`max`, because adding would count twice** every play from before
 /// migration 13 that was also scrobbled: those are in `play_count` and come
@@ -660,24 +661,268 @@ pub fn mark_unresolved(conn: &Connection) -> AppResult<()> {
 /// The guard is what keeps a second run from writing anything: every update
 /// of `tracks` reindexes the row in `tracks_fts`.
 pub fn count(conn: &Connection) -> AppResult<()> {
+    count_within(conn, false)
+}
+
+/// [`count`], over every track or over the tracks a play in
+/// `temp.scope_plays` links.
+fn count_within(conn: &Connection, scoped: bool) -> AppResult<()> {
+    let scope = if scoped {
+        "AND track_id IN (SELECT track_id FROM plays
+                           WHERE id IN (SELECT id FROM temp.scope_plays))"
+    } else {
+        ""
+    };
     conn.execute(
-        "UPDATE tracks
-            SET play_count = max(play_count, n.plays),
-                last_played_at = max(coalesce(last_played_at, 0), n.last)
-           FROM (SELECT track_id, count(*) AS plays, max(started_at) AS last
-                   FROM plays
-                  WHERE track_id IS NOT NULL
-                  GROUP BY track_id) n
-          WHERE n.track_id = tracks.id
-            AND (n.plays > tracks.play_count
-                 OR n.last > coalesce(tracks.last_played_at, 0))",
+        &format!(
+            "UPDATE tracks
+                SET play_count = max(play_count, n.plays),
+                    last_played_at = max(coalesce(last_played_at, 0), n.last)
+               FROM (SELECT track_id, count(*) AS plays, max(started_at) AS last
+                       FROM plays
+                      WHERE track_id IS NOT NULL {scope}
+                      GROUP BY track_id) n
+              WHERE n.track_id = tracks.id
+                AND (n.plays > tracks.play_count
+                     OR n.last > coalesce(tracks.last_played_at, 0))"
+        ),
         [],
     )?;
     Ok(())
 }
 
-fn resolve_within(conn: &Connection) -> AppResult<u32> {
+/// The tags [`resolve`] links a track through.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTags {
+    pub artist: Option<String>,
+    pub title: Option<String>,
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+}
+
+/// A track's [`LinkTags`], or none for a track that is not there.
+pub fn link_tags(conn: &Connection, track_id: i64) -> AppResult<Option<LinkTags>> {
+    Ok(conn
+        .query_row(
+            "SELECT artist, title, album, album_artist FROM tracks WHERE id = ?1",
+            [track_id],
+            |row| {
+                Ok(LinkTags {
+                    artist: row.get(0)?,
+                    title: row.get(1)?,
+                    album: row.get(2)?,
+                    album_artist: row.get(3)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
+/// [`resolve`] and [`count`] over only the plays a change to these tracks'
+/// tags could move, given each one's [`LinkTags`] from before it, returning
+/// how many links moved.
+///
+/// What a tag write runs: a full pass is a second over a real library, and
+/// three files retagged move a handful of plays (issue 197). The plays left
+/// out link where a full pass would put them as long as the log was resolved
+/// before, so this leaves [`is_resolved`] as it found it.
+pub fn relink(conn: &Connection, before: &[(i64, LinkTags)]) -> AppResult<u32> {
+    let mut changed = Vec::new();
+    for (track_id, tags) in before {
+        let after = link_tags(conn, *track_id)?;
+        if after.as_ref() != Some(tags) {
+            changed.push(tags.clone());
+            changed.extend(after);
+        }
+    }
+    if changed.is_empty() {
+        return Ok(0);
+    }
+
+    // A savepoint for `resolve`'s reason.
+    conn.execute_batch("SAVEPOINT relink")?;
+    let relinked = scope(conn, &changed).and_then(|()| {
+        let moved = resolve_within(conn, true)?;
+        count_within(conn, true)?;
+        conn.execute_batch(
+            "DROP TABLE temp.scope_plays;
+             DROP TABLE temp.scope_tracks;",
+        )?;
+        Ok(moved)
+    });
+    match relinked {
+        Ok(moved) => {
+            conn.execute_batch("RELEASE relink")?;
+            Ok(moved)
+        }
+        Err(error) => {
+            conn.execute_batch("ROLLBACK TO relink; RELEASE relink")?;
+            Err(error)
+        }
+    }
+}
+
+/// Fills `temp.scope_plays` with every play whose link can follow from these
+/// tags, and `temp.scope_tracks` with every track [`resolve_within`] consults
+/// to link them.
+///
+/// **A play's link depends on more than its key.** The key tiers read every
+/// track under the play's key, artist's or album artist's. The album and
+/// near-title tiers read every track on the play's folded album and judge the
+/// play with the rest of its (artist, album) group, so a key that gains or
+/// loses a track moves the plays it shares a group with, on an album the
+/// write never named. So the plays are those under a key these tags make,
+/// and every play on their albums or on the albums of the plays under those
+/// keys; the tracks are those on the same albums and under any key those
+/// plays carry.
+///
+/// Spellings rather than the stored keys: only the artist's key is a column,
+/// and the full pass folds from the tags.
+fn scope(conn: &Connection, changed: &[LinkTags]) -> AppResult<()> {
+    use std::collections::HashSet;
+
+    let mut keys: HashSet<String> = HashSet::new();
+    let mut albums: HashSet<String> = HashSet::new();
+    for tags in changed {
+        let title = tags.title.as_deref().unwrap_or_default();
+        for artist in [&tags.artist, &tags.album_artist] {
+            let key = match_key(artist.as_deref().unwrap_or_default(), title);
+            if !key.is_empty() {
+                keys.insert(key);
+            }
+        }
+        albums.insert(fold_album(tags.album.as_deref().unwrap_or_default()));
+    }
+
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS temp.scope_keys;
+         CREATE TEMP TABLE scope_keys (key TEXT PRIMARY KEY) WITHOUT ROWID;
+         DROP TABLE IF EXISTS temp.scope_spellings;
+         CREATE TEMP TABLE scope_spellings (spelling TEXT PRIMARY KEY) WITHOUT ROWID;
+         DROP TABLE IF EXISTS temp.scope_plays;
+         CREATE TEMP TABLE scope_plays (id INTEGER PRIMARY KEY);
+         DROP TABLE IF EXISTS temp.scope_tracks;
+         CREATE TEMP TABLE scope_tracks (id INTEGER PRIMARY KEY);",
+    )?;
+    {
+        let mut insert = conn.prepare("INSERT INTO temp.scope_keys (key) VALUES (?1)")?;
+        for key in &keys {
+            insert.execute([key])?;
+        }
+    }
+    {
+        let mut statement = conn.prepare(
+            "SELECT DISTINCT album FROM plays
+              WHERE match_key IN (SELECT key FROM temp.scope_keys)",
+        )?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            albums.insert(fold_album(
+                row.get::<_, Option<String>>(0)?
+                    .as_deref()
+                    .unwrap_or_default(),
+            ));
+        }
+    }
+    // Every blank album folds to the same nothing, and no tier reads one.
+    albums.remove("");
+
+    // Apart rather than one `UNION`, so the log's half reads `idx_plays_album`
+    // instead of sorting a quarter of a million rows.
+    let mut spellings: HashSet<String> = HashSet::new();
+    let mut on_albums: Vec<String> = Vec::new();
+    for sql in [
+        "SELECT DISTINCT album FROM plays WHERE album <> ''",
+        "SELECT DISTINCT album FROM tracks WHERE album <> ''",
+    ] {
+        let mut statement = conn.prepare(sql)?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let album: String = row.get(0)?;
+            if !spellings.contains(&album) {
+                if albums.contains(&fold_album(&album)) {
+                    on_albums.push(album.clone());
+                }
+                spellings.insert(album);
+            }
+        }
+    }
+    {
+        let mut insert = conn.prepare("INSERT INTO temp.scope_spellings (spelling) VALUES (?1)")?;
+        for album in &on_albums {
+            insert.execute([album])?;
+        }
+    }
+    conn.execute_batch(
+        "INSERT INTO temp.scope_plays (id)
+         SELECT id FROM plays
+          WHERE match_key IN (SELECT key FROM temp.scope_keys)
+             OR album IN (SELECT spelling FROM temp.scope_spellings);
+         INSERT INTO temp.scope_tracks (id)
+         SELECT id FROM tracks WHERE album IN (SELECT spelling FROM temp.scope_spellings);
+         DELETE FROM temp.scope_spellings;",
+    )?;
+
+    // A key's artist side is the artist or the album artist of every track
+    // under it.
+    let mut owners: HashSet<String> = HashSet::new();
+    {
+        let mut statement = conn.prepare(
+            "SELECT DISTINCT match_key FROM plays
+              WHERE id IN (SELECT id FROM temp.scope_plays) AND match_key <> ''",
+        )?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let key: String = row.get(0)?;
+            if let Some((artist, _)) = key.split_once(SEPARATOR) {
+                owners.insert(artist.to_owned());
+            }
+        }
+    }
+    let mut credited: Vec<String> = Vec::new();
+    {
+        let mut statement = conn.prepare(
+            "SELECT artist FROM tracks WHERE artist <> ''
+             UNION SELECT album_artist FROM tracks WHERE album_artist <> ''",
+        )?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let artist: String = row.get(0)?;
+            if owners.contains(&normalize(&artist)) {
+                credited.push(artist);
+            }
+        }
+    }
+    {
+        let mut insert = conn.prepare("INSERT INTO temp.scope_spellings (spelling) VALUES (?1)")?;
+        for artist in &credited {
+            insert.execute([artist])?;
+        }
+    }
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO temp.scope_tracks (id)
+         SELECT id FROM tracks
+          WHERE artist IN (SELECT spelling FROM temp.scope_spellings)
+             OR album_artist IN (SELECT spelling FROM temp.scope_spellings);
+         DROP TABLE temp.scope_keys;
+         DROP TABLE temp.scope_spellings;",
+    )?;
+    Ok(())
+}
+
+/// [`resolve`]'s pass, over the whole log, or over `temp.scope_plays` linked
+/// by `temp.scope_tracks` as [`scope`] fills them.
+fn resolve_within(conn: &Connection, scoped: bool) -> AppResult<u32> {
     use std::collections::{HashMap, HashSet};
+
+    let (tracks_in_scope, plays_in_scope) = if scoped {
+        (
+            "WHERE id IN (SELECT id FROM temp.scope_tracks)",
+            "AND id IN (SELECT id FROM temp.scope_plays)",
+        )
+    } else {
+        ("", "")
+    };
 
     conn.execute_batch(
         "DROP TABLE IF EXISTS temp.play_keys;
@@ -742,10 +987,10 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         // same reason it was chosen there: without one the winner follows scan
         // order, this function stops being idempotent, and the guarded UPDATE
         // below rewrites the whole table on every run.
-        let mut tracks = conn.prepare(
-            "SELECT id, artist, title, album_artist, album FROM tracks
-              ORDER BY missing_since IS NOT NULL, id",
-        )?;
+        let mut tracks = conn.prepare(&format!(
+            "SELECT id, artist, title, album_artist, album FROM tracks {tracks_in_scope}
+              ORDER BY missing_since IS NOT NULL, id"
+        ))?;
         let mut insert =
             conn.prepare("INSERT OR IGNORE INTO temp.play_keys (key, track_id) VALUES (?1, ?2)")?;
 
@@ -842,12 +1087,12 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         type Hit<'a> = (i64, String, i64, &'a HashSet<String>);
         let mut groups: HashMap<(String, String), Vec<Hit>> = HashMap::new();
         let mut copy_links: Vec<(i64, i64)> = Vec::new();
-        let mut plays = conn.prepare(
+        let mut plays = conn.prepare(&format!(
             "SELECT id, artist, title, album, match_key FROM plays
-              WHERE match_key <> '' AND album <> ''
+              WHERE match_key <> '' AND album <> '' {plays_in_scope}
                 AND (match_key NOT IN (SELECT key FROM temp.play_keys)
-                     OR match_key IN (SELECT key FROM temp.copy_keys))",
-        )?;
+                     OR match_key IN (SELECT key FROM temp.copy_keys))"
+        ))?;
         let mut rows = plays.query([])?;
         while let Some(row) = rows.next()? {
             let album = folds
@@ -919,12 +1164,12 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // songs together. The album narrows the field to a dozen titles, and
     // [`nearest`] links only one that stands out from the rest (issue 173).
     {
-        let mut plays = conn.prepare(
+        let mut plays = conn.prepare(&format!(
             "SELECT id, artist, title, album FROM plays
-              WHERE match_key <> '' AND album <> ''
+              WHERE match_key <> '' AND album <> '' {plays_in_scope}
                 AND match_key NOT IN (SELECT key FROM temp.play_keys)
-                AND id NOT IN (SELECT play_id FROM temp.album_links)",
-        )?;
+                AND id NOT IN (SELECT play_id FROM temp.album_links)"
+        ))?;
         let mut spellings: HashMap<(String, String, String), Option<i64>> = HashMap::new();
         // Read to the end before writing, since the query reads the table
         // the links go into.
@@ -957,10 +1202,10 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
         }
     }
 
-    // **The guard is what makes the full scan affordable.** After a three-track
-    // tag edit the statement still reads every play, but it writes only the
-    // handful whose link actually moved, instead of rewriting a quarter of a
-    // million rows to the values they already held.
+    // **The guard is what makes the full scan affordable.** After a scan that
+    // retagged three files the statement still reads every play, but it writes
+    // only the handful whose link actually moved, instead of rewriting a
+    // quarter of a million rows to the values they already held.
     //
     // `IS NOT` rather than `<>` because most of those values are NULL on both
     // sides, and `<>` is NULL there rather than false.
@@ -968,16 +1213,18 @@ fn resolve_within(conn: &Connection) -> AppResult<u32> {
     // One assignment for every tier: a second `UPDATE` for the album links
     // would find each of them nulled by this one and write it back, every run.
     let moved = conn.execute(
-        "UPDATE plays
-            SET track_id = coalesce(
-                (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
-                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
-                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))
-          WHERE match_key <> ''
-            AND track_id IS NOT coalesce(
-                (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
-                (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
-                (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))",
+        &format!(
+            "UPDATE plays
+                SET track_id = coalesce(
+                    (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
+                    (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                    (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))
+              WHERE match_key <> '' {plays_in_scope}
+                AND track_id IS NOT coalesce(
+                    (SELECT c.track_id FROM temp.copy_links c WHERE c.play_id = plays.id),
+                    (SELECT k.track_id FROM temp.play_keys k WHERE k.key = plays.match_key),
+                    (SELECT a.track_id FROM temp.album_links a WHERE a.play_id = plays.id))"
+        ),
         [],
     )?;
 
@@ -3107,5 +3354,203 @@ mod tests {
         resolve(&conn).unwrap();
 
         assert_eq!(resolve(&conn).unwrap(), 0);
+    }
+
+    /// Retags track `id` the way `tags::write` would, and relinks.
+    fn retag(conn: &Connection, id: i64, tags: &LinkTags) -> u32 {
+        let before = link_tags(conn, id).unwrap().unwrap();
+        write_tags(conn, id, tags);
+        relink(conn, &[(id, before)]).unwrap()
+    }
+
+    fn write_tags(conn: &Connection, id: i64, tags: &LinkTags) {
+        conn.execute(
+            "UPDATE tracks SET artist = ?2, title = ?3, album = ?4, album_artist = ?5,
+                               match_key = ?6
+              WHERE id = ?1",
+            rusqlite::params![
+                id,
+                tags.artist,
+                tags.title,
+                tags.album,
+                tags.album_artist,
+                track_key(tags.artist.as_deref(), tags.title.as_deref()),
+            ],
+        )
+        .unwrap();
+    }
+
+    fn tags(artist: &str, title: &str, album: &str) -> LinkTags {
+        LinkTags {
+            artist: Some(artist.to_owned()),
+            title: Some(title.to_owned()),
+            album: Some(album.to_owned()),
+            album_artist: None,
+        }
+    }
+
+    #[test]
+    fn a_retag_that_gives_a_play_its_key_unlinks_the_group_it_leaves() {
+        let (_dir, conn) = open();
+        harmonie(&conn);
+        on_album(&conn, 3, "Franz Josef Degenhardt", "Spiel nicht", "Bad");
+        played_on(
+            &conn,
+            10,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Mods",
+        );
+        played_on(
+            &conn,
+            11,
+            "Franz Josef Degenhardt",
+            "Harmonie Hurensohn 2",
+            "Kontrolle",
+        );
+        resolve(&conn).unwrap();
+        assert_eq!((linked(&conn, 10), linked(&conn, 11)), (Some(1), Some(2)));
+
+        // Neither play 11's key nor its album is one the retag names.
+        retag(
+            &conn,
+            3,
+            &tags("Franz Josef Degenhardt", "Mods", "Spiel nicht"),
+        );
+
+        assert_eq!((linked(&conn, 10), linked(&conn, 11)), (Some(3), None));
+        assert_eq!(resolve(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_relink_leaves_whether_the_log_is_resolved_as_it_found_it() {
+        let (_dir, conn) = open();
+        add_track(&conn, 1, Some("Blue Room"), Some("Harbour"));
+        record(&conn, 1, 1_700_000_000).unwrap();
+        assert!(!is_resolved(&conn).unwrap());
+
+        retag(&conn, 1, &tags("Blue Room", "Lighthouse", ""));
+
+        assert!(!is_resolved(&conn).unwrap());
+    }
+
+    type Snapshot = (Vec<(i64, Option<i64>)>, Vec<(i64, i64, Option<i64>)>);
+
+    /// Every play's link and every track's count, in id order.
+    fn snapshot(conn: &Connection) -> Snapshot {
+        let mut plays = conn
+            .prepare("SELECT id, track_id FROM plays ORDER BY id")
+            .unwrap();
+        let mut tracks = conn
+            .prepare("SELECT id, play_count, last_played_at FROM tracks ORDER BY id")
+            .unwrap();
+        (
+            plays
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect(),
+            tracks
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect(),
+        )
+    }
+
+    /// Whatever a retag moves, a full pass after it finds nothing left to move
+    /// or count.
+    #[test]
+    fn a_relink_leaves_every_play_where_a_full_resolve_would() {
+        const ARTISTS: &[&str] = &["Band", "Other", "Band mit Guest", "Merged"];
+        const TITLES: &[&str] = &["Cleansing", "Harbour", "Dea Artio", "Anchor", "Mods"];
+        const ALBUMS: &[&str] = &[
+            "",
+            "Hunters",
+            "Hunters (Deluxe Edition)",
+            "Roadburn",
+            "Lighthouse",
+        ];
+        // Spellings no track carries, for the album and near-title tiers.
+        const HEARD: &[&str] = &["Dia Artio", "Unheard", "harbour"];
+
+        // xorshift, so a failing round is the same round on every run.
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = |below: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % below as u64) as usize
+        };
+        fn pick(from: &[&'static str], next: &mut impl FnMut(usize) -> usize) -> &'static str {
+            from[next(from.len())]
+        }
+        fn field(
+            held: &Option<String>,
+            from: &[&'static str],
+            next: &mut impl FnMut(usize) -> usize,
+        ) -> Option<String> {
+            match next(4) {
+                0 => None,
+                1 | 2 => Some(pick(from, next).to_owned()),
+                _ => held.clone(),
+            }
+        }
+
+        let (_dir, conn) = open();
+        for id in 1..=10 {
+            let artist = pick(ARTISTS, &mut next);
+            let album = pick(ALBUMS, &mut next);
+            on_album(&conn, id, artist, album, pick(TITLES, &mut next));
+            if next(3) == 0 {
+                conn.execute(
+                    "UPDATE tracks SET album_artist = ?2 WHERE id = ?1",
+                    rusqlite::params![id, pick(ARTISTS, &mut next)],
+                )
+                .unwrap();
+            }
+            if next(5) == 0 {
+                conn.execute("UPDATE tracks SET missing_since = 1 WHERE id = ?1", [id])
+                    .unwrap();
+            }
+        }
+        for started_at in 1..=120 {
+            let title = if next(4) == 0 {
+                pick(HEARD, &mut next)
+            } else {
+                pick(TITLES, &mut next)
+            };
+            let artist = pick(ARTISTS, &mut next);
+            played_on(&conn, started_at, artist, pick(ALBUMS, &mut next), title);
+        }
+        resolve(&conn).unwrap();
+        count(&conn).unwrap();
+
+        let mut moved = 0;
+        for round in 0..300 {
+            let mut before: Vec<(i64, LinkTags)> = Vec::new();
+            for _ in 0..=next(3) {
+                let id = next(10) as i64 + 1;
+                if before.iter().any(|(held, _)| *held == id) {
+                    continue;
+                }
+                let held = link_tags(&conn, id).unwrap().unwrap();
+                let after = LinkTags {
+                    artist: field(&held.artist, ARTISTS, &mut next),
+                    title: field(&held.title, TITLES, &mut next),
+                    album: field(&held.album, ALBUMS, &mut next),
+                    album_artist: field(&held.album_artist, ARTISTS, &mut next),
+                };
+                write_tags(&conn, id, &after);
+                before.push((id, held));
+            }
+            moved += relink(&conn, &before).unwrap();
+            let scoped = snapshot(&conn);
+
+            assert_eq!(resolve(&conn).unwrap(), 0, "round {round}");
+            count(&conn).unwrap();
+            assert_eq!(snapshot(&conn), scoped, "round {round}");
+        }
+        assert!(moved > 300, "the retags moved too little to prove anything");
     }
 }
