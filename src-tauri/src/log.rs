@@ -205,7 +205,8 @@ impl Op {
 ///
 /// Values are written as they are, quotes and all: a path with a space in it
 /// is still readable, and quoting would only move the problem to the paths
-/// with quotes in them. Nothing parses this file.
+/// with quotes in them. Nothing parses this file. Control characters are the
+/// exception: a line break becomes a space and the rest are spelled `\u{N}`.
 #[derive(Debug, Default)]
 pub struct Fields(String);
 
@@ -223,10 +224,16 @@ impl Fields {
         // A value spanning two lines would break the one-line-per-operation
         // rule that makes the file readable at all. An `AppError` carrying an
         // OS message is the realistic source of one.
-        self.0.extend(value.to_string().chars().map(|c| match c {
-            '\n' | '\r' => ' ',
-            other => other,
-        }));
+        for c in value.to_string().chars() {
+            match c {
+                '\n' | '\r' => self.0.push(' '),
+                // A NUL from a tag would print as a space and make grep call
+                // the file binary. `\u{0}` rather than `\x00`, because the
+                // paths beside it are full of backslashes already.
+                c if c.is_control() => self.0.extend(c.escape_unicode()),
+                c => self.0.push(c),
+            }
+        }
         self
     }
 
@@ -503,5 +510,15 @@ mod tests {
             .failed(&"the file is locked\nby another program");
 
         assert_eq!(contents(&log).lines().count(), 1);
+    }
+
+    #[test]
+    fn a_control_character_is_spelled_out_rather_than_written() {
+        let fields = Fields::new().add("error", "unexpected character '\0'\tin TDRC");
+
+        assert_eq!(
+            fields.to_string(),
+            r"error=unexpected character '\u{0}'\u{9}in TDRC"
+        );
     }
 }
