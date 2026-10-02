@@ -217,14 +217,18 @@ clears both flags before the save.
 written as two.** The mpeg reader merges each later tag into the first with
 `FrameList::insert`, so the later tag's frames win; `write_id3v2` replaces only
 the first. A saved edit to a field the second tag also holds is undone by the
-next read. And a save starts with `VerifiedFile::new`, which sniffs the content
-(`Probe::open` on read trusts the extension): it skips one tag, then looks for a
-frame sync within `DEFAULT_MAX_JUNK_BYTES` (1,024), so a second tag larger than
-that fails every save with "no format could be determined". `WriteOptions`
-carries `ParseOptions`, but the sniff never sees them.
-`write::drop_stacked_tags` cuts every leading tag off the temp copy before the
-save when there are two or more; the tag being saved already holds their merged
-frames.
+next read. `write::drop_stacked_tags` cuts every leading tag off the temp copy
+before the save when there are two or more; the tag being saved already holds
+their merged frames.
+
+**A save sniffs the format; a read trusts the extension.** A save starts with
+`VerifiedFile::new`, which skips one tag and then looks for a frame sync within
+`max_junk_bytes` of the `ParseOptions` in its `WriteOptions` (honoured since
+0.25.3). Past that it fails with "no format could be determined", so junk
+between the first tag and the audio (a second tag counts as junk) refuses every
+save of a file `Probe::open` reads fine. `save_tag` passes `write::MAX_JUNK_BYTES`
+(16 KiB) rather than the default 1,024. The save replaces only the first tag,
+so the junk stays and every later save needs the same window.
 
 ## Moving files
 

@@ -944,6 +944,43 @@ fn an_edit_is_not_undone_by_a_small_second_tag_holding_the_same_field() {
     assert_eq!(fixture::leading_tags(&path), 1);
 }
 
+#[test]
+fn a_file_with_junk_and_a_second_tag_before_the_audio_saves() {
+    let h = harness();
+    let path = h.music.join("loose/joined.mp3");
+    fixture::write_mp3_with_junk_and_second_tag(
+        &path,
+        10,
+        &[("TIT2", "Joined")],
+        1515,
+        &[("TCON", "Second Only")],
+    );
+    let after = fixture::after_first_tag(&path);
+    let mut conn = h.db.conn().unwrap();
+    scan::scan(&mut conn, |_| {}, |_| {}).unwrap();
+    let track = id_of(&h.db, "Joined");
+
+    for title in ["Edited", "Edited Again"] {
+        let written = write::apply_to_each(
+            &mut conn,
+            &[track],
+            &TagEdit {
+                title: set(title),
+                ..edit()
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(written.summary.failed, 0, "{:?}", written.summary.errors);
+        assert_eq!(tags::read(&path).unwrap().title.as_deref(), Some(title));
+        assert!(
+            fixture::after_first_tag(&path) == after,
+            "past the first tag changed"
+        );
+    }
+}
+
 /// JPEG-shaped bytes with the `FF 00` escapes a real entropy stream is full
 /// of, which are what an unsynchronising reader strips.
 const ESCAPED_JPEG: &[u8] = b"\xFF\xD8\xFF\xE0scan\xFF\x00rows\xFF\x00more\xFF\xD9";
