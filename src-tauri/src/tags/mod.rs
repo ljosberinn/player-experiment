@@ -5,12 +5,14 @@
 //! lives in [`write`], where the rules are the opposite: careful, atomic, and
 //! never without a record of what was there before.
 
+pub mod salvage;
 pub mod write;
 
 use std::path::Path;
 
 use lofty::config::ParseOptions;
-use lofty::file::{AudioFile, TaggedFileExt};
+use lofty::error::FileParseError;
+use lofty::file::{AudioFile, TaggedFile, TaggedFileExt};
 use lofty::prelude::ItemKey;
 use lofty::probe::Probe;
 use lofty::tag::{Accessor, Tag};
@@ -52,20 +54,20 @@ pub struct TrackTags {
     pub bitrate: Option<i64>,
     pub sample_rate: Option<i64>,
     pub cover: Option<Cover>,
+    /// What the read had to leave out, when lofty refused the file whole.
+    pub salvaged: Option<salvage::Salvaged>,
 }
 
 /// Reads tags, audio properties and cover art from one file.
 pub fn read(path: &Path) -> AppResult<TrackTags> {
-    let tagged = Probe::open(path)
-        .map_err(|e| unreadable(path, &e))?
-        .read()
-        .map_err(|e| unreadable(path, &e))?;
+    let (tagged, salvage) = open(path, ParseOptions::new()).map_err(|e| unreadable(path, &e))?;
 
     let properties = tagged.properties();
     let mut tags = TrackTags {
         duration_ms: properties.duration().as_millis() as i64,
         bitrate: properties.audio_bitrate().map(i64::from),
         sample_rate: properties.sample_rate().map(i64::from),
+        salvaged: salvage.map(|salvage| salvage.salvaged),
         ..Default::default()
     };
 
@@ -106,10 +108,27 @@ pub fn read(path: &Path) -> AppResult<TrackTags> {
     Ok(tags)
 }
 
+/// Reads `path`, through [`salvage`] when lofty refuses it as it is.
+///
+/// The error is the plain read's, which names the item that broke.
+pub(crate) fn open(
+    path: &Path,
+    options: ParseOptions,
+) -> Result<(TaggedFile, Option<salvage::Salvage>), FileParseError> {
+    let error = match Probe::open(path).and_then(|probe| probe.options(options).read()) {
+        Ok(tagged) => return Ok((tagged, None)),
+        Err(error) => error,
+    };
+    match salvage::read(path, options) {
+        Some((tagged, salvage)) => Ok((tagged, Some(salvage))),
+        None => Err(error),
+    }
+}
+
 /// A read lofty refused, with the chain under it: lofty's own message names the
 /// format and nothing else, and which frame or item broke is what tells a
 /// corrupt file from a tag another program wrote loosely.
-fn unreadable(path: &Path, error: &lofty::error::FileParseError) -> AppError {
+fn unreadable(path: &Path, error: &FileParseError) -> AppError {
     AppError::Internal(format!(
         "{}: {error} <- {}",
         path.display(),
@@ -133,11 +152,7 @@ pub fn musicbrainz_tags(path: &Path) -> AppResult<MusicBrainzTags> {
     let options = ParseOptions::new()
         .read_properties(false)
         .read_cover_art(false);
-    let tagged = Probe::open(path)
-        .map_err(|e| unreadable(path, &e))?
-        .options(options)
-        .read()
-        .map_err(|e| unreadable(path, &e))?;
+    let (tagged, _) = open(path, options).map_err(|e| unreadable(path, &e))?;
 
     let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
         return Ok(MusicBrainzTags::default());

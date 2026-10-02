@@ -329,6 +329,98 @@ pub fn write_mp3_with_bare_url(path: &Path, frames: usize, url: &str) {
     write_hand_built_mp3(path, frames, &[raw_frame("WXXX", url.as_bytes())]);
 }
 
+/// [`write_mp3_with_bare_url`] with the frame's grouping flag set, which the
+/// app's salvage will not move a frame under, so lofty's refusal stands.
+pub fn write_unreadable_mp3(path: &Path, frames: usize, url: &str) {
+    let mut frame = raw_frame("WXXX", url.as_bytes());
+    frame[9] = 0x40;
+    write_hand_built_mp3(path, frames, &[frame]);
+}
+
+/// One ID3v2.3 frame: its size is plain rather than synchsafe.
+pub fn v3_frame(id: &str, body: &[u8]) -> Vec<u8> {
+    let mut frame = Vec::from(id.as_bytes());
+    frame.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&[0, 0]);
+    frame.extend_from_slice(body);
+    frame
+}
+
+/// One ID3v2.3 text frame, Latin-1 encoded.
+pub fn v3_text_frame(id: &str, value: &str) -> Vec<u8> {
+    let mut body = vec![0u8];
+    body.extend_from_slice(value.as_bytes());
+    v3_frame(id, &body)
+}
+
+/// An mp3 carrying `frames` as ID3v2.3, then `audio_frames` of silence, then
+/// `trailer`.
+pub fn write_v3_mp3(path: &Path, audio_frames: usize, frames: &[Vec<u8>], trailer: &[u8]) {
+    let body = frames.concat();
+    let mut bytes = Vec::from(&b"ID3\x03\x00\x00"[..]);
+    bytes.extend_from_slice(&synchsafe(body.len() as u32));
+    bytes.extend_from_slice(&body);
+    bytes.extend_from_slice(&silent_mp3(audio_frames));
+    bytes.extend_from_slice(trailer);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixture dir");
+    }
+    std::fs::write(path, bytes).expect("write fixture mp3");
+}
+
+/// An APEv2 tag of one text item, with a header and a footer, its value
+/// written as given rather than as the UTF-8 the format requires.
+pub fn ape_tag(key: &str, value: &[u8]) -> Vec<u8> {
+    let mut item = Vec::new();
+    item.extend_from_slice(&(value.len() as u32).to_le_bytes());
+    item.extend_from_slice(&0u32.to_le_bytes());
+    item.extend_from_slice(key.as_bytes());
+    item.push(0);
+    item.extend_from_slice(value);
+
+    let size = (item.len() + 32) as u32;
+    let block = |flags: u32| {
+        let mut block = Vec::from(&b"APETAGEX"[..]);
+        block.extend_from_slice(&2000u32.to_le_bytes());
+        block.extend_from_slice(&size.to_le_bytes());
+        block.extend_from_slice(&1u32.to_le_bytes());
+        block.extend_from_slice(&flags.to_le_bytes());
+        block.extend_from_slice(&[0; 8]);
+        block
+    };
+    // Bit 31: the tag has a header. Bit 29: this block is the header.
+    [block(0xA000_0000), item, block(0x8000_0000)].concat()
+}
+
+/// The frames of the mp3's first ID3v2 tag as they sit on disk, id and body,
+/// for the frames lofty will not decode.
+pub fn raw_frames(path: &Path) -> Vec<(String, Vec<u8>)> {
+    let bytes = std::fs::read(path).expect("read mp3");
+    assert!(bytes.starts_with(b"ID3"), "no leading tag");
+    let synchsafe_frames = bytes[3] == 4;
+    let tag_size = bytes[6..10]
+        .iter()
+        .fold(0usize, |size, &byte| (size << 7) | usize::from(byte));
+    let tag = &bytes[10..10 + tag_size];
+
+    let mut frames = Vec::new();
+    let mut at = 0;
+    while at + 10 <= tag.len() && tag[at] != 0 {
+        let size = if synchsafe_frames {
+            tag[at + 4..at + 8]
+                .iter()
+                .fold(0usize, |size, &byte| (size << 7) | usize::from(byte))
+        } else {
+            u32::from_be_bytes(tag[at + 4..at + 8].try_into().unwrap()) as usize
+        };
+        let id = String::from_utf8_lossy(&tag[at..at + 4]).into_owned();
+        frames.push((id, tag[at + 10..at + 10 + size].to_vec()));
+        at += 10 + size;
+    }
+    frames
+}
+
 /// The language declared by the first `COMM` frame of the mp3 at `path`.
 pub fn comment_language(path: &Path) -> [u8; 3] {
     let mut file = std::fs::File::open(path).expect("open mp3");

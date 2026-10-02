@@ -235,6 +235,20 @@ save of a file `Probe::open` reads fine. `save_tag` passes `write::MAX_JUNK_BYTE
 (16 KiB) rather than the default 1,024. The save replaces only the first tag,
 so the junk stays and every later save needs the same window.
 
+**One tag item lofty cannot parse fails the whole file.** In every
+`ParsingMode`: an APE item that is not UTF-8 (lofty-rs#685), and an ID3v2 frame
+whose *content* fails — only header errors are skipped. `tags::open` retries a
+refused read through `tags::salvage`, a `Read + Seek` view that splices out a
+failing APE tag and rewrites each leading ID3v2 tag without the frames that fail
+a one-frame trial parse, after trying two byte fixes (a stray `00` after UTF-16,
+a year cut at its first NUL). The hidden frames' bodies come back as
+`Frame::Binary` and `save_tag` writes them back unless the edit rewrote that id,
+so a save loses nothing; the save only replaces the ID3v2 region, so the APE tag
+stays. The view gives up on tag-wide unsynchronisation, an extended header,
+v2.2, and a refused frame with a format flag. lofty never matches a Lyrics3v2
+marker (a 9-byte literal against an 8-byte slice), so an APE tag behind one is
+never read and the view does not look there.
+
 ## Moving files
 
 **A tombstone is a hazard at the target, not at the source.** `scan::plan` skips

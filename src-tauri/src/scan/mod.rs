@@ -627,6 +627,39 @@ pub fn remove_watch_folder(conn: &Connection, path: &Path) -> AppResult<()> {
     Ok(())
 }
 
+/// What a scan has to say about one file it read.
+pub enum Remark<'a> {
+    /// Tags that would not parse. The error names the file.
+    Unreadable(&'a AppError),
+    /// Read only once [`tags::salvage`] left something out.
+    Salvaged(&'a Path, &'a tags::salvage::Salvaged),
+}
+
+impl Remark<'_> {
+    pub fn log(&self, log: &crate::log::Log) {
+        use crate::log::Fields;
+        match self {
+            Remark::Unreadable(error) => {
+                log.problem("scan.unreadable", Fields::new().add("error", error));
+            }
+            Remark::Salvaged(path, salvaged) => {
+                let list = |ids: &[String]| match ids {
+                    [] => "-".to_owned(),
+                    ids => ids.join(","),
+                };
+                log.note(
+                    "tags.salvaged",
+                    Fields::new()
+                        .add("path", path.display())
+                        .add("ape", u8::from(salvaged.ape))
+                        .add("frames", list(&salvaged.hidden))
+                        .add("fixed", list(&salvaged.fixed)),
+                );
+            }
+        }
+    }
+}
+
 /// Reads tags for `paths` in parallel.
 ///
 /// A file that fails to parse comes back as its error rather than stopping the
@@ -667,15 +700,15 @@ pub fn summary_fields(summary: &ScanSummary) -> crate::log::Fields {
 ///
 /// `on_progress` is called periodically; it is a closure rather than a Tauri
 /// handle so the whole scan can be exercised in tests without a running app.
-/// `on_unreadable` is called with the error of each file whose tags would not
-/// parse, which names the file.
+/// `on_remark` hears of each file whose tags would not parse, or parsed only
+/// salvaged.
 pub fn scan(
     conn: &mut Connection,
     on_progress: impl FnMut(ScanProgress),
-    on_unreadable: impl FnMut(&AppError),
+    on_remark: impl FnMut(Remark),
 ) -> AppResult<ScanSummary> {
     let roots = watch_folders(conn)?;
-    scan_roots(conn, &roots, &[], on_progress, on_unreadable)
+    scan_roots(conn, &roots, &[], on_progress, on_remark)
 }
 
 /// The scan itself, over the roots it is given.
@@ -687,7 +720,7 @@ pub fn scan_roots(
     roots: &[PathBuf],
     absent: &[PathBuf],
     mut on_progress: impl FnMut(ScanProgress),
-    mut on_unreadable: impl FnMut(&AppError),
+    mut on_remark: impl FnMut(Remark),
 ) -> AppResult<ScanSummary> {
     let on_disk = walk(roots);
     let known = load_known(conn)?;
@@ -764,11 +797,14 @@ pub fn scan_roots(
         for (path, tags) in &parsed {
             match tags {
                 Ok(tags) => {
+                    if let Some(salvaged) = &tags.salvaged {
+                        on_remark(Remark::Salvaged(path, salvaged));
+                    }
                     insert_track(&tx, path, tags)?;
                     summary.added += 1;
                 }
                 Err(error) => {
-                    on_unreadable(error);
+                    on_remark(Remark::Unreadable(error));
                     summary.unreadable += 1;
                 }
             }
@@ -793,11 +829,14 @@ pub fn scan_roots(
         for (path, tags) in &parsed {
             match tags {
                 Ok(tags) => {
+                    if let Some(salvaged) = &tags.salvaged {
+                        on_remark(Remark::Salvaged(path, salvaged));
+                    }
                     update_track(&tx, path, tags)?;
                     summary.updated += 1;
                 }
                 Err(error) => {
-                    on_unreadable(error);
+                    on_remark(Remark::Unreadable(error));
                     summary.unreadable += 1;
                 }
             }

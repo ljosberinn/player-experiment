@@ -18,8 +18,8 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 use crate::db::{settings, Db};
-use crate::error::{AppError, AppResult};
-use crate::log::{Fields, Log};
+use crate::error::AppResult;
+use crate::log::Log;
 use crate::model::{ScanProgress, ScanSummary};
 
 use super::ScanLock;
@@ -52,7 +52,7 @@ const FIRST_PASS: Duration = Duration::from_secs(15);
 pub fn pass(
     conn: &mut Connection,
     mut on_progress: impl FnMut(ScanProgress),
-    on_unreadable: impl FnMut(&AppError),
+    on_remark: impl FnMut(super::Remark),
 ) -> AppResult<ScanSummary> {
     let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) = super::watch_folders(conn)?
         .into_iter()
@@ -67,7 +67,7 @@ pub fn pass(
                 on_progress(progress);
             }
         },
-        on_unreadable,
+        on_remark,
     )
 }
 
@@ -149,9 +149,7 @@ pub fn spawn(
                 // same from outside.
                 let op = log.op("scan.watch");
                 let summary = db.conn().and_then(|mut conn| {
-                    pass(&mut conn, &mut on_progress, |error| {
-                        log.problem("scan.unreadable", Fields::new().add("error", error));
-                    })
+                    pass(&mut conn, &mut on_progress, |remark| remark.log(&log))
                 });
 
                 match &summary {

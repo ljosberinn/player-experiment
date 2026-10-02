@@ -209,9 +209,7 @@ pub async fn scan_library(app: tauri::AppHandle) -> AppResult<ScanSummary> {
                         // A dropped progress event is not worth failing a scan over.
                         let _ = app.emit(SCAN_PROGRESS, &progress);
                     },
-                    |error| {
-                        log.problem("scan.unreadable", Fields::new().add("error", error));
-                    },
+                    |remark| remark.log(&log),
                 )
             },
             scan::summary_fields,
