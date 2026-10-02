@@ -24,7 +24,7 @@ export const useBackgroundTaskStore = create<BackgroundTaskState>((set) => ({
 
   watch: async () =>
     // Undebounced, unlike `library://changed`: this arrives once per release,
-    // which for the lookup pass is once every twenty seconds, and it re-renders
+    // which for the lookup pass is once every few seconds, and it re-renders
     // one line.
     onTaskProgress((task) => set({ task })),
 }));

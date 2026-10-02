@@ -843,7 +843,7 @@ button.now-playing-subtitle:hover,
 }
 
 /* Where the readout for a task nobody started by hand and nobody waits at
-   sits: the unattended lookup pass runs for the better part of two days.
+   sits: the unattended lookup pass runs for most of a day.
    `margin-top: auto` puts it at the foot of the sidebar under however many
    sections there are, which is the space the design leaves empty. Placement
    only - what it looks like is `TaskLine`'s, in `library.css`. */

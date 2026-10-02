@@ -3,11 +3,11 @@ import { emit } from "../invoke";
 import { capture } from "../screenshot";
 
 /**
- * The readout at the foot of the sidebar, for a task measured in days.
+ * The readout at the foot of the sidebar, for a task measured in hours.
  *
  * The unattended lookup pass is the only thing that reports on
  * `task://progress`. It needs the network, it is off by default and it runs for
- * the better part of two days, so no spec can start one - the payload is sent
+ * most of a day, so no spec can start one - the payload is sent
  * from the webview instead and Tauri routes it back through the backend to the
  * listener, which is exactly the path the real thing takes. What that leaves
  * untested here is the arithmetic behind the numbers, and `Pace` in

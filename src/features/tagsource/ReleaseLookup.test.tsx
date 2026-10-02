@@ -165,6 +165,18 @@ describe("the pane", () => {
     expect(await screen.findByText(/No match/)).toBeInTheDocument();
   });
 
+  /** A refusal is not an answer, so the pane does not word it as one. */
+  it("says only what went wrong when the search fails", async () => {
+    vi.mocked(tagsourceSearch).mockRejectedValue("musicbrainz.org answered with HTTP 503");
+    render(<ReleaseLookup />);
+
+    await useTagsourceStore.getState().open([1, 2]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 503");
+    expect(screen.queryByText(/No match/)).toBeNull();
+    expect(screen.queryByText("Pick the release these files came from.")).toBeNull();
+  });
+
   /** The files alone are a list with nothing to compare them against. */
   it("draws no mapping before a tracklist", async () => {
     await open();

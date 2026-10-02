@@ -188,7 +188,14 @@ impl Op {
     /// took, and the display string is what the user was shown - so a
     /// screenshot and the log line say the same thing.
     pub fn failed(self, error: &dyn Display) {
-        let fields = self.fields.add("error", error);
+        self.failed_with(error, Fields::new());
+    }
+
+    /// [`Op::failed`], with fields the work counted before it gave up - the
+    /// retries a chain spent before it ran out, which say why it took as long
+    /// as it did.
+    pub fn failed_with(self, error: &dyn Display, extra: Fields) {
+        let fields = self.fields.merge(extra).add("error", error);
         self.log
             .line(&format(crate::now_seconds(), "err", self.name, &fields));
     }
@@ -411,6 +418,18 @@ mod tests {
             .run_with(|| Ok(412_u32), |added| Fields::new().add("added", added));
 
         assert!(contents(&log).contains("ok  scan            added=412 ms="));
+    }
+
+    #[test]
+    fn a_failure_carries_what_the_work_counted_before_the_error() {
+        let (_dir, log) = temp();
+
+        log.op("tagsource.search").failed_with(
+            &"musicbrainz.org answered with HTTP 503",
+            Fields::new().add("retries", 2),
+        );
+
+        assert!(contents(&log).contains("retries=2 error=musicbrainz.org answered with HTTP 503"));
     }
 
     #[test]

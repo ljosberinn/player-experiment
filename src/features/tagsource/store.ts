@@ -36,7 +36,7 @@ import {
  *
  * A release at a time, in a queue, because that is the unit a lookup costs a
  * request at: a folder-wide selection is dozens of releases, and the limiter
- * lets one request out every ten seconds. The queue is what lets that
+ * lets one request out every second and a half. The queue is what lets that
  * selection be tagged in one pass without pretending it is one release.
  *
  * `opening` is reading the release's files, which is a local query and is over
@@ -140,18 +140,27 @@ function unsearched(release: ReleaseSelection): ReviewEntry {
 
 export const useTagsourceStore = create<TagsourceState>((set, get) => {
   /**
+   * The request the dialog is waiting on. Each takes the next number and lands
+   * only if nothing was asked after it: a second search or pick on the same
+   * release passes any check on the entry, and with a 503 asked again the
+   * first can come back last.
+   */
+  let asked = 0;
+
+  /**
    * Reads the current release's files and gets it to a step the user can act
    * on.
    *
    * The two queues part company here. A selection has to be searched for; a
    * review entry was searched for when the pass queued it, and re-searching
-   * four hundred of those is over an hour of waiting to click.
+   * four hundred of those is ten minutes of waiting to click.
    */
   const enter = async () => {
     const entry = current(get());
     if (entry === null) {
       return;
     }
+    const mine = ++asked;
     set({
       stage: "opening",
       candidates: [],
@@ -165,12 +174,14 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
       // rows a scroll has evicted, and the mapping is about to be built out of
       // their track numbers.
       const tracks = await tracksByIds(entry.trackIds);
-      if (current(get()) !== entry) {
+      if (mine !== asked) {
         return;
       }
       set({ tracks });
     } catch (cause) {
-      set({ stage: "results", error: String(cause) });
+      if (mine === asked) {
+        set({ stage: "results", error: String(cause) });
+      }
       return;
     }
 
@@ -291,12 +302,13 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
       await enter();
     },
 
-    close: () =>
+    close: () => {
       // The stage and the readout with it. An apply that empties the queue is
       // what closes the dialog, and a stage left at "applying" comes back with
       // it - the review queue opens without going through a release, so it
       // would open on a table whose Cancel is disabled and whose Escape does
       // nothing.
+      ++asked;
       set({
         queue: null,
         tracks: [],
@@ -307,7 +319,8 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
         index: null,
         stage: "opening",
         progress: null,
-      }),
+      });
+    },
 
     setAside: async () => {
       const entry = current(get());
@@ -350,17 +363,18 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
       if (entry === null) {
         return;
       }
+      const mine = ++asked;
       set({ stage: "searching", candidates: [], detail: null, assignment: [], error: null });
       try {
         const candidates = await tagsourceSearch(entry.album, entry.artist);
-        // Guard against a queue that moved on while the request was in flight -
-        // Skip is one click and a search is a rate-limited ten seconds.
-        if (current(get()) !== entry) {
+        if (mine !== asked) {
           return;
         }
         set({ candidates, stage: "results" });
       } catch (cause) {
-        set({ stage: "results", error: String(cause) });
+        if (mine === asked) {
+          set({ stage: "results", error: String(cause) });
+        }
       }
     },
 
@@ -369,10 +383,11 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
       if (entry === null) {
         return;
       }
+      const mine = ++asked;
       set({ stage: "fetching", error: null });
       try {
         const detail = await tagsourceFetch(mbid, entry.album, entry.artist);
-        if (current(get()) !== entry) {
+        if (mine !== asked) {
           return;
         }
         set({
@@ -381,11 +396,16 @@ export const useTagsourceStore = create<TagsourceState>((set, get) => {
           stage: "confirm",
         });
       } catch (cause) {
-        set({ stage: "results", error: String(cause) });
+        if (mine === asked) {
+          set({ stage: "results", error: String(cause) });
+        }
       }
     },
 
-    back: () => set({ detail: null, assignment: [], stage: "results", error: null }),
+    back: () => {
+      ++asked;
+      set({ detail: null, assignment: [], stage: "results", error: null });
+    },
 
     swap: (row, other) => set({ assignment: swapAssignment(get().assignment, row, other) }),
 

@@ -894,7 +894,7 @@ export function tagsourceApply(
  * through them.
  *
  * Each carries the candidates the pass found when it queued it, so the dialog
- * opens on the results rather than on a rate-limited ten seconds. Opening the
+ * opens on the results rather than on a rate-limited search. Opening the
  * queue is also what drops entries for releases that have since been retagged
  * or removed, so the length of this is the honest count.
  */

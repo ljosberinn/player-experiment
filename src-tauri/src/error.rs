@@ -52,6 +52,23 @@ impl AppError {
     pub fn transient(&self) -> bool {
         matches!(self, Self::Network(error) if error.transient())
     }
+
+    /// Whether this is MusicBrainz declining rather than a failure to reach it.
+    ///
+    /// **Only a 503.** It is the documented code for a full bucket, and
+    /// `tagsource::rate` records why the client cannot tell whose bucket it
+    /// was: the limit is enforced from three of them at once, so a client well
+    /// inside its own allowance still meets 503s.
+    ///
+    /// Every other status is out. [`TransportError::Server`] also covers a
+    /// gateway, a captive portal and a 5xx page, none of which is MusicBrainz
+    /// answering and all of which would go on answering the same way.
+    pub fn declined(&self) -> bool {
+        matches!(
+            self,
+            Self::Network(TransportError::Server { status: 503, .. })
+        )
+    }
 }
 
 impl Serialize for AppError {

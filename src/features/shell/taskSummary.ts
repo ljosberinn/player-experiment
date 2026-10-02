@@ -27,7 +27,7 @@ export function taskPercent(done: number, total: number): string | null {
  * Deliberately vague above a minute. The estimate is drawn from the last
  * hundred releases and the rate is not steady - one whose files already carry
  * an MBID costs nothing and a searched one costs two rate-limited requests -
- * so a figure to the minute over two days would be precision the number does
+ * so a figure to the minute over most of a day would be precision the number does
  * not have.
  */
 export function taskEstimate(etaMs: number | null): string | null {

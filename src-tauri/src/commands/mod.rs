@@ -860,6 +860,8 @@ fn local_release(
 /// On a worker thread because it blocks twice over: once on the shared rate
 /// limiter, which lets one request out every second and a half and holds the
 /// gate until it comes back, and once on the request itself.
+///
+/// A 503 is asked again, and nothing else is: see [`tagsource::retrying`].
 #[tauri::command]
 pub async fn tagsource_search(
     app: tauri::AppHandle,
@@ -871,22 +873,31 @@ pub async fn tagsource_search(
         .add("artist", artist.as_deref().unwrap_or("-"));
 
     blocking("release search", move || {
-        op.run_with(
-            || {
-                let conn = app.state::<Db>().conn()?;
-                let local = local_release(&conn, album.as_deref(), artist.as_deref())?;
-                // Dropped before the network call: a connection held across a
-                // rate-limited second is a connection nothing else can use.
-                drop(conn);
+        let mut retries = 0;
+        let found = (|| {
+            let conn = app.state::<Db>().conn()?;
+            let local = local_release(&conn, album.as_deref(), artist.as_deref())?;
+            // Dropped before the network call: a connection held across a
+            // rate-limited second is a connection nothing else can use.
+            drop(conn);
+            let transport = tagsource_ready()?;
+            tagsource::retrying(&mut retries, AppError::declined, || {
                 tagsource::musicbrainz::search(
-                    tagsource_ready()?,
+                    transport,
                     album.as_deref(),
                     artist.as_deref(),
                     &local,
                 )
-            },
-            |candidates| Fields::new().add("candidates", candidates.len()),
-        )
+            })
+        })();
+        match &found {
+            Ok(candidates) => op.succeeded(tagsource::with_retries(
+                Fields::new().add("candidates", candidates.len()),
+                retries,
+            )),
+            Err(error) => op.failed_with(error, tagsource::with_retries(Fields::new(), retries)),
+        }
+        found
     })
     .await
 }
@@ -906,29 +917,36 @@ pub async fn tagsource_fetch(
     let op = op(&app, "tagsource.fetch").add("mbid", &mbid);
 
     blocking("release fetch", move || {
-        op.run_with(
-            || {
-                let conn = app.state::<Db>().conn()?;
-                let local = local_release(&conn, album.as_deref(), artist.as_deref())?;
-                drop(conn);
+        let mut retries = 0;
+        let fetched = (|| {
+            let conn = app.state::<Db>().conn()?;
+            let local = local_release(&conn, album.as_deref(), artist.as_deref())?;
+            drop(conn);
 
-                let (mut detail, cover) =
-                    tagsource::fetch_release(tagsource_ready()?, &mbid, &local)?;
-                // Through the same staging file the tag editor's own artwork
-                // goes through, so the dialog previews it over `cover://` and
-                // the writer reads it back the one way it already knows.
-                detail.cover_path = match cover {
-                    Some(bytes) => stage_cover(&staging_dir(&app)?, &bytes).ok(),
-                    None => None,
-                };
-                Ok(detail)
-            },
-            |detail| {
+            let transport = tagsource_ready()?;
+            let (mut detail, cover) =
+                tagsource::retrying(&mut retries, AppError::declined, || {
+                    tagsource::fetch_release(transport, &mbid, &local)
+                })?;
+            // Through the same staging file the tag editor's own artwork
+            // goes through, so the dialog previews it over `cover://` and
+            // the writer reads it back the one way it already knows.
+            detail.cover_path = match cover {
+                Some(bytes) => stage_cover(&staging_dir(&app)?, &bytes).ok(),
+                None => None,
+            };
+            Ok(detail)
+        })();
+        match &fetched {
+            Ok(detail) => op.succeeded(tagsource::with_retries(
                 Fields::new()
                     .add("tracks", detail.tracks.len())
-                    .add("cover", detail.cover_path.is_some())
-            },
-        )
+                    .add("cover", detail.cover_path.is_some()),
+                retries,
+            )),
+            Err(error) => op.failed_with(error, tagsource::with_retries(Fields::new(), retries)),
+        }
+        fetched
     })
     .await
 }

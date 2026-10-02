@@ -10,13 +10,13 @@ import { taskLines } from "./taskSummary";
  * header beside `ScanBar`, reads two per-write channels and reports on writes
  * that finish in a minute. This is a different place, a different lifetime and
  * a different shape - a percentage to two decimals and an estimate, standing
- * for the better part of two days - and folding them together would give one
+ * for most of a day - and folding them together would give one
  * component two homes.
  *
  * Mounted for the whole session, like `ScanBar`: it is what subscribes to the
  * channel, and it draws nothing at all while there is no task. It subscribes on
  * its own behalf rather than being handed a value, so a percentage that ticks
- * every twenty seconds re-renders a line and not the sidebar.
+ * every few seconds re-renders a line and not the sidebar.
  */
 export function BackgroundTaskProgress() {
   const task = useBackgroundTaskStore((s) => s.task);

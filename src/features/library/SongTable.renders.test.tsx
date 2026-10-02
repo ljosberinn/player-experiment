@@ -255,7 +255,7 @@ describe("what a scroll costs", () => {
 describe("what a library change costs", () => {
   /**
    * `library://changed` fires for every scan batch, import page and play
-   * count, and for the lookup pass every twenty seconds for two days. Most of
+   * count, and for the lookup pass every few seconds for most of a day. Most of
    * them move nothing on screen; dropping the pages for each redrew all 190
    * cells in the window, through a frame of placeholder rows.
    */

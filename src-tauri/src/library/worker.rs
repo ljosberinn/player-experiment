@@ -32,14 +32,15 @@ use std::time::{Duration, Instant};
 use rusqlite::Connection;
 
 use crate::db::{lookup, query, settings, Db};
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::library::mover;
 use crate::library::survey::{self, Pending, Steps};
 use crate::log::{Fields, Log};
 use crate::model::BackgroundTask;
 use crate::scan::ScanLock;
-use crate::tagsource::pass::{self, Outcome, Reason, Verdict};
-use crate::tagsource::transport::{Transport, TransportError};
+use crate::tagsource::pass::{self, Reason, Verdict};
+use crate::tagsource::transport::Transport;
+use crate::tagsource::with_retries;
 
 /// How often the thread wakes to ask whether either switch is on.
 ///
@@ -195,7 +196,7 @@ pub struct Pace {
 /// The rate is not steady: a release whose files already carry an MBID costs
 /// nothing and a searched one costs two rate-limited requests, so an average
 /// over the whole pass describes a pass that is not the one running. A
-/// sub-second move beside a ten-second lookup is only more of that.
+/// sub-second move beside a three-second lookup is only more of that.
 const RECENT: usize = 100;
 
 /// How many releases it takes before there is an estimate worth showing.
@@ -282,9 +283,8 @@ pub struct Summary {
     /// How much a pass is paying for a service that is declining, which the
     /// `run` beside it no longer says at all: a decline never reaches the run.
     /// The two read together - `failed` high against `run` at zero is a busy
-    /// MusicBrainz and nothing else. A release that failed returns an error
-    /// rather than an outcome, so its `retries` are lost and it is not counted
-    /// in `visited` either.
+    /// MusicBrainz and nothing else. A release that failed is not counted in
+    /// `visited`; its retries are counted in `retries` all the same.
     pub failed: usize,
     /// How many requests this sweep had to ask again before one was answered.
     ///
@@ -360,28 +360,6 @@ enum Visit {
     /// step, because the answer is the same one: carry on and ask again later.
     /// Not placed either - a file that cannot be written cannot be moved.
     Unreachable,
-}
-
-/// Whether a failed lookup is MusicBrainz declining rather than a failure to
-/// reach it.
-///
-/// **Only a 503.** It is the documented code for a full bucket, and
-/// `tagsource::rate` records why the client cannot tell whose bucket it was:
-/// the limit is enforced from three of them at once, so a client well inside
-/// its own allowance still meets 503s. Nothing can be read off one, so it is
-/// kept out of the run entirely.
-///
-/// Every other status stays in. [`TransportError::Server`] also covers a
-/// gateway, a captive portal and a 5xx page, none of which is MusicBrainz
-/// answering and all of which would go on answering the same way - a proxy
-/// stuck on 502 is exactly the outage [`OUTAGE`] exists to stop. So does every
-/// error that is not the transport's: a locked database says as much about the
-/// next release as an unreachable host does.
-fn declined(error: &AppError) -> bool {
-    matches!(
-        error,
-        AppError::Network(TransportError::Server { status: 503, .. })
-    )
 }
 
 /// Works through every release with either step left to do, until there are
@@ -661,6 +639,7 @@ fn visit(
             .op("lookup.release")
             .add("album", release.album.as_deref().unwrap_or("-"))
             .add("artist", release.artist.as_deref().unwrap_or("-"));
+        let mut retries = 0;
         let outcome = pass::look_up(
             conn,
             context.transport,
@@ -669,10 +648,9 @@ fn visit(
             context.staging,
             plan.dry_run,
             crate::now_seconds(),
+            &mut retries,
         );
-        if let Ok(outcome) = &outcome {
-            summary.retries += outcome.retries;
-        }
+        summary.retries += retries;
         // Logged by hand rather than through `Op::run_with`, because which of
         // the two this is - a line, or silence - is not known until the work
         // has run, and `Op::quiet` is decided before it does. 8,044 lines
@@ -680,15 +658,14 @@ fn visit(
         // cannot be diagnosed after the fact; 8,044 more about releases
         // MusicBrainz has never heard of is noise.
         match &outcome {
-            Ok(Outcome {
-                verdict: Verdict::NotFound,
-                ..
-            }) => {}
-            Ok(outcome) => op.succeeded(outcome_fields(outcome, plan.dry_run)),
-            Err(error) => op.failed(error),
+            Ok(Verdict::NotFound) => {}
+            Ok(verdict) => {
+                op.succeeded(with_retries(verdict_fields(verdict, plan.dry_run), retries))
+            }
+            Err(error) => op.failed_with(error, with_retries(Fields::new(), retries)),
         }
 
-        match outcome.map(|outcome| outcome.verdict) {
+        match outcome {
             Ok(Verdict::Written { .. }) => {
                 summary.resolved += 1;
                 attempted = true;
@@ -738,7 +715,10 @@ fn visit(
             // library the next sweep reads.
             Err(error) => {
                 summary.failed += 1;
-                visit = if declined(&error) {
+                // Only a 503 stays out of the run (82o): a proxy stuck on 502
+                // is the outage `OUTAGE` exists to stop, and a locked database
+                // says as much about the next release as an unreachable host.
+                visit = if error.declined() {
                     Visit::Declined
                 } else {
                     Visit::LookupFailed
@@ -866,13 +846,12 @@ fn next_sweep(previous: Duration, attempted: usize) -> Duration {
 /// one feature in this app that writes tags nobody approved, a line that
 /// cannot be told from a line about a write is worse than no line.
 ///
-/// `retries` only when there were some, because there almost never are and a
-/// `retries=0` on eight thousand lines says nothing. `reason` the same, and it
-/// is what makes the `score` readable: a write carrying it cleared the bar on
-/// the search score, so its `score` - the fetched one - is below the
-/// threshold, and without the field a tuning pass would read a broken bar.
-fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
-    let fields = match &outcome.verdict {
+/// `reason` only off the ordinary path, and it is what makes the `score`
+/// readable: a write carrying it cleared the bar on the search score, so its
+/// `score` - the fetched one - is below the threshold, and without the field a
+/// tuning pass would read a broken bar.
+fn verdict_fields(verdict: &Verdict, dry_run: bool) -> Fields {
+    match verdict {
         Verdict::Written {
             mbid,
             score,
@@ -884,8 +863,7 @@ fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
                 .add("mbid", mbid)
                 .add("score", format!("{score:.3}"))
                 .add("tracks", tracks);
-            // Only off the ordinary path, for the same reason as `retries`:
-            // almost every line would be a `scored` that says nothing.
+            // Almost every line would be a `scored` that says nothing.
             match reason {
                 Reason::Scored => fields,
                 Reason::Sole => fields.add("reason", "sole"),
@@ -914,11 +892,6 @@ fn outcome_fields(outcome: &Outcome, dry_run: bool) -> Fields {
             .add("score", format!("{score:.3}"))
             .add("candidates", candidates),
         Verdict::NotFound => Fields::new(),
-    };
-    if outcome.retries > 0 {
-        fields.add("retries", outcome.retries)
-    } else {
-        fields
     }
 }
 
@@ -1046,9 +1019,8 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tagsource::pass::tests::{
-        add_release, flaky, library, musicbrainz, LOVELESS_DURATIONS,
-    };
+    use crate::tagsource::pass::tests::{add_release, library, musicbrainz, LOVELESS_DURATIONS};
+    use crate::tagsource::tests::flaky;
     use crate::tagsource::transport::{FakeTransport, TransportError};
     use std::cell::{Cell, RefCell};
 
@@ -1924,7 +1896,7 @@ mod tests {
         let summary = sweep(
             &db,
             &ScanLock::default(),
-            &flaky(3),
+            &flaky(3, musicbrainz()),
             &log_to(dir.path()),
             dir.path(),
             &mut live(),
@@ -1948,7 +1920,7 @@ mod tests {
         let summary = sweep(
             &db,
             &ScanLock::default(),
-            &flaky(3),
+            &flaky(3, musicbrainz()),
             &log_to(dir.path()),
             dir.path(),
             &mut live(),
