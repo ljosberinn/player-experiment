@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.1](https://github.com/ljosberinn/player-experiment/compare/v0.23.0...v0.23.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* a bad tag item does not hide the file ([#204](https://github.com/ljosberinn/player-experiment/issues/204)) ([#382](https://github.com/ljosberinn/player-experiment/issues/382)) ([d5f3276](https://github.com/ljosberinn/player-experiment/commit/d5f3276e46695a9ee1ad51057cc3a89e895bb860))
+* a control character is escaped in the log ([#205](https://github.com/ljosberinn/player-experiment/issues/205)) ([#383](https://github.com/ljosberinn/player-experiment/issues/383)) ([fcddb54](https://github.com/ljosberinn/player-experiment/commit/fcddb5459cab794b16cf7ab3b01505e4dc55e751))
+* a long write takes its lock first ([#203](https://github.com/ljosberinn/player-experiment/issues/203)) ([#381](https://github.com/ljosberinn/player-experiment/issues/381)) ([8766b3d](https://github.com/ljosberinn/player-experiment/commit/8766b3da611be3754e044f1dcaaf3c918f7154e7))
+* a restore outlasts a sleeping drive ([#201](https://github.com/ljosberinn/player-experiment/issues/201)) ([#379](https://github.com/ljosberinn/player-experiment/issues/379)) ([b2eb5b0](https://github.com/ljosberinn/player-experiment/commit/b2eb5b0bdf1fdf1abe5a0d40fda68434b928455f))
+* junk before the audio does not refuse a save ([#202](https://github.com/ljosberinn/player-experiment/issues/202)) ([#380](https://github.com/ljosberinn/player-experiment/issues/380)) ([b61ed62](https://github.com/ljosberinn/player-experiment/commit/b61ed62ea9e54f593cd49e61fa4b9f553c13df91))
+* the lookup dialog asks again on a 503 ([#200](https://github.com/ljosberinn/player-experiment/issues/200)) ([#377](https://github.com/ljosberinn/player-experiment/issues/377)) ([6b310e4](https://github.com/ljosberinn/player-experiment/commit/6b310e40f50561d167b3aa1b4bb20445fd02b24d))
+
 ## [0.23.0](https://github.com/ljosberinn/player-experiment/compare/v0.22.0...v0.23.0) (2026-10-02)
 
 
