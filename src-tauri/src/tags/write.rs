@@ -863,7 +863,9 @@ pub fn apply(
     }
 
     let tx = conn.transaction()?;
+    let mut before = Vec::with_capacity(written.len());
     for (track_id, path) in &written {
+        before.extend(crate::db::plays::link_tags(&tx, *track_id)?.map(|tags| (*track_id, tags)));
         sync_row(&tx, *track_id, path)?;
     }
     // In the same transaction as the rows it is derived from, so a suggestion
@@ -871,8 +873,7 @@ pub fn apply(
     crate::db::tag_values::rebuild(&tx)?;
     // Same transaction for the same reason: a play must not point at a tag
     // edit that was rolled back.
-    crate::db::plays::resolve(&tx)?;
-    crate::db::plays::count(&tx)?;
+    crate::db::plays::relink(&tx, &before)?;
     tx.commit()?;
 
     Ok(Written {
