@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.23.0](https://github.com/ljosberinn/player-experiment/compare/v0.22.0...v0.23.0) (2026-10-02)
+
+
+### Features
+
+* a top list says how long ([#198](https://github.com/ljosberinn/player-experiment/issues/198)) ([#374](https://github.com/ljosberinn/player-experiment/issues/374)) ([f801ad8](https://github.com/ljosberinn/player-experiment/commit/f801ad89c6b504949ad4f7f49ce610f2102739b1))
+
+
+### Bug Fixes
+
+* a play links to the copy on its album ([#195](https://github.com/ljosberinn/player-experiment/issues/195)) ([#370](https://github.com/ljosberinn/player-experiment/issues/370)) ([37db1c5](https://github.com/ljosberinn/player-experiment/commit/37db1c5cd4c7a415a2fc24c3c5d5dd0034fd5582))
+* a removal ends with its file ([#196](https://github.com/ljosberinn/player-experiment/issues/196)) ([#371](https://github.com/ljosberinn/player-experiment/issues/371)) ([f230634](https://github.com/ljosberinn/player-experiment/commit/f2306346f3a9c64975243d1e87beaa79700c5b08))
+* a second copy stays out of the library ([#195](https://github.com/ljosberinn/player-experiment/issues/195)) ([#366](https://github.com/ljosberinn/player-experiment/issues/366)) ([9215329](https://github.com/ljosberinn/player-experiment/commit/921532942b30f76d1691ee1e6489077e218c655d))
+
+
+### Performance
+
+* a resolve that moves many plays is not quadratic ([#199](https://github.com/ljosberinn/player-experiment/issues/199)) ([#373](https://github.com/ljosberinn/player-experiment/issues/373)) ([2564261](https://github.com/ljosberinn/player-experiment/commit/25642613a43da5e4014f3159c89e1820ea617693))
+* a scan that changed nothing relinks nothing ([#193](https://github.com/ljosberinn/player-experiment/issues/193)) ([#368](https://github.com/ljosberinn/player-experiment/issues/368)) ([e7b5fed](https://github.com/ljosberinn/player-experiment/commit/e7b5fed6e77d890541605b3aa4b8b01f0570fc50))
+* a tag write relinks only what it touched ([#197](https://github.com/ljosberinn/player-experiment/issues/197)) ([#372](https://github.com/ljosberinn/player-experiment/issues/372)) ([a92e6dc](https://github.com/ljosberinn/player-experiment/commit/a92e6dc5d81492d6e0bc61baabd85d73f758a603))
+* an unreadable file is read once ([#194](https://github.com/ljosberinn/player-experiment/issues/194)) ([#369](https://github.com/ljosberinn/player-experiment/issues/369)) ([d5f9f8e](https://github.com/ljosberinn/player-experiment/commit/d5f9f8eb3247aefe2184a25c172161a8ddf4399a))
+
+
+### Documentation
+
+* commit the done issues for 193, 194 and 196-199 ([#376](https://github.com/ljosberinn/player-experiment/issues/376)) ([8994c5c](https://github.com/ljosberinn/player-experiment/commit/8994c5c8c2d6b942f2bd380d7a137662f0d61cfd))
+
 ## [0.22.0](https://github.com/ljosberinn/player-experiment/compare/v0.21.1...v0.22.0) (2026-09-29)
 
 
