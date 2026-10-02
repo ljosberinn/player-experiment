@@ -51,20 +51,23 @@ does.
 - A key's candidates are its artist-key tracks when it has any, and its
   album-artist tracks only when it has none (135).
 - The links go into `temp.copy_links`, ahead of `play_keys` in the one
-  coalescing `UPDATE` (145).
+  coalescing `UPDATE` (145). The copy tier shares the album tier's read of
+  the log, which keeps `resolve` inside its `tests/perf.rs` budget.
 - The album tier and the near-title tier are unchanged.
 - `MATCH_FOLD_VERSION` goes to 9. `refold_if_stale` now runs `count` after
   `resolve`, since the scan after it skips both (193).
 
 ## Counts on the copy that loses plays
 
-`count` only raises (136), so both copies would count a moved play. `resolve`
-records, for each track that loses a play to another track, its linked count
-and latest `started_at` before its `UPDATE`. Where `play_count` (or
+`count` only raises (136), so both copies would count a moved play. A
+temporary trigger records each play that leaves a track. For each track that
+loses one to another track, `resolve` works out its linked count and latest
+`started_at` before the `UPDATE`. Where `play_count` (or
 `last_played_at`) equaled that, it becomes what the track links afterwards
 plus the plays that now link nowhere (NULL when nothing is left). A retag that
 unlinks plays keeps their count, as `count` documents. A count above its links
-holds local history from before migration 13 and stays.
+holds local history from before migration 13 and stays. A play arriving
+from nowhere is not recorded, so a track that also gains one keeps its count.
 
 ## Touches
 
